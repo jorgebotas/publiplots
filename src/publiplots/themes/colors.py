@@ -101,6 +101,7 @@ def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False, diverg
     palette : str, list, or None
         Palette name (checks publiplots first, then seaborn) or list of colors.
         If None, uses the default palette from rcParams.
+        Append "_r" suffix to reverse any palette (e.g., "coolwarm_r", "viridis_r").
     n_colors : int, optional
         Number of colors in the palette.
     desat : float, optional
@@ -135,6 +136,10 @@ def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False, diverg
 
     Force divergent sampling on any palette:
     >>> colors = color_palette("viridis", n_colors=5, divergent=True)
+
+    Reverse any palette with "_r" suffix (seaborn convention):
+    >>> colors = color_palette("coolwarm_r", n_colors=3)
+    >>> colors = color_palette("viridis_r", n_colors=5)
     """
     import seaborn as sns
 
@@ -142,15 +147,27 @@ def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False, diverg
     if palette is None:
         palette = resolve_param("palette", "pastel")
 
+    # Handle "_r" suffix for reversed palettes (seaborn convention)
+    reverse = False
+    base_palette = palette
+    if isinstance(palette, str) and palette.endswith("_r"):
+        base_palette = palette[:-2]  # Remove "_r" suffix
+        reverse = True
+
     # Auto-detect divergent palettes or use explicit parameter
+    # Use base_palette for detection (before "_r" suffix)
     is_divergent = (
         divergent if divergent is not None
-        else (isinstance(palette, str) and palette in DIVERGENT_PALETTES)
+        else (isinstance(base_palette, str) and base_palette in DIVERGENT_PALETTES)
     )
 
-    # Check publiplots PALETTES first
-    if isinstance(palette, str) and palette in PALETTES:
-        colors = PALETTES[palette]
+    # Check publiplots PALETTES first (using base_palette name)
+    if isinstance(base_palette, str) and base_palette in PALETTES:
+        colors = PALETTES[base_palette]
+
+        # Reverse colors if "_r" suffix was used
+        if reverse:
+            colors = list(reversed(colors))
 
         # Apply divergent sampling if needed and n_colors is specified
         if is_divergent and n_colors is not None and n_colors < len(colors):
