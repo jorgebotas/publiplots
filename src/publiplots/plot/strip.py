@@ -28,7 +28,7 @@ def stripplot(
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
     jitter: Union[bool, float] = True,
-    dodge: bool = False,
+    dodge: bool = True,
     orient: Optional[str] = None,
     color: Optional[str] = None,
     palette: Optional[Union[str, Dict, List]] = None,
@@ -68,7 +68,7 @@ def stripplot(
         Order for the hue levels.
     jitter : float or bool, default=True
         Amount of jitter (only along the categorical axis) to apply.
-    dodge : bool, default=False
+    dodge : bool, default=True
         Whether to separate points by hue along the categorical axis.
     orient : str, optional
         Orientation of the plot ('v' or 'h').
