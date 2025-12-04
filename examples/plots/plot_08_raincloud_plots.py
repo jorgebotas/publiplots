@@ -63,7 +63,7 @@ fig, ax = pp.raincloudplot(
     xlabel='Time',
     ylabel='Measurement',
     cloud_alpha=0.6,
-    palette=['#5D83C3', '#e67e7e'],
+    palette="RdGyBu_r",
     box_offset=0.1,
     rain_offset=0.1,
 )
@@ -84,7 +84,7 @@ fig, ax = pp.raincloudplot(
     xlabel='Measurement',
     ylabel='Time',
     cloud_alpha=0.6,
-    palette=['#5D83C3', '#e67e7e'],
+    palette="RdGyBu_r",
     figsize=(4, 7),
     box_offset=0.1,
     rain_offset=0.2,
@@ -169,7 +169,7 @@ fig, ax = pp.raincloudplot(
     cloud_alpha=0.3,
     box_kws=dict(alpha=0.5),
     rain_kws=dict(alpha=0.8, linewidth=0),
-    palette=['#5D83C3', '#e67e7e'],
+    palette="RdGyBu_r",
     box_offset=0.1,
     rain_offset=0.1,
 )
