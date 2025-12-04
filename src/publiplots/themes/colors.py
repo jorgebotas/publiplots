@@ -28,16 +28,69 @@ PALETTES = {
         "#8fc9a8",  # Soft teal
         "#dba3a3",  # Soft rose
         "#9eb3d4",  # Soft periwinkle
-    ]
+    ],
+    "coolwarm": [
+        "#355085",  # Deep blue
+        "#5073b8",  # Medium blue
+        "#95abd5",  # Light blue
+        "#dbe3f1",  # Very light blue
+        "#ffffff",  # White (center)
+        "#efdae0",  # Very light red
+        "#d296a8",  # Light red
+        "#b4516f",  # Medium red
+        "#80374d",  # Deep red
+    ],
 }
 """Dictionary of custom publiplots palettes."""
+
+DIVERGENT_PALETTES = {"coolwarm"}
+"""Set of palette names that use divergent sampling (extremes first)."""
 
 
 # =============================================================================
 # Functions
 # =============================================================================
 
-def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False):
+
+def _sample_divergent(colors: List[str], n_colors: int) -> List[str]:
+    """
+    Sample colors from a divergent palette to preserve extremes.
+
+    For divergent palettes, sampling should preserve the extreme values
+    (endpoints) and sample evenly across the full range. This ensures
+    that the divergent nature is maintained even with few colors.
+
+    Parameters
+    ----------
+    colors : List[str]
+        Full list of colors in the palette.
+    n_colors : int
+        Number of colors to sample.
+
+    Returns
+    -------
+    List[str]
+        Sampled colors with extremes preserved.
+
+    Examples
+    --------
+    >>> palette = ['#000', '#111', '#222', '#333', '#444']
+    >>> _sample_divergent(palette, 2)
+    ['#000', '#444']  # First and last
+    >>> _sample_divergent(palette, 3)
+    ['#000', '#222', '#444']  # First, middle, last
+    """
+    import numpy as np
+
+    if n_colors >= len(colors):
+        return colors
+
+    # Calculate evenly spaced indices across the full palette
+    indices = np.round(np.linspace(0, len(colors) - 1, n_colors)).astype(int)
+    return [colors[i] for i in indices]
+
+
+def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False, divergent=None):
     """
     Return a color palette as a list of hex colors or colormap.
 
@@ -54,6 +107,10 @@ def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False):
         Proportion to desaturate each color.
     as_cmap : bool, default=False
         If True, return a matplotlib colormap instead of a list.
+    divergent : bool, optional
+        If True, sample colors to preserve extremes (for divergent palettes).
+        If None (default), automatically detected for known divergent palettes.
+        Set to False to disable divergent sampling even for known divergent palettes.
 
     Returns
     -------
@@ -72,6 +129,12 @@ def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False):
 
     Get as colormap:
     >>> cmap = color_palette("pastel", as_cmap=True)
+
+    Get divergent palette with 3 colors (first, middle, last):
+    >>> colors = color_palette("coolwarm", n_colors=3)
+
+    Force divergent sampling on any palette:
+    >>> colors = color_palette("viridis", n_colors=5, divergent=True)
     """
     import seaborn as sns
 
@@ -79,9 +142,25 @@ def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False):
     if palette is None:
         palette = resolve_param("palette", "pastel")
 
+    # Auto-detect divergent palettes or use explicit parameter
+    is_divergent = (
+        divergent if divergent is not None
+        else (isinstance(palette, str) and palette in DIVERGENT_PALETTES)
+    )
+
     # Check publiplots PALETTES first
     if isinstance(palette, str) and palette in PALETTES:
         colors = PALETTES[palette]
+
+        # Apply divergent sampling if needed and n_colors is specified
+        if is_divergent and n_colors is not None and n_colors < len(colors):
+            colors = _sample_divergent(colors, n_colors)
+            # After sampling, use all sampled colors (don't resample in seaborn)
+            if as_cmap:
+                from matplotlib.colors import ListedColormap
+                return ListedColormap(colors)
+            return sns.color_palette(colors, n_colors=None, desat=desat)
+
         if as_cmap:
             from matplotlib.colors import ListedColormap
             return ListedColormap(colors)
