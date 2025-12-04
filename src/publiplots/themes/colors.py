@@ -29,7 +29,7 @@ PALETTES = {
         "#dba3a3",  # Soft rose
         "#9eb3d4",  # Soft periwinkle
     ],
-    "coolwarm": [
+    "RdBu": [
         "#355085",  # Deep blue
         "#5073b8",  # Medium blue
         "#95abd5",  # Light blue
@@ -40,10 +40,17 @@ PALETTES = {
         "#b4516f",  # Medium red
         "#80374d",  # Deep red
     ],
+    "RdGyBu": [
+        "#c96f76", 
+        "#e4b6ba",
+        "#a7a7a7", 
+        "#b2c1df",
+        "#6c89c3",
+    ]
 }
 """Dictionary of custom publiplots palettes."""
 
-DIVERGENT_PALETTES = {"coolwarm"}
+DIVERGENT_PALETTES = {"RdBu", "RdGyBu"}
 """Set of palette names that use divergent sampling (extremes first)."""
 
 
@@ -173,10 +180,7 @@ def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False, diverg
         if is_divergent and n_colors is not None and n_colors < len(colors):
             colors = _sample_divergent(colors, n_colors)
             # After sampling, use all sampled colors (don't resample in seaborn)
-            if as_cmap:
-                from matplotlib.colors import ListedColormap
-                return ListedColormap(colors)
-            return sns.color_palette(colors, n_colors=None, desat=desat)
+            n_colors = None
 
         if as_cmap:
             from matplotlib.colors import ListedColormap
