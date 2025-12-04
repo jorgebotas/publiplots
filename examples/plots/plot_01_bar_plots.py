@@ -104,7 +104,7 @@ fig, ax = pp.barplot(
     xlabel='Time Point',
     ylabel='Measurement',
     errorbar='se',
-    palette={'Control': '#8E8EC1', 'Treated': '#75B375'},
+    palette="RdGyBu_r",
 )
 plt.show()
 
@@ -182,7 +182,7 @@ fig, ax = pp.barplot(
     xlabel="Cell Type",
     ylabel="Viability (%)",
     errorbar="se",
-    palette={"Vehicle": "#8E8EC1", "Drug": "#E67E7E"},
+    palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
     hatch_map={"24h": "", "48h": "///"},
     figsize=(8, 5)
 )
@@ -211,7 +211,7 @@ fig, ax = pp.barplot(
     title='Gene Expression Levels (Horizontal)',
     xlabel='Expression Level',
     ylabel='Gene',
-    palette={'Upregulated': '#75B375', 'Downregulated': '#E67E7E'},
+    palette="RdGyBu",
     errorbar=None,
     alpha=0.3,
     order=horizontal_data['gene'].tolist()

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "publiplots"
-version = "0.4.5"
+version = "0.4.6"
 description = "Publication-ready plotting with a clean, modular API"
 readme = "README.md"
 requires-python = ">=3.9"

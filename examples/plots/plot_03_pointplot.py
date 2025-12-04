@@ -73,6 +73,7 @@ fig, ax = pp.pointplot(
     title='Point Plot with Hue Grouping',
     xlabel='Time Point',
     ylabel='Measurement',
+    palette="RdGyBu_r"
 )
 ax.grid(axis="y")
 plt.show()
@@ -89,7 +90,7 @@ fig, ax = pp.pointplot(
     y='measurement',
     hue='group',
     markers=["o", "D"],
-    palette={'Control': '#8E8EC1', 'Treated': '#75B375'},
+    palette="RdGyBu_r",
     title='Point Plot with Custom Markers',
     xlabel='Time Point',
     ylabel='Measurement',
@@ -108,7 +109,7 @@ fig, ax = pp.pointplot(
     y='measurement',
     hue='group',
     linestyles=["-", ":"],
-    palette={'Control': '#8E8EC1', 'Treated': '#75B375'},
+    palette="RdGyBu_r",
     title='Point Plot with Custom Line Styles',
     xlabel='Time Point',
     ylabel='Measurement',
@@ -129,7 +130,7 @@ fig, ax = pp.pointplot(
     errorbar='se',
     markers=["o", "D"],
     linestyles=["-", ":"],
-    palette={'Control': '#8E8EC1', 'Treated': '#75B375'},
+    palette="RdGyBu_r",
     title='Fully Customized Point Plot',
     xlabel='Time Point',
     ylabel='Measurement',
@@ -147,6 +148,7 @@ fig, ax = pp.pointplot(
     x='time',
     y='measurement',
     hue='group',
+    palette="RdGyBu_r",
     errorbar='se',
     title='Point Plot with Standard Error',
     xlabel='Time Point',
@@ -165,6 +167,7 @@ fig, ax = pp.pointplot(
     x='time',
     y='measurement',
     hue='group',
+    palette="RdGyBu_r",
     errorbar='sd',
     title='Point Plot with Standard Deviation',
     xlabel='Time Point',
@@ -222,21 +225,15 @@ def get_significance(row):
         return 'Risk'  # Risk (lower CI > 1)
     else:
         return 'Non-significant'  # Non-significant (CI crosses 1)
-palette = {
-    "Risk": "#e67e7e",
-    "Non-significant": "0.5",
-    "Protective": "#5D83C3",
-}
 
 genetic_data['Significance'] = genetic_data.apply(get_significance, axis=1)
-
-
 fig, ax = pp.pointplot(
-    data=genetic_data,
+    data=genetic_data.sort_values("log2_or", ascending=False),
     x='log2_or',
     y='gene',
     hue='Significance',
-    palette=palette,
+    hue_order=("Risk", "Non-significant", "Protective"),
+    palette="RdGyBu",
     linestyle="none",
     errorbar=('custom', ('log2_lower', 'log2_upper')),
     capsize=0.1,
@@ -244,7 +241,6 @@ fig, ax = pp.pointplot(
     xlabel="Log2 Odds Ratio (95% CI)",
     ylabel="Gene/Variant",
 )
-
 ax.axvline(x=0, color='black', linestyle='--', linewidth=1, alpha=0.7, 
            label='Null effect (OR = 1)')
 ax.grid(axis='x')

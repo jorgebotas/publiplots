@@ -12,7 +12,7 @@ Basic usage:
     >>> pp.savefig(fig, 'output.png')
 """
 
-__version__ = "0.4.5"
+__version__ = "0.4.6"
 __author__ = "Jorge Botas"
 __license__ = "MIT"
 __copyright__ = "Copyright 2025, Jorge Botas"
