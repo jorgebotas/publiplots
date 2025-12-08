@@ -697,7 +697,7 @@ class LegendBuilder:
 
         # Initialize position tracking (all in mm)
         self.current_x = x_offset
-        self.current_y = y_offset if y_offset is not None else (self._get_axes_height() - vpad)
+        self.current_y = y_offset if y_offset is not None else self._get_axes_height()
         self.column_start_y = self.current_y
 
         # Column tracking
