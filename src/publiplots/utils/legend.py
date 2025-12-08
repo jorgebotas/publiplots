@@ -1358,15 +1358,24 @@ def legend(
     All dimensions are in millimeters. New columns are created automatically
     when vertical space is exhausted. This ensures legends never overlap with
     the plot area and maintains consistent spacing for publication-quality figures.
+
+    Multiple calls to legend() on the same axes will reuse the same LegendBuilder,
+    allowing legends to stack properly without overriding each other.
     """
-    # Initialize builder
-    builder = LegendBuilder(
-        ax,
-        x_offset=x_offset,
-        gap=gap,
-        column_spacing=column_spacing,
-        vpad=vpad,
-    )
+    # Check if a builder already exists for this axes
+    if hasattr(ax, '_legend_builder') and ax._legend_builder is not None:
+        builder = ax._legend_builder
+    else:
+        # Initialize new builder
+        builder = LegendBuilder(
+            ax,
+            x_offset=x_offset,
+            gap=gap,
+            column_spacing=column_spacing,
+            vpad=vpad,
+        )
+        # Store on axes for reuse
+        ax._legend_builder = builder
 
     # Auto-apply handler_map
     if 'handler_map' not in kwargs:
