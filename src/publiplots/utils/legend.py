@@ -1289,7 +1289,7 @@ def _get_legend_data(ax: Axes) -> dict:
 
 
 def legend(
-    ax: Axes,
+    ax: Optional[Axes] = None,
     handles: Optional[List] = None,
     labels: Optional[List[str]] = None,
     auto: bool = True,
@@ -1310,8 +1310,8 @@ def legend(
 
     Parameters
     ----------
-    ax : Axes
-        Axes to create legend for.
+    ax : Axes, optional
+        Axes to create legend for. If None, uses plt.gca() (current axes).
     handles : list, optional
         Manual legend handles. If provided, auto is ignored.
     labels : list, optional
@@ -1338,19 +1338,22 @@ def legend(
 
     Examples
     --------
-    Auto mode:
+    Auto mode (no axes needed, uses current axes):
     >>> fig, ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
+    >>> builder = pp.legend()  # Auto-creates legends on current axes
+
+    Auto mode with explicit axes:
     >>> builder = pp.legend(ax)  # Auto-creates legends
 
     Manual sequential mode:
-    >>> builder = pp.legend(ax, auto=False, x_offset=3, gap=3)
+    >>> builder = pp.legend(auto=False, x_offset=3, gap=3)
     >>> builder.add_legend(hue_handles, label="Treatment")
     >>> builder.add_colorbar(cmap='RdBu_r', vmin=-2, vmax=2, center=0,
     ...                      label="Log2 FC", height=20)
     >>> builder.add_legend(marker_handles, label="Cell Type")
 
     Manual handles mode:
-    >>> builder = pp.legend(ax, handles=custom_handles, labels=custom_labels,
+    >>> builder = pp.legend(handles=custom_handles, labels=custom_labels,
     ...                     label='My Legend')
 
     Notes
@@ -1362,6 +1365,10 @@ def legend(
     Multiple calls to legend() on the same axes will reuse the same LegendBuilder,
     allowing legends to stack properly without overriding each other.
     """
+    # Get current axes if not provided (like plt.legend())
+    if ax is None:
+        ax = plt.gca()
+
     # Check if a builder already exists for this axes
     if hasattr(ax, '_legend_builder') and ax._legend_builder is not None:
         builder = ax._legend_builder
