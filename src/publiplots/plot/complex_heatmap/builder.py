@@ -636,6 +636,11 @@ class ComplexHeatmapBuilder:
 
         # Prepare heatmap params for the clustered data
         heatmap_params = self._heatmap_params.copy()
+
+        # Remove label side parameters (these are builder-specific, not heatmap params)
+        heatmap_params.pop('xlabel_side', None)
+        heatmap_params.pop('ylabel_side', None)
+
         if self._row_cluster or self._col_cluster:
             # Use the clustered matrix directly (wide format)
             heatmap_params['data'] = self._matrix
