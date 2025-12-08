@@ -1109,25 +1109,22 @@ class LegendBuilder:
                 norm = Normalize(vmin=vmin, vmax=vmax)
             mappable = SM(norm=norm, cmap=cmap_obj)
 
-        # Estimate title height if title on top
-        title_height = 0
+        # Estimate title height for overflow check
+        title_pad = 2  # mm
         title_obj = None
         if title_position == "top" and label:
             fontsize = resolve_param("legend.title_fontsize", resolve_param("font.size"))
-            title_height = fontsize * self.PT2MM * 1.3
-            title_pad = 2  # mm
-            total_title_height = title_height + title_pad
+            estimated_title_height = fontsize * self.PT2MM * 1.3
+            total_estimated_height = height + estimated_title_height + title_pad
         else:
-            total_title_height = 0
+            total_estimated_height = height
 
-        # Total height needed
-        total_height = height + total_title_height
-
-        # Check overflow
-        if self._check_overflow(total_height):
+        # Check overflow using estimate
+        if self._check_overflow(total_estimated_height):
             self._start_new_column()
 
-        # Add title if needed
+        # Add title if needed and measure actual height
+        title_height_actual = 0
         if title_position == "top" and label:
             x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
             title_obj = self.fig.text(
@@ -1136,10 +1133,15 @@ class LegendBuilder:
                 fontsize=resolve_param("legend.title_fontsize", resolve_param("font.size")),
                 fontweight="normal"
             )
-            # Move down for colorbar position calculation
-            cbar_y_start = self.current_y - total_title_height
+
+            # Measure actual title dimensions
+            title_width_actual, title_height_actual = self._measure_object_dimensions(title_obj)
+
+            # Position colorbar below measured title
+            cbar_y_start = self.current_y - title_height_actual - title_pad
         else:
             cbar_y_start = self.current_y
+            title_width_actual = 0
 
         # Create colorbar axes
         x_fig, y_fig_top = self._mm_to_figure_coords(self.current_x, cbar_y_start)
@@ -1176,19 +1178,21 @@ class LegendBuilder:
             # Auto-set ticks for divergent colormap
             cbar.set_ticks([vmin, center, vmax])
 
-        # Measure actual dimensions
+        # Measure actual colorbar dimensions
         cbar_width, cbar_height = self._measure_object_dimensions(cbar)
 
-        # Account for title width if present
-        if title_obj:
-            title_width, _ = self._measure_object_dimensions(title_obj)
-            actual_width = max(cbar_width, title_width)
+        # Calculate actual total width (max of title and colorbar)
+        actual_width = max(cbar_width, title_width_actual)
+
+        # Calculate actual total height
+        if title_position == "top" and label:
+            total_height_actual = title_height_actual + title_pad + cbar_height
         else:
-            actual_width = cbar_width
+            total_height_actual = cbar_height
 
         # Update position tracking
         self.current_column_width = max(self.current_column_width, actual_width)
-        self.current_y -= total_height + self.gap
+        self.current_y -= total_height_actual + self.gap
 
         # Store elements
         self.elements.append(("colorbar", cbar))
