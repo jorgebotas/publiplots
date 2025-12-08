@@ -587,6 +587,16 @@ class ComplexHeatmapBuilder:
             # If there are top margins, put xlabel on bottom
             xlabel_side = 'bottom' if self._margins['top'] else 'top'
 
+        # Label space allocation (mm)
+        LABEL_SPACE = 12  # Space for tick labels in mm
+
+        # Add space for labels when they're on the opposite side
+        # This prevents overlap with margin plots
+        label_space_right = LABEL_SPACE * MM2INCH if ylabel_side == 'right' else 0
+        label_space_bottom = LABEL_SPACE * MM2INCH if xlabel_side == 'bottom' else 0
+        label_space_left = LABEL_SPACE * MM2INCH if ylabel_side == 'left' else 0
+        label_space_top = LABEL_SPACE * MM2INCH if xlabel_side == 'top' else 0
+
         # Count margin plots
         n_top = len(self._margins['top'])
         n_bottom = len(self._margins['bottom'])
@@ -594,8 +604,14 @@ class ComplexHeatmapBuilder:
         n_right = len(self._margins['right'])
 
         # Calculate grid dimensions
-        n_rows = n_top + 1 + n_bottom
-        n_cols = n_left + 1 + n_right
+        # Add extra rows/cols for label space
+        has_label_col_right = (ylabel_side == 'right' and n_right > 0)
+        has_label_col_left = (ylabel_side == 'left' and n_left > 0)
+        has_label_row_bottom = (xlabel_side == 'bottom' and n_bottom > 0)
+        has_label_row_top = (xlabel_side == 'top' and n_top > 0)
+
+        n_rows = n_top + 1 + n_bottom + (1 if has_label_row_bottom else 0) + (1 if has_label_row_top else 0)
+        n_cols = n_left + 1 + n_right + (1 if has_label_col_right else 0) + (1 if has_label_col_left else 0)
 
         # Calculate size ratios
         # Convert mm sizes to relative ratios
@@ -608,9 +624,24 @@ class ComplexHeatmapBuilder:
         left_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['left'])]
         right_sizes = [m['size'] * MM2INCH for m in self._margins['right']]
 
-        # Build height and width ratios
-        height_ratios = top_sizes + [main_height] + bottom_sizes
-        width_ratios = left_sizes + [main_width] + right_sizes
+        # Build height and width ratios with label spaces
+        height_ratios = []
+        if has_label_row_top:
+            height_ratios.append(label_space_top)
+        height_ratios.extend(top_sizes)
+        height_ratios.append(main_height)
+        height_ratios.extend(bottom_sizes)
+        if has_label_row_bottom:
+            height_ratios.append(label_space_bottom)
+
+        width_ratios = []
+        if has_label_col_left:
+            width_ratios.append(label_space_left)
+        width_ratios.extend(left_sizes)
+        width_ratios.append(main_width)
+        width_ratios.extend(right_sizes)
+        if has_label_col_right:
+            width_ratios.append(label_space_right)
 
         # Calculate total figure size
         total_height = sum(height_ratios) + (n_rows - 1) * self._hspace * MM2INCH
@@ -629,9 +660,9 @@ class ComplexHeatmapBuilder:
             wspace=self._wspace * MM2INCH / main_width if main_width > 0 else 0,
         )
 
-        # Create main heatmap axes
-        main_row = n_top
-        main_col = n_left
+        # Calculate main heatmap position accounting for label spaces
+        main_row = (1 if has_label_row_top else 0) + n_top
+        main_col = (1 if has_label_col_left else 0) + n_left
         ax_main = fig.add_subplot(gs[main_row, main_col])
 
         # Prepare heatmap params for the clustered data
@@ -671,7 +702,7 @@ class ComplexHeatmapBuilder:
 
         # Draw top margins (from closest to heatmap outward)
         for i, margin in enumerate(reversed(self._margins['top'])):
-            row_idx = n_top - 1 - i
+            row_idx = (1 if has_label_row_top else 0) + n_top - 1 - i
             ax = fig.add_subplot(
                 gs[row_idx, main_col],
                 sharex=ax_main if margin['align'] else None
@@ -684,7 +715,7 @@ class ComplexHeatmapBuilder:
 
         # Draw bottom margins
         for i, margin in enumerate(self._margins['bottom']):
-            row_idx = n_top + 1 + i
+            row_idx = (1 if has_label_row_top else 0) + n_top + 1 + i
             ax = fig.add_subplot(
                 gs[row_idx, main_col],
                 sharex=ax_main if margin['align'] else None
@@ -696,7 +727,7 @@ class ComplexHeatmapBuilder:
 
         # Draw left margins (from closest to heatmap outward)
         for i, margin in enumerate(reversed(self._margins['left'])):
-            col_idx = n_left - 1 - i
+            col_idx = (1 if has_label_col_left else 0) + n_left - 1 - i
             ax = fig.add_subplot(
                 gs[main_row, col_idx],
                 sharey=ax_main if margin['align'] else None
@@ -709,7 +740,9 @@ class ComplexHeatmapBuilder:
 
         # Draw right margins
         for i, margin in enumerate(self._margins['right']):
-            col_idx = n_left + 1 + i
+            # Right margins start after the main column
+            # If there's a label column on right, margins go after it
+            col_idx = (1 if has_label_col_left else 0) + n_left + 1 + i
             ax = fig.add_subplot(
                 gs[main_row, col_idx],
                 sharey=ax_main if margin['align'] else None
@@ -766,3 +799,47 @@ class ComplexHeatmapBuilder:
                 if key in kwargs:
                     essential[key] = kwargs[key]
             func(**essential)
+
+        # Fix coordinate alignment for categorical plots
+        # Heatmaps use cell-centered coordinates (0.5, 1.5, 2.5, ...)
+        # But categorical plots use integer positions (0, 1, 2, ...)
+        # We need to shift categorical plot positions by +0.5 to align
+        if margin['align']:
+            if position in ['top', 'bottom']:
+                # Horizontal alignment - adjust x-axis
+                # Check if x-axis has integer-like positions (categorical data)
+                xticks = ax.get_xticks()
+                # Check if ticks are close to integers (within 0.01)
+                if len(xticks) > 1 and np.allclose(xticks, np.round(xticks), atol=0.01):
+                    # Also check that they're not already cell-centered (not x.5)
+                    if not np.allclose(xticks - np.floor(xticks), 0.5, atol=0.01):
+                        # Shift all bars/patches by +0.5
+                        for patch in ax.patches:
+                            if hasattr(patch, 'get_x'):
+                                patch.set_x(patch.get_x() + 0.5)
+                        # Shift scatter points
+                        for collection in ax.collections:
+                            if hasattr(collection, 'get_offsets'):
+                                offsets = collection.get_offsets()
+                                if len(offsets) > 0:
+                                    offsets[:, 0] += 0.5
+                                    collection.set_offsets(offsets)
+
+            elif position in ['left', 'right']:
+                # Vertical alignment - adjust y-axis
+                yticks = ax.get_yticks()
+                # Check if ticks are close to integers (categorical data)
+                if len(yticks) > 1 and np.allclose(yticks, np.round(yticks), atol=0.01):
+                    # Also check that they're not already cell-centered (not x.5)
+                    if not np.allclose(yticks - np.floor(yticks), 0.5, atol=0.01):
+                        # Shift all bars/patches by +0.5
+                        for patch in ax.patches:
+                            if hasattr(patch, 'get_y'):
+                                patch.set_y(patch.get_y() + 0.5)
+                        # Shift scatter points
+                        for collection in ax.collections:
+                            if hasattr(collection, 'get_offsets'):
+                                offsets = collection.get_offsets()
+                                if len(offsets) > 0:
+                                    offsets[:, 1] += 0.5
+                                    collection.set_offsets(offsets)
