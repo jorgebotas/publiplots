@@ -727,7 +727,7 @@ class LegendBuilder:
         x_mm : float
             Horizontal distance from right edge of axes (mm)
         y_mm : float
-            Vertical distance from top of axes (mm)
+            Remaining vertical space (mm). Converted to position from top internally.
 
         Returns
         -------
@@ -737,9 +737,13 @@ class LegendBuilder:
         ax_pos = self.ax.get_position()
         fig_extent = self.fig.get_window_extent()
 
+        # y_mm represents remaining space, convert to position from top
+        axes_height = self._get_axes_height()
+        position_from_top = axes_height - y_mm
+
         # Convert mm to figure fraction
         x_offset_fig = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.width
-        y_offset_fig = (y_mm * self.MM2INCH * self.fig.dpi) / fig_extent.height
+        y_offset_fig = (position_from_top * self.MM2INCH * self.fig.dpi) / fig_extent.height
 
         # Position relative to axes
         x_fig = ax_pos.x1 + x_offset_fig
