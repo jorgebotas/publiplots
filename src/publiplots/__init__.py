@@ -31,6 +31,7 @@ from publiplots.plot.violin import violinplot
 from publiplots.plot.raincloud import raincloudplot
 from publiplots.plot.venn import venn
 from publiplots.plot.upset import upsetplot
+from publiplots.plot.heatmap import heatmap
 
 # Utilities
 from publiplots.utils.io import savefig, save_multiple, close_all
@@ -97,6 +98,7 @@ __all__ = [
     "raincloudplot",
     "venn",
     "upsetplot",
+    "heatmap",
     # I/O utilities
     "savefig",
     "save_multiple",
