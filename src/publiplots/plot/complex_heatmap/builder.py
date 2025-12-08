@@ -497,6 +497,71 @@ class ComplexHeatmapBuilder:
         })
         return self
 
+    def _calculate_label_space(
+        self,
+        labels: List[str],
+        orientation: str = 'vertical'
+    ) -> float:
+        """
+        Calculate space needed for tick labels.
+
+        Parameters
+        ----------
+        labels : list of str
+            The tick labels to measure.
+        orientation : str
+            'vertical' for y-axis labels, 'horizontal' for x-axis labels.
+
+        Returns
+        -------
+        float
+            Required space in inches.
+        """
+        if not labels:
+            return 0.0
+
+        # Create temporary figure for measurement
+        temp_fig = plt.figure(figsize=(1, 1))
+
+        # Get label font size
+        if orientation == 'vertical':
+            fontsize = resolve_param("ytick.labelsize")
+        else:
+            fontsize = resolve_param("xtick.labelsize")
+
+        # Create temporary text with all labels (with small margin)
+        if orientation == 'vertical':
+            # For y-labels, we care about the width of the longest label
+            text_str = max(labels, key=len) + "xx"  # Add margin
+        else:
+            # For x-labels (usually rotated), measure height
+            text_str = max(labels, key=len) + "xx"
+
+        t = temp_fig.text(0, 0, text_str, size=fontsize)
+
+        # Ensure renderer is available
+        temp_fig.canvas.draw()
+
+        # Get text extent in display coordinates
+        bbox = t.get_window_extent(renderer=temp_fig.canvas.get_renderer())
+
+        # Convert to inches
+        # bbox.width and bbox.height are in display units (pixels at 72 DPI)
+        dpi = temp_fig.dpi
+        if orientation == 'vertical':
+            space_inches = bbox.width / dpi
+        else:
+            # For horizontal labels (typically rotated 90 degrees)
+            # The height becomes the width when rotated
+            space_inches = bbox.height / dpi
+
+        # Clean up
+        t.remove()
+        plt.close(temp_fig)
+
+        # Add small padding
+        return space_inches + 0.1  # Extra 0.1 inch padding
+
     def _prepare_data(self) -> pd.DataFrame:
         """Prepare and optionally cluster the heatmap data."""
         data = self._heatmap_params['data']
@@ -587,15 +652,21 @@ class ComplexHeatmapBuilder:
             # If there are top margins, put xlabel on bottom
             xlabel_side = 'bottom' if self._margins['top'] else 'top'
 
-        # Label space allocation (mm)
-        LABEL_SPACE = 12  # Space for tick labels in mm
+        # Calculate label space dynamically based on actual label sizes
+        # Get labels from the matrix
+        row_labels = [str(label) for label in matrix.index]
+        col_labels = [str(label) for label in matrix.columns]
 
-        # Add space for labels when they're on the opposite side
+        # Calculate required space for labels (in inches)
+        ylabel_space = self._calculate_label_space(row_labels, 'vertical')
+        xlabel_space = self._calculate_label_space(col_labels, 'horizontal')
+
+        # Add space for labels when they're on the side with margins
         # This prevents overlap with margin plots
-        label_space_right = LABEL_SPACE * MM2INCH if ylabel_side == 'right' else 0
-        label_space_bottom = LABEL_SPACE * MM2INCH if xlabel_side == 'bottom' else 0
-        label_space_left = LABEL_SPACE * MM2INCH if ylabel_side == 'left' else 0
-        label_space_top = LABEL_SPACE * MM2INCH if xlabel_side == 'top' else 0
+        label_space_right = ylabel_space if ylabel_side == 'right' else 0
+        label_space_bottom = xlabel_space if xlabel_side == 'bottom' else 0
+        label_space_left = ylabel_space if ylabel_side == 'left' else 0
+        label_space_top = xlabel_space if xlabel_side == 'top' else 0
 
         # Count margin plots
         n_top = len(self._margins['top'])
@@ -806,40 +877,55 @@ class ComplexHeatmapBuilder:
         # We need to shift categorical plot positions by +0.5 to align
         if margin['align']:
             if position in ['top', 'bottom']:
-                # Horizontal alignment - adjust x-axis
-                # Check if x-axis has integer-like positions (categorical data)
-                xticks = ax.get_xticks()
-                # Check if ticks are close to integers (within 0.01)
-                if len(xticks) > 1 and np.allclose(xticks, np.round(xticks), atol=0.01):
-                    # Also check that they're not already cell-centered (not x.5)
-                    if not np.allclose(xticks - np.floor(xticks), 0.5, atol=0.01):
-                        # Shift all bars/patches by +0.5
-                        for patch in ax.patches:
-                            if hasattr(patch, 'get_x'):
-                                patch.set_x(patch.get_x() + 0.5)
-                        # Shift scatter points
-                        for collection in ax.collections:
-                            if hasattr(collection, 'get_offsets'):
-                                offsets = collection.get_offsets()
-                                if len(offsets) > 0:
-                                    offsets[:, 0] += 0.5
-                                    collection.set_offsets(offsets)
+                # Horizontal alignment - check actual bar/patch positions
+                needs_shift = False
+
+                # Check if bars are at integer positions
+                if ax.patches:
+                    bar_positions = [patch.get_x() + patch.get_width() / 2
+                                   for patch in ax.patches if hasattr(patch, 'get_x')]
+                    if bar_positions:
+                        # If bar centers are close to integers, they need shifting
+                        if np.allclose(bar_positions, np.round(bar_positions), atol=0.1):
+                            needs_shift = True
+
+                # If we need to shift, apply the 0.5 offset
+                if needs_shift:
+                    for patch in ax.patches:
+                        if hasattr(patch, 'get_x'):
+                            patch.set_x(patch.get_x() + 0.5)
+
+                    # Also shift scatter points if any
+                    for collection in ax.collections:
+                        if hasattr(collection, 'get_offsets'):
+                            offsets = collection.get_offsets()
+                            if len(offsets) > 0:
+                                offsets[:, 0] += 0.5
+                                collection.set_offsets(offsets)
 
             elif position in ['left', 'right']:
-                # Vertical alignment - adjust y-axis
-                yticks = ax.get_yticks()
-                # Check if ticks are close to integers (categorical data)
-                if len(yticks) > 1 and np.allclose(yticks, np.round(yticks), atol=0.01):
-                    # Also check that they're not already cell-centered (not x.5)
-                    if not np.allclose(yticks - np.floor(yticks), 0.5, atol=0.01):
-                        # Shift all bars/patches by +0.5
-                        for patch in ax.patches:
-                            if hasattr(patch, 'get_y'):
-                                patch.set_y(patch.get_y() + 0.5)
-                        # Shift scatter points
-                        for collection in ax.collections:
-                            if hasattr(collection, 'get_offsets'):
-                                offsets = collection.get_offsets()
-                                if len(offsets) > 0:
-                                    offsets[:, 1] += 0.5
-                                    collection.set_offsets(offsets)
+                # Vertical alignment - check actual bar/patch positions
+                needs_shift = False
+
+                # Check if bars are at integer positions
+                if ax.patches:
+                    bar_positions = [patch.get_y() + patch.get_height() / 2
+                                   for patch in ax.patches if hasattr(patch, 'get_y')]
+                    if bar_positions:
+                        # If bar centers are close to integers, they need shifting
+                        if np.allclose(bar_positions, np.round(bar_positions), atol=0.1):
+                            needs_shift = True
+
+                # If we need to shift, apply the 0.5 offset
+                if needs_shift:
+                    for patch in ax.patches:
+                        if hasattr(patch, 'get_y'):
+                            patch.set_y(patch.get_y() + 0.5)
+
+                    # Also shift scatter points if any
+                    for collection in ax.collections:
+                        if hasattr(collection, 'get_offsets'):
+                            offsets = collection.get_offsets()
+                            if len(offsets) > 0:
+                                offsets[:, 1] += 0.5
+                                collection.set_offsets(offsets)
