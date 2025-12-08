@@ -631,200 +631,579 @@ def create_legend_handles(
 
 class LegendBuilder:
     """
-    Modular legend builder for stacking multiple legend types.
-    
+    Publication-ready legend builder with automatic column overflow.
+
+    **All dimensions are in millimeters** for precise positioning in
+    publication-quality plots. The builder automatically creates new
+    columns when vertical space is exhausted.
+
     This is the primary interface for creating legends in publiplots.
+
+    Parameters
+    ----------
+    ax : Axes
+        Main plot axes to attach legends to.
+    x_offset : float, default=2
+        Horizontal distance from the right edge of axes (millimeters).
+    y_offset : float, optional
+        Vertical position from top of axes (millimeters). If None, starts at
+        axes height minus vpad.
+    gap : float, default=2
+        Vertical spacing between legend elements (millimeters).
+    column_spacing : float, default=5
+        Horizontal spacing between columns (millimeters).
+    vpad : float, default=5
+        Padding from top of axes (millimeters).
+    max_width : float, optional
+        Maximum width for legends (millimeters). If None, auto-estimated from content.
+
+    Examples
+    --------
+    >>> fig, ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
+    >>> builder = pp.legend(ax, auto=False, x_offset=2, gap=2)
+    >>> builder.add_legend(handles, label="Treatment")
+    >>> builder.add_colorbar(mappable, label="Expression", height=15)
+
+    Notes
+    -----
+    All dimensions are in millimeters. New columns are created automatically
+    when vertical space is exhausted.
     """
-    
+
+    # Conversion constants
+    MM2INCH = 1 / 25.4
+    PT2MM = 25.4 / 72
+
     def __init__(
         self,
         ax: Axes,
-        bbox_to_anchor: Tuple[float, float] = (1.02, 1),
-        spacing: float = 0.03,
+        x_offset: float = 2,
+        y_offset: Optional[float] = None,
+        gap: float = 2,
+        column_spacing: float = 5,
+        vpad: float = 5,
+        max_width: Optional[float] = None,
     ):
-        """
-        Parameters
-        ----------
-        ax : Axes
-            Main plot axes.
-        x_offset : float
-            Horizontal offset from right edge of axes (in axes coordinates).
-        spacing : float
-            Vertical spacing between elements (in axes coordinates).
-        """
+        """Initialize legend builder. All dimensions in millimeters."""
         self.ax = ax
         self.fig = ax.get_figure()
-        self.x_offset = bbox_to_anchor[0]
-        self.current_y = bbox_to_anchor[1]
-        self.spacing = spacing
-        self.elements = []
+
+        # Store parameters (all in mm)
+        self.x_offset = x_offset
+        self.gap = gap
+        self.column_spacing = column_spacing
+        self.vpad = vpad
+        self.max_width = max_width
+
+        # Initialize position tracking (all in mm)
+        self.current_x = x_offset
+        self.current_y = y_offset if y_offset is not None else self._get_axes_height()
+        self.column_start_y = self.current_y
+
+        # Column tracking
+        self.current_column_width = 0
+        self.columns = []  # List of column widths
+
+        # Element storage
+        self.elements = []  # (type, object) tuples
+
+    # =========================================================================
+    # Conversion Utilities
+    # =========================================================================
+
+    def _get_axes_height(self) -> float:
+        """Get axes height in millimeters."""
+        ax_pos = self.ax.get_position()
+        fig_height_px = self.fig.get_window_extent().height
+        axes_height_px = ax_pos.height * fig_height_px
+        return axes_height_px / self.fig.dpi / self.MM2INCH
+
+    def _mm_to_figure_coords(self, x_mm: float, y_mm: float) -> Tuple[float, float]:
+        """
+        Convert mm position to figure coordinates.
+
+        Parameters
+        ----------
+        x_mm : float
+            Horizontal distance from right edge of axes (mm)
+        y_mm : float
+            Remaining vertical space (mm). Converted to position from top internally.
+
+        Returns
+        -------
+        x_fig, y_fig : float
+            Position in figure coordinates
+        """
+        ax_pos = self.ax.get_position()
+        fig_extent = self.fig.get_window_extent()
+
+        # y_mm represents remaining space, convert to position from top
+        axes_height = self._get_axes_height()
+        position_from_top = axes_height - y_mm
+
+        # Convert mm to figure fraction
+        x_offset_fig = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.width
+        y_offset_fig = (position_from_top * self.MM2INCH * self.fig.dpi) / fig_extent.height
+
+        # Position relative to axes
+        x_fig = ax_pos.x1 + x_offset_fig
+        y_fig = ax_pos.y1 - y_offset_fig
+
+        return x_fig, y_fig
+
+    def _measure_object_dimensions(self, obj: Union[Legend, Colorbar, Any]) -> Tuple[float, float]:
+        """
+        Measure actual dimensions of matplotlib object.
+
+        Parameters
+        ----------
+        obj : Legend or Colorbar or Text
+            Matplotlib object to measure
+
+        Returns
+        -------
+        width_mm, height_mm : float
+            Object dimensions in millimeters
+        """
+        self.fig.canvas.draw()
+
+        # Get bounding box
+        if hasattr(obj, 'ax'):  # Colorbar
+            bbox = obj.ax.get_window_extent(self.fig.canvas.get_renderer())
+        elif hasattr(obj, 'get_window_extent'):
+            bbox = obj.get_window_extent(self.fig.canvas.get_renderer())
+        else:
+            return 0, 0
+
+        # Convert pixels to mm
+        width_mm = bbox.width / self.fig.dpi / self.MM2INCH
+        height_mm = bbox.height / self.fig.dpi / self.MM2INCH
+
+        return width_mm, height_mm
+
+    # =========================================================================
+    # Estimation Utilities (for overflow detection)
+    # =========================================================================
+
+    def _estimate_legend_height(
+        self,
+        handles: List,
+        label: str,
+        **kwargs
+    ) -> float:
+        """
+        Estimate legend height before creation.
+
+        Returns
+        -------
+        float
+            Estimated height in millimeters
+        """
+        fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
+        title_fontsize = resolve_param("legend.title_fontsize", fontsize)
+
+        # Get legend parameters
+        ncol = kwargs.get('ncol', 1)
+        labelspacing = kwargs.get('labelspacing', 0.3)  # in font-size units
+        borderpad = kwargs.get('borderpad', 0.4)
+
+        # Calculate rows
+        n_items = len(handles)
+        n_rows = (n_items + ncol - 1) // ncol  # Ceiling division
+
+        # Title height
+        title_height = (title_fontsize * self.PT2MM * 1.3) if label else 0
+
+        # Items height (rows * item_height)
+        item_height = fontsize * self.PT2MM
+        spacing_height = (n_rows - 1) * labelspacing * fontsize * self.PT2MM
+        items_height = n_rows * item_height + spacing_height
+
+        # Padding (top + bottom)
+        padding_height = 2 * borderpad * fontsize * self.PT2MM
+
+        total = title_height + items_height + padding_height
+        return total
+
+    def _estimate_legend_width(
+        self,
+        handles: List,
+        labels: Optional[List[str]] = None,
+        **kwargs
+    ) -> float:
+        """
+        Estimate legend width from text content.
+
+        Returns
+        -------
+        float
+            Estimated width in millimeters
+        """
+        if labels is None:
+            labels = [h.get_label() for h in handles if hasattr(h, 'get_label')]
+
+        if not labels:
+            return 20  # Fallback default
+
+        fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
+
+        # Estimate character width (rough approximation)
+        # Typical sans-serif: ~0.6 * fontsize per character
+        max_label_length = max(len(str(label)) for label in labels)
+        text_width = max_label_length * fontsize * 0.6 * self.PT2MM
+
+        # Add space for handle
+        handlelength = kwargs.get('handlelength', 2)  # in font-size units
+        handletextpad = kwargs.get('handletextpad', 0.8)
+        handle_width = (handlelength + handletextpad) * fontsize * self.PT2MM
+
+        # Add padding
+        borderpad = kwargs.get('borderpad', 0.4)
+        padding = 2 * borderpad * fontsize * self.PT2MM
+
+        return handle_width + text_width + padding
+
+    # =========================================================================
+    # Column Management
+    # =========================================================================
+
+    def _check_overflow(self, required_height: float) -> bool:
+        """
+        Check if element fits in current column.
+
+        Parameters
+        ----------
+        required_height : float
+            Height needed in millimeters
+
+        Returns
+        -------
+        bool
+            True if overflow (doesn't fit), False if fits
+        """
+        return self.current_y < required_height
+
+    def _start_new_column(self):
+        """Create a new column when vertical space exhausted."""
+        # Record current column width
+        self.columns.append(self.current_column_width)
+
+        # Move horizontally
+        self.current_x += self.current_column_width + self.column_spacing
+
+        # Reset vertical position
+        self.current_y = self.column_start_y
+
+        # Reset width tracking
+        self.current_column_width = 0
+
+    def _adjust_legend_ncol_for_height(
+        self,
+        handles: List,
+        label: str,
+        max_height: float,
+        **kwargs
+    ) -> int:
+        """
+        Auto-adjust ncol to fit within max_height (PyComplexHeatmap behavior).
+
+        Returns
+        -------
+        int
+            Optimal number of columns
+        """
+        ncol = kwargs.get('ncol', 1)
+        max_ncol = 3  # Cap at 3 columns
+
+        while ncol <= max_ncol:
+            kwargs_test = kwargs.copy()
+            kwargs_test['ncol'] = ncol
+            estimated_height = self._estimate_legend_height(handles, label, **kwargs_test)
+
+            if estimated_height <= max_height:
+                return ncol
+
+            ncol += 1
+
+        # If still doesn't fit at max_ncol, return max_ncol and warn
+        print(f"Warning: Legend too tall even with {max_ncol} columns")
+        return max_ncol
+
+    # =========================================================================
+    # Main Methods
+    # =========================================================================
 
     def add_legend(
         self,
         handles: List,
         label: str = "",
         frameon: bool = False,
+        max_height: Optional[float] = None,
         **kwargs
     ) -> Legend:
         """
-        Add a legend with automatic handler mapping.
+        Add a legend with automatic overflow handling.
+
+        Creates a new column automatically if the legend doesn't fit
+        in the current vertical space.
 
         Parameters
         ----------
         handles : list
             Legend handles (from create_legend_handles or plot objects).
         label : str
-            Legend label.
+            Legend title.
         frameon : bool
-            Whether to show frame.
+            Whether to show frame around legend.
+        max_height : float, optional
+            Maximum height in millimeters. If legend exceeds this, increase ncol
+            to fit (PyComplexHeatmap behavior).
         **kwargs
-            Additional kwargs for ax.legend().
+            Additional kwargs for legend customization:
+            - ncol: number of columns (auto-adjusted if max_height exceeded)
+            - labelspacing: vertical space between entries
+            - handletextpad: space between handle and text
+            - columnspacing: space between columns (in font-size units)
 
         Returns
         -------
         Legend
             The created legend object.
-        """
-        # Pass label to matplotlib's title parameter if provided
-        if label:
-            kwargs['title'] = label
 
-        default_kwargs = {
+        Notes
+        -----
+        All dimensions in millimeters. Columns created automatically on overflow.
+        """
+        # Auto-adjust ncol if max_height specified
+        if max_height is not None:
+            optimal_ncol = self._adjust_legend_ncol_for_height(
+                handles, label, max_height, **kwargs
+            )
+            kwargs['ncol'] = optimal_ncol
+
+        # Estimate height
+        estimated_height = self._estimate_legend_height(handles, label, **kwargs)
+
+        # Check overflow
+        if self._check_overflow(estimated_height):
+            self._start_new_column()
+
+        # Convert current position to figure coordinates
+        x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
+
+        # Prepare legend kwargs
+        legend_kwargs = {
             "loc": "upper left",
-            "bbox_to_anchor": (self.x_offset, self.current_y),
-            "bbox_transform": self.ax.transAxes,
+            "bbox_to_anchor": (x_fig, y_fig),
+            "bbox_transform": self.fig.transFigure,  # Use figure coords
             "frameon": frameon,
             "borderaxespad": 0,
-            "borderpad": 0,
-            "handletextpad": 0.5,
+            "borderpad": 0.4,
+            "handletextpad": 0.8,
             "labelspacing": 0.3,
             "handler_map": kwargs.pop("handler_map", get_legend_handler_map()),
             "alignment": "left",
         }
-        default_kwargs.update(kwargs)
-        
+
+        if label:
+            legend_kwargs['title'] = label
+
+        legend_kwargs.update(kwargs)
+
+        # Create legend
         existing_legends = [e[1] for e in self.elements if e[0] == "legend"]
-        leg = self.ax.legend(handles=handles, **default_kwargs)
-        leg.set_clip_on(False)
-        
+        legend = self.ax.legend(handles=handles, **legend_kwargs)
+        legend.set_clip_on(False)
+
+        # Re-add existing legends (matplotlib limitation)
         for existing_legend in existing_legends:
             self.ax.add_artist(existing_legend)
 
-        self.elements.append(("legend", leg))
-        self._update_position_after_legend(leg)
-        
-        return leg
+        # Measure actual dimensions
+        width, height = self._measure_object_dimensions(legend)
+
+        # Update position tracking
+        self.current_column_width = max(self.current_column_width, width)
+        self.current_y -= height + self.gap
+
+        # Store element
+        self.elements.append(("legend", legend))
+
+        return legend
     
     def add_colorbar(
         self,
-        mappable: ScalarMappable,
+        mappable: Optional[ScalarMappable] = None,
+        cmap: Optional[str] = None,
+        vmin: Optional[float] = None,
+        vmax: Optional[float] = None,
+        center: Optional[float] = None,
         label: str = "",
-        height: float = 0.2,
-        width: float = 0.05,
-        title_position: str = "top",  # "top" or "right"
-        title_pad: float = 0.05,
+        height: float = 15,
+        width: float = 4.5,
+        title_position: str = "top",
+        orientation: str = "vertical",
+        ticks: Optional[List[float]] = None,
         **kwargs
     ) -> Colorbar:
         """
-        Add a colorbar with fixed size and optional title on top.
-        
+        Add a colorbar with automatic overflow handling.
+
+        Supports both ScalarMappable input (standard matplotlib) and
+        direct colormap specification (PyComplexHeatmap style).
+
         Parameters
         ----------
-        mappable: ScalarMappable
-            ScalarMappable object.
+        mappable : ScalarMappable, optional
+            Existing ScalarMappable object (standard matplotlib usage).
+        cmap : str, optional
+            Colormap name (alternative to mappable, PyComplexHeatmap style).
+            If provided, creates ScalarMappable internally.
+        vmin, vmax : float, optional
+            Value range for colormap (used with cmap parameter).
+        center : float, optional
+            Center value for divergent colormaps. Uses TwoSlopeNorm
+            for proper centering (e.g., 0 for red-white-blue).
         label : str
-            Colorbar label.
-        height : float
-            Height of colorbar (in axes coordinates, e.g., 0.2 = 20% of axes height).
-        width : float
-            Width of colorbar (in axes coordinates).
-        title_position : str
-            Position of title: "top" (horizontal, above colorbar) or 
-            "right" (vertical, default matplotlib style).
-        title_pad : float
-            Padding between title and colorbar.
+            Colorbar label/title.
+        height : float, default=15
+            Colorbar height in millimeters.
+        width : float, default=4.5
+            Colorbar width in millimeters.
+        title_position : {'top', 'right'}, default='top'
+            Position of title. 'top' places label above colorbar
+            (horizontal), 'right' uses matplotlib default (vertical).
+        orientation : {'vertical', 'horizontal'}, default='vertical'
+            Colorbar orientation.
+        ticks : list of float, optional
+            Custom tick positions. If None and center is provided,
+            automatically sets ticks at [vmin, center, vmax].
         **kwargs
-            Additional kwargs for fig.colorbar().
-        
+            Additional kwargs passed to fig.colorbar().
+
         Returns
         -------
         Colorbar
             The created colorbar object.
-        """
-        
-        # Calculate colorbar position
-        ax_pos = self.ax.get_position()
 
+        Notes
+        -----
+        All dimensions in millimeters. Columns created automatically on overflow.
+
+        Examples
+        --------
+        Standard matplotlib style:
+        >>> builder.add_colorbar(sm, label="Values", height=20)
+
+        PyComplexHeatmap style with divergent colormap:
+        >>> builder.add_colorbar(
+        ...     cmap='RdBu_r', vmin=-2, vmax=2, center=0,
+        ...     label="Log2 FC", ticks=[-2, 0, 2]
+        ... )
+        """
+        from matplotlib.colors import TwoSlopeNorm, Normalize
+        from matplotlib.cm import ScalarMappable as SM, get_cmap
+
+        # Create mappable if cmap provided (PyComplexHeatmap style)
+        if mappable is None and cmap is not None:
+            cmap_obj = get_cmap(cmap)
+            if center is not None:
+                norm = TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
+            else:
+                norm = Normalize(vmin=vmin, vmax=vmax)
+            mappable = SM(norm=norm, cmap=cmap_obj)
+
+        # Estimate title height for overflow check
+        title_pad = 2  # mm
+        title_obj = None
         if title_position == "top" and label:
-            # Add title text at current_y
-            title_text = self.ax.text(
-                self.x_offset, 
-                self.current_y,
-                label,
-                transform=self.ax.transAxes,
-                ha="left",
-                va="top",  # Align top of text with current_y
+            fontsize = resolve_param("legend.title_fontsize", resolve_param("font.size"))
+            estimated_title_height = fontsize * self.PT2MM * 1.3
+            total_estimated_height = height + estimated_title_height + title_pad
+        else:
+            total_estimated_height = height
+
+        # Check overflow using estimate
+        if self._check_overflow(total_estimated_height):
+            self._start_new_column()
+
+        # Add title if needed and measure actual height
+        title_height_actual = 0
+        if title_position == "top" and label:
+            x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
+            title_obj = self.fig.text(
+                x_fig, y_fig, label,
+                ha="left", va="top",
                 fontsize=resolve_param("legend.title_fontsize", resolve_param("font.size")),
                 fontweight="normal"
             )
-            
-            # Force draw to measure title height
-            self.fig.canvas.draw()
-            
-            # Get title bounding box in axes coordinates
-            bbox = title_text.get_window_extent(self.fig.canvas.get_renderer())
-            bbox_axes = bbox.transformed(self.ax.transAxes.inverted())
-            title_height = bbox_axes.height
 
-            
-            # Update current_y to position colorbar below title
-            self.current_y -= title_height + title_pad
+            # Measure actual title dimensions
+            title_width_actual, title_height_actual = self._measure_object_dimensions(title_obj)
 
-        # Convert x_offset from axes coordinates to figure coordinates
-        # self.x_offset is in axes coords (e.g., 1.02 = just right of axes)
-        cbar_left = ax_pos.x0 + 0.02 + self.x_offset * ax_pos.width
-        
-        # Position colorbar at current_y (aligned with other legends)
-        cbar_bottom = ax_pos.y0 + (self.current_y - height) * ax_pos.height
-    
-        # Width needs to be in figure coordinates
-        cbar_width = width * ax_pos.width
-        
-        cbar_ax = self.fig.add_axes([
-            cbar_left,
-            cbar_bottom,
-            cbar_width,
-            height * ax_pos.height
-        ])
-        
-        default_kwargs = {}
-        default_kwargs.update(kwargs)
-        
-        cbar = self.fig.colorbar(mappable, cax=cbar_ax, **default_kwargs)
-        cbar.set_label("" if title_position == "top" else label)
-        
+            # Position colorbar below measured title
+            cbar_y_start = self.current_y - title_height_actual - title_pad
+        else:
+            cbar_y_start = self.current_y
+            title_width_actual = 0
+
+        # Create colorbar axes
+        x_fig, y_fig_top = self._mm_to_figure_coords(self.current_x, cbar_y_start)
+
+        fig_extent = self.fig.get_window_extent()
+        cbar_width_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
+        cbar_height_fig = (height * self.MM2INCH * self.fig.dpi) / fig_extent.height
+
+        cbar_ax = self.fig.add_axes(
+            [x_fig, y_fig_top - cbar_height_fig, cbar_width_fig, cbar_height_fig],
+            xmargin=0,
+            ymargin=0
+        )
+
+        # Create colorbar
+        cbar = self.fig.colorbar(
+            mappable,
+            cax=cbar_ax,
+            orientation=orientation,
+            **kwargs
+        )
+
+        # Set label (only if not on top)
+        if title_position != "top":
+            cbar.set_label(label)
+        else:
+            cbar.set_label("")
+
+        # Set ticks
+        if ticks is not None:
+            cbar.set_ticks(ticks)
+        elif center is not None and vmin is not None and vmax is not None:
+            # Auto-set ticks for divergent colormap
+            cbar.set_ticks([vmin, center, vmax])
+
+        # Measure actual colorbar dimensions
+        cbar_width, cbar_height = self._measure_object_dimensions(cbar)
+
+        # Calculate actual total width (max of title and colorbar)
+        actual_width = max(cbar_width, title_width_actual)
+
+        # Calculate actual total height
+        if title_position == "top" and label:
+            total_height_actual = title_height_actual + title_pad + cbar_height
+        else:
+            total_height_actual = cbar_height
+
+        # Update position tracking
+        self.current_column_width = max(self.current_column_width, actual_width)
+        self.current_y -= total_height_actual + self.gap
+
+        # Store elements
         self.elements.append(("colorbar", cbar))
-        
-        # Update position for next element
-        # Add extra spacing for the title if on top
-        title_extra_space = 0.04 if title_position == "top" and label else 0
-        self.current_y -= (height + self.spacing + title_extra_space)
-        
+        if title_obj:
+            self.elements.append(("text", title_obj))
+
         return cbar
-    
-    def _update_position_after_legend(self, legend: Legend):
-        """Update current_y position after adding a legend."""
-        # Force draw to get actual size
-        self.fig.canvas.draw()
-        
-        # Get legend bounding box
-        bbox = legend.get_window_extent(self.fig.canvas.get_renderer())
-        bbox_axes = bbox.transformed(self.ax.transAxes.inverted())
-        height = bbox_axes.height
-        
-        # Update position for next element
-        self.current_y -= (height + self.spacing)
-    
+
     def add_legend_for(self, type: str, label: Optional[str] = None, **kwargs):
         """
         Add legend by auto-detecting from self.ax stored metadata.
@@ -910,70 +1289,102 @@ def _get_legend_data(ax: Axes) -> dict:
 
 
 def legend(
-    ax: Axes,
+    ax: Optional[Axes] = None,
     handles: Optional[List] = None,
     labels: Optional[List[str]] = None,
     auto: bool = True,
+    x_offset: float = 2,
+    gap: float = 2,
+    column_spacing: float = 5,
+    vpad: float = 5,
     **kwargs
 ) -> LegendBuilder:
     """
-    Create publiplots-styled legend. Returns LegendBuilder for further customization.
+    Create publication-ready legends with automatic positioning.
+
+    **All dimensions in millimeters** for precise control in publication plots.
+    Returns LegendBuilder for adding multiple legends with automatic column
+    overflow handling.
 
     This is the primary interface for legend creation in publiplots.
 
     Parameters
     ----------
-    ax : Axes
-        Axes to create legend for
+    ax : Axes, optional
+        Axes to create legend for. If None, uses plt.gca() (current axes).
     handles : list, optional
-        Manual legend handles. If provided, auto is ignored and handles are used directly.
+        Manual legend handles. If provided, auto is ignored.
     labels : list, optional
         Manual legend labels (used with handles).
     auto : bool, default=True
-        If True, auto-creates all legends from ._legend_data stored on collections.
-        If False, returns empty builder for manual control via add_legend_for().
-    bbox_to_anchor : tuple, optional
-        Bounding box anchor for legend position. Default: (1.02, 1)
-    spacing : float, optional
-        Vertical spacing between legend elements. Default: 0.03
-    **kwargs : dict
-        Additional kwargs:
-        - If handles provided: passed to add_legend() (frameon, label, etc.)
-        - Otherwise: passed to LegendBuilder init (bbox_to_anchor, spacing)
+        If True, auto-creates all legends from metadata stored on plot objects.
+        If False, returns empty builder for manual control.
+    x_offset : float, default=2
+        Horizontal distance from right edge of axes (millimeters).
+    gap : float, default=2
+        Vertical spacing between legend elements (millimeters).
+    column_spacing : float, default=5
+        Horizontal spacing between columns (millimeters).
+    vpad : float, default=5
+        Top padding from axes edge (millimeters).
+    **kwargs
+        Additional kwargs passed to add_legend() if handles provided,
+        or legend customization options.
 
     Returns
     -------
     LegendBuilder
-        Builder object for adding more legends or customization.
+        Builder object for adding more legends.
 
     Examples
     --------
-    Auto mode (creates all legends from stored data):
-    >>> fig, ax = pp.scatterplot(data=df, x='x', y='y', hue='group', legend=False)
-    >>> builder = pp.legend(ax)  # Auto-creates hue legend
+    Auto mode (no axes needed, uses current axes):
+    >>> fig, ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
+    >>> builder = pp.legend()  # Auto-creates legends on current axes
 
-    Manual selective mode:
-    >>> builder = pp.legend(ax, auto=False)  # No legends created yet
-    >>> builder.add_legend_for('hue', label='Groups')
-    >>> builder.add_legend_for('size', label='Magnitude')
+    Auto mode with explicit axes:
+    >>> builder = pp.legend(ax)  # Auto-creates legends
 
-    Expert mode with custom handles:
-    >>> builder = pp.legend(ax, auto=False)
-    >>> builder.add_legend(handles=custom_handles, labels=custom_labels, label='Custom')
+    Manual sequential mode:
+    >>> builder = pp.legend(auto=False, x_offset=3, gap=3)
+    >>> builder.add_legend(hue_handles, label="Treatment")
+    >>> builder.add_colorbar(cmap='RdBu_r', vmin=-2, vmax=2, center=0,
+    ...                      label="Log2 FC", height=20)
+    >>> builder.add_legend(marker_handles, label="Cell Type")
 
     Manual handles mode:
-    >>> builder = pp.legend(ax, handles=custom_handles, labels=custom_labels, label='My Legend')
+    >>> builder = pp.legend(handles=custom_handles, labels=custom_labels,
+    ...                     label='My Legend')
+
+    Notes
+    -----
+    All dimensions are in millimeters. New columns are created automatically
+    when vertical space is exhausted. This ensures legends never overlap with
+    the plot area and maintains consistent spacing for publication-quality figures.
+
+    Multiple calls to legend() on the same axes will reuse the same LegendBuilder,
+    allowing legends to stack properly without overriding each other.
     """
-    # Extract LegendBuilder-specific kwargs
-    builder_kwargs = {
-        'bbox_to_anchor': kwargs.pop('bbox_to_anchor', (1.02, 1)),
-        'spacing': kwargs.pop('spacing', 0.03),
-    }
+    # Get current axes if not provided (like plt.legend())
+    if ax is None:
+        ax = plt.gca()
 
-    # Initialize LegendBuilder
-    builder = LegendBuilder(ax, **builder_kwargs)
+    # Check if a builder already exists for this axes
+    if hasattr(ax, '_legend_builder') and ax._legend_builder is not None:
+        builder = ax._legend_builder
+    else:
+        # Initialize new builder
+        builder = LegendBuilder(
+            ax,
+            x_offset=x_offset,
+            gap=gap,
+            column_spacing=column_spacing,
+            vpad=vpad,
+        )
+        # Store on axes for reuse
+        ax._legend_builder = builder
 
-    # Auto-apply handler_map if not provided
+    # Auto-apply handler_map
     if 'handler_map' not in kwargs:
         kwargs['handler_map'] = get_legend_handler_map()
 
@@ -982,26 +1393,29 @@ def legend(
         builder.add_legend(handles=handles, labels=labels, **kwargs)
         return builder
 
-    # Auto mode - create all legends from metadata
+    # Auto mode
     if auto:
         legend_data = _get_legend_data(ax)
         if legend_data:
+            # Add hue legend/colorbar
             if 'hue' in legend_data:
                 hue_data = legend_data['hue'].copy()
-                # Check if it's a colorbar
                 if hue_data.get('type') == 'colorbar':
                     hue_data.pop('type', None)
                     builder.add_colorbar(**hue_data)
                 else:
                     builder.add_legend(**hue_data, **kwargs)
+
+            # Add size legend
             if 'size' in legend_data:
                 size_data = legend_data['size'].copy()
                 builder.add_legend(**size_data, **kwargs)
+
+            # Add style legend
             if 'style' in legend_data:
                 style_data = legend_data['style'].copy()
                 builder.add_legend(**style_data, **kwargs)
 
-    # If auto=False, just return empty builder for manual control
     return builder
 
 __all__ = [

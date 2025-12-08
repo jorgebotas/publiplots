@@ -105,9 +105,9 @@ fig, ax = pp.scatterplot(
     xlabel='X Variable',
     ylabel='Y Variable',
     alpha=0.2,
-    figsize=(8, 6),
-    legend_kws=dict(hue_label="Continuous Score")
+    legend_kws=dict(hue_label="Continuous Score"),
 )
+ax.margins(0.1)
 plt.show()
 
 # %%
@@ -144,7 +144,6 @@ fig, ax = pp.scatterplot(
     title='Differential Expression Analysis',
     xlabel='Condition',
     ylabel='Cell Type',
-    margins=0.2
 )
 plt.show()
 
@@ -208,6 +207,5 @@ fig, ax = pp.scatterplot(
     title='Tissue Expression Over Time',
     xlabel='Time Point',
     ylabel='Tissue',
-    margins=0.15
 )
 plt.show()
