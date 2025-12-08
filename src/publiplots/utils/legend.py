@@ -1154,12 +1154,11 @@ class LegendBuilder:
         cbar_width_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
         cbar_height_fig = (height * self.MM2INCH * self.fig.dpi) / fig_extent.height
 
-        cbar_ax = self.fig.add_axes([
-            x_fig,
-            y_fig_top - cbar_height_fig,
-            cbar_width_fig,
-            cbar_height_fig
-        ])
+        cbar_ax = self.fig.add_axes(
+            [x_fig, y_fig_top - cbar_height_fig, cbar_width_fig, cbar_height_fig],
+            xmargin=0,
+            ymargin=0
+        )
 
         # Create colorbar
         cbar = self.fig.colorbar(
