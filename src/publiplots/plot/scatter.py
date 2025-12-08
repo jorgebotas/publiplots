@@ -294,23 +294,24 @@ def scatterplot(
     if ylabel is not None: ax.set_ylabel(ylabel)
     if title is not None: ax.set_title(title)
 
-    if legend:
-        _legend(
-            ax=ax,
-            data=data,
-            hue=hue,
-            size=size,
-            style=style,
-            markers=markers,
-            color=color,
-            palette=palette,
-            alpha=alpha,
-            linewidth=linewidth,
-            hue_norm=hue_norm,
-            size_norm=size_norm,
-            sizes=sizes,
-            kwargs=legend_kws,
-        )
+    # Always store legend metadata, but only create legend if legend=True
+    _legend(
+        ax=ax,
+        data=data,
+        hue=hue,
+        size=size,
+        style=style,
+        markers=markers,
+        color=color,
+        palette=palette,
+        alpha=alpha,
+        linewidth=linewidth,
+        hue_norm=hue_norm,
+        size_norm=size_norm,
+        sizes=sizes,
+        kwargs=legend_kws,
+        create_legend=legend,  # Only create if legend=True
+    )
 
     # Set margins for categorical axes automatically
     if x_is_categorical or y_is_categorical:
@@ -470,9 +471,15 @@ def _legend(
         alpha: Optional[float] = None,
         linewidth: Optional[float] = None,
         kwargs: Optional[Dict] = None,
+        create_legend: bool = True,
     ) -> None:
     """
     Create legend handles for scatter plot.
+
+    Parameters
+    ----------
+    create_legend : bool, default=True
+        If True, creates the legend immediately. If False, only stores metadata.
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
@@ -502,8 +509,8 @@ def _legend(
             legend_data["hue"] = {
                 "mappable": mappable,
                 "label": hue_label,
-                "height": kwargs.pop("hue_height", 0.2),
-                "width": kwargs.pop("hue_width", 0.05),
+                "height": kwargs.pop("hue_height", 20),  # millimeters (was 0.2 axes coords)
+                "width": kwargs.pop("hue_width", 5),    # millimeters (was 0.05 axes coords)
                 "type": "colorbar",
             }
 
@@ -561,9 +568,10 @@ def _legend(
             "label": style_label,
         }
 
-    # Store metadata on collection
+    # Store metadata on collection (always, regardless of create_legend)
     if len(ax.collections) > 0:
         ax.collections[0]._legend_data = legend_data
 
-    # Create legends using new legend() API
-    builder = legend(ax=ax)
+    # Create legends using new legend() API (only if create_legend=True)
+    if create_legend:
+        builder = legend(ax=ax)
