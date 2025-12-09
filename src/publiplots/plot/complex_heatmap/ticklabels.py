@@ -181,7 +181,7 @@ def ticklabels(
 
         for i, label in enumerate(labels):
             y_pos = i + 0.5
-            x_pos = 0 if position == 'right' else 1
+            x_pos = 0 if ha == 'left' else 1
             ax.text(x_pos, y_pos, label,
                    transform=ax.get_yaxis_transform(),
                    **text_kws)
@@ -192,7 +192,7 @@ def ticklabels(
 
         for i, label in enumerate(labels):
             x_pos = i + 0.5
-            y_pos = 1 if position == 'bottom' else 0
+            y_pos = 1 if va == 'top' else 0
             ax.text(x_pos, y_pos, label,
                    transform=ax.get_xaxis_transform(),
                    **text_kws)

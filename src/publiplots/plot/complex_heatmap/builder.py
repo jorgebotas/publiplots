@@ -825,10 +825,13 @@ class ComplexHeatmapBuilder:
         if data is not None:
             kwargs['data'] = data
 
-        # Disable legend by default for margin plots (but not for functions that don't accept it)
         if not is_dendrogram and not is_ticklabels:
-            if 'legend' not in kwargs:
-                kwargs['legend'] = False
+            # Order data appropriately
+            if position in ("top", "bottom"):
+                kwargs["order"] = self._matrix.columns
+            
+            elif position == "left":
+                kwargs["order"] = self._matrix.index
 
         # Call the plot function
         try:
