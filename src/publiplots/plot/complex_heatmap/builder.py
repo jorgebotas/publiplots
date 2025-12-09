@@ -701,11 +701,14 @@ class ComplexHeatmapBuilder:
         spacing_h = self._hspace * MM2INCH
         spacing_w = self._wspace * MM2INCH
 
-        # Margin sizes (in reverse order for left/top - closest to heatmap first)
-        # DON'T add spacing to sizes - use GridSpec hspace/wspace instead
-        top_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['top'])]
+        # Margin sizes - order must match how columns/rows are assigned during drawing
+        # Drawing uses reversed iteration with col_idx = n_left - 1 - i, which means:
+        #   - First margin in list (e.g., dendrogram) → gets col_idx 0
+        #   - Last margin in list (e.g., labels) → gets col_idx n_left-1
+        # So sizes should be in ORIGINAL order (not reversed) to match column assignment
+        top_sizes = [m['size'] * MM2INCH for m in self._margins['top']]
         bottom_sizes = [m['size'] * MM2INCH for m in self._margins['bottom']]
-        left_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['left'])]
+        left_sizes = [m['size'] * MM2INCH for m in self._margins['left']]
         right_sizes = [m['size'] * MM2INCH for m in self._margins['right']]
 
         # Build height and width ratios
