@@ -775,9 +775,21 @@ class ComplexHeatmapBuilder:
             # Auto-provide linkage data if not provided
             if 'linkage' not in kwargs and data is None:
                 if position in ('top', 'bottom'):
-                    kwargs['linkage'] = self._col_linkage
+                    linkage = self._col_linkage
+                    cluster_param = 'col_cluster'
                 else:  # left, right
-                    kwargs['linkage'] = self._row_linkage
+                    linkage = self._row_linkage
+                    cluster_param = 'row_cluster'
+
+                # Check if clustering was enabled
+                if linkage is None:
+                    raise ValueError(
+                        f"Cannot add dendrogram to {position} margin: clustering is disabled. "
+                        f"Either enable clustering by setting {cluster_param}=True in complex_heatmap(), "
+                        f"or provide custom linkage data via the 'linkage' parameter."
+                    )
+
+                kwargs['linkage'] = linkage
 
         # Check if function is ticklabels - auto-provide labels and position
         is_ticklabels = (func is ticklabels_plot or
