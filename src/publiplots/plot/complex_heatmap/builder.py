@@ -849,7 +849,9 @@ class ComplexHeatmapBuilder:
         # Categorical plots position elements at 0, 1, 2...
         # Shift by +0.5 to align with cell centers
         if margin['align']:
-            orientation = "vertical" if position in ("top", "bottom") else "horizontal"
+            # For top/bottom margins: shift along x-axis (horizontal)
+            # For left/right margins: shift along y-axis (vertical)
+            orientation = "horizontal" if position in ("top", "bottom") else "vertical"
             # Offset patches (bars, rectangles, etc.)
             if ax.patches:
                 offset_patches(ax.patches, offset=0.5, orientation=orientation)
