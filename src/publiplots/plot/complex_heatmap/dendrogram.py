@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import numpy as np
 import pandas as pd
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 
 from publiplots.themes.rcparams import resolve_param
 
@@ -167,5 +167,132 @@ def dendrogram(
         ax.set_xlim(ax.get_xlim())
     else:
         ax.set_ylim(ax.get_ylim())
+
+    return fig, ax
+
+
+def ticklabels(
+    labels: Optional[List[str]] = None,
+    orientation: str = "vertical",
+    position: str = "right",
+    rotation: float = 0,
+    fontsize: Optional[float] = None,
+    color: Optional[str] = None,
+    va: Optional[str] = None,
+    ha: Optional[str] = None,
+    ax: Optional[Axes] = None,
+    **kwargs
+) -> Tuple[plt.Figure, Axes]:
+    """
+    Draw tick labels in a dedicated axes for complex heatmap margins.
+
+    This function is designed to be used with complex_heatmap's margin system,
+    allowing labels to be added as regular margin plots.
+
+    Parameters
+    ----------
+    labels : list of str, optional
+        Labels to draw. If None, must be provided by the complex_heatmap builder.
+    orientation : str, default="vertical"
+        Label orientation: 'vertical' (for left/right) or 'horizontal' (for top/bottom).
+    position : str, default="right"
+        Position where labels are drawn: 'left', 'right', 'top', 'bottom'.
+        Used to determine text alignment defaults.
+    rotation : float, default=0
+        Text rotation angle in degrees.
+    fontsize : float, optional
+        Font size in points. Uses rcParams default if None.
+    color : str, optional
+        Text color. Uses rcParams default if None.
+    va : str, optional
+        Vertical alignment. Auto-determined based on position if None.
+    ha : str, optional
+        Horizontal alignment. Auto-determined based on position if None.
+    ax : Axes, optional
+        Matplotlib axes. If None, creates new figure and axes.
+    **kwargs
+        Additional arguments passed to ax.text().
+
+    Returns
+    -------
+    fig : Figure
+        Matplotlib figure.
+    ax : Axes
+        Matplotlib axes.
+    """
+    # Create axes if needed
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.get_figure()
+
+    if labels is None:
+        raise ValueError("labels must be provided")
+
+    # Turn off all axes decorations
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Resolve defaults
+    if fontsize is None:
+        if orientation == 'vertical':
+            fontsize = resolve_param("ytick.labelsize")
+        else:
+            fontsize = resolve_param("xtick.labelsize")
+
+    # Set default alignments based on position
+    if va is None:
+        if position in ('left', 'right'):
+            va = 'center'
+        elif position == 'bottom':
+            va = 'top'
+        else:  # top
+            va = 'bottom'
+
+    if ha is None:
+        if position == 'right':
+            ha = 'left'
+        elif position == 'left':
+            ha = 'right'
+        else:  # top, bottom
+            ha = 'center'
+
+    # Build text kwargs
+    text_kws = {
+        'fontsize': fontsize,
+        'rotation': rotation,
+        'va': va,
+        'ha': ha,
+        **kwargs
+    }
+    if color is not None:
+        text_kws['color'] = color
+
+    n_labels = len(labels)
+
+    if position in ['left', 'right']:
+        # Vertical labels for y-axis
+        ax.set_ylim(0, n_labels)
+        ax.invert_yaxis()  # Match heatmap orientation
+
+        for i, label in enumerate(labels):
+            y_pos = i + 0.5
+            x_pos = 0 if position == 'right' else 1
+            ax.text(x_pos, y_pos, label,
+                   transform=ax.get_yaxis_transform(),
+                   **text_kws)
+
+    else:  # top or bottom
+        # Horizontal labels for x-axis
+        ax.set_xlim(0, n_labels)
+
+        for i, label in enumerate(labels):
+            x_pos = i + 0.5
+            y_pos = 1 if position == 'bottom' else 0
+            ax.text(x_pos, y_pos, label,
+                   transform=ax.get_xaxis_transform(),
+                   **text_kws)
 
     return fig, ax

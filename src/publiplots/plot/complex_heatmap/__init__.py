@@ -8,11 +8,12 @@ Provides advanced heatmap functionality including:
 """
 
 from .builder import complex_heatmap, ComplexHeatmapBuilder
-from .dendrogram import dendrogram, cluster_data
+from .dendrogram import dendrogram, cluster_data, ticklabels
 
 __all__ = [
     'complex_heatmap',
     'ComplexHeatmapBuilder',
     'dendrogram',
+    'ticklabels',
     'cluster_data',
 ]

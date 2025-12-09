@@ -13,7 +13,7 @@ from typing import Optional, Tuple, Union, Dict, List
 from publiplots.themes.rcparams import resolve_param
 from publiplots.utils.offset import offset_patches, offset_lines, offset_collections
 from publiplots.utils.text import calculate_label_space
-from .dendrogram import cluster_data, dendrogram as dendrogram_plot
+from .dendrogram import cluster_data, dendrogram as dendrogram_plot, ticklabels as ticklabels_plot
 
 # Conversion constants
 MM2INCH = 1 / 25.4
@@ -648,7 +648,7 @@ class ComplexHeatmapBuilder:
         ylabel_va = yticklabels_kws.pop('va', yticklabels_kws.pop('verticalalignment', None))
         ylabel_ha = yticklabels_kws.pop('ha', yticklabels_kws.pop('horizontalalignment', None))
 
-        # Auto-detect label sides
+        # Auto-detect label sides (None means don't add labels automatically)
         if ylabel_side == 'auto':
             # If there are left margins, put ylabel on right
             ylabel_side = 'right' if self._margins['left'] else 'left'
@@ -661,17 +661,20 @@ class ComplexHeatmapBuilder:
         row_labels = [str(label) for label in matrix.index]
         col_labels = [str(label) for label in matrix.columns]
 
-        # Create a temporary figure for accurate text measurement
-        # This ensures we measure with the same DPI as the final figure
-        temp_fig = plt.figure(figsize=self._figsize)
+        # Calculate required space for labels (in inches) only if labels will be added
+        ylabel_space = 0.0
+        xlabel_space = 0.0
+        if ylabel_side is not None or xlabel_side is not None:
+            # Create a temporary figure for accurate text measurement
+            temp_fig = plt.figure(figsize=self._figsize)
 
-        # Calculate required space for labels (in inches)
-        # Use actual text measurement on the temp figure for accuracy
-        ylabel_space = self._calculate_label_space_for_position(row_labels, ylabel_side, fig=temp_fig)
-        xlabel_space = self._calculate_label_space_for_position(col_labels, xlabel_side, fig=temp_fig)
+            if ylabel_side is not None:
+                ylabel_space = self._calculate_label_space_for_position(row_labels, ylabel_side, fig=temp_fig)
+            if xlabel_side is not None:
+                xlabel_space = self._calculate_label_space_for_position(col_labels, xlabel_side, fig=temp_fig)
 
-        # Close temp figure - we'll create the real one with proper size
-        plt.close(temp_fig)
+            # Close temp figure - we'll create the real one with proper size
+            plt.close(temp_fig)
 
         # Build text kwargs for labels with position-appropriate defaults
         ylabel_text_kws = {
@@ -901,7 +904,7 @@ class ComplexHeatmapBuilder:
         data = margin['data']
         kwargs = margin['kwargs'].copy()
 
-        # Special handling for label axes
+        # Special handling for label axes (internal 'labels' marker)
         if func == 'labels':
             self._draw_label_axes(
                 ax, data, position,
@@ -910,6 +913,40 @@ class ComplexHeatmapBuilder:
             )
             return
 
+        # Check if function is dendrogram - auto-provide linkage and orientation
+        is_dendrogram = (func is dendrogram_plot or
+                        getattr(func, '__name__', '') == 'dendrogram')
+        if is_dendrogram:
+            # Auto-provide orientation based on position
+            if 'orientation' not in kwargs:
+                kwargs['orientation'] = position
+
+            # Auto-provide linkage data if not provided
+            if 'linkage' not in kwargs and data is None:
+                if position in ('top', 'bottom'):
+                    kwargs['linkage'] = self._col_linkage
+                else:  # left, right
+                    kwargs['linkage'] = self._row_linkage
+
+        # Check if function is ticklabels - auto-provide labels and position
+        is_ticklabels = (func is ticklabels_plot or
+                        getattr(func, '__name__', '') == 'ticklabels')
+        if is_ticklabels:
+            # Auto-provide position
+            if 'position' not in kwargs:
+                kwargs['position'] = position
+
+            # Auto-provide orientation based on position
+            if 'orientation' not in kwargs:
+                kwargs['orientation'] = 'horizontal' if position in ('top', 'bottom') else 'vertical'
+
+            # Auto-provide labels if not provided
+            if 'labels' not in kwargs and data is None:
+                if position in ('top', 'bottom'):
+                    kwargs['labels'] = [str(c) for c in self._matrix.columns]
+                else:  # left, right
+                    kwargs['labels'] = [str(r) for r in self._matrix.index]
+
         # Add ax to kwargs
         kwargs['ax'] = ax
 
@@ -917,9 +954,10 @@ class ComplexHeatmapBuilder:
         if data is not None:
             kwargs['data'] = data
 
-        # Disable legend by default for margin plots
-        if 'legend' not in kwargs:
-            kwargs['legend'] = False
+        # Disable legend by default for margin plots (but not for functions that don't accept it)
+        if not is_dendrogram and not is_ticklabels:
+            if 'legend' not in kwargs:
+                kwargs['legend'] = False
 
         # Call the plot function
         try:
@@ -930,7 +968,7 @@ class ComplexHeatmapBuilder:
             essential = {'ax': ax}
             if data is not None:
                 essential['data'] = data
-            for key in ['x', 'y', 'linkage', 'orientation']:
+            for key in ['x', 'y', 'linkage', 'orientation', 'labels', 'position']:
                 if key in kwargs:
                     essential[key] = kwargs[key]
             func(**essential)
