@@ -208,22 +208,14 @@ def calculate_label_space(
         unit="points",  # Work in points for tick_pad addition
     )
 
+    # The width and height returned are already the dimensions of the
+    # rotated bounding box (rotation is applied in measure_text_dimensions).
     # For vertical labels (left/right), we need the width
     # For horizontal labels (top/bottom), we need the height
-    # But rotation affects this:
-    if rotation != 0:
-        # When rotated, the "space" dimension depends on the angle
-        import math
-        rad = math.radians(abs(rotation))
-        if position in ("left", "right"):
-            space = width * math.cos(rad) + height * math.sin(rad)
-        else:
-            space = height * math.cos(rad) + width * math.sin(rad)
-    else:
-        if position in ("left", "right"):
-            space = width
-        else:
-            space = height
+    if position in ("left", "right"):
+        space = width
+    else:  # top, bottom
+        space = height
 
     # Add tick padding
     space += tick_pad
