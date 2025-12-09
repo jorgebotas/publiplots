@@ -503,7 +503,7 @@ class ComplexHeatmapBuilder:
         orientation: str = 'vertical'
     ) -> float:
         """
-        Calculate space needed for tick labels.
+        Calculate space needed for tick labels by measuring actual text extents.
 
         Parameters
         ----------
@@ -529,38 +529,36 @@ class ComplexHeatmapBuilder:
         else:
             fontsize = resolve_param("xtick.labelsize")
 
-        # Create temporary text with all labels (with small margin)
-        if orientation == 'vertical':
-            # For y-labels, we care about the width of the longest label
-            text_str = max(labels, key=len) + "xx"  # Add margin
-        else:
-            # For x-labels (usually rotated), measure height
-            text_str = max(labels, key=len) + "xx"
+        # Measure each label and find the maximum extent
+        max_width = 0
+        max_height = 0
 
-        t = temp_fig.text(0, 0, text_str, size=fontsize)
+        for label in labels:
+            t = temp_fig.text(0, 0, str(label), size=fontsize)
+            temp_fig.canvas.draw()
+            bbox = t.get_window_extent(renderer=temp_fig.canvas.get_renderer())
 
-        # Ensure renderer is available
-        temp_fig.canvas.draw()
+            # Track maximum dimensions
+            max_width = max(max_width, bbox.width)
+            max_height = max(max_height, bbox.height)
 
-        # Get text extent in display coordinates
-        bbox = t.get_window_extent(renderer=temp_fig.canvas.get_renderer())
+            t.remove()
 
         # Convert to inches
-        # bbox.width and bbox.height are in display units (pixels at 72 DPI)
         dpi = temp_fig.dpi
         if orientation == 'vertical':
-            space_inches = bbox.width / dpi
+            # For vertical labels, we need the width (horizontal space)
+            space_inches = max_width / dpi
         else:
-            # For horizontal labels (typically rotated 90 degrees)
-            # The height becomes the width when rotated
-            space_inches = bbox.height / dpi
+            # For horizontal labels, we need the height (vertical space)
+            space_inches = max_height / dpi
 
         # Clean up
-        t.remove()
         plt.close(temp_fig)
 
-        # Add small padding
-        return space_inches + 0.1  # Extra 0.1 inch padding
+        # Add padding (about 2-3mm converted to inches)
+        padding = 3 / 25.4  # 3mm in inches
+        return space_inches + padding
 
     def _prepare_data(self) -> pd.DataFrame:
         """Prepare and optionally cluster the heatmap data."""
@@ -862,6 +860,61 @@ class ComplexHeatmapBuilder:
                 if key in kwargs:
                     essential[key] = kwargs[key]
             func(**essential)
+
+        # Fix alignment for categorical plots that share axes with heatmap
+        # Heatmap cells are centered at 0.5, 1.5, 2.5...
+        # Categorical plots position elements at 0, 1, 2...
+        # Need to shift by +0.5 to align with cell centers
+        if margin['align']:
+            if position in ['top', 'bottom']:
+                # Check if we have bars that need shifting
+                if ax.patches:
+                    # Get bar positions
+                    bar_positions = [p.get_x() for p in ax.patches if hasattr(p, 'get_x')]
+                    if bar_positions:
+                        # Check if bars are at integer positions (categorical)
+                        # and not already at cell centers (x.5)
+                        min_pos = min(bar_positions)
+                        if abs(min_pos - round(min_pos)) < 0.1:  # At integer
+                            # Shift all bars by +0.5 to align with heatmap cells
+                            for patch in ax.patches:
+                                if hasattr(patch, 'get_x'):
+                                    patch.set_x(patch.get_x() + 0.5)
+
+                # Also shift scatter points if any
+                for collection in ax.collections:
+                    if hasattr(collection, 'get_offsets'):
+                        offsets = collection.get_offsets()
+                        if len(offsets) > 0:
+                            # Check if points are at integers
+                            x_coords = offsets[:, 0]
+                            if len(x_coords) > 0 and abs(x_coords[0] - round(x_coords[0])) < 0.1:
+                                offsets[:, 0] += 0.5
+                                collection.set_offsets(offsets)
+
+            elif position in ['left', 'right']:
+                # Check if we have bars that need shifting
+                if ax.patches:
+                    # Get bar positions
+                    bar_positions = [p.get_y() for p in ax.patches if hasattr(p, 'get_y')]
+                    if bar_positions:
+                        # Check if bars are at integer positions
+                        min_pos = min(bar_positions)
+                        if abs(min_pos - round(min_pos)) < 0.1:
+                            # Shift all bars by +0.5
+                            for patch in ax.patches:
+                                if hasattr(patch, 'get_y'):
+                                    patch.set_y(patch.get_y() + 0.5)
+
+                # Also shift scatter points
+                for collection in ax.collections:
+                    if hasattr(collection, 'get_offsets'):
+                        offsets = collection.get_offsets()
+                        if len(offsets) > 0:
+                            y_coords = offsets[:, 1]
+                            if len(y_coords) > 0 and abs(y_coords[0] - round(y_coords[0])) < 0.1:
+                                offsets[:, 1] += 0.5
+                                collection.set_offsets(offsets)
 
     def _draw_label_axes(self, ax: Axes, labels: List[str], position: str, orientation: str):
         """Draw tick labels in a dedicated axes."""
