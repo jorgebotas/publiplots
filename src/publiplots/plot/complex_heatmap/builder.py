@@ -772,12 +772,27 @@ class ComplexHeatmapBuilder:
             if 'orientation' not in kwargs:
                 kwargs['orientation'] = position
 
-            # Auto-provide linkage data if not provided
+            # Auto-provide linkage or data if not provided
             if 'linkage' not in kwargs and data is None:
                 if position in ('top', 'bottom'):
-                    kwargs['linkage'] = self._col_linkage
+                    # Column dendrogram
+                    if self._col_linkage is not None:
+                        kwargs['linkage'] = self._col_linkage
+                    else:
+                        # Compute linkage on-demand from data
+                        # For column dendrogram, pass transposed matrix
+                        kwargs['data'] = self._matrix.T
+                        kwargs['method'] = self._cluster_method
+                        kwargs['metric'] = self._cluster_metric
                 else:  # left, right
-                    kwargs['linkage'] = self._row_linkage
+                    # Row dendrogram
+                    if self._row_linkage is not None:
+                        kwargs['linkage'] = self._row_linkage
+                    else:
+                        # Compute linkage on-demand from data
+                        kwargs['data'] = self._matrix
+                        kwargs['method'] = self._cluster_method
+                        kwargs['metric'] = self._cluster_metric
 
         # Check if function is ticklabels - auto-provide labels and position
         is_ticklabels = (func is ticklabels_plot or
