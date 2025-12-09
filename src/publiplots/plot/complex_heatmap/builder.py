@@ -502,7 +502,8 @@ class ComplexHeatmapBuilder:
     def _calculate_label_space_for_position(
         self,
         labels: List[str],
-        position: str = 'left'
+        position: str = 'left',
+        fig: Optional[plt.Figure] = None
     ) -> float:
         """
         Calculate space needed for tick labels using actual text measurement.
@@ -516,6 +517,8 @@ class ComplexHeatmapBuilder:
             The tick labels to measure.
         position : str
             Position where labels will be placed: 'left', 'right', 'top', 'bottom'.
+        fig : Figure, optional
+            Figure to use for measurement. If provided, ensures consistent DPI.
 
         Returns
         -------
@@ -527,10 +530,10 @@ class ComplexHeatmapBuilder:
 
         return calculate_label_space(
             labels=labels,
-            fig=None,  # Will create temp figure
+            fig=fig,
             position=position,
             unit="inches",
-            safety_factor=1.1,
+            safety_factor=1.2,  # 20% extra for safety
         )
 
     def _prepare_data(self) -> pd.DataFrame:
@@ -627,10 +630,17 @@ class ComplexHeatmapBuilder:
         row_labels = [str(label) for label in matrix.index]
         col_labels = [str(label) for label in matrix.columns]
 
+        # Create a temporary figure for accurate text measurement
+        # This ensures we measure with the same DPI as the final figure
+        temp_fig = plt.figure(figsize=self._figsize)
+
         # Calculate required space for labels (in inches)
-        # Use actual text measurement via the utility function
-        ylabel_space = self._calculate_label_space_for_position(row_labels, ylabel_side)
-        xlabel_space = self._calculate_label_space_for_position(col_labels, xlabel_side)
+        # Use actual text measurement on the temp figure for accuracy
+        ylabel_space = self._calculate_label_space_for_position(row_labels, ylabel_side, fig=temp_fig)
+        xlabel_space = self._calculate_label_space_for_position(col_labels, xlabel_side, fig=temp_fig)
+
+        # Close temp figure - we'll create the real one with proper size
+        plt.close(temp_fig)
 
         # Add label layers as stackable margin "plots"
         # Labels should be CLOSEST to heatmap (append to end, not insert at 0)
@@ -687,38 +697,48 @@ class ComplexHeatmapBuilder:
         main_height = self._figsize[1]  # inches
         main_width = self._figsize[0]   # inches
 
-        # Margin sizes (in reverse order for left/top - closest to heatmap first)
-        # Add spacing directly to the margin sizes to ensure proper allocation
+        # Convert spacing to inches
         spacing_h = self._hspace * MM2INCH
         spacing_w = self._wspace * MM2INCH
 
-        top_sizes = [m['size'] * MM2INCH + spacing_h for m in reversed(self._margins['top'])]
-        bottom_sizes = [m['size'] * MM2INCH + spacing_h for m in self._margins['bottom']]
-        left_sizes = [m['size'] * MM2INCH + spacing_w for m in reversed(self._margins['left'])]
-        right_sizes = [m['size'] * MM2INCH + spacing_w for m in self._margins['right']]
+        # Margin sizes (in reverse order for left/top - closest to heatmap first)
+        # DON'T add spacing to sizes - use GridSpec hspace/wspace instead
+        top_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['top'])]
+        bottom_sizes = [m['size'] * MM2INCH for m in self._margins['bottom']]
+        left_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['left'])]
+        right_sizes = [m['size'] * MM2INCH for m in self._margins['right']]
 
         # Build height and width ratios
         height_ratios = top_sizes + [main_height] + bottom_sizes
         width_ratios = left_sizes + [main_width] + right_sizes
 
-        # Calculate total figure size (spacing is already in the ratios)
-        total_height = sum(height_ratios)
-        total_width = sum(width_ratios)
+        # Calculate GridSpec hspace/wspace as fractions
+        # hspace = spacing / average_row_height
+        # wspace = spacing / average_col_width
+        avg_row_height = sum(height_ratios) / len(height_ratios) if height_ratios else 1
+        avg_col_width = sum(width_ratios) / len(width_ratios) if width_ratios else 1
+        gs_hspace = spacing_h / avg_row_height if avg_row_height > 0 else 0
+        gs_wspace = spacing_w / avg_col_width if avg_col_width > 0 else 0
+
+        # Calculate total figure size including spacing
+        # Total gaps = (n_rows - 1) * spacing_h for height, (n_cols - 1) * spacing_w for width
+        total_h_spacing = (n_rows - 1) * spacing_h if n_rows > 1 else 0
+        total_w_spacing = (n_cols - 1) * spacing_w if n_cols > 1 else 0
+        total_height = sum(height_ratios) + total_h_spacing
+        total_width = sum(width_ratios) + total_w_spacing
 
         # Create figure
         fig = plt.figure(figsize=(total_width, total_height))
 
-        # Create GridSpec with wspace=0, hspace=0
-        # Spacing is already included in the ratios, so GridSpec just distributes proportionally
+        # Create GridSpec with proper spacing
         # IMPORTANT: Set left=0, right=1, bottom=0, top=1 to use the FULL figure
-        # (default matplotlib subplot margins would squeeze our carefully calculated layout)
         gs = gridspec.GridSpec(
             n_rows, n_cols,
             figure=fig,
             height_ratios=height_ratios,
             width_ratios=width_ratios,
-            hspace=0,
-            wspace=0,
+            hspace=gs_hspace,
+            wspace=gs_wspace,
             left=0,
             right=1,
             bottom=0,
