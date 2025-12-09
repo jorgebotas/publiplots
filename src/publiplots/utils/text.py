@@ -77,14 +77,13 @@ def measure_text_dimensions(
         if fontsize is None:
             fontsize = resolve_param("font.size")
 
-        # Create text string based on orientation
-        if orientation == "vertical":
-            # Stack labels vertically with newlines for height measurement
-            # Add "x" margin character like upsetplot does
+        # Create text string based on orientation and rotation
+        if orientation == "vertical" and rotation == 0:
+            # For non-rotated vertical labels, stack them to measure total height
             text_str = "\n".join(str(label) for label in labels)
         else:
-            # Join with spaces for horizontal layout
-            # The maximum width label determines the space needed
+            # For horizontal labels OR rotated vertical labels,
+            # measure the longest single label (each label is drawn separately)
             text_str = max((str(label) for label in labels), key=len)
 
         # Create temporary text element
