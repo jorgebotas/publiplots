@@ -628,6 +628,16 @@ class ComplexHeatmapBuilder:
         # Add dendrograms if clustering enabled
         self._add_clustering_dendrograms()
 
+        # Force align=False for dendrograms (they have their own coordinate system)
+        # This must happen BEFORE axes are created with sharex/sharey
+        for position in ['top', 'bottom', 'left', 'right']:
+            for margin in self._margins[position]:
+                func = margin['func']
+                is_dendrogram = (func is dendrogram_plot or
+                                getattr(func, '__name__', '') == 'dendrogram')
+                if is_dendrogram:
+                    margin['align'] = False
+
         # Process xticklabels_kws and yticklabels_kws
         # Extract side and rotation, normalize alignment kwargs
         xticklabels_kws = self._xticklabels_kws.copy()
