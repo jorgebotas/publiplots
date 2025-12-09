@@ -862,13 +862,21 @@ class ComplexHeatmapBuilder:
                     essential[key] = kwargs[key]
             func(**essential)
 
-        # Fix alignment for categorical plots that share axes with heatmap
+        # Offset elements to align with heatmap cells
         # Heatmap cells are centered at 0.5, 1.5, 2.5...
         # Categorical plots position elements at 0, 1, 2...
-        # Need to shift by +0.5 to align with cell centers
+        # Shift by +0.5 to align with cell centers
         if margin['align']:
             orientation = "vertical" if position in ("top", "bottom") else "horizontal"
-            offset_patches(ax.patches, offset=0.5, orientation=orientation)
+            # Offset patches (bars, rectangles, etc.)
+            if ax.patches:
+                offset_patches(ax.patches, offset=0.5, orientation=orientation)
+            # Offset lines if any
+            if ax.lines:
+                offset_lines(ax.lines, offset=0.5, orientation=orientation)
+            # Offset collections (scatter plots, etc.)
+            if ax.collections:
+                offset_collections(ax.collections, offset=0.5, ax=ax, orientation=orientation)
 
     def _draw_label_axes(self, ax: Axes, labels: List[str], position: str, orientation: str):
         """Draw tick labels in a dedicated axes."""

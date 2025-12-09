@@ -28,12 +28,30 @@ def offset_patches(
     """
     Offset patches by a given amount.
     """
+    from matplotlib.path import Path as MplPath
+    from matplotlib.patches import Rectangle
+
     for patch in patches:
-        path = patch.get_path()
-        if orientation == "vertical":
-            path.vertices[:, 0] += offset
+        # Handle Rectangle patches specially (barplot uses Rectangles)
+        if isinstance(patch, Rectangle):
+            if orientation == "vertical":
+                # Shift x position
+                patch.set_x(patch.get_x() + offset)
+            else:
+                # Shift y position
+                patch.set_y(patch.get_y() + offset)
         else:
-            path.vertices[:, 1] += offset
+            # For other patches, modify the path
+            path = patch.get_path()
+            # Create a copy of vertices to avoid read-only array errors
+            vertices = path.vertices.copy()
+            if orientation == "vertical":
+                vertices[:, 0] += offset
+            else:
+                vertices[:, 1] += offset
+            # Create new path with modified vertices
+            new_path = MplPath(vertices, path.codes)
+            patch.set_path(new_path)
         
 def offset_collections(
     collections: List[PathCollection],
