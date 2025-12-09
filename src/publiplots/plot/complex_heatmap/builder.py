@@ -710,30 +710,41 @@ class ComplexHeatmapBuilder:
         main_width = self._figsize[0]   # inches
 
         # Margin sizes (in reverse order for left/top - closest to heatmap first)
-        top_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['top'])]
-        bottom_sizes = [m['size'] * MM2INCH for m in self._margins['bottom']]
-        left_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['left'])]
-        right_sizes = [m['size'] * MM2INCH for m in self._margins['right']]
+        # Add spacing directly to the margin sizes to ensure proper allocation
+        spacing_h = self._hspace * MM2INCH
+        spacing_w = self._wspace * MM2INCH
+
+        top_sizes = [m['size'] * MM2INCH + spacing_h for m in reversed(self._margins['top'])]
+        bottom_sizes = [m['size'] * MM2INCH + spacing_h for m in self._margins['bottom']]
+        left_sizes = [m['size'] * MM2INCH + spacing_w for m in reversed(self._margins['left'])]
+        right_sizes = [m['size'] * MM2INCH + spacing_w for m in self._margins['right']]
 
         # Build height and width ratios
         height_ratios = top_sizes + [main_height] + bottom_sizes
         width_ratios = left_sizes + [main_width] + right_sizes
 
-        # Calculate total figure size
-        total_height = sum(height_ratios) + (n_rows - 1) * self._hspace * MM2INCH
-        total_width = sum(width_ratios) + (n_cols - 1) * self._wspace * MM2INCH
+        # Calculate total figure size (spacing is already in the ratios)
+        total_height = sum(height_ratios)
+        total_width = sum(width_ratios)
 
         # Create figure
         fig = plt.figure(figsize=(total_width, total_height))
 
-        # Create GridSpec
+        # Create GridSpec with wspace=0, hspace=0
+        # Spacing is already included in the ratios, so GridSpec just distributes proportionally
+        # IMPORTANT: Set left=0, right=1, bottom=0, top=1 to use the FULL figure
+        # (default matplotlib subplot margins would squeeze our carefully calculated layout)
         gs = gridspec.GridSpec(
             n_rows, n_cols,
             figure=fig,
             height_ratios=height_ratios,
             width_ratios=width_ratios,
-            hspace=self._hspace * MM2INCH / main_height if main_height > 0 else 0,
-            wspace=self._wspace * MM2INCH / main_width if main_width > 0 else 0,
+            hspace=0,
+            wspace=0,
+            left=0,
+            right=1,
+            bottom=0,
+            top=1,
         )
 
         # Calculate main heatmap position
