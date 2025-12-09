@@ -13,6 +13,7 @@ Licensed under BSD-3-Clause
 from typing import Dict, List, Optional, Tuple
 
 from publiplots.themes.rcparams import resolve_param
+from publiplots.utils.text import measure_text_dimensions
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
@@ -324,20 +325,15 @@ def setup_upset_axes(
 
     n_sets = len(set_names)
 
-    # Measure text width needed for set labels
-    text_kw = {"size": resolve_param("ytick.labelsize")}
-    # Add "x" for margin
-    t = fig.text(
-        0,
-        0,
-        "\n".join(str(label) + "x" for label in set_names),
-        **text_kw,
+    # Measure text width needed for set labels using utility function
+    fontsize = resolve_param("ytick.labelsize")
+    textw, _ = measure_text_dimensions(
+        labels=set_names,
+        fig=fig,
+        fontsize=fontsize,
+        orientation="vertical",
+        unit="pixels",
     )
-
-    # Get text width in display coordinates
-    fig.canvas.draw()  # Ensure renderer is available
-    textw = t.get_window_extent(renderer=fig.canvas.get_renderer()).width
-    t.remove()
 
     # Get figure width in display coordinates
     figw = fig.get_window_extent(renderer=fig.canvas.get_renderer()).width

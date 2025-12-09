@@ -32,7 +32,7 @@ from publiplots.plot.raincloud import raincloudplot
 from publiplots.plot.venn import venn
 from publiplots.plot.upset import upsetplot
 from publiplots.plot.heatmap import heatmap
-from publiplots.plot.complex_heatmap import complex_heatmap, dendrogram
+from publiplots.plot.complex_heatmap import complex_heatmap, dendrogram, ticklabels
 
 # Utilities
 from publiplots.utils.io import savefig, save_multiple, close_all
@@ -102,6 +102,7 @@ __all__ = [
     "heatmap",
     "complex_heatmap",
     "dendrogram",
+    "ticklabels",
     # I/O utilities
     "savefig",
     "save_multiple",
