@@ -44,8 +44,8 @@ def complex_heatmap(
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    xlabel_side: str = "auto",
-    ylabel_side: str = "auto",
+    xticklabels_kws: Optional[Dict] = None,
+    yticklabels_kws: Optional[Dict] = None,
     legend: bool = True,
     legend_kws: Optional[Dict] = None,
     xticklabels: Union[bool, str, List] = "auto",
@@ -111,10 +111,18 @@ def complex_heatmap(
         Plot title.
     xlabel, ylabel : str, default=""
         Axis labels.
-    xlabel_side : str, default="auto"
-        X-axis label position: 'top', 'bottom', or 'auto'.
-    ylabel_side : str, default="auto"
-        Y-axis label position: 'left', 'right', or 'auto'.
+    xticklabels_kws : dict, optional
+        Keyword arguments for x-axis tick labels. Supports:
+        - side: 'top', 'bottom', or 'auto' (default: 'auto')
+        - rotation: angle in degrees (default: 0)
+        - fontsize: font size in points
+        - color: text color
+        - va/verticalalignment: vertical alignment
+        - ha/horizontalalignment: horizontal alignment
+        - and other matplotlib text properties
+    yticklabels_kws : dict, optional
+        Keyword arguments for y-axis tick labels. Same options as xticklabels_kws,
+        but side options are 'left', 'right', or 'auto'.
     legend : bool, default=True
         Show legend.
     legend_kws : dict, optional
@@ -198,8 +206,8 @@ def complex_heatmap(
         title=title,
         xlabel=xlabel,
         ylabel=ylabel,
-        xlabel_side=xlabel_side,
-        ylabel_side=ylabel_side,
+        xticklabels_kws=xticklabels_kws,
+        yticklabels_kws=yticklabels_kws,
         legend=legend,
         legend_kws=legend_kws,
         xticklabels=xticklabels,
@@ -252,8 +260,8 @@ class ComplexHeatmapBuilder:
         title: str = "",
         xlabel: str = "",
         ylabel: str = "",
-        xlabel_side: str = "auto",
-        ylabel_side: str = "auto",
+        xticklabels_kws: Optional[Dict] = None,
+        yticklabels_kws: Optional[Dict] = None,
         legend: bool = True,
         legend_kws: Optional[Dict] = None,
         xticklabels: Union[bool, str, List] = "auto",
@@ -295,8 +303,6 @@ class ComplexHeatmapBuilder:
             "title": title,
             "xlabel": xlabel,
             "ylabel": ylabel,
-            "xlabel_side": xlabel_side,
-            "ylabel_side": ylabel_side,
             "legend": legend,
             "legend_kws": legend_kws,
             "xticklabels": xticklabels,
@@ -304,6 +310,10 @@ class ComplexHeatmapBuilder:
             "mask": mask,
         }
         self._heatmap_params.update(kwargs)
+
+        # Store tick label kwargs (with defaults)
+        self._xticklabels_kws = xticklabels_kws or {}
+        self._yticklabels_kws = yticklabels_kws or {}
 
         # Layout parameters
         self._figsize = figsize or resolve_param("figure.figsize")
@@ -618,10 +628,27 @@ class ComplexHeatmapBuilder:
         # Add dendrograms if clustering enabled
         self._add_clustering_dendrograms()
 
-        # Auto-detect label sides
-        xlabel_side = self._heatmap_params['xlabel_side']
-        ylabel_side = self._heatmap_params['ylabel_side']
+        # Process xticklabels_kws and yticklabels_kws
+        # Extract side and rotation, normalize alignment kwargs
+        xticklabels_kws = self._xticklabels_kws.copy()
+        yticklabels_kws = self._yticklabels_kws.copy()
 
+        # Pop 'side' from kwargs (with defaults)
+        xlabel_side = xticklabels_kws.pop('side', 'auto')
+        ylabel_side = yticklabels_kws.pop('side', 'auto')
+
+        # Pop 'rotation' from kwargs (will be passed separately to text)
+        xlabel_rotation = xticklabels_kws.pop('rotation', 0)
+        ylabel_rotation = yticklabels_kws.pop('rotation', 0)
+
+        # Normalize alignment kwargs (va/verticalalignment, ha/horizontalalignment)
+        # Pop them so we can set defaults based on position
+        xlabel_va = xticklabels_kws.pop('va', xticklabels_kws.pop('verticalalignment', None))
+        xlabel_ha = xticklabels_kws.pop('ha', xticklabels_kws.pop('horizontalalignment', None))
+        ylabel_va = yticklabels_kws.pop('va', yticklabels_kws.pop('verticalalignment', None))
+        ylabel_ha = yticklabels_kws.pop('ha', yticklabels_kws.pop('horizontalalignment', None))
+
+        # Auto-detect label sides
         if ylabel_side == 'auto':
             # If there are left margins, put ylabel on right
             ylabel_side = 'right' if self._margins['left'] else 'left'
@@ -646,6 +673,20 @@ class ComplexHeatmapBuilder:
         # Close temp figure - we'll create the real one with proper size
         plt.close(temp_fig)
 
+        # Build text kwargs for labels with position-appropriate defaults
+        ylabel_text_kws = {
+            'rotation': ylabel_rotation,
+            'va': ylabel_va if ylabel_va is not None else 'center',
+            'ha': ylabel_ha if ylabel_ha is not None else ('left' if ylabel_side == 'right' else 'right'),
+            **yticklabels_kws,  # Remaining kwargs (color, fontsize, etc.)
+        }
+        xlabel_text_kws = {
+            'rotation': xlabel_rotation,
+            'va': xlabel_va if xlabel_va is not None else ('top' if xlabel_side == 'bottom' else 'bottom'),
+            'ha': xlabel_ha if xlabel_ha is not None else 'center',
+            **xticklabels_kws,  # Remaining kwargs (color, fontsize, etc.)
+        }
+
         # Add label layers as stackable margin "plots"
         # Labels should be CLOSEST to heatmap (append to end, not insert at 0)
         # When margins are reversed for drawing, the last item is closest to heatmap
@@ -656,7 +697,7 @@ class ComplexHeatmapBuilder:
                 'data': row_labels,
                 'align': True,
                 'gap': 0,
-                'kwargs': {'orientation': 'vertical'},
+                'kwargs': {'orientation': 'vertical', 'text_kws': ylabel_text_kws},
             })
         elif ylabel_side == 'left' and row_labels:
             self._margins['left'].append({
@@ -665,7 +706,7 @@ class ComplexHeatmapBuilder:
                 'data': row_labels,
                 'align': True,
                 'gap': 0,
-                'kwargs': {'orientation': 'vertical'},
+                'kwargs': {'orientation': 'vertical', 'text_kws': ylabel_text_kws},
             })
 
         if xlabel_side == 'bottom' and col_labels:
@@ -675,7 +716,7 @@ class ComplexHeatmapBuilder:
                 'data': col_labels,
                 'align': True,
                 'gap': 0,
-                'kwargs': {'orientation': 'horizontal'},
+                'kwargs': {'orientation': 'horizontal', 'text_kws': xlabel_text_kws},
             })
         elif xlabel_side == 'top' and col_labels:
             self._margins['top'].append({
@@ -684,7 +725,7 @@ class ComplexHeatmapBuilder:
                 'data': col_labels,
                 'align': True,
                 'gap': 0,
-                'kwargs': {'orientation': 'horizontal'},
+                'kwargs': {'orientation': 'horizontal', 'text_kws': xlabel_text_kws},
             })
 
         # Count margin plots (now includes labels)
@@ -862,7 +903,11 @@ class ComplexHeatmapBuilder:
 
         # Special handling for label axes
         if func == 'labels':
-            self._draw_label_axes(ax, data, position, kwargs.get('orientation', 'vertical'))
+            self._draw_label_axes(
+                ax, data, position,
+                kwargs.get('orientation', 'vertical'),
+                text_kws=kwargs.get('text_kws')
+            )
             return
 
         # Add ax to kwargs
@@ -906,19 +951,43 @@ class ComplexHeatmapBuilder:
             if ax.collections:
                 offset_collections(ax.collections, offset=0.5, ax=ax, orientation=orientation)
 
-    def _draw_label_axes(self, ax: Axes, labels: List[str], position: str, orientation: str):
-        """Draw tick labels in a dedicated axes."""
+    def _draw_label_axes(self, ax: Axes, labels: List[str], position: str, orientation: str,
+                         text_kws: Optional[Dict] = None):
+        """Draw tick labels in a dedicated axes.
+
+        Parameters
+        ----------
+        ax : Axes
+            The axes to draw labels in.
+        labels : list of str
+            The labels to draw.
+        position : str
+            Position: 'left', 'right', 'top', or 'bottom'.
+        orientation : str
+            Orientation: 'vertical' or 'horizontal'.
+        text_kws : dict, optional
+            Keyword arguments passed to ax.text(), including:
+            - rotation: angle in degrees
+            - va: vertical alignment
+            - ha: horizontal alignment
+            - fontsize, color, etc.
+        """
         # Turn off all axes decorations
         ax.set_xticks([])
         ax.set_yticks([])
         for spine in ax.spines.values():
             spine.set_visible(False)
 
-        # Get font size
+        # Get default font size based on orientation
         if orientation == 'vertical':
-            fontsize = resolve_param("ytick.labelsize")
+            default_fontsize = resolve_param("ytick.labelsize")
         else:
-            fontsize = resolve_param("xtick.labelsize")
+            default_fontsize = resolve_param("xtick.labelsize")
+
+        # Build final text kwargs with defaults
+        final_text_kws = text_kws.copy() if text_kws else {}
+        if 'fontsize' not in final_text_kws:
+            final_text_kws['fontsize'] = default_fontsize
 
         n_labels = len(labels)
 
@@ -931,12 +1000,10 @@ class ComplexHeatmapBuilder:
             for i, label in enumerate(labels):
                 # Draw at cell centers (0.5, 1.5, 2.5...) to match heatmap ticks
                 y_pos = i + 0.5
-                if position == 'right':
-                    ax.text(0, y_pos, label, va='center', ha='left',
-                           fontsize=fontsize, transform=ax.get_yaxis_transform())
-                else:  # left
-                    ax.text(1, y_pos, label, va='center', ha='right',
-                           fontsize=fontsize, transform=ax.get_yaxis_transform())
+                x_pos = 0 if position == 'right' else 1
+                ax.text(x_pos, y_pos, label,
+                       transform=ax.get_yaxis_transform(),
+                       **final_text_kws)
 
         else:  # top or bottom
             # Horizontal labels for x-axis
@@ -946,11 +1013,7 @@ class ComplexHeatmapBuilder:
             for i, label in enumerate(labels):
                 # Draw at cell centers (0.5, 1.5, 2.5...) to match heatmap ticks
                 x_pos = i + 0.5
-                if position == 'bottom':
-                    ax.text(x_pos, 1, label, va='top', ha='center',
-                           fontsize=fontsize, transform=ax.get_xaxis_transform(),
-                           rotation=0)
-                else:  # top
-                    ax.text(x_pos, 0, label, va='bottom', ha='center',
-                           fontsize=fontsize, transform=ax.get_xaxis_transform(),
-                           rotation=0)
+                y_pos = 1 if position == 'bottom' else 0
+                ax.text(x_pos, y_pos, label,
+                       transform=ax.get_xaxis_transform(),
+                       **final_text_kws)
