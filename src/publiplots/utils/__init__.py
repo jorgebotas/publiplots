@@ -61,6 +61,12 @@ from publiplots.utils.offset import (
     offset_collections,
 )
 
+from publiplots.utils.text import (
+    measure_text_dimensions,
+    calculate_label_space,
+    get_text_width_in_data_coords,
+)
+
 from publiplots.utils.transparency import (
     apply_transparency,
 )
@@ -114,4 +120,8 @@ __all__ = [
     "offset_lines",
     "offset_patches",
     "offset_collections",
+    # Text measurement functions
+    "measure_text_dimensions",
+    "calculate_label_space",
+    "get_text_width_in_data_coords",
 ]

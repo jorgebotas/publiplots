@@ -12,6 +12,7 @@ from typing import Optional, Tuple, Union, Dict, List
 
 from publiplots.themes.rcparams import resolve_param
 from publiplots.utils.offset import offset_patches, offset_lines, offset_collections
+from publiplots.utils.text import calculate_label_space
 from .dendrogram import cluster_data, dendrogram as dendrogram_plot
 
 # Conversion constants
@@ -498,23 +499,23 @@ class ComplexHeatmapBuilder:
         })
         return self
 
-    def _calculate_label_space(
+    def _calculate_label_space_for_position(
         self,
         labels: List[str],
-        orientation: str = 'vertical'
+        position: str = 'left'
     ) -> float:
         """
-        Calculate space needed for tick labels using character-based estimation.
+        Calculate space needed for tick labels using actual text measurement.
 
-        This uses a robust character-counting approach rather than precise text
-        measurement, which is more reliable across different rendering contexts.
+        This uses matplotlib's text rendering to get accurate measurements,
+        delegating to the utility function in publiplots.utils.text.
 
         Parameters
         ----------
         labels : list of str
             The tick labels to measure.
-        orientation : str
-            'vertical' for y-axis labels, 'horizontal' for x-axis labels.
+        position : str
+            Position where labels will be placed: 'left', 'right', 'top', 'bottom'.
 
         Returns
         -------
@@ -524,32 +525,13 @@ class ComplexHeatmapBuilder:
         if not labels:
             return 0.0
 
-        # Get font size
-        if orientation == 'vertical':
-            fontsize = resolve_param("ytick.labelsize")
-            tick_pad = resolve_param("ytick.major.pad")
-        else:
-            fontsize = resolve_param("xtick.labelsize")
-            tick_pad = resolve_param("xtick.major.pad")
-
-        # Character-based estimation
-        # Average character width ≈ 0.6 * fontsize in points (for typical fonts)
-        # This is more reliable than precise measurement in temp figures
-        max_chars = max(len(str(label)) for label in labels)
-
-        # Estimate width in points, then convert to inches
-        # Add extra character for margin (like upsetplot does with "x")
-        estimated_width_points = (max_chars + 1) * 0.6 * fontsize
-        estimated_width_inches = estimated_width_points / 72.0
-
-        # Add tick padding (convert from points to inches)
-        tick_pad_inches = tick_pad / 72.0
-
-        # Apply safety factor (30% extra) to ensure text always fits
-        # This accounts for variable character widths and rendering differences
-        safety_factor = 1.3
-
-        return (estimated_width_inches + tick_pad_inches) * safety_factor
+        return calculate_label_space(
+            labels=labels,
+            fig=None,  # Will create temp figure
+            position=position,
+            unit="inches",
+            safety_factor=1.1,
+        )
 
     def _prepare_data(self) -> pd.DataFrame:
         """Prepare and optionally cluster the heatmap data."""
@@ -646,8 +628,9 @@ class ComplexHeatmapBuilder:
         col_labels = [str(label) for label in matrix.columns]
 
         # Calculate required space for labels (in inches)
-        ylabel_space = self._calculate_label_space(row_labels, 'vertical')
-        xlabel_space = self._calculate_label_space(col_labels, 'horizontal')
+        # Use actual text measurement via the utility function
+        ylabel_space = self._calculate_label_space_for_position(row_labels, ylabel_side)
+        xlabel_space = self._calculate_label_space_for_position(col_labels, xlabel_side)
 
         # Add label layers as stackable margin "plots"
         # Labels should be CLOSEST to heatmap (append to end, not insert at 0)
