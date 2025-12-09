@@ -504,7 +504,10 @@ class ComplexHeatmapBuilder:
         orientation: str = 'vertical'
     ) -> float:
         """
-        Calculate space needed for tick labels by measuring actual text extents.
+        Calculate space needed for tick labels using character-based estimation.
+
+        This uses a robust character-counting approach rather than precise text
+        measurement, which is more reliable across different rendering contexts.
 
         Parameters
         ----------
@@ -521,10 +524,7 @@ class ComplexHeatmapBuilder:
         if not labels:
             return 0.0
 
-        # Create temporary figure with explicit DPI for consistent measurement
-        temp_fig = plt.figure(figsize=(1, 1), dpi=100)
-
-        # Get label font size and tick padding
+        # Get font size
         if orientation == 'vertical':
             fontsize = resolve_param("ytick.labelsize")
             tick_pad = resolve_param("ytick.major.pad")
@@ -532,29 +532,24 @@ class ComplexHeatmapBuilder:
             fontsize = resolve_param("xtick.labelsize")
             tick_pad = resolve_param("xtick.major.pad")
 
-        # Measure maximum text extent
-        max_extent = 0
-        for label in labels:
-            t = temp_fig.text(0, 0, str(label), size=fontsize)
-            temp_fig.canvas.draw()
-            bbox = t.get_window_extent(renderer=temp_fig.canvas.get_renderer())
+        # Character-based estimation
+        # Average character width ≈ 0.6 * fontsize in points (for typical fonts)
+        # This is more reliable than precise measurement in temp figures
+        max_chars = max(len(str(label)) for label in labels)
 
-            # Get the relevant dimension based on orientation
-            extent = bbox.width if orientation == 'vertical' else bbox.height
-            max_extent = max(max_extent, extent)
-            t.remove()
+        # Estimate width in points, then convert to inches
+        # Add extra character for margin (like upsetplot does with "x")
+        estimated_width_points = (max_chars + 1) * 0.6 * fontsize
+        estimated_width_inches = estimated_width_points / 72.0
 
-        # Convert to inches
-        text_inches = max_extent / temp_fig.dpi
-        plt.close(temp_fig)
-
-        # Add tick padding (points to inches: divide by 72)
+        # Add tick padding (convert from points to inches)
         tick_pad_inches = tick_pad / 72.0
 
-        # Add visual spacing for comfort (~0.1 inches or ~2.5mm)
-        visual_padding = 0.1
+        # Apply safety factor (30% extra) to ensure text always fits
+        # This accounts for variable character widths and rendering differences
+        safety_factor = 1.3
 
-        return text_inches + tick_pad_inches + visual_padding
+        return (estimated_width_inches + tick_pad_inches) * safety_factor
 
     def _prepare_data(self) -> pd.DataFrame:
         """Prepare and optionally cluster the heatmap data."""
