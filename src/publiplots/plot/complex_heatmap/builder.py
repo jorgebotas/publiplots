@@ -661,9 +661,10 @@ class ComplexHeatmapBuilder:
         xlabel_space = self._calculate_label_space(col_labels, 'horizontal')
 
         # Add label layers as stackable margin "plots"
-        # Labels are added as the innermost layer (closest to heatmap)
+        # Labels should be CLOSEST to heatmap (append to end, not insert at 0)
+        # When margins are reversed for drawing, the last item is closest to heatmap
         if ylabel_side == 'right' and row_labels:
-            self._margins['right'].insert(0, {
+            self._margins['right'].append({
                 'func': 'labels',
                 'size': ylabel_space / MM2INCH,  # Convert back to mm for consistency
                 'data': row_labels,
@@ -672,7 +673,7 @@ class ComplexHeatmapBuilder:
                 'kwargs': {'orientation': 'vertical'},
             })
         elif ylabel_side == 'left' and row_labels:
-            self._margins['left'].insert(0, {
+            self._margins['left'].append({
                 'func': 'labels',
                 'size': ylabel_space / MM2INCH,
                 'data': row_labels,
@@ -682,7 +683,7 @@ class ComplexHeatmapBuilder:
             })
 
         if xlabel_side == 'bottom' and col_labels:
-            self._margins['bottom'].insert(0, {
+            self._margins['bottom'].append({
                 'func': 'labels',
                 'size': xlabel_space / MM2INCH,
                 'data': col_labels,
@@ -691,7 +692,7 @@ class ComplexHeatmapBuilder:
                 'kwargs': {'orientation': 'horizontal'},
             })
         elif xlabel_side == 'top' and col_labels:
-            self._margins['top'].insert(0, {
+            self._margins['top'].append({
                 'func': 'labels',
                 'size': xlabel_space / MM2INCH,
                 'data': col_labels,
@@ -760,16 +761,10 @@ class ComplexHeatmapBuilder:
         # Draw main heatmap
         heatmap(ax=ax_main, **heatmap_params)
 
-        # Adjust heatmap ticks to integer positions for proper alignment
-        # This makes categorical plots align naturally without shifts
-        n_cols_heat = len(col_labels)
-        n_rows_heat = len(row_labels)
-        ax_main.set_xticks(np.arange(n_cols_heat))
-        ax_main.set_yticks(np.arange(n_rows_heat))
-        ax_main.set_xticklabels([])  # Hide labels - they're in margin axes
-        ax_main.set_yticklabels([])  # Hide labels - they're in margin axes
-        ax_main.set_xlim(-0.5, n_cols_heat - 0.5)
-        ax_main.set_ylim(-0.5, n_rows_heat - 0.5)
+        # Hide heatmap labels - they're drawn in dedicated label axes
+        # DON'T change the coordinate system - keep heatmap's original ticks at 0.5, 1.5, 2.5...
+        ax_main.set_xticklabels([])
+        ax_main.set_yticklabels([])
 
         # Initialize axes dict
         axes = {
@@ -886,27 +881,33 @@ class ComplexHeatmapBuilder:
 
         if position in ['left', 'right']:
             # Vertical labels for y-axis
-            ax.set_ylim(-0.5, n_labels - 0.5)
+            # Match heatmap's coordinate system: cells centered at 0.5, 1.5, 2.5...
+            ax.set_ylim(0, n_labels)
             ax.invert_yaxis()  # Match heatmap orientation
 
             for i, label in enumerate(labels):
+                # Draw at cell centers (0.5, 1.5, 2.5...) to match heatmap ticks
+                y_pos = i + 0.5
                 if position == 'right':
-                    ax.text(0, i, label, va='center', ha='left',
+                    ax.text(0, y_pos, label, va='center', ha='left',
                            fontsize=fontsize, transform=ax.get_yaxis_transform())
                 else:  # left
-                    ax.text(1, i, label, va='center', ha='right',
+                    ax.text(1, y_pos, label, va='center', ha='right',
                            fontsize=fontsize, transform=ax.get_yaxis_transform())
 
         else:  # top or bottom
             # Horizontal labels for x-axis
-            ax.set_xlim(-0.5, n_labels - 0.5)
+            # Match heatmap's coordinate system: cells centered at 0.5, 1.5, 2.5...
+            ax.set_xlim(0, n_labels)
 
             for i, label in enumerate(labels):
+                # Draw at cell centers (0.5, 1.5, 2.5...) to match heatmap ticks
+                x_pos = i + 0.5
                 if position == 'bottom':
-                    ax.text(i, 1, label, va='top', ha='center',
+                    ax.text(x_pos, 1, label, va='top', ha='center',
                            fontsize=fontsize, transform=ax.get_xaxis_transform(),
                            rotation=0)
                 else:  # top
-                    ax.text(i, 0, label, va='bottom', ha='center',
+                    ax.text(x_pos, 0, label, va='bottom', ha='center',
                            fontsize=fontsize, transform=ax.get_xaxis_transform(),
                            rotation=0)
