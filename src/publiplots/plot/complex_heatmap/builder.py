@@ -521,45 +521,40 @@ class ComplexHeatmapBuilder:
         if not labels:
             return 0.0
 
-        # Create temporary figure for measurement
-        temp_fig = plt.figure(figsize=(1, 1))
+        # Create temporary figure with explicit DPI for consistent measurement
+        temp_fig = plt.figure(figsize=(1, 1), dpi=100)
 
-        # Get label font size
+        # Get label font size and tick padding
         if orientation == 'vertical':
             fontsize = resolve_param("ytick.labelsize")
+            tick_pad = resolve_param("ytick.major.pad")
         else:
             fontsize = resolve_param("xtick.labelsize")
+            tick_pad = resolve_param("xtick.major.pad")
 
-        # Measure each label and find the maximum extent
-        max_width = 0
-        max_height = 0
-
+        # Measure maximum text extent
+        max_extent = 0
         for label in labels:
             t = temp_fig.text(0, 0, str(label), size=fontsize)
             temp_fig.canvas.draw()
             bbox = t.get_window_extent(renderer=temp_fig.canvas.get_renderer())
 
-            # Track maximum dimensions
-            max_width = max(max_width, bbox.width)
-            max_height = max(max_height, bbox.height)
-
+            # Get the relevant dimension based on orientation
+            extent = bbox.width if orientation == 'vertical' else bbox.height
+            max_extent = max(max_extent, extent)
             t.remove()
 
         # Convert to inches
-        dpi = temp_fig.dpi
-        if orientation == 'vertical':
-            # For vertical labels, we need the width (horizontal space)
-            space_inches = max_width / dpi
-        else:
-            # For horizontal labels, we need the height (vertical space)
-            space_inches = max_height / dpi
-
-        # Clean up
+        text_inches = max_extent / temp_fig.dpi
         plt.close(temp_fig)
 
-        # Add padding (about 2-3mm converted to inches)
-        padding = 3 / 25.4  # 3mm in inches
-        return space_inches + padding
+        # Add tick padding (points to inches: divide by 72)
+        tick_pad_inches = tick_pad / 72.0
+
+        # Add visual spacing for comfort (~0.1 inches or ~2.5mm)
+        visual_padding = 0.1
+
+        return text_inches + tick_pad_inches + visual_padding
 
     def _prepare_data(self) -> pd.DataFrame:
         """Prepare and optionally cluster the heatmap data."""
@@ -748,8 +743,15 @@ class ComplexHeatmapBuilder:
 
         # Prepare heatmap params
         heatmap_params = self._heatmap_params.copy()
+
+        # Remove complex-heatmap-specific params that shouldn't go to heatmap()
         heatmap_params.pop('xlabel_side', None)
         heatmap_params.pop('ylabel_side', None)
+
+        # Store and remove title/labels - we'll apply them to the complex heatmap
+        title = heatmap_params.pop('title', '')
+        xlabel = heatmap_params.pop('xlabel', '')
+        ylabel = heatmap_params.pop('ylabel', '')
 
         if self._row_cluster or self._col_cluster:
             heatmap_params['data'] = self._matrix
@@ -760,10 +762,20 @@ class ComplexHeatmapBuilder:
         # Draw main heatmap
         heatmap(ax=ax_main, **heatmap_params)
 
-        # Hide heatmap labels - they're drawn in dedicated label axes
+        # Hide heatmap tick labels - they're drawn in dedicated label axes
         # DON'T change the coordinate system - keep heatmap's original ticks at 0.5, 1.5, 2.5...
         ax_main.set_xticklabels([])
         ax_main.set_yticklabels([])
+
+        # Apply title and axis labels to the main heatmap axes
+        # This follows PyComplexHeatmap's approach of using standard matplotlib methods
+        # TODO: In future, consider dedicated text panels for more control (see annotations.py)
+        if title:
+            ax_main.set_title(title)
+        if xlabel:
+            ax_main.set_xlabel(xlabel)
+        if ylabel:
+            ax_main.set_ylabel(ylabel)
 
         # Initialize axes dict
         axes = {
