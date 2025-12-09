@@ -51,11 +51,10 @@ def calculate_ticklabel_space(
         return 0.0
 
     # Resolve fontsize
-    if fontsize is None:
-        if position in ('left', 'right'):
-            fontsize = resolve_param("ytick.labelsize")
-        else:
-            fontsize = resolve_param("xtick.labelsize")
+    if position in ('left', 'right'):
+        fontsize = resolve_param("ytick.labelsize", fontsize)
+    else:
+        fontsize = resolve_param("xtick.labelsize", fontsize)
 
     # Use calculate_label_space with rotation support
     space_inches = calculate_label_space(
@@ -140,11 +139,10 @@ def ticklabels(
         spine.set_visible(False)
 
     # Resolve defaults
-    if fontsize is None:
-        if orientation == 'vertical':
-            fontsize = resolve_param("ytick.labelsize")
-        else:
-            fontsize = resolve_param("xtick.labelsize")
+    if orientation == 'vertical':
+        fontsize = resolve_param("ytick.labelsize", fontsize)
+    else:
+        fontsize = resolve_param("xtick.labelsize", fontsize)
 
     # Set default alignments based on position
     if va is None:

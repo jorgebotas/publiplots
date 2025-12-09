@@ -74,8 +74,7 @@ def measure_text_dimensions(
 
     try:
         # Get font properties
-        if fontsize is None:
-            fontsize = resolve_param("font.size")
+        fontsize = resolve_param("font.size", fontsize)
 
         # Create text string based on orientation and rotation
         if orientation == "vertical" and rotation == 0:
@@ -186,16 +185,12 @@ def calculate_label_space(
     # Determine orientation and get appropriate rcParams
     if position in ("left", "right"):
         orientation = "vertical"
-        if fontsize is None:
-            fontsize = resolve_param("ytick.labelsize")
-        if tick_pad is None:
-            tick_pad = resolve_param("ytick.major.pad")
+        fontsize = resolve_param("ytick.labelsize", fontsize)
+        tick_pad = resolve_param("ytick.major.pad", tick_pad)
     else:  # top, bottom
         orientation = "horizontal"
-        if fontsize is None:
-            fontsize = resolve_param("xtick.labelsize")
-        if tick_pad is None:
-            tick_pad = resolve_param("xtick.major.pad")
+        fontsize = resolve_param("xtick.labelsize", fontsize)
+        tick_pad = resolve_param("xtick.major.pad", tick_pad)
 
     # Measure text dimensions
     width, height = measure_text_dimensions(
