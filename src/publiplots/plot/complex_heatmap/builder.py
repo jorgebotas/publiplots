@@ -12,7 +12,7 @@ from typing import Optional, Tuple, Union, Dict, List
 
 from publiplots.themes.rcparams import resolve_param
 from publiplots.utils.offset import offset_patches, offset_lines, offset_collections
-from publiplots.utils.text import measure_text_dimensions
+from publiplots.utils.text import calculate_label_space
 from .dendrogram import cluster_data, dendrogram as dendrogram_plot
 
 # Conversion constants
@@ -511,9 +511,8 @@ class ComplexHeatmapBuilder:
         This uses matplotlib's text rendering to get accurate measurements,
         matching the approach used in upsetplot for consistent results.
 
-        Note: We use measure_text_dimensions directly (not calculate_label_space)
-        because we draw labels in dedicated axes, not using matplotlib's tick system.
-        This means we don't need tick_pad - just the raw text dimensions.
+        Note: We pass tick_pad=0 because we draw labels in dedicated axes,
+        not using matplotlib's tick system.
 
         Parameters
         ----------
@@ -532,30 +531,14 @@ class ComplexHeatmapBuilder:
         if not labels:
             return 0.0
 
-        # Get appropriate font size based on position
-        if position in ("left", "right"):
-            fontsize = resolve_param("ytick.labelsize")
-            orientation = "vertical"
-        else:
-            fontsize = resolve_param("xtick.labelsize")
-            orientation = "horizontal"
-
-        # Measure text dimensions directly (like upsetplot does)
-        # Don't add tick_pad since we draw in dedicated axes, not using tick system
-        width, height = measure_text_dimensions(
+        return calculate_label_space(
             labels=labels,
             fig=fig,
-            fontsize=fontsize,
-            orientation=orientation,
+            position=position,
+            tick_pad=0,  # No tick padding - we draw in dedicated axes, not using tick system
             unit="inches",
+            safety_factor=1.0,
         )
-
-        # For left/right positions, we need the width
-        # For top/bottom positions, we need the height
-        if position in ("left", "right"):
-            return width
-        else:
-            return height
 
     def _prepare_data(self) -> pd.DataFrame:
         """Prepare and optionally cluster the heatmap data."""
