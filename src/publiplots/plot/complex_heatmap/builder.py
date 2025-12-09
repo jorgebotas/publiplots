@@ -265,8 +265,8 @@ class ComplexHeatmapBuilder:
         row_dendrogram: bool = True,
         col_dendrogram: bool = True,
         dendrogram_size: float = 10,
-        hspace: float = 1.0,
-        wspace: float = 1.0,
+        hspace: float = 2.0,
+        wspace: float = 2.0,
         **kwargs
     ):
         # Store heatmap parameters

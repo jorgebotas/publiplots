@@ -483,8 +483,8 @@ def _draw_dot_heatmap(
     ax.set_xticklabels(x_labels)
     ax.set_yticklabels(y_labels)
 
-    # # Invert y-axis to match heatmap convention (top to bottom)
-    # ax.invert_yaxis()
+    # Invert y-axis to match heatmap convention (top to bottom)
+    ax.invert_yaxis()
 
     # Square aspect ratio if requested
     if square:
