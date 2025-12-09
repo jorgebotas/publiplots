@@ -576,13 +576,21 @@ class ComplexHeatmapBuilder:
                         fontsize = kwargs.get('fontsize', None)
 
                         # Calculate required space
+                        # Filter out params that are only for drawing, not sizing
+                        excluded_params = {
+                            'rotation', 'fontsize', 'ax', 'labels', 'position',
+                            'orientation', 'ha', 'va', 'color', 'horizontalalignment',
+                            'verticalalignment'
+                        }
+                        size_kwargs = {k: v for k, v in kwargs.items() if k not in excluded_params}
+
                         space_mm = calculate_ticklabel_space(
                             labels=labels,
                             position=position,
                             rotation=rotation,
                             fontsize=fontsize,
                             fig=temp_fig,
-                            **{k: v for k, v in kwargs.items() if k not in ['rotation', 'fontsize', 'ax', 'labels', 'position', 'orientation']}
+                            **size_kwargs
                         )
 
                         # Update margin size
