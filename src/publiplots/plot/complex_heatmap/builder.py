@@ -533,7 +533,7 @@ class ComplexHeatmapBuilder:
             fig=fig,
             position=position,
             unit="inches",
-            safety_factor=1.2,  # 20% extra for safety
+            safety_factor=1,  # 20% extra for safety
         )
 
     def _prepare_data(self) -> pd.DataFrame:

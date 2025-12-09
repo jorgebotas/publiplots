@@ -81,11 +81,11 @@ def measure_text_dimensions(
         if orientation == "vertical":
             # Stack labels vertically with newlines for height measurement
             # Add "x" margin character like upsetplot does
-            text_str = "\n".join(str(label) + "x" for label in labels)
+            text_str = "\n".join(str(label) for label in labels)
         else:
             # Join with spaces for horizontal layout
             # The maximum width label determines the space needed
-            text_str = max((str(label) + "x" for label in labels), key=len)
+            text_str = max((str(label) for label in labels), key=len)
 
         # Create temporary text element
         text_obj = fig.text(
