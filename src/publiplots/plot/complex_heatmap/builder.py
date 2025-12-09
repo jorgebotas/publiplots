@@ -11,6 +11,7 @@ import pandas as pd
 from typing import Optional, Tuple, Union, Dict, List
 
 from publiplots.themes.rcparams import resolve_param
+from publiplots.utils.offset import offset_patches, offset_lines, offset_collections
 from .dendrogram import cluster_data, dendrogram as dendrogram_plot
 
 # Conversion constants
@@ -866,55 +867,8 @@ class ComplexHeatmapBuilder:
         # Categorical plots position elements at 0, 1, 2...
         # Need to shift by +0.5 to align with cell centers
         if margin['align']:
-            if position in ['top', 'bottom']:
-                # Check if we have bars that need shifting
-                if ax.patches:
-                    # Get bar positions
-                    bar_positions = [p.get_x() for p in ax.patches if hasattr(p, 'get_x')]
-                    if bar_positions:
-                        # Check if bars are at integer positions (categorical)
-                        # and not already at cell centers (x.5)
-                        min_pos = min(bar_positions)
-                        if abs(min_pos - round(min_pos)) < 0.1:  # At integer
-                            # Shift all bars by +0.5 to align with heatmap cells
-                            for patch in ax.patches:
-                                if hasattr(patch, 'get_x'):
-                                    patch.set_x(patch.get_x() + 0.5)
-
-                # Also shift scatter points if any
-                for collection in ax.collections:
-                    if hasattr(collection, 'get_offsets'):
-                        offsets = collection.get_offsets()
-                        if len(offsets) > 0:
-                            # Check if points are at integers
-                            x_coords = offsets[:, 0]
-                            if len(x_coords) > 0 and abs(x_coords[0] - round(x_coords[0])) < 0.1:
-                                offsets[:, 0] += 0.5
-                                collection.set_offsets(offsets)
-
-            elif position in ['left', 'right']:
-                # Check if we have bars that need shifting
-                if ax.patches:
-                    # Get bar positions
-                    bar_positions = [p.get_y() for p in ax.patches if hasattr(p, 'get_y')]
-                    if bar_positions:
-                        # Check if bars are at integer positions
-                        min_pos = min(bar_positions)
-                        if abs(min_pos - round(min_pos)) < 0.1:
-                            # Shift all bars by +0.5
-                            for patch in ax.patches:
-                                if hasattr(patch, 'get_y'):
-                                    patch.set_y(patch.get_y() + 0.5)
-
-                # Also shift scatter points
-                for collection in ax.collections:
-                    if hasattr(collection, 'get_offsets'):
-                        offsets = collection.get_offsets()
-                        if len(offsets) > 0:
-                            y_coords = offsets[:, 1]
-                            if len(y_coords) > 0 and abs(y_coords[0] - round(y_coords[0])) < 0.1:
-                                offsets[:, 1] += 0.5
-                                collection.set_offsets(offsets)
+            orientation = "vertical" if position in ("top", "bottom") else "horizontal"
+            offset_patches(ax.patches, offset=0.5, orientation=orientation)
 
     def _draw_label_axes(self, ax: Axes, labels: List[str], position: str, orientation: str):
         """Draw tick labels in a dedicated axes."""

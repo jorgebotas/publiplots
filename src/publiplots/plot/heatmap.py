@@ -483,22 +483,13 @@ def _draw_dot_heatmap(
     ax.set_xticklabels(x_labels)
     ax.set_yticklabels(y_labels)
 
-    # Invert y-axis to match heatmap convention (top to bottom)
-    ax.invert_yaxis()
+    # # Invert y-axis to match heatmap convention (top to bottom)
+    # ax.invert_yaxis()
 
     # Square aspect ratio if requested
     if square:
         ax.set_aspect("equal")
 
-    # Add grid lines between cells
-    ax.set_xticks(np.arange(n_cols + 1), minor=True)
-    ax.set_yticks(np.arange(n_rows + 1), minor=True)
-    ax.grid(which="minor", color="#e0e0e0", linestyle="-", linewidth=0.5)
-    ax.tick_params(which="minor", bottom=False, left=False)
-
-    # Remove spines
-    for spine in ax.spines.values():
-        spine.set_visible(False)
 
     # Add legends
     if legend:
