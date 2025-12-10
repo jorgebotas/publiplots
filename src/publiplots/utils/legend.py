@@ -1406,12 +1406,14 @@ def legend(
             for element_type, element in source_builder.elements:
                 if element_type == "legend":
                     # Extract handles and labels from the legend
-                    handles_list, labels_list = element.get_legend_handles_labels()
                     title = element.get_title().get_text() if element.get_title() else ""
+                    legend_handles = element.legend_handles
+                    legend_labels = element.get_texts()
+                    [h.set_label(l.get_text()) for h,l in zip(legend_handles, legend_labels)]
 
                     # Add to the unified builder
                     builder.add_legend(
-                        handles=handles_list,
+                        handles=element.legend_handles,
                         label=title,
                         **kwargs
                     )
