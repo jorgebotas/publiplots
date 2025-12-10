@@ -74,17 +74,15 @@ def measure_text_dimensions(
 
     try:
         # Get font properties
-        if fontsize is None:
-            fontsize = resolve_param("font.size")
+        fontsize = resolve_param("font.size", fontsize)
 
-        # Create text string based on orientation
-        if orientation == "vertical":
-            # Stack labels vertically with newlines for height measurement
-            # Add "x" margin character like upsetplot does
+        # Create text string based on orientation and rotation
+        if orientation == "vertical" and rotation == 0:
+            # For non-rotated vertical labels, stack them to measure total height
             text_str = "\n".join(str(label) for label in labels)
         else:
-            # Join with spaces for horizontal layout
-            # The maximum width label determines the space needed
+            # For horizontal labels OR rotated vertical labels,
+            # measure the longest single label (each label is drawn separately)
             text_str = max((str(label) for label in labels), key=len)
 
         # Create temporary text element
@@ -187,16 +185,12 @@ def calculate_label_space(
     # Determine orientation and get appropriate rcParams
     if position in ("left", "right"):
         orientation = "vertical"
-        if fontsize is None:
-            fontsize = resolve_param("ytick.labelsize")
-        if tick_pad is None:
-            tick_pad = resolve_param("ytick.major.pad")
+        fontsize = resolve_param("ytick.labelsize", fontsize)
+        tick_pad = resolve_param("ytick.major.pad", tick_pad)
     else:  # top, bottom
         orientation = "horizontal"
-        if fontsize is None:
-            fontsize = resolve_param("xtick.labelsize")
-        if tick_pad is None:
-            tick_pad = resolve_param("xtick.major.pad")
+        fontsize = resolve_param("xtick.labelsize", fontsize)
+        tick_pad = resolve_param("xtick.major.pad", tick_pad)
 
     # Measure text dimensions
     width, height = measure_text_dimensions(
@@ -208,22 +202,14 @@ def calculate_label_space(
         unit="points",  # Work in points for tick_pad addition
     )
 
+    # The width and height returned are already the dimensions of the
+    # rotated bounding box (rotation is applied in measure_text_dimensions).
     # For vertical labels (left/right), we need the width
     # For horizontal labels (top/bottom), we need the height
-    # But rotation affects this:
-    if rotation != 0:
-        # When rotated, the "space" dimension depends on the angle
-        import math
-        rad = math.radians(abs(rotation))
-        if position in ("left", "right"):
-            space = width * math.cos(rad) + height * math.sin(rad)
-        else:
-            space = height * math.cos(rad) + width * math.sin(rad)
-    else:
-        if position in ("left", "right"):
-            space = width
-        else:
-            space = height
+    if position in ("left", "right"):
+        space = width
+    else:  # top, bottom
+        space = height
 
     # Add tick padding
     space += tick_pad

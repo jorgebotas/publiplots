@@ -12,8 +12,9 @@ from typing import Optional, Tuple, Union, Dict, List
 
 from publiplots.themes.rcparams import resolve_param
 from publiplots.utils.offset import offset_patches, offset_lines, offset_collections
-from publiplots.utils.text import calculate_label_space
-from .dendrogram import cluster_data, dendrogram as dendrogram_plot, ticklabels as ticklabels_plot
+from publiplots.utils.legend import legend as legend_from_utils
+from .dendrogram import cluster_data, dendrogram as dendrogram_plot
+from .ticklabels import ticklabels as ticklabels_plot
 
 # Conversion constants
 MM2INCH = 1 / 25.4
@@ -44,21 +45,14 @@ def complex_heatmap(
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    xticklabels_kws: Optional[Dict] = None,
-    yticklabels_kws: Optional[Dict] = None,
     legend: bool = True,
     legend_kws: Optional[Dict] = None,
-    xticklabels: Union[bool, str, List] = "auto",
-    yticklabels: Union[bool, str, List] = "auto",
     mask: Optional[Union[pd.DataFrame, np.ndarray]] = None,
     # Clustering parameters
     row_cluster: bool = False,
     col_cluster: bool = False,
     cluster_method: str = "ward",
     cluster_metric: str = "euclidean",
-    row_dendrogram: bool = True,
-    col_dendrogram: bool = True,
-    dendrogram_size: float = 10,
     # Layout parameters
     hspace: float = 1.0,
     wspace: float = 1.0,
@@ -68,8 +62,8 @@ def complex_heatmap(
     Create a complex heatmap builder for adding margin plots.
 
     This function returns a builder object that allows adding plots to the
-    margins of a heatmap using method chaining. Call `.build()` to render
-    the final figure.
+    margins of a heatmap using method chaining. Tick labels and dendrograms
+    can be added via `.add_*()` methods. Call `.build()` to render the final figure.
 
     Parameters
     ----------
@@ -111,40 +105,20 @@ def complex_heatmap(
         Plot title.
     xlabel, ylabel : str, default=""
         Axis labels.
-    xticklabels_kws : dict, optional
-        Keyword arguments for x-axis tick labels. Supports:
-        - side: 'top', 'bottom', or 'auto' (default: 'auto')
-        - rotation: angle in degrees (default: 0)
-        - fontsize: font size in points
-        - color: text color
-        - va/verticalalignment: vertical alignment
-        - ha/horizontalalignment: horizontal alignment
-        - and other matplotlib text properties
-    yticklabels_kws : dict, optional
-        Keyword arguments for y-axis tick labels. Same options as xticklabels_kws,
-        but side options are 'left', 'right', or 'auto'.
     legend : bool, default=True
         Show legend.
     legend_kws : dict, optional
         Legend styling.
-    xticklabels, yticklabels : bool, str, or list
-        Tick label configuration.
     mask : DataFrame or array, optional
         Cell mask.
     row_cluster : bool, default=False
-        Cluster rows.
+        Cluster rows. Works with both wide and long format data.
     col_cluster : bool, default=False
-        Cluster columns.
+        Cluster columns. Works with both wide and long format data.
     cluster_method : str, default="ward"
-        Clustering linkage method.
+        Clustering linkage method (ward, single, complete, average).
     cluster_metric : str, default="euclidean"
         Clustering distance metric.
-    row_dendrogram : bool, default=True
-        Show row dendrogram if clustering.
-    col_dendrogram : bool, default=True
-        Show column dendrogram if clustering.
-    dendrogram_size : float, default=10
-        Dendrogram size in mm.
     hspace : float, default=1.0
         Vertical space between plots (mm).
     wspace : float, default=1.0
@@ -159,19 +133,25 @@ def complex_heatmap(
 
     Examples
     --------
-    Basic complex heatmap with margins:
+    Basic complex heatmap with tick labels and dendrograms:
 
     >>> fig, axes = (
-    ...     pp.complex_heatmap(data, x="sample", y="gene", value="expr")
-    ...     .add_top(pp.barplot, data=totals, x="sample", y="count", height=15)
-    ...     .add_left(pp.barplot, data=means, x="mean", y="gene", width=15)
+    ...     pp.complex_heatmap(data, x="sample", y="gene", value="expr",
+    ...                        row_cluster=True, col_cluster=True)
+    ...     .add_top(pp.dendrogram, height=10, color="black")
+    ...     .add_bottom(pp.ticklabels, height=15, rotation=45)
+    ...     .add_left(pp.dendrogram, width=10, color="black")
+    ...     .add_right(pp.ticklabels, width=20)
     ...     .build()
     ... )
 
-    With clustering and dendrograms:
+    With additional margin plots:
 
     >>> fig, axes = (
-    ...     pp.complex_heatmap(matrix, row_cluster=True, col_cluster=True)
+    ...     pp.complex_heatmap(matrix, row_cluster=True)
+    ...     .add_top(pp.barplot, data=totals, x="sample", y="count", height=15)
+    ...     .add_left(pp.dendrogram, width=10)
+    ...     .add_right(pp.ticklabels, width=20)
     ...     .build()
     ... )
 
@@ -206,20 +186,13 @@ def complex_heatmap(
         title=title,
         xlabel=xlabel,
         ylabel=ylabel,
-        xticklabels_kws=xticklabels_kws,
-        yticklabels_kws=yticklabels_kws,
         legend=legend,
         legend_kws=legend_kws,
-        xticklabels=xticklabels,
-        yticklabels=yticklabels,
         mask=mask,
         row_cluster=row_cluster,
         col_cluster=col_cluster,
         cluster_method=cluster_method,
         cluster_metric=cluster_metric,
-        row_dendrogram=row_dendrogram,
-        col_dendrogram=col_dendrogram,
-        dendrogram_size=dendrogram_size,
         hspace=hspace,
         wspace=wspace,
         **kwargs
@@ -260,20 +233,13 @@ class ComplexHeatmapBuilder:
         title: str = "",
         xlabel: str = "",
         ylabel: str = "",
-        xticklabels_kws: Optional[Dict] = None,
-        yticklabels_kws: Optional[Dict] = None,
         legend: bool = True,
         legend_kws: Optional[Dict] = None,
-        xticklabels: Union[bool, str, List] = "auto",
-        yticklabels: Union[bool, str, List] = "auto",
         mask: Optional[Union[pd.DataFrame, np.ndarray]] = None,
         row_cluster: bool = False,
         col_cluster: bool = False,
         cluster_method: str = "ward",
         cluster_metric: str = "euclidean",
-        row_dendrogram: bool = True,
-        col_dendrogram: bool = True,
-        dendrogram_size: float = 10,
         hspace: float = 2.0,
         wspace: float = 2.0,
         **kwargs
@@ -305,15 +271,9 @@ class ComplexHeatmapBuilder:
             "ylabel": ylabel,
             "legend": legend,
             "legend_kws": legend_kws,
-            "xticklabels": xticklabels,
-            "yticklabels": yticklabels,
             "mask": mask,
         }
         self._heatmap_params.update(kwargs)
-
-        # Store tick label kwargs (with defaults)
-        self._xticklabels_kws = xticklabels_kws or {}
-        self._yticklabels_kws = yticklabels_kws or {}
 
         # Layout parameters
         self._figsize = figsize or resolve_param("figure.figsize")
@@ -325,9 +285,6 @@ class ComplexHeatmapBuilder:
         self._col_cluster = col_cluster
         self._cluster_method = cluster_method
         self._cluster_metric = cluster_metric
-        self._row_dendrogram = row_dendrogram
-        self._col_dendrogram = col_dendrogram
-        self._dendrogram_size = dendrogram_size
 
         # Margin plots storage
         self._margins = {
@@ -338,7 +295,8 @@ class ComplexHeatmapBuilder:
         }
 
         # Computed data (set during build)
-        self._matrix = None
+        self._data = None  # Original long-format data (None if wide format)
+        self._matrix = None  # Value matrix (always set)
         self._row_order = None
         self._col_order = None
         self._row_linkage = None
@@ -347,7 +305,7 @@ class ComplexHeatmapBuilder:
     def add_top(
         self,
         func,
-        height: float = 15,
+        height: Optional[float] = None,
         data: Optional[pd.DataFrame] = None,
         align: bool = True,
         gap: float = 0,
@@ -359,9 +317,10 @@ class ComplexHeatmapBuilder:
         Parameters
         ----------
         func : callable
-            Plot function (e.g., pp.barplot). Must accept `ax` parameter.
-        height : float, default=15
-            Height in millimeters.
+            Plot function (e.g., pp.barplot, pp.ticklabels, pp.legend). Must accept `ax` parameter.
+        height : float, optional
+            Height in millimeters. If None, automatically calculated for ticklabels and legend.
+            Default: None for ticklabels/legend, 15 for other plots.
         data : DataFrame, optional
             Data for the plot.
         align : bool, default=True
@@ -376,6 +335,14 @@ class ComplexHeatmapBuilder:
         self : ComplexHeatmapBuilder
             Returns self for method chaining.
         """
+        # Auto-detect if this is ticklabels and set default size
+        is_ticklabels = (func is ticklabels_plot or
+                        getattr(func, '__name__', '') == 'ticklabels')
+        is_legend = (func is legend_from_utils or
+                    getattr(func, '__name__', '') == 'legend')
+        if height is None:
+            height = 'auto' if (is_ticklabels or is_legend) else 15
+
         self._margins['top'].append({
             'func': func,
             'size': height,
@@ -389,7 +356,7 @@ class ComplexHeatmapBuilder:
     def add_bottom(
         self,
         func,
-        height: float = 15,
+        height: Optional[float] = None,
         data: Optional[pd.DataFrame] = None,
         align: bool = True,
         gap: float = 0,
@@ -401,9 +368,10 @@ class ComplexHeatmapBuilder:
         Parameters
         ----------
         func : callable
-            Plot function. Must accept `ax` parameter.
-        height : float, default=15
-            Height in millimeters.
+            Plot function (e.g., pp.barplot, pp.ticklabels, pp.legend). Must accept `ax` parameter.
+        height : float, optional
+            Height in millimeters. If None, automatically calculated for ticklabels and legend.
+            Default: None for ticklabels/legend, 15 for other plots.
         data : DataFrame, optional
             Data for the plot.
         align : bool, default=True
@@ -417,6 +385,14 @@ class ComplexHeatmapBuilder:
         -------
         self : ComplexHeatmapBuilder
         """
+        # Auto-detect if this is ticklabels and set default size
+        is_ticklabels = (func is ticklabels_plot or
+                        getattr(func, '__name__', '') == 'ticklabels')
+        is_legend = (func is legend_from_utils or
+                    getattr(func, '__name__', '') == 'legend')
+        if height is None:
+            height = 'auto' if (is_ticklabels or is_legend) else 15
+
         self._margins['bottom'].append({
             'func': func,
             'size': height,
@@ -430,7 +406,7 @@ class ComplexHeatmapBuilder:
     def add_left(
         self,
         func,
-        width: float = 15,
+        width: Optional[float] = None,
         data: Optional[pd.DataFrame] = None,
         align: bool = True,
         gap: float = 0,
@@ -442,9 +418,10 @@ class ComplexHeatmapBuilder:
         Parameters
         ----------
         func : callable
-            Plot function. Must accept `ax` parameter.
-        width : float, default=15
-            Width in millimeters.
+            Plot function (e.g., pp.barplot, pp.ticklabels, pp.legend). Must accept `ax` parameter.
+        width : float, optional
+            Width in millimeters. If None, automatically calculated for ticklabels and legend.
+            Default: None for ticklabels/legend, 15 for other plots.
         data : DataFrame, optional
             Data for the plot.
         align : bool, default=True
@@ -458,6 +435,14 @@ class ComplexHeatmapBuilder:
         -------
         self : ComplexHeatmapBuilder
         """
+        # Auto-detect if this is ticklabels and set default size
+        is_ticklabels = (func is ticklabels_plot or
+                        getattr(func, '__name__', '') == 'ticklabels')
+        is_legend = (func is legend_from_utils or
+                    getattr(func, '__name__', '') == 'legend')
+        if width is None:
+            width = 'auto' if (is_ticklabels or is_legend) else 15
+
         self._margins['left'].append({
             'func': func,
             'size': width,
@@ -471,7 +456,7 @@ class ComplexHeatmapBuilder:
     def add_right(
         self,
         func,
-        width: float = 15,
+        width: Optional[float] = None,
         data: Optional[pd.DataFrame] = None,
         align: bool = True,
         gap: float = 0,
@@ -483,9 +468,10 @@ class ComplexHeatmapBuilder:
         Parameters
         ----------
         func : callable
-            Plot function. Must accept `ax` parameter.
-        width : float, default=15
-            Width in millimeters.
+            Plot function (e.g., pp.barplot, pp.ticklabels, pp.legend). Must accept `ax` parameter.
+        width : float, optional
+            Width in millimeters. If None, automatically calculated for ticklabels and legend.
+            Default: None for ticklabels/legend, 15 for other plots.
         data : DataFrame, optional
             Data for the plot.
         align : bool, default=True
@@ -499,6 +485,14 @@ class ComplexHeatmapBuilder:
         -------
         self : ComplexHeatmapBuilder
         """
+        # Auto-detect if this is ticklabels and set default size
+        is_ticklabels = (func is ticklabels_plot or
+                        getattr(func, '__name__', '') == 'ticklabels')
+        is_legend = (func is legend_from_utils or
+                    getattr(func, '__name__', '') == 'legend')
+        if width is None:
+            width = 'auto' if (is_ticklabels or is_legend) else 15
+
         self._margins['right'].append({
             'func': func,
             'size': width,
@@ -509,49 +503,15 @@ class ComplexHeatmapBuilder:
         })
         return self
 
-    def _calculate_label_space_for_position(
-        self,
-        labels: List[str],
-        position: str = 'left',
-        fig: Optional[plt.Figure] = None
-    ) -> float:
-        """
-        Calculate space needed for tick labels using actual text measurement.
-
-        This uses matplotlib's text rendering to get accurate measurements,
-        matching the approach used in upsetplot for consistent results.
-
-        Note: We pass tick_pad=0 because we draw labels in dedicated axes,
-        not using matplotlib's tick system.
-
-        Parameters
-        ----------
-        labels : list of str
-            The tick labels to measure.
-        position : str
-            Position where labels will be placed: 'left', 'right', 'top', 'bottom'.
-        fig : Figure, optional
-            Figure to use for measurement. If provided, ensures consistent DPI.
-
-        Returns
-        -------
-        float
-            Required space in inches.
-        """
-        if not labels:
-            return 0.0
-
-        return calculate_label_space(
-            labels=labels,
-            fig=fig,
-            position=position,
-            tick_pad=0,  # No tick padding - we draw in dedicated axes, not using tick system
-            unit="inches",
-            safety_factor=1.0,
-        )
 
     def _prepare_data(self) -> pd.DataFrame:
-        """Prepare and optionally cluster the heatmap data."""
+        """
+        Prepare and optionally cluster the heatmap data.
+
+        For long-format data, stores the original data for margin plots.
+        The matrix is used for clustering, while the original data is passed
+        to heatmap to preserve all columns (including size for dotplots).
+        """
         data = self._heatmap_params['data']
         x = self._heatmap_params['x']
         y = self._heatmap_params['y']
@@ -559,8 +519,15 @@ class ComplexHeatmapBuilder:
 
         # Convert to matrix if long format
         if x is not None and y is not None and value is not None:
+            # Store original long-format data for margin plots and heatmap
+            # (preserves all columns: size, hue, etc.)
+            self._data = data
+
+            # Pivot value column to matrix (for clustering only)
             matrix = data.pivot(index=y, columns=x, values=value)
         else:
+            # Wide format - data is already a matrix
+            self._data = None  # No original long-format data
             matrix = data.copy()
 
         # Apply clustering if requested
@@ -574,38 +541,24 @@ class ComplexHeatmapBuilder:
                     metric=self._cluster_metric,
                 )
 
+            # If we have long-format data, apply categorical ordering to match clustered matrix
+            # This ensures both heatmap and margin plots respect the clustered order
+            if self._data is not None:
+                self._data = self._data.copy()
+                self._data[x] = pd.Categorical(
+                    self._data[x],
+                    categories=matrix.columns,
+                    ordered=True
+                )
+                self._data[y] = pd.Categorical(
+                    self._data[y],
+                    categories=matrix.index,
+                    ordered=True
+                )
+
         self._matrix = matrix
         return matrix
 
-    def _add_clustering_dendrograms(self):
-        """Add dendrogram margin plots if clustering is enabled."""
-        if self._col_cluster and self._col_dendrogram and self._col_linkage is not None:
-            # Add column dendrogram to top
-            self._margins['top'].insert(0, {
-                'func': dendrogram_plot,
-                'size': self._dendrogram_size,
-                'data': None,
-                'align': False,  # Dendrograms have their own coordinate system
-                'gap': 0,
-                'kwargs': {
-                    'linkage': self._col_linkage,
-                    'orientation': 'top',
-                },
-            })
-
-        if self._row_cluster and self._row_dendrogram and self._row_linkage is not None:
-            # Add row dendrogram to left
-            self._margins['left'].insert(0, {
-                'func': dendrogram_plot,
-                'size': self._dendrogram_size,
-                'data': None,
-                'align': False,  # Dendrograms have their own coordinate system
-                'gap': 0,
-                'kwargs': {
-                    'linkage': self._row_linkage,
-                    'orientation': 'left',
-                },
-            })
 
     def build(self) -> Tuple[plt.Figure, Dict[str, Union[Axes, List[Axes]]]]:
         """
@@ -625,9 +578,6 @@ class ComplexHeatmapBuilder:
         # Prepare data (with optional clustering)
         matrix = self._prepare_data()
 
-        # Add dendrograms if clustering enabled
-        self._add_clustering_dendrograms()
-
         # Force align=False for dendrograms (they have their own coordinate system)
         # This must happen BEFORE axes are created with sharex/sharey
         for position in ['top', 'bottom', 'left', 'right']:
@@ -638,108 +588,62 @@ class ComplexHeatmapBuilder:
                 if is_dendrogram:
                     margin['align'] = False
 
-        # Process xticklabels_kws and yticklabels_kws
-        # Extract side and rotation, normalize alignment kwargs
-        xticklabels_kws = self._xticklabels_kws.copy()
-        yticklabels_kws = self._yticklabels_kws.copy()
+        # Auto-calculate sizes for ticklabels and legends with size='auto'
+        # This needs to happen after data preparation so we have the matrix with labels
+        from .ticklabels import calculate_ticklabel_space
 
-        # Pop 'side' from kwargs (with defaults)
-        xlabel_side = xticklabels_kws.pop('side', 'auto')
-        ylabel_side = yticklabels_kws.pop('side', 'auto')
+        # Create a temporary figure for accurate text measurement
+        temp_fig = plt.figure(figsize=self._figsize)
 
-        # Pop 'rotation' from kwargs (will be passed separately to text)
-        xlabel_rotation = xticklabels_kws.pop('rotation', 0)
-        ylabel_rotation = yticklabels_kws.pop('rotation', 0)
+        for position in ['top', 'bottom', 'left', 'right']:
+            for margin in self._margins[position]:
+                if margin['size'] == 'auto':
+                    func = margin['func']
+                    is_ticklabels = (func is ticklabels_plot or
+                                    getattr(func, '__name__', '') == 'ticklabels')
+                    is_legend = (func is legend_from_utils or
+                                getattr(func, '__name__', '') == 'legend')
 
-        # Normalize alignment kwargs (va/verticalalignment, ha/horizontalalignment)
-        # Pop them so we can set defaults based on position
-        xlabel_va = xticklabels_kws.pop('va', xticklabels_kws.pop('verticalalignment', None))
-        xlabel_ha = xticklabels_kws.pop('ha', xticklabels_kws.pop('horizontalalignment', None))
-        ylabel_va = yticklabels_kws.pop('va', yticklabels_kws.pop('verticalalignment', None))
-        ylabel_ha = yticklabels_kws.pop('ha', yticklabels_kws.pop('horizontalalignment', None))
+                    if is_ticklabels:
+                        # Get labels
+                        if position in ('top', 'bottom'):
+                            labels = [str(c) for c in matrix.columns]
+                        else:  # left, right
+                            labels = [str(r) for r in matrix.index]
 
-        # Auto-detect label sides (None means don't add labels automatically)
-        if ylabel_side == 'auto':
-            # If there are left margins, put ylabel on right
-            ylabel_side = 'right' if self._margins['left'] else 'left'
+                        # Extract kwargs for size calculation
+                        kwargs = margin['kwargs']
+                        rotation = kwargs.get('rotation', 0)
+                        fontsize = kwargs.get('fontsize', None)
 
-        if xlabel_side == 'auto':
-            # If there are top margins, put xlabel on bottom
-            xlabel_side = 'bottom' if self._margins['top'] else 'top'
+                        # Calculate required space
+                        # Filter out params that are only for drawing, not sizing
+                        excluded_params = {
+                            'rotation', 'fontsize', 'ax', 'labels', 'position',
+                            'orientation', 'ha', 'va', 'color', 'horizontalalignment',
+                            'verticalalignment'
+                        }
+                        size_kwargs = {k: v for k, v in kwargs.items() if k not in excluded_params}
 
-        # Get labels from the matrix
-        row_labels = [str(label) for label in matrix.index]
-        col_labels = [str(label) for label in matrix.columns]
+                        space_mm = calculate_ticklabel_space(
+                            labels=labels,
+                            position=position,
+                            rotation=rotation,
+                            fontsize=fontsize,
+                            fig=temp_fig,
+                            **size_kwargs
+                        )
 
-        # Calculate required space for labels (in inches) only if labels will be added
-        ylabel_space = 0.0
-        xlabel_space = 0.0
-        if ylabel_side is not None or xlabel_side is not None:
-            # Create a temporary figure for accurate text measurement
-            temp_fig = plt.figure(figsize=self._figsize)
+                        # Update margin size
+                        margin['size'] = space_mm
 
-            if ylabel_side is not None:
-                ylabel_space = self._calculate_label_space_for_position(row_labels, ylabel_side, fig=temp_fig)
-            if xlabel_side is not None:
-                xlabel_space = self._calculate_label_space_for_position(col_labels, xlabel_side, fig=temp_fig)
+                    elif is_legend:
+                        # Use default size for legend panels
+                        # Size will auto-adjust based on content via LegendBuilder
+                        margin['size'] = 30  # mm default
 
-            # Close temp figure - we'll create the real one with proper size
-            plt.close(temp_fig)
-
-        # Build text kwargs for labels with position-appropriate defaults
-        ylabel_text_kws = {
-            'rotation': ylabel_rotation,
-            'va': ylabel_va if ylabel_va is not None else 'center',
-            'ha': ylabel_ha if ylabel_ha is not None else ('left' if ylabel_side == 'right' else 'right'),
-            **yticklabels_kws,  # Remaining kwargs (color, fontsize, etc.)
-        }
-        xlabel_text_kws = {
-            'rotation': xlabel_rotation,
-            'va': xlabel_va if xlabel_va is not None else ('top' if xlabel_side == 'bottom' else 'bottom'),
-            'ha': xlabel_ha if xlabel_ha is not None else 'center',
-            **xticklabels_kws,  # Remaining kwargs (color, fontsize, etc.)
-        }
-
-        # Add label layers as stackable margin "plots"
-        # Labels should be CLOSEST to heatmap (append to end, not insert at 0)
-        # When margins are reversed for drawing, the last item is closest to heatmap
-        if ylabel_side == 'right' and row_labels:
-            self._margins['right'].append({
-                'func': 'labels',
-                'size': ylabel_space / MM2INCH,  # Convert back to mm for consistency
-                'data': row_labels,
-                'align': True,
-                'gap': 0,
-                'kwargs': {'orientation': 'vertical', 'text_kws': ylabel_text_kws},
-            })
-        elif ylabel_side == 'left' and row_labels:
-            self._margins['left'].append({
-                'func': 'labels',
-                'size': ylabel_space / MM2INCH,
-                'data': row_labels,
-                'align': True,
-                'gap': 0,
-                'kwargs': {'orientation': 'vertical', 'text_kws': ylabel_text_kws},
-            })
-
-        if xlabel_side == 'bottom' and col_labels:
-            self._margins['bottom'].append({
-                'func': 'labels',
-                'size': xlabel_space / MM2INCH,
-                'data': col_labels,
-                'align': True,
-                'gap': 0,
-                'kwargs': {'orientation': 'horizontal', 'text_kws': xlabel_text_kws},
-            })
-        elif xlabel_side == 'top' and col_labels:
-            self._margins['top'].append({
-                'func': 'labels',
-                'size': xlabel_space / MM2INCH,
-                'data': col_labels,
-                'align': True,
-                'gap': 0,
-                'kwargs': {'orientation': 'horizontal', 'text_kws': xlabel_text_kws},
-            })
+        # Close temp figure
+        plt.close(temp_fig)
 
         # Count margin plots (now includes labels)
         n_top = len(self._margins['top'])
@@ -811,6 +715,9 @@ class ComplexHeatmapBuilder:
         main_col = n_left
         ax_main = fig.add_subplot(gs[main_row, main_col])
 
+        # Mark main axes for legend collection
+        ax_main._margin_position = 'main'
+
         # Prepare heatmap params
         heatmap_params = self._heatmap_params.copy()
 
@@ -824,10 +731,16 @@ class ComplexHeatmapBuilder:
         ylabel = heatmap_params.pop('ylabel', '')
 
         if self._row_cluster or self._col_cluster:
-            heatmap_params['data'] = self._matrix
-            heatmap_params['x'] = None
-            heatmap_params['y'] = None
-            heatmap_params['value'] = None
+            # If we have long-format data, use the categorically ordered version
+            if self._data is not None:
+                # self._data already has categorical ordering applied in _prepare_data()
+                heatmap_params['data'] = self._data
+            else:
+                # Wide format: switch to matrix
+                heatmap_params['data'] = self._matrix
+                heatmap_params['x'] = None
+                heatmap_params['y'] = None
+                heatmap_params['value'] = None
 
         # Draw main heatmap
         heatmap(ax=ax_main, **heatmap_params)
@@ -863,6 +776,9 @@ class ComplexHeatmapBuilder:
                 gs[row_idx, main_col],
                 sharex=ax_main if margin['align'] else None
             )
+            # Mark axes with position for legend collection
+            ax._margin_position = 'top'
+            ax._margin_index = i
             self._draw_margin_plot(ax, margin, 'top')
             if margin['align']:
                 ax.tick_params(labelbottom=False)
@@ -876,6 +792,9 @@ class ComplexHeatmapBuilder:
                 gs[row_idx, main_col],
                 sharex=ax_main if margin['align'] else None
             )
+            # Mark axes with position for legend collection
+            ax._margin_position = 'bottom'
+            ax._margin_index = i
             self._draw_margin_plot(ax, margin, 'bottom')
             if margin['align'] and i < len(self._margins['bottom']) - 1:
                 ax.tick_params(labeltop=False)
@@ -888,10 +807,14 @@ class ComplexHeatmapBuilder:
                 gs[main_row, col_idx],
                 sharey=ax_main if margin['align'] else None
             )
+            # Mark axes with position for legend collection
+            ax._margin_position = 'left'
+            ax._margin_index = i
             self._draw_margin_plot(ax, margin, 'left')
             if margin['align']:
                 ax.tick_params(labelleft=False)
                 plt.setp(ax.get_yticklabels(), visible=False)
+                ax.invert_xaxis() # Invert x-axis for categorical plots (bars, violins...)
             axes['left'].append(ax)
 
         # Draw right margins
@@ -901,26 +824,80 @@ class ComplexHeatmapBuilder:
                 gs[main_row, col_idx],
                 sharey=ax_main if margin['align'] else None
             )
+            # Mark axes with position for legend collection
+            ax._margin_position = 'right'
+            ax._margin_index = i
             self._draw_margin_plot(ax, margin, 'right')
             if margin['align'] and i < len(self._margins['right']) - 1:
                 ax.tick_params(labelright=False)
             axes['right'].append(ax)
 
+        # Fix axis limits for all aligned margin plots
+        # Categorical plots set xlim to (-0.5, n-0.5), but heatmap uses (0, n)
+        # Set limits once at the end to avoid seaborn warnings with shared axes
+        import warnings
+
+        n_rows = len(self._matrix.index)
+        n_cols = len(self._matrix.columns)
+
+        # Suppress seaborn warning about setting identical limits
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='.*Attempting to set identical.*')
+
+            for ax in axes['top'] + axes['bottom']:
+                if ax.get_shared_x_axes().joined(ax, ax_main):
+                    ax.set_xlim(0, n_cols)
+
+            for ax in axes['left'] + axes['right']:
+                if ax.get_shared_y_axes().joined(ax, ax_main):
+                    ax.set_ylim(n_rows, 0)  # Inverted to match heatmap
+
         return fig, axes
 
     def _draw_margin_plot(self, ax: Axes, margin: Dict, position: str):
-        """Draw a single margin plot or label axes."""
+        """Draw a single margin plot."""
         func = margin['func']
         data = margin['data']
         kwargs = margin['kwargs'].copy()
 
-        # Special handling for label axes (internal 'labels' marker)
-        if func == 'labels':
-            self._draw_label_axes(
-                ax, data, position,
-                kwargs.get('orientation', 'vertical'),
-                text_kws=kwargs.get('text_kws')
-            )
+        # Check if function is legend - handle specially
+        is_legend = (func is legend_from_utils or
+                    getattr(func, '__name__', '') == 'legend')
+        if is_legend:
+            # Collect axes based on collect_from parameter
+            collect_from = kwargs.pop('collect_from', 'all')
+
+            # Get all axes in the figure
+            fig = ax.get_figure()
+            all_axes = fig.get_axes()
+
+            # Filter axes based on collect_from
+            axes_to_collect = []
+
+            if collect_from == 'all':
+                # Collect from all axes with _legend_builder
+                for a in all_axes:
+                    if a == ax:  # Skip the legend panel itself
+                        continue
+                    if hasattr(a, '_legend_builder') and a._legend_builder is not None:
+                        axes_to_collect.append(a)
+            elif collect_from == 'main':
+                # Only from main heatmap
+                for a in all_axes:
+                    if hasattr(a, '_margin_position') and a._margin_position == 'main':
+                        axes_to_collect.append(a)
+            elif isinstance(collect_from, list):
+                # Collect from specific positions
+                for a in all_axes:
+                    if hasattr(a, '_margin_position'):
+                        if a._margin_position in collect_from:
+                            axes_to_collect.append(a)
+
+            # Call legend with from_axes parameter
+            kwargs['ax'] = ax
+            kwargs['from_axes'] = axes_to_collect
+            kwargs['auto'] = False  # Don't auto-create from current ax
+            func(**kwargs)
             return
 
         # Check if function is dendrogram - auto-provide linkage and orientation
@@ -931,12 +908,24 @@ class ComplexHeatmapBuilder:
             if 'orientation' not in kwargs:
                 kwargs['orientation'] = position
 
-            # Auto-provide linkage data if not provided
+            # Auto-provide linkage or data if not provided
             if 'linkage' not in kwargs and data is None:
                 if position in ('top', 'bottom'):
-                    kwargs['linkage'] = self._col_linkage
+                    linkage = self._col_linkage
+                    cluster_param = 'col_cluster'
                 else:  # left, right
-                    kwargs['linkage'] = self._row_linkage
+                    linkage = self._row_linkage
+                    cluster_param = 'row_cluster'
+
+                # Check if clustering was enabled
+                if linkage is None:
+                    raise ValueError(
+                        f"Cannot add dendrogram to {position} margin: clustering is disabled. "
+                        f"Either enable clustering by setting {cluster_param}=True in complex_heatmap(), "
+                        f"or provide custom linkage data via the 'linkage' parameter."
+                    )
+
+                kwargs['linkage'] = linkage
 
         # Check if function is ticklabels - auto-provide labels and position
         is_ticklabels = (func is ticklabels_plot or
@@ -960,14 +949,22 @@ class ComplexHeatmapBuilder:
         # Add ax to kwargs
         kwargs['ax'] = ax
 
-        # Add data if provided
-        if data is not None:
+        if not is_dendrogram and not is_ticklabels:
+            # Add data
+            if data is None:
+                # Prefer original long-format data if available (preserves all columns)
+                if self._data is not None:
+                    data = self._data
+                else:
+                    # Fallback to matrix (wide format)
+                    data = self._matrix.T if position in ("left", "right") else self._matrix
             kwargs['data'] = data
 
-        # Disable legend by default for margin plots (but not for functions that don't accept it)
-        if not is_dendrogram and not is_ticklabels:
-            if 'legend' not in kwargs:
-                kwargs['legend'] = False
+            # Order data appropriately
+            if position in ("top", "bottom"):
+                kwargs["order"] = self._matrix.columns
+            elif position in ("left", "right"):
+                kwargs["order"] = self._matrix.index
 
         # Call the plot function
         try:
@@ -988,6 +985,8 @@ class ComplexHeatmapBuilder:
         # Categorical plots position elements at 0, 1, 2...
         # Shift by +0.5 to align with cell centers
         if margin['align']:
+            # For top/bottom margins: shift along x-axis (vertical)
+            # For left/right margins: shift along y-axis (horizontal)
             orientation = "vertical" if position in ("top", "bottom") else "horizontal"
             # Offset patches (bars, rectangles, etc.)
             if ax.patches:
@@ -999,69 +998,3 @@ class ComplexHeatmapBuilder:
             if ax.collections:
                 offset_collections(ax.collections, offset=0.5, ax=ax, orientation=orientation)
 
-    def _draw_label_axes(self, ax: Axes, labels: List[str], position: str, orientation: str,
-                         text_kws: Optional[Dict] = None):
-        """Draw tick labels in a dedicated axes.
-
-        Parameters
-        ----------
-        ax : Axes
-            The axes to draw labels in.
-        labels : list of str
-            The labels to draw.
-        position : str
-            Position: 'left', 'right', 'top', or 'bottom'.
-        orientation : str
-            Orientation: 'vertical' or 'horizontal'.
-        text_kws : dict, optional
-            Keyword arguments passed to ax.text(), including:
-            - rotation: angle in degrees
-            - va: vertical alignment
-            - ha: horizontal alignment
-            - fontsize, color, etc.
-        """
-        # Turn off all axes decorations
-        ax.set_xticks([])
-        ax.set_yticks([])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-
-        # Get default font size based on orientation
-        if orientation == 'vertical':
-            default_fontsize = resolve_param("ytick.labelsize")
-        else:
-            default_fontsize = resolve_param("xtick.labelsize")
-
-        # Build final text kwargs with defaults
-        final_text_kws = text_kws.copy() if text_kws else {}
-        if 'fontsize' not in final_text_kws:
-            final_text_kws['fontsize'] = default_fontsize
-
-        n_labels = len(labels)
-
-        if position in ['left', 'right']:
-            # Vertical labels for y-axis
-            # Match heatmap's coordinate system: cells centered at 0.5, 1.5, 2.5...
-            ax.set_ylim(0, n_labels)
-            ax.invert_yaxis()  # Match heatmap orientation
-
-            for i, label in enumerate(labels):
-                # Draw at cell centers (0.5, 1.5, 2.5...) to match heatmap ticks
-                y_pos = i + 0.5
-                x_pos = 0 if position == 'right' else 1
-                ax.text(x_pos, y_pos, label,
-                       transform=ax.get_yaxis_transform(),
-                       **final_text_kws)
-
-        else:  # top or bottom
-            # Horizontal labels for x-axis
-            # Match heatmap's coordinate system: cells centered at 0.5, 1.5, 2.5...
-            ax.set_xlim(0, n_labels)
-
-            for i, label in enumerate(labels):
-                # Draw at cell centers (0.5, 1.5, 2.5...) to match heatmap ticks
-                x_pos = i + 0.5
-                y_pos = 1 if position == 'bottom' else 0
-                ax.text(x_pos, y_pos, label,
-                       transform=ax.get_xaxis_transform(),
-                       **final_text_kws)
