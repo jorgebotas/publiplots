@@ -12,9 +12,9 @@ from typing import Optional, Tuple, Union, Dict, List
 
 from publiplots.themes.rcparams import resolve_param
 from publiplots.utils.offset import offset_patches, offset_lines, offset_collections
+from publiplots.utils.legend import legend as legend_from_utils
 from .dendrogram import cluster_data, dendrogram as dendrogram_plot
 from .ticklabels import ticklabels as ticklabels_plot
-from .legend import legend as legend_plot
 
 # Conversion constants
 MM2INCH = 1 / 25.4
@@ -337,7 +337,7 @@ class ComplexHeatmapBuilder:
         # Auto-detect if this is ticklabels and set default size
         is_ticklabels = (func is ticklabels_plot or
                         getattr(func, '__name__', '') == 'ticklabels')
-        is_legend = (func is legend_plot or
+        is_legend = (func is legend_from_utils or
                     getattr(func, '__name__', '') == 'legend')
         if height is None:
             height = 'auto' if (is_ticklabels or is_legend) else 15
@@ -387,7 +387,7 @@ class ComplexHeatmapBuilder:
         # Auto-detect if this is ticklabels and set default size
         is_ticklabels = (func is ticklabels_plot or
                         getattr(func, '__name__', '') == 'ticklabels')
-        is_legend = (func is legend_plot or
+        is_legend = (func is legend_from_utils or
                     getattr(func, '__name__', '') == 'legend')
         if height is None:
             height = 'auto' if (is_ticklabels or is_legend) else 15
@@ -437,7 +437,7 @@ class ComplexHeatmapBuilder:
         # Auto-detect if this is ticklabels and set default size
         is_ticklabels = (func is ticklabels_plot or
                         getattr(func, '__name__', '') == 'ticklabels')
-        is_legend = (func is legend_plot or
+        is_legend = (func is legend_from_utils or
                     getattr(func, '__name__', '') == 'legend')
         if width is None:
             width = 'auto' if (is_ticklabels or is_legend) else 15
@@ -487,7 +487,7 @@ class ComplexHeatmapBuilder:
         # Auto-detect if this is ticklabels and set default size
         is_ticklabels = (func is ticklabels_plot or
                         getattr(func, '__name__', '') == 'ticklabels')
-        is_legend = (func is legend_plot or
+        is_legend = (func is legend_from_utils or
                     getattr(func, '__name__', '') == 'legend')
         if width is None:
             width = 'auto' if (is_ticklabels or is_legend) else 15
@@ -562,7 +562,6 @@ class ComplexHeatmapBuilder:
         # Auto-calculate sizes for ticklabels and legends with size='auto'
         # This needs to happen after data preparation so we have the matrix with labels
         from .ticklabels import calculate_ticklabel_space
-        from .legend import calculate_legend_space
 
         # Create a temporary figure for accurate text measurement
         temp_fig = plt.figure(figsize=self._figsize)
@@ -573,7 +572,7 @@ class ComplexHeatmapBuilder:
                     func = margin['func']
                     is_ticklabels = (func is ticklabels_plot or
                                     getattr(func, '__name__', '') == 'ticklabels')
-                    is_legend = (func is legend_plot or
+                    is_legend = (func is legend_from_utils or
                                 getattr(func, '__name__', '') == 'legend')
 
                     if is_ticklabels:
@@ -610,15 +609,9 @@ class ComplexHeatmapBuilder:
                         margin['size'] = space_mm
 
                     elif is_legend:
-                        # Calculate legend space (for now use default)
-                        # TODO: Improve estimation based on collected legends
-                        orientation = 'horizontal' if position in ('top', 'bottom') else 'vertical'
-                        space_mm = calculate_legend_space(
-                            axes_list=[],  # Will be populated when legends are collected
-                            orientation=orientation,
-                            **margin['kwargs']
-                        )
-                        margin['size'] = space_mm
+                        # Use default size for legend panels
+                        # Size will auto-adjust based on content via LegendBuilder
+                        margin['size'] = 30  # mm default
 
         # Close temp figure
         plt.close(temp_fig)
@@ -694,7 +687,6 @@ class ComplexHeatmapBuilder:
         ax_main = fig.add_subplot(gs[main_row, main_col])
 
         # Mark main axes for legend collection
-        ax_main._is_main_heatmap = True
         ax_main._margin_position = 'main'
 
         # Prepare heatmap params
@@ -815,7 +807,7 @@ class ComplexHeatmapBuilder:
 
         # Suppress seaborn warning about setting identical limits
         with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', 'Attempting to set identical')
+            warnings.filterwarnings('ignore', message='.*Attempting to set identical.*')
 
             for ax in axes['top'] + axes['bottom']:
                 if ax.get_shared_x_axes().joined(ax, ax_main):
@@ -834,11 +826,42 @@ class ComplexHeatmapBuilder:
         kwargs = margin['kwargs'].copy()
 
         # Check if function is legend - handle specially
-        is_legend = (func is legend_plot or
+        is_legend = (func is legend_from_utils or
                     getattr(func, '__name__', '') == 'legend')
         if is_legend:
-            # Legend function handles everything internally
+            # Collect axes based on collect_from parameter
+            collect_from = kwargs.pop('collect_from', 'all')
+
+            # Get all axes in the figure
+            fig = ax.get_figure()
+            all_axes = fig.get_axes()
+
+            # Filter axes based on collect_from
+            axes_to_collect = []
+
+            if collect_from == 'all':
+                # Collect from all axes with _legend_builder
+                for a in all_axes:
+                    if a == ax:  # Skip the legend panel itself
+                        continue
+                    if hasattr(a, '_legend_builder') and a._legend_builder is not None:
+                        axes_to_collect.append(a)
+            elif collect_from == 'main':
+                # Only from main heatmap
+                for a in all_axes:
+                    if hasattr(a, '_margin_position') and a._margin_position == 'main':
+                        axes_to_collect.append(a)
+            elif isinstance(collect_from, list):
+                # Collect from specific positions
+                for a in all_axes:
+                    if hasattr(a, '_margin_position'):
+                        if a._margin_position in collect_from:
+                            axes_to_collect.append(a)
+
+            # Call legend with from_axes parameter
             kwargs['ax'] = ax
+            kwargs['from_axes'] = axes_to_collect
+            kwargs['auto'] = False  # Don't auto-create from current ax
             func(**kwargs)
             return
 

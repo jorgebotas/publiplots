@@ -1297,6 +1297,7 @@ def legend(
     gap: float = 2,
     column_spacing: float = 5,
     vpad: float = 5,
+    from_axes: Optional[List[Axes]] = None,
     **kwargs
 ) -> LegendBuilder:
     """
@@ -1327,6 +1328,9 @@ def legend(
         Horizontal spacing between columns (millimeters).
     vpad : float, default=5
         Top padding from axes edge (millimeters).
+    from_axes : list of Axes, optional
+        List of axes to collect and reconcile legends from.
+        Used by complex_heatmap to create unified legends from multiple axes.
     **kwargs
         Additional kwargs passed to add_legend() if handles provided,
         or legend customization options.
@@ -1387,6 +1391,43 @@ def legend(
     # Auto-apply handler_map
     if 'handler_map' not in kwargs:
         kwargs['handler_map'] = get_legend_handler_map()
+
+    # Reconcile mode - collect legends from multiple axes
+    if from_axes is not None:
+        for source_ax in from_axes:
+            if not hasattr(source_ax, '_legend_builder'):
+                continue
+
+            source_builder = source_ax._legend_builder
+            if source_builder is None:
+                continue
+
+            # Iterate through stored elements in the source builder
+            for element_type, element in source_builder.elements:
+                if element_type == "legend":
+                    # Extract handles and labels from the legend
+                    handles_list = element.legendHandles
+                    labels_list = [h.get_label() for h in handles_list]
+                    title = element.get_title().get_text() if element.get_title() else ""
+
+                    # Add to the unified builder
+                    builder.add_legend(
+                        handles=handles_list,
+                        label=title,
+                        **kwargs
+                    )
+                elif element_type == "colorbar":
+                    # Add colorbar to unified legend
+                    # Note: This is more complex as we need to extract colorbar properties
+                    # For now, skip colorbars (can be enhanced later)
+                    pass
+
+        # Hide axes frame and ticks for clean legend panel
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+
+        return builder
 
     # Manual mode with handles
     if handles is not None:
