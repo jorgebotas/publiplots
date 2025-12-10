@@ -1343,6 +1343,77 @@ class LegendBuilder:
 
         return legend
 
+    def add_existing_colorbar(self, cbar: Colorbar, **kwargs) -> Colorbar:
+        """
+        Add an already-created colorbar by repositioning it.
+
+        This method extracts properties from an existing Colorbar object and
+        creates a new colorbar in the legend builder's layout. Colorbars cannot
+        be repositioned like legends because they own their own Axes object.
+
+        Parameters
+        ----------
+        cbar : Colorbar
+            Existing matplotlib Colorbar object.
+        **kwargs
+            Additional customization options passed to add_colorbar().
+
+        Returns
+        -------
+        Colorbar
+            The newly created colorbar object.
+
+        Notes
+        -----
+        This method extracts:
+        - ScalarMappable (colormap + normalization)
+        - Label from the colorbar axes
+        - Tick positions
+        - Actual dimensions from the colorbar axes bounding box
+        - Orientation
+        """
+        # Get the mappable (ScalarMappable) from the colorbar
+        mappable = cbar.mappable
+
+        # Get the label (could be from ax.yaxis or ax.xaxis depending on orientation)
+        cbar_ax = cbar.ax
+        if cbar.orientation == 'vertical':
+            label = cbar_ax.get_ylabel()
+        else:
+            label = cbar_ax.get_xlabel()
+
+        # Get ticks
+        ticks = cbar.get_ticks()
+
+        # Extract actual dimensions from colorbar axes
+        # Measure the colorbar axes bounding box and convert to mm
+        self.fig.canvas.draw()
+        cbar_bbox = cbar_ax.get_window_extent(self.fig.canvas.get_renderer())
+        cbar_width_mm = cbar_bbox.width / self.fig.dpi / self.MM2INCH
+        cbar_height_mm = cbar_bbox.height / self.fig.dpi / self.MM2INCH
+
+        # Determine dimensions based on orientation
+        if cbar.orientation == 'vertical':
+            height = cbar_height_mm
+            width = cbar_width_mm
+        else:  # horizontal
+            height = cbar_height_mm
+            width = cbar_width_mm
+
+        # Merge kwargs with extracted properties
+        colorbar_kwargs = {
+            'mappable': mappable,
+            'label': label,
+            'height': height,
+            'width': width,
+            'orientation': cbar.orientation,
+            'ticks': list(ticks) if ticks is not None else None,
+        }
+        colorbar_kwargs.update(kwargs)
+
+        # Add colorbar to unified builder with preserved dimensions
+        return self.add_colorbar(**colorbar_kwargs)
+
     def add_legend_for(self, type: str, label: Optional[str] = None, **kwargs):
         """
         Add legend by auto-detecting from self.ax stored metadata.
@@ -1551,47 +1622,8 @@ def legend(
                     # Reposition existing legend (no re-rendering needed)
                     builder.add_existing_legend(element)
                 elif element_type == "colorbar":
-                    # Add colorbar to unified legend
-                    # Extract colorbar properties from the stored colorbar object
-                    cbar = element
-
-                    # Get the mappable (ScalarMappable) from the colorbar
-                    mappable = cbar.mappable
-
-                    # Get the label (could be from ax.yaxis or ax.xaxis depending on orientation)
-                    cbar_ax = cbar.ax
-                    if cbar.orientation == 'vertical':
-                        label = cbar_ax.get_ylabel()
-                    else:
-                        label = cbar_ax.get_xlabel()
-
-                    # Get ticks
-                    ticks = cbar.get_ticks()
-
-                    # Extract actual dimensions from colorbar axes
-                    # Measure the colorbar axes bounding box and convert to mm
-                    self.fig.canvas.draw()
-                    cbar_bbox = cbar_ax.get_window_extent(self.fig.canvas.get_renderer())
-                    cbar_width_mm = cbar_bbox.width / self.fig.dpi / builder.MM2INCH
-                    cbar_height_mm = cbar_bbox.height / self.fig.dpi / builder.MM2INCH
-
-                    # Determine dimensions based on orientation
-                    if cbar.orientation == 'vertical':
-                        height = cbar_height_mm
-                        width = cbar_width_mm
-                    else:  # horizontal
-                        height = cbar_height_mm
-                        width = cbar_width_mm
-
-                    # Add colorbar to unified builder with preserved dimensions
-                    builder.add_colorbar(
-                        mappable=mappable,
-                        label=label,
-                        height=height,
-                        width=width,
-                        orientation=cbar.orientation,
-                        ticks=list(ticks) if ticks is not None else None,
-                    )
+                    # Extract and recreate colorbar with preserved properties
+                    builder.add_existing_colorbar(element)
 
         # Hide axes frame and ticks for clean legend panel
         ax.set_xlim(0, 1)
