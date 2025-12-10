@@ -1230,8 +1230,12 @@ class LegendBuilder:
         checks for column overflow, and updates its position without recreating
         it. All legend properties (handles, labels, styling) are preserved.
         """
-        # Measure existing legend dimensions
+        # Measure existing legend dimensions (before removal)
         width, height = self._measure_object_dimensions(legend)
+
+        # Remove legend from its original axes
+        # This is necessary because matplotlib doesn't allow artists to belong to multiple axes
+        legend.remove()
 
         # Check overflow
         if self._check_overflow(height):
