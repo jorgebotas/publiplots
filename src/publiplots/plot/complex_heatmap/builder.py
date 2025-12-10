@@ -541,6 +541,21 @@ class ComplexHeatmapBuilder:
                     metric=self._cluster_metric,
                 )
 
+            # If we have long-format data, apply categorical ordering to match clustered matrix
+            # This ensures both heatmap and margin plots respect the clustered order
+            if self._data is not None:
+                self._data = self._data.copy()
+                self._data[x] = pd.Categorical(
+                    self._data[x],
+                    categories=matrix.columns,
+                    ordered=True
+                )
+                self._data[y] = pd.Categorical(
+                    self._data[y],
+                    categories=matrix.index,
+                    ordered=True
+                )
+
         self._matrix = matrix
         return matrix
 
@@ -716,11 +731,16 @@ class ComplexHeatmapBuilder:
         ylabel = heatmap_params.pop('ylabel', '')
 
         if self._row_cluster or self._col_cluster:
-            # Switch from long format to wide format (matrix)
-            heatmap_params['data'] = self._matrix
-            heatmap_params['x'] = None
-            heatmap_params['y'] = None
-            heatmap_params['value'] = None
+            # If we have long-format data, use the categorically ordered version
+            if self._data is not None:
+                # self._data already has categorical ordering applied in _prepare_data()
+                heatmap_params['data'] = self._data
+            else:
+                # Wide format: switch to matrix
+                heatmap_params['data'] = self._matrix
+                heatmap_params['x'] = None
+                heatmap_params['y'] = None
+                heatmap_params['value'] = None
 
         # Draw main heatmap
         heatmap(ax=ax_main, **heatmap_params)
@@ -943,8 +963,7 @@ class ComplexHeatmapBuilder:
             # Order data appropriately
             if position in ("top", "bottom"):
                 kwargs["order"] = self._matrix.columns
-
-            elif position == "left":
+            elif position in ("left", "right"):
                 kwargs["order"] = self._matrix.index
 
         # Call the plot function
