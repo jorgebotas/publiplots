@@ -1385,19 +1385,14 @@ class LegendBuilder:
         # Get the label (could be from ax.yaxis or ax.xaxis depending on orientation)
         cbar_ax = cbar.ax
 
-        # IMPORTANT: Draw canvas first to ensure tick labels are rendered
+        # Draw canvas
         self.fig.canvas.draw()
 
         # Now extract tick labels and positions
         if cbar.orientation == 'vertical':
             label = cbar_ax.get_ylabel()
-            tick_labels = [t.get_text() for t in cbar_ax.get_yticklabels()]
         else:
             label = cbar_ax.get_xlabel()
-            tick_labels = [t.get_text() for t in cbar_ax.get_xticklabels()]
-
-        # Get ticks - only if we have actual tick labels
-        ticks = cbar.get_ticks() if tick_labels and any(tick_labels) else None
 
         # Extract actual dimensions from colorbar axes
         # Measure the colorbar axes bounding box and convert to mm
@@ -1420,25 +1415,11 @@ class LegendBuilder:
             'height': height,
             'width': width,
             'orientation': cbar.orientation,
-            'ticks': list(ticks) if ticks is not None else None,
         }
         colorbar_kwargs.update(kwargs)
 
         # Add colorbar to unified builder with preserved dimensions
         new_cbar = self.add_colorbar(**colorbar_kwargs)
-
-        # Preserve tick formatting from original colorbar
-        if ticks is not None and tick_labels and len(tick_labels) > 0:
-            # Ensure ticks are set first, then labels
-            new_cbar.set_ticks(ticks)
-
-            # Set tick labels explicitly to preserve formatting
-            # Make sure number of labels matches number of ticks
-            if len(tick_labels) == len(ticks):
-                if cbar.orientation == 'vertical':
-                    new_cbar.ax.set_yticklabels(tick_labels)
-                else:
-                    new_cbar.ax.set_xticklabels(tick_labels)
 
         # Remove original colorbar to avoid duplication
         cbar.remove()

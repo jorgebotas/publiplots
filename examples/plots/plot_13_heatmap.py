@@ -164,31 +164,29 @@ plt.show()
 # Complex Heatmap with Margin Plots
 # ---------------------------------
 # Add bar plots to the margins to show summary statistics.
-
 # Create expression data
 np.random.seed(456)
 genes = ['TP53', 'BRCA1', 'EGFR', 'KRAS', 'MYC', 'PIK3CA']
 samples = ['S1', 'S2', 'S3', 'S4', 'S5']
-
 expr_matrix = pd.DataFrame(
     np.random.randn(len(genes), len(samples)),
     index=genes,
     columns=samples
 )
-
 # Create summary data for margins
 # Column (sample) summaries - total expression per sample
 col_summary = pd.DataFrame({
     'sample': samples,
     'total': expr_matrix.sum(axis=0).values,
 })
-
+col_summary["direction"] = col_summary.total.apply(
+    lambda x: "negative" if x < 0 else "positive"
+)
 # Row (gene) summaries - mean expression per gene
 row_summary = pd.DataFrame({
     'gene': genes,
     'mean': expr_matrix.mean(axis=1).values,
 })
-
 fig, axes = (
     pp.complex_heatmap(
         expr_matrix,
@@ -197,18 +195,29 @@ fig, axes = (
         row_cluster=True,
         col_cluster=True,
     )
+    .add_top(pp.dendrogram)
+    .add_top(pp.ticklabels)
+    .add_left(pp.dendrogram)
+    .add_left(pp.ticklabels)
     .add_top(
         pp.barplot,
         data=col_summary,
         x='sample',
         y='total',
         height=20,
-        color='steelblue',
+        hue="direction",
+        legend=True
     )
+    .add_left(
+        pp.violinplot,
+        orient="h",
+        width=20,
+    )
+    .add_right(pp.legend)
     .build()
 )
-plt.suptitle('Complex Heatmap with Summary Bar Plot', y=1.02)
 plt.show()
+
 
 # %%
 # Dot Heatmap for GO Enrichment
