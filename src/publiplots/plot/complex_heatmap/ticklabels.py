@@ -176,9 +176,8 @@ def ticklabels(
 
     if position in ['left', 'right']:
         # Vertical labels for y-axis
-        ax.set_ylim(0, n_labels)
-        ax.invert_yaxis()  # Match heatmap orientation
-
+        # Note: xlim/ylim are set by ComplexHeatmapBuilder after all margin plots
+        # to ensure consistent coordinate system across all aligned plots
         for i, label in enumerate(labels):
             y_pos = i + 0.5
             x_pos = 0 if ha == 'left' else 1
@@ -188,8 +187,8 @@ def ticklabels(
 
     else:  # top or bottom
         # Horizontal labels for x-axis
-        ax.set_xlim(0, n_labels)
-
+        # Note: xlim/ylim are set by ComplexHeatmapBuilder after all margin plots
+        # to ensure consistent coordinate system across all aligned plots
         for i, label in enumerate(labels):
             x_pos = i + 0.5
             y_pos = 1 if va == 'top' else 0

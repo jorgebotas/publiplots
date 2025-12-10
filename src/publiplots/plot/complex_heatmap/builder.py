@@ -764,6 +764,20 @@ class ComplexHeatmapBuilder:
                 ax.tick_params(labelright=False)
             axes['right'].append(ax)
 
+        # Fix axis limits for all aligned margin plots
+        # Categorical plots set xlim to (-0.5, n-0.5), but heatmap uses (0, n)
+        # Set limits once at the end to avoid seaborn warnings with shared axes
+        n_rows = len(self._matrix.index)
+        n_cols = len(self._matrix.columns)
+
+        for ax in axes['top'] + axes['bottom']:
+            if ax.get_shared_x_axes().joined(ax, ax_main):
+                ax.set_xlim(0, n_cols)
+
+        for ax in axes['left'] + axes['right']:
+            if ax.get_shared_y_axes().joined(ax, ax_main):
+                ax.set_ylim(n_rows, 0)  # Inverted to match heatmap
+
         return fig, axes
 
     def _draw_margin_plot(self, ax: Axes, margin: Dict, position: str):
