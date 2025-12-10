@@ -646,14 +646,11 @@ class LegendBuilder:
     x_offset : float, default=2
         Horizontal distance from the right edge of axes (millimeters).
     y_offset : float, optional
-        Vertical position from top of axes (millimeters). If None, starts at
-        axes height minus vpad.
+        Vertical position from top of axes (millimeters). If None, starts at top
     gap : float, default=2
         Vertical spacing between legend elements (millimeters).
     column_spacing : float, default=5
         Horizontal spacing between columns (millimeters).
-    vpad : float, default=5
-        Padding from top of axes (millimeters).
     max_width : float, optional
         Maximum width for legends (millimeters). If None, auto-estimated from content.
 
@@ -679,9 +676,8 @@ class LegendBuilder:
         ax: Axes,
         x_offset: float = 2,
         y_offset: Optional[float] = None,
-        gap: float = 2,
+        gap: float = 4,
         column_spacing: float = 5,
-        vpad: float = 5,
         max_width: Optional[float] = None,
         mode: str = 'external',
     ):
@@ -692,20 +688,16 @@ class LegendBuilder:
         # Store mode first (needed for _get_axes_height)
         self.mode = mode  # 'external' (figure coords) or 'internal' (axes coords)
 
-        # Adjust vpad for internal mode (smaller top padding within axes)
-        if mode == 'internal':
-            vpad = min(vpad, 2)  # Max 2mm top padding for internal
 
         # Store parameters (all in mm)
         self.x_offset = x_offset
         self.gap = gap
         self.column_spacing = column_spacing
-        self.vpad = vpad
         self.max_width = max_width
 
         # Initialize position tracking (all in mm)
         self.current_x = x_offset
-        self.current_y = y_offset if y_offset is not None else self._get_axes_height() - vpad
+        self.current_y = y_offset if y_offset is not None else self._get_axes_height()
         self.column_start_y = self.current_y
 
         # Column tracking
@@ -1518,7 +1510,6 @@ def legend(
     x_offset: float = 2,
     gap: float = 2,
     column_spacing: float = 5,
-    vpad: float = 5,
     from_axes: Optional[List[Axes]] = None,
     **kwargs
 ) -> LegendBuilder:
@@ -1548,8 +1539,6 @@ def legend(
         Vertical spacing between legend elements (millimeters).
     column_spacing : float, default=5
         Horizontal spacing between columns (millimeters).
-    vpad : float, default=5
-        Top padding from axes edge (millimeters).
     from_axes : list of Axes, optional
         List of axes to collect and reconcile legends from.
         Used by complex_heatmap to create unified legends from multiple axes.
@@ -1608,7 +1597,6 @@ def legend(
             x_offset=x_offset,
             gap=gap,
             column_spacing=column_spacing,
-            vpad=vpad,
             mode=mode,
         )
         # Store on axes for reuse
