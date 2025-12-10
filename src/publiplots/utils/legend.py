@@ -1374,17 +1374,21 @@ class LegendBuilder:
         # Get the mappable (ScalarMappable) from the colorbar
         mappable = cbar.mappable
 
-        # Get the label (could be from ax.yaxis or ax.xaxis depending on orientation)
+        # Get the label from kwargs (passed from reconciliation) or extract from colorbar axes
         cbar_ax = cbar.ax
 
         # Draw canvas
         self.fig.canvas.draw()
 
-        # Now extract tick labels and positions
-        if cbar.orientation == 'vertical':
-            label = cbar_ax.get_ylabel()
+        # Check if label is provided in kwargs (from title text object)
+        if 'label' in kwargs:
+            label = kwargs.pop('label')
         else:
-            label = cbar_ax.get_xlabel()
+            # Fallback: extract from colorbar axes (though this will be empty if title was a text object)
+            if cbar.orientation == 'vertical':
+                label = cbar_ax.get_ylabel()
+            else:
+                label = cbar_ax.get_xlabel()
 
         # Extract actual dimensions from colorbar axes
         # Measure the colorbar axes bounding box and convert to mm
@@ -1403,7 +1407,7 @@ class LegendBuilder:
         # Merge kwargs with extracted properties
         colorbar_kwargs = {
             'mappable': mappable,
-            'label': label,
+            'label': label if label else "",
             'height': height,
             'width': width,
             'orientation': cbar.orientation,
@@ -1617,15 +1621,32 @@ def legend(
                 continue
 
             # Iterate through stored elements in the source builder
-            for element_type, element in source_builder.elements:
+            # Track indices to skip text elements that are colorbar titles
+            skip_indices = set()
+
+            for i, (element_type, element) in enumerate(source_builder.elements):
+                if i in skip_indices:
+                    continue
+
                 if element_type == "legend":
                     # Reposition existing legend (no re-rendering needed)
                     builder.add_existing_legend(element)
                 elif element_type == "colorbar":
-                    # Extract and recreate colorbar with preserved properties
-                    builder.add_existing_colorbar(element)
+                    # Check if next element is a text object (colorbar title)
+                    title_text = None
+                    if i + 1 < len(source_builder.elements):
+                        next_type, next_element = source_builder.elements[i + 1]
+                        if next_type == "text":
+                            # Extract title text
+                            title_text = next_element.get_text()
+                            skip_indices.add(i + 1)
+                            # Remove old title
+                            next_element.remove()
+
+                    # Extract and recreate colorbar with title
+                    builder.add_existing_colorbar(element, label=title_text)
                 elif element_type == "text":
-                    # Remove old title text objects (they're recreated with colorbars)
+                    # Standalone text (not a colorbar title) - remove it
                     element.remove()
 
         # Hide axes frame and ticks for clean legend panel
