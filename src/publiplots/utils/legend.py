@@ -1406,8 +1406,7 @@ def legend(
             for element_type, element in source_builder.elements:
                 if element_type == "legend":
                     # Extract handles and labels from the legend
-                    handles_list = element.legendHandles
-                    labels_list = [h.get_label() for h in handles_list]
+                    handles_list, labels_list = element.get_legend_handles_labels()
                     title = element.get_title().get_text() if element.get_title() else ""
 
                     # Add to the unified builder
@@ -1418,9 +1417,28 @@ def legend(
                     )
                 elif element_type == "colorbar":
                     # Add colorbar to unified legend
-                    # Note: This is more complex as we need to extract colorbar properties
-                    # For now, skip colorbars (can be enhanced later)
-                    pass
+                    # Extract colorbar properties from the stored colorbar object
+                    cbar = element
+
+                    # Get the mappable (ScalarMappable) from the colorbar
+                    mappable = cbar.mappable
+
+                    # Get the label (could be from ax.yaxis or ax.xaxis depending on orientation)
+                    cbar_ax = cbar.ax
+                    if cbar.orientation == 'vertical':
+                        label = cbar_ax.get_ylabel()
+                    else:
+                        label = cbar_ax.get_xlabel()
+
+                    # Add colorbar to unified builder
+                    # Use default height/width from builder
+                    builder.add_colorbar(
+                        mappable=mappable,
+                        label=label,
+                        height=15,  # mm, default
+                        width=4.5,  # mm, default
+                        orientation=cbar.orientation,
+                    )
 
         # Hide axes frame and ticks for clean legend panel
         ax.set_xlim(0, 1)
