@@ -689,17 +689,24 @@ class LegendBuilder:
         self.ax = ax
         self.fig = ax.get_figure()
 
+        # Store mode first (needed for _get_axes_height)
+        self.mode = mode  # 'external' (figure coords) or 'internal' (axes coords)
+
+        # Adjust offsets for internal mode (smaller padding within axes)
+        if mode == 'internal':
+            x_offset = min(x_offset, 1)  # Max 1mm padding for internal
+            vpad = min(vpad, 2)  # Max 2mm top padding for internal
+
         # Store parameters (all in mm)
         self.x_offset = x_offset
         self.gap = gap
         self.column_spacing = column_spacing
         self.vpad = vpad
         self.max_width = max_width
-        self.mode = mode  # 'external' (figure coords) or 'internal' (axes coords)
 
         # Initialize position tracking (all in mm)
         self.current_x = x_offset
-        self.current_y = y_offset if y_offset is not None else self._get_axes_height()
+        self.current_y = y_offset if y_offset is not None else self._get_axes_height() - vpad
         self.column_start_y = self.current_y
 
         # Column tracking
@@ -1368,7 +1375,7 @@ class LegendBuilder:
         This method extracts:
         - ScalarMappable (colormap + normalization)
         - Label from the colorbar axes
-        - Tick positions
+        - Tick positions and labels
         - Actual dimensions from the colorbar axes bounding box
         - Orientation
         """
@@ -1379,11 +1386,13 @@ class LegendBuilder:
         cbar_ax = cbar.ax
         if cbar.orientation == 'vertical':
             label = cbar_ax.get_ylabel()
+            tick_labels = [t.get_text() for t in cbar_ax.get_yticklabels()]
         else:
             label = cbar_ax.get_xlabel()
+            tick_labels = [t.get_text() for t in cbar_ax.get_xticklabels()]
 
-        # Get ticks
-        ticks = cbar.get_ticks()
+        # Get ticks - only if we have actual tick labels
+        ticks = cbar.get_ticks() if tick_labels and any(tick_labels) else None
 
         # Extract actual dimensions from colorbar axes
         # Measure the colorbar axes bounding box and convert to mm
@@ -1412,7 +1421,17 @@ class LegendBuilder:
         colorbar_kwargs.update(kwargs)
 
         # Add colorbar to unified builder with preserved dimensions
-        return self.add_colorbar(**colorbar_kwargs)
+        new_cbar = self.add_colorbar(**colorbar_kwargs)
+
+        # Preserve tick formatting from original colorbar
+        if ticks is not None and tick_labels:
+            # Set tick labels explicitly to preserve formatting
+            if cbar.orientation == 'vertical':
+                new_cbar.ax.set_yticklabels(tick_labels)
+            else:
+                new_cbar.ax.set_xticklabels(tick_labels)
+
+        return new_cbar
 
     def add_legend_for(self, type: str, label: Optional[str] = None, **kwargs):
         """
