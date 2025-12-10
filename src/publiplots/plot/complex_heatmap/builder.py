@@ -297,7 +297,6 @@ class ComplexHeatmapBuilder:
         # Computed data (set during build)
         self._data = None  # Original long-format data (None if wide format)
         self._matrix = None  # Value matrix (always set)
-        self._size_matrix = None  # For dotplots with size encoding
         self._row_order = None
         self._col_order = None
         self._row_linkage = None
@@ -510,39 +509,26 @@ class ComplexHeatmapBuilder:
         Prepare and optionally cluster the heatmap data.
 
         For long-format data, stores the original data for margin plots.
-        For dotplots (when size parameter is provided), this method handles both
-        value and size matrices, applying the same clustering order to both.
+        The matrix is used for clustering, while the original data is passed
+        to heatmap to preserve all columns (including size for dotplots).
         """
         data = self._heatmap_params['data']
         x = self._heatmap_params['x']
         y = self._heatmap_params['y']
         value = self._heatmap_params['value']
-        size = self._heatmap_params['size']
 
         # Convert to matrix if long format
         if x is not None and y is not None and value is not None:
-            # Store original long-format data for margin plots
-            # (margin plots may need additional columns beyond x, y, value, size)
+            # Store original long-format data for margin plots and heatmap
+            # (preserves all columns: size, hue, etc.)
             self._data = data
 
-            # Pivot value column to matrix
+            # Pivot value column to matrix (for clustering only)
             matrix = data.pivot(index=y, columns=x, values=value)
-
-            # Also pivot size column if provided (for dotplots)
-            if size is not None:
-                size_matrix = data.pivot(index=y, columns=x, values=size)
-            else:
-                size_matrix = None
         else:
             # Wide format - data is already a matrix
             self._data = None  # No original long-format data
             matrix = data.copy()
-            # For wide format, size can be a separate DataFrame/array
-            # Check if size is a DataFrame (not a column name)
-            if size is not None and isinstance(size, pd.DataFrame):
-                size_matrix = size.copy()
-            else:
-                size_matrix = None
 
         # Apply clustering if requested
         if self._row_cluster or self._col_cluster:
@@ -555,15 +541,7 @@ class ComplexHeatmapBuilder:
                     metric=self._cluster_metric,
                 )
 
-            # Apply same ordering to size matrix if it exists
-            if size_matrix is not None:
-                if self._row_cluster:
-                    size_matrix = size_matrix.iloc[self._row_order, :]
-                if self._col_cluster:
-                    size_matrix = size_matrix.iloc[:, self._col_order]
-
         self._matrix = matrix
-        self._size_matrix = size_matrix
         return matrix
 
 
@@ -743,10 +721,6 @@ class ComplexHeatmapBuilder:
             heatmap_params['x'] = None
             heatmap_params['y'] = None
             heatmap_params['value'] = None
-
-            # For dotplots: replace size column name with size matrix
-            if self._size_matrix is not None:
-                heatmap_params['size'] = self._size_matrix
 
         # Draw main heatmap
         heatmap(ax=ax_main, **heatmap_params)
