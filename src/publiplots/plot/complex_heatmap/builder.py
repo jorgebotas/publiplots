@@ -14,6 +14,7 @@ from publiplots.themes.rcparams import resolve_param
 from publiplots.utils.offset import offset_patches, offset_lines, offset_collections
 from .dendrogram import cluster_data, dendrogram as dendrogram_plot
 from .ticklabels import ticklabels as ticklabels_plot
+from .legend import legend as legend_plot
 
 # Conversion constants
 MM2INCH = 1 / 25.4
@@ -315,10 +316,10 @@ class ComplexHeatmapBuilder:
         Parameters
         ----------
         func : callable
-            Plot function (e.g., pp.barplot, pp.ticklabels). Must accept `ax` parameter.
+            Plot function (e.g., pp.barplot, pp.ticklabels, pp.legend). Must accept `ax` parameter.
         height : float, optional
-            Height in millimeters. If None, automatically calculated for ticklabels.
-            Default: None for ticklabels, 15 for other plots.
+            Height in millimeters. If None, automatically calculated for ticklabels and legend.
+            Default: None for ticklabels/legend, 15 for other plots.
         data : DataFrame, optional
             Data for the plot.
         align : bool, default=True
@@ -336,8 +337,10 @@ class ComplexHeatmapBuilder:
         # Auto-detect if this is ticklabels and set default size
         is_ticklabels = (func is ticklabels_plot or
                         getattr(func, '__name__', '') == 'ticklabels')
+        is_legend = (func is legend_plot or
+                    getattr(func, '__name__', '') == 'legend')
         if height is None:
-            height = 'auto' if is_ticklabels else 15
+            height = 'auto' if (is_ticklabels or is_legend) else 15
 
         self._margins['top'].append({
             'func': func,
@@ -364,10 +367,10 @@ class ComplexHeatmapBuilder:
         Parameters
         ----------
         func : callable
-            Plot function (e.g., pp.barplot, pp.ticklabels). Must accept `ax` parameter.
+            Plot function (e.g., pp.barplot, pp.ticklabels, pp.legend). Must accept `ax` parameter.
         height : float, optional
-            Height in millimeters. If None, automatically calculated for ticklabels.
-            Default: None for ticklabels, 15 for other plots.
+            Height in millimeters. If None, automatically calculated for ticklabels and legend.
+            Default: None for ticklabels/legend, 15 for other plots.
         data : DataFrame, optional
             Data for the plot.
         align : bool, default=True
@@ -384,8 +387,10 @@ class ComplexHeatmapBuilder:
         # Auto-detect if this is ticklabels and set default size
         is_ticklabels = (func is ticklabels_plot or
                         getattr(func, '__name__', '') == 'ticklabels')
+        is_legend = (func is legend_plot or
+                    getattr(func, '__name__', '') == 'legend')
         if height is None:
-            height = 'auto' if is_ticklabels else 15
+            height = 'auto' if (is_ticklabels or is_legend) else 15
 
         self._margins['bottom'].append({
             'func': func,
@@ -412,10 +417,10 @@ class ComplexHeatmapBuilder:
         Parameters
         ----------
         func : callable
-            Plot function (e.g., pp.barplot, pp.ticklabels). Must accept `ax` parameter.
+            Plot function (e.g., pp.barplot, pp.ticklabels, pp.legend). Must accept `ax` parameter.
         width : float, optional
-            Width in millimeters. If None, automatically calculated for ticklabels.
-            Default: None for ticklabels, 15 for other plots.
+            Width in millimeters. If None, automatically calculated for ticklabels and legend.
+            Default: None for ticklabels/legend, 15 for other plots.
         data : DataFrame, optional
             Data for the plot.
         align : bool, default=True
@@ -432,8 +437,10 @@ class ComplexHeatmapBuilder:
         # Auto-detect if this is ticklabels and set default size
         is_ticklabels = (func is ticklabels_plot or
                         getattr(func, '__name__', '') == 'ticklabels')
+        is_legend = (func is legend_plot or
+                    getattr(func, '__name__', '') == 'legend')
         if width is None:
-            width = 'auto' if is_ticklabels else 15
+            width = 'auto' if (is_ticklabels or is_legend) else 15
 
         self._margins['left'].append({
             'func': func,
@@ -460,10 +467,10 @@ class ComplexHeatmapBuilder:
         Parameters
         ----------
         func : callable
-            Plot function (e.g., pp.barplot, pp.ticklabels). Must accept `ax` parameter.
+            Plot function (e.g., pp.barplot, pp.ticklabels, pp.legend). Must accept `ax` parameter.
         width : float, optional
-            Width in millimeters. If None, automatically calculated for ticklabels.
-            Default: None for ticklabels, 15 for other plots.
+            Width in millimeters. If None, automatically calculated for ticklabels and legend.
+            Default: None for ticklabels/legend, 15 for other plots.
         data : DataFrame, optional
             Data for the plot.
         align : bool, default=True
@@ -480,8 +487,10 @@ class ComplexHeatmapBuilder:
         # Auto-detect if this is ticklabels and set default size
         is_ticklabels = (func is ticklabels_plot or
                         getattr(func, '__name__', '') == 'ticklabels')
+        is_legend = (func is legend_plot or
+                    getattr(func, '__name__', '') == 'legend')
         if width is None:
-            width = 'auto' if is_ticklabels else 15
+            width = 'auto' if (is_ticklabels or is_legend) else 15
 
         self._margins['right'].append({
             'func': func,
@@ -550,9 +559,10 @@ class ComplexHeatmapBuilder:
                 if is_dendrogram:
                     margin['align'] = False
 
-        # Auto-calculate sizes for ticklabels with size='auto'
+        # Auto-calculate sizes for ticklabels and legends with size='auto'
         # This needs to happen after data preparation so we have the matrix with labels
         from .ticklabels import calculate_ticklabel_space
+        from .legend import calculate_legend_space
 
         # Create a temporary figure for accurate text measurement
         temp_fig = plt.figure(figsize=self._figsize)
@@ -563,6 +573,9 @@ class ComplexHeatmapBuilder:
                     func = margin['func']
                     is_ticklabels = (func is ticklabels_plot or
                                     getattr(func, '__name__', '') == 'ticklabels')
+                    is_legend = (func is legend_plot or
+                                getattr(func, '__name__', '') == 'legend')
+
                     if is_ticklabels:
                         # Get labels
                         if position in ('top', 'bottom'):
@@ -594,6 +607,17 @@ class ComplexHeatmapBuilder:
                         )
 
                         # Update margin size
+                        margin['size'] = space_mm
+
+                    elif is_legend:
+                        # Calculate legend space (for now use default)
+                        # TODO: Improve estimation based on collected legends
+                        orientation = 'horizontal' if position in ('top', 'bottom') else 'vertical'
+                        space_mm = calculate_legend_space(
+                            axes_list=[],  # Will be populated when legends are collected
+                            orientation=orientation,
+                            **margin['kwargs']
+                        )
                         margin['size'] = space_mm
 
         # Close temp figure
@@ -669,6 +693,10 @@ class ComplexHeatmapBuilder:
         main_col = n_left
         ax_main = fig.add_subplot(gs[main_row, main_col])
 
+        # Mark main axes for legend collection
+        ax_main._is_main_heatmap = True
+        ax_main._margin_position = 'main'
+
         # Prepare heatmap params
         heatmap_params = self._heatmap_params.copy()
 
@@ -721,6 +749,9 @@ class ComplexHeatmapBuilder:
                 gs[row_idx, main_col],
                 sharex=ax_main if margin['align'] else None
             )
+            # Mark axes with position for legend collection
+            ax._margin_position = 'top'
+            ax._margin_index = i
             self._draw_margin_plot(ax, margin, 'top')
             if margin['align']:
                 ax.tick_params(labelbottom=False)
@@ -734,6 +765,9 @@ class ComplexHeatmapBuilder:
                 gs[row_idx, main_col],
                 sharex=ax_main if margin['align'] else None
             )
+            # Mark axes with position for legend collection
+            ax._margin_position = 'bottom'
+            ax._margin_index = i
             self._draw_margin_plot(ax, margin, 'bottom')
             if margin['align'] and i < len(self._margins['bottom']) - 1:
                 ax.tick_params(labeltop=False)
@@ -746,6 +780,9 @@ class ComplexHeatmapBuilder:
                 gs[main_row, col_idx],
                 sharey=ax_main if margin['align'] else None
             )
+            # Mark axes with position for legend collection
+            ax._margin_position = 'left'
+            ax._margin_index = i
             self._draw_margin_plot(ax, margin, 'left')
             if margin['align']:
                 ax.tick_params(labelleft=False)
@@ -760,6 +797,9 @@ class ComplexHeatmapBuilder:
                 gs[main_row, col_idx],
                 sharey=ax_main if margin['align'] else None
             )
+            # Mark axes with position for legend collection
+            ax._margin_position = 'right'
+            ax._margin_index = i
             self._draw_margin_plot(ax, margin, 'right')
             if margin['align'] and i < len(self._margins['right']) - 1:
                 ax.tick_params(labelright=False)
@@ -768,16 +808,22 @@ class ComplexHeatmapBuilder:
         # Fix axis limits for all aligned margin plots
         # Categorical plots set xlim to (-0.5, n-0.5), but heatmap uses (0, n)
         # Set limits once at the end to avoid seaborn warnings with shared axes
+        import warnings
+
         n_rows = len(self._matrix.index)
         n_cols = len(self._matrix.columns)
 
-        for ax in axes['top'] + axes['bottom']:
-            if ax.get_shared_x_axes().joined(ax, ax_main):
-                ax.set_xlim(0, n_cols)
+        # Suppress seaborn warning about setting identical limits
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'Attempting to set identical')
 
-        for ax in axes['left'] + axes['right']:
-            if ax.get_shared_y_axes().joined(ax, ax_main):
-                ax.set_ylim(n_rows, 0)  # Inverted to match heatmap
+            for ax in axes['top'] + axes['bottom']:
+                if ax.get_shared_x_axes().joined(ax, ax_main):
+                    ax.set_xlim(0, n_cols)
+
+            for ax in axes['left'] + axes['right']:
+                if ax.get_shared_y_axes().joined(ax, ax_main):
+                    ax.set_ylim(n_rows, 0)  # Inverted to match heatmap
 
         return fig, axes
 
@@ -786,6 +832,15 @@ class ComplexHeatmapBuilder:
         func = margin['func']
         data = margin['data']
         kwargs = margin['kwargs'].copy()
+
+        # Check if function is legend - handle specially
+        is_legend = (func is legend_plot or
+                    getattr(func, '__name__', '') == 'legend')
+        if is_legend:
+            # Legend function handles everything internally
+            kwargs['ax'] = ax
+            func(**kwargs)
+            return
 
         # Check if function is dendrogram - auto-provide linkage and orientation
         is_dendrogram = (func is dendrogram_plot or
