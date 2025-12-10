@@ -1430,14 +1430,18 @@ def legend(
                     else:
                         label = cbar_ax.get_xlabel()
 
+                    # Get ticks
+                    ticks = cbar.get_ticks()
+
                     # Add colorbar to unified builder
-                    # Use default height/width from builder
+                    # Note: height/width use defaults as we can't extract original mm values
                     builder.add_colorbar(
                         mappable=mappable,
                         label=label,
                         height=15,  # mm, default
                         width=4.5,  # mm, default
                         orientation=cbar.orientation,
+                        ticks=list(ticks) if ticks is not None else None,
                     )
 
         # Hide axes frame and ticks for clean legend panel
