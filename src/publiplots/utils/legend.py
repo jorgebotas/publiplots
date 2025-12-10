@@ -646,14 +646,11 @@ class LegendBuilder:
     x_offset : float, default=2
         Horizontal distance from the right edge of axes (millimeters).
     y_offset : float, optional
-        Vertical position from top of axes (millimeters). If None, starts at
-        axes height minus vpad.
+        Vertical position from top of axes (millimeters). If None, starts at top
     gap : float, default=2
         Vertical spacing between legend elements (millimeters).
     column_spacing : float, default=5
         Horizontal spacing between columns (millimeters).
-    vpad : float, default=5
-        Padding from top of axes (millimeters).
     max_width : float, optional
         Maximum width for legends (millimeters). If None, auto-estimated from content.
 
@@ -679,20 +676,23 @@ class LegendBuilder:
         ax: Axes,
         x_offset: float = 2,
         y_offset: Optional[float] = None,
-        gap: float = 2,
+        gap: float = 4,
         column_spacing: float = 5,
-        vpad: float = 5,
         max_width: Optional[float] = None,
+        mode: str = 'external',
     ):
         """Initialize legend builder. All dimensions in millimeters."""
         self.ax = ax
         self.fig = ax.get_figure()
 
+        # Store mode first (needed for _get_axes_height)
+        self.mode = mode  # 'external' (figure coords) or 'internal' (axes coords)
+
+
         # Store parameters (all in mm)
         self.x_offset = x_offset
         self.gap = gap
         self.column_spacing = column_spacing
-        self.vpad = vpad
         self.max_width = max_width
 
         # Initialize position tracking (all in mm)
@@ -720,7 +720,7 @@ class LegendBuilder:
 
     def _mm_to_figure_coords(self, x_mm: float, y_mm: float) -> Tuple[float, float]:
         """
-        Convert mm position to figure coordinates.
+        Convert mm position to figure coordinates (external mode).
 
         Parameters
         ----------
@@ -748,6 +748,73 @@ class LegendBuilder:
         # Position relative to axes
         x_fig = ax_pos.x1 + x_offset_fig
         y_fig = ax_pos.y1 - y_offset_fig
+
+        return x_fig, y_fig
+
+    def _mm_to_axes_coords(self, x_mm: float, y_mm: float) -> Tuple[float, float]:
+        """
+        Convert mm position to axes coordinates (internal mode).
+
+        Parameters
+        ----------
+        x_mm : float
+            Horizontal distance from left edge of axes (mm)
+        y_mm : float
+            Remaining vertical space (mm). This is the height from bottom of axes.
+
+        Returns
+        -------
+        x_axes, y_axes : float
+            Position in axes coordinates (0-1 range, where 0 is bottom/left, 1 is top/right)
+        """
+        # Get axes dimensions in mm
+        ax_pos = self.ax.get_position()
+        fig_extent = self.fig.get_window_extent()
+
+        axes_width_px = ax_pos.width * fig_extent.width
+        axes_height_px = ax_pos.height * fig_extent.height
+
+        axes_width_mm = axes_width_px / self.fig.dpi / self.MM2INCH
+        axes_height_mm = axes_height_px / self.fig.dpi / self.MM2INCH
+
+        # Convert mm to axes-relative coordinates (0-1)
+        x_axes = x_mm / axes_width_mm
+
+        # y_mm is the remaining height from bottom (our tracking system measures from top going down)
+        # In matplotlib axes coords: 0 is bottom, 1 is top
+        # So we directly convert: y_mm / axes_height gives position from bottom
+        y_axes = y_mm / axes_height_mm
+
+        return x_axes, y_axes
+
+    def _mm_to_coords(self, x_mm: float, y_mm: float) -> Tuple[float, float, Any]:
+        """
+        Convert mm position to appropriate coordinates based on mode.
+
+        Returns
+        -------
+        x, y, transform : Tuple[float, float, Transform]
+            Position coordinates and the appropriate transform
+        """
+        if self.mode == 'internal':
+            x, y = self._mm_to_axes_coords(x_mm, y_mm)
+            transform = self.ax.transAxes
+        else:  # 'external'
+            x, y = self._mm_to_figure_coords(x_mm, y_mm)
+            transform = self.fig.transFigure
+
+        return x, y, transform
+
+    def _axes_to_figure_coords(self, x_axes: float, y_axes: float) -> Tuple[float, float]:
+        """
+        Convert axes coordinates (0-1) to figure coordinates.
+
+        This is needed for creating colorbar axes and text, which require figure coordinates.
+        """
+        ax_pos = self.ax.get_position()
+
+        x_fig = ax_pos.x0 + x_axes * ax_pos.width
+        y_fig = ax_pos.y0 + y_axes * ax_pos.height
 
         return x_fig, y_fig
 
@@ -988,14 +1055,14 @@ class LegendBuilder:
         if self._check_overflow(estimated_height):
             self._start_new_column()
 
-        # Convert current position to figure coordinates
-        x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
+        # Convert current position to appropriate coordinates based on mode
+        x, y, transform = self._mm_to_coords(self.current_x, self.current_y)
 
         # Prepare legend kwargs
         legend_kwargs = {
             "loc": "upper left",
-            "bbox_to_anchor": (x_fig, y_fig),
-            "bbox_transform": self.fig.transFigure,  # Use figure coords
+            "bbox_to_anchor": (x, y),
+            "bbox_transform": transform,
             "frameon": frameon,
             "borderaxespad": 0,
             "borderpad": 0.4,
@@ -1130,7 +1197,13 @@ class LegendBuilder:
         # Add title if needed and measure actual height
         title_height_actual = 0
         if title_position == "top" and label:
-            x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
+            # Get position (mode-aware, but always convert to figure coords for text)
+            if self.mode == 'internal':
+                x_axes, y_axes = self._mm_to_axes_coords(self.current_x, self.current_y)
+                x_fig, y_fig = self._axes_to_figure_coords(x_axes, y_axes)
+            else:
+                x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
+
             title_obj = self.fig.text(
                 x_fig, y_fig, label,
                 ha="left", va="top",
@@ -1147,8 +1220,12 @@ class LegendBuilder:
             cbar_y_start = self.current_y
             title_width_actual = 0
 
-        # Create colorbar axes
-        x_fig, y_fig_top = self._mm_to_figure_coords(self.current_x, cbar_y_start)
+        # Create colorbar axes (mode-aware, but always convert to figure coords for axes creation)
+        if self.mode == 'internal':
+            x_axes, y_axes_top = self._mm_to_axes_coords(self.current_x, cbar_y_start)
+            x_fig, y_fig_top = self._axes_to_figure_coords(x_axes, y_axes_top)
+        else:
+            x_fig, y_fig_top = self._mm_to_figure_coords(self.current_x, cbar_y_start)
 
         fig_extent = self.fig.get_window_extent()
         cbar_width_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
@@ -1203,6 +1280,147 @@ class LegendBuilder:
             self.elements.append(("text", title_obj))
 
         return cbar
+
+    def add_existing_legend(self, legend: Legend, **kwargs) -> Legend:
+        """
+        Add an already-created legend by repositioning it (no re-rendering).
+
+        This method takes an existing Legend object and repositions it within
+        the legend builder's layout. It's more efficient than recreating legends
+        as it preserves all original styling, handlers, and formatting.
+
+        Parameters
+        ----------
+        legend : Legend
+            Existing matplotlib Legend object to reposition.
+        **kwargs
+            Additional customization options (currently unused, for future extension).
+
+        Returns
+        -------
+        Legend
+            The repositioned legend object.
+
+        Notes
+        -----
+        This method calculates dimensions from the existing legend object,
+        checks for column overflow, and updates its position without recreating
+        it. All legend properties (handles, labels, styling) are preserved.
+        """
+        # Measure existing legend dimensions (before removal)
+        width, height = self._measure_object_dimensions(legend)
+
+        # Remove legend from its original axes
+        # This is necessary because matplotlib doesn't allow artists to belong to multiple axes
+        legend.remove()
+
+        # Check overflow
+        if self._check_overflow(height):
+            self._start_new_column()
+
+        # Calculate new position in appropriate coordinates based on mode
+        x, y, transform = self._mm_to_coords(self.current_x, self.current_y)
+
+        # Update legend position
+        legend.set_bbox_to_anchor((x, y), transform=transform)
+
+        # Re-add existing legends (matplotlib limitation)
+        existing_legends = [e[1] for e in self.elements if e[0] == "legend"]
+        for existing_legend in existing_legends:
+            self.ax.add_artist(existing_legend)
+
+        # Add to target axes
+        self.ax.add_artist(legend)
+        legend.set_clip_on(False)
+
+        # Update position tracking
+        self.current_column_width = max(self.current_column_width, width)
+        self.current_y -= height + self.gap
+
+        # Store element
+        self.elements.append(("legend", legend))
+
+        return legend
+
+    def add_existing_colorbar(self, cbar: Colorbar, **kwargs) -> Colorbar:
+        """
+        Add an already-created colorbar by repositioning it.
+
+        This method extracts properties from an existing Colorbar object and
+        creates a new colorbar in the legend builder's layout. Colorbars cannot
+        be repositioned like legends because they own their own Axes object.
+
+        Parameters
+        ----------
+        cbar : Colorbar
+            Existing matplotlib Colorbar object.
+        **kwargs
+            Additional customization options passed to add_colorbar().
+
+        Returns
+        -------
+        Colorbar
+            The newly created colorbar object.
+
+        Notes
+        -----
+        This method extracts:
+        - ScalarMappable (colormap + normalization)
+        - Label from the colorbar axes
+        - Tick positions and labels
+        - Actual dimensions from the colorbar axes bounding box
+        - Orientation
+        """
+        # Get the mappable (ScalarMappable) from the colorbar
+        mappable = cbar.mappable
+
+        # Get the label from kwargs (passed from reconciliation) or extract from colorbar axes
+        cbar_ax = cbar.ax
+
+        # Draw canvas
+        self.fig.canvas.draw()
+
+        # Check if label is provided in kwargs (from title text object)
+        if 'label' in kwargs:
+            label = kwargs.pop('label')
+        else:
+            # Fallback: extract from colorbar axes (though this will be empty if title was a text object)
+            if cbar.orientation == 'vertical':
+                label = cbar_ax.get_ylabel()
+            else:
+                label = cbar_ax.get_xlabel()
+
+        # Extract actual dimensions from colorbar axes
+        # Measure the colorbar axes bounding box and convert to mm
+        cbar_bbox = cbar_ax.get_window_extent(self.fig.canvas.get_renderer())
+        cbar_width_mm = cbar_bbox.width / self.fig.dpi / self.MM2INCH
+        cbar_height_mm = cbar_bbox.height / self.fig.dpi / self.MM2INCH
+
+        # Determine dimensions based on orientation
+        if cbar.orientation == 'vertical':
+            height = cbar_height_mm
+            width = cbar_width_mm
+        else:  # horizontal
+            height = cbar_height_mm
+            width = cbar_width_mm
+
+        # Merge kwargs with extracted properties
+        colorbar_kwargs = {
+            'mappable': mappable,
+            'label': label if label else "",
+            'height': height,
+            'width': width,
+            'orientation': cbar.orientation,
+        }
+        colorbar_kwargs.update(kwargs)
+
+        # Add colorbar to unified builder with preserved dimensions
+        new_cbar = self.add_colorbar(**colorbar_kwargs)
+
+        # Remove original colorbar to avoid duplication
+        cbar.remove()
+
+        return new_cbar
 
     def add_legend_for(self, type: str, label: Optional[str] = None, **kwargs):
         """
@@ -1296,7 +1514,6 @@ def legend(
     x_offset: float = 2,
     gap: float = 2,
     column_spacing: float = 5,
-    vpad: float = 5,
     from_axes: Optional[List[Axes]] = None,
     **kwargs
 ) -> LegendBuilder:
@@ -1326,8 +1543,6 @@ def legend(
         Vertical spacing between legend elements (millimeters).
     column_spacing : float, default=5
         Horizontal spacing between columns (millimeters).
-    vpad : float, default=5
-        Top padding from axes edge (millimeters).
     from_axes : list of Axes, optional
         List of axes to collect and reconcile legends from.
         Used by complex_heatmap to create unified legends from multiple axes.
@@ -1377,13 +1592,16 @@ def legend(
     if hasattr(ax, '_legend_builder') and ax._legend_builder is not None:
         builder = ax._legend_builder
     else:
+        # Detect mode: 'internal' if collecting from other axes, 'external' otherwise
+        mode = 'internal' if from_axes is not None else 'external'
+
         # Initialize new builder
         builder = LegendBuilder(
             ax,
             x_offset=x_offset,
             gap=gap,
             column_spacing=column_spacing,
-            vpad=vpad,
+            mode=mode,
         )
         # Store on axes for reuse
         ax._legend_builder = builder
@@ -1403,48 +1621,33 @@ def legend(
                 continue
 
             # Iterate through stored elements in the source builder
-            for element_type, element in source_builder.elements:
+            # Track indices to skip text elements that are colorbar titles
+            skip_indices = set()
+
+            for i, (element_type, element) in enumerate(source_builder.elements):
+                if i in skip_indices:
+                    continue
+
                 if element_type == "legend":
-                    # Extract handles and labels from the legend
-                    title = element.get_title().get_text() if element.get_title() else ""
-                    legend_handles = element.legend_handles
-                    legend_labels = element.get_texts()
-                    [h.set_label(l.get_text()) for h,l in zip(legend_handles, legend_labels)]
-
-                    # Add to the unified builder
-                    builder.add_legend(
-                        handles=element.legend_handles,
-                        label=title,
-                        **kwargs
-                    )
+                    # Reposition existing legend (no re-rendering needed)
+                    builder.add_existing_legend(element)
                 elif element_type == "colorbar":
-                    # Add colorbar to unified legend
-                    # Extract colorbar properties from the stored colorbar object
-                    cbar = element
+                    # Check if next element is a text object (colorbar title)
+                    title_text = None
+                    if i + 1 < len(source_builder.elements):
+                        next_type, next_element = source_builder.elements[i + 1]
+                        if next_type == "text":
+                            # Extract title text
+                            title_text = next_element.get_text()
+                            skip_indices.add(i + 1)
+                            # Remove old title
+                            next_element.remove()
 
-                    # Get the mappable (ScalarMappable) from the colorbar
-                    mappable = cbar.mappable
-
-                    # Get the label (could be from ax.yaxis or ax.xaxis depending on orientation)
-                    cbar_ax = cbar.ax
-                    if cbar.orientation == 'vertical':
-                        label = cbar_ax.get_ylabel()
-                    else:
-                        label = cbar_ax.get_xlabel()
-
-                    # Get ticks
-                    ticks = cbar.get_ticks()
-
-                    # Add colorbar to unified builder
-                    # Note: height/width use defaults as we can't extract original mm values
-                    builder.add_colorbar(
-                        mappable=mappable,
-                        label=label,
-                        height=15,  # mm, default
-                        width=4.5,  # mm, default
-                        orientation=cbar.orientation,
-                        ticks=list(ticks) if ticks is not None else None,
-                    )
+                    # Extract and recreate colorbar with title
+                    builder.add_existing_colorbar(element, label=title_text)
+                elif element_type == "text":
+                    # Standalone text (not a colorbar title) - remove it
+                    element.remove()
 
         # Hide axes frame and ticks for clean legend panel
         ax.set_xlim(0, 1)

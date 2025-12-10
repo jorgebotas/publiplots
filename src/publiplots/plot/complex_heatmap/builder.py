@@ -295,7 +295,8 @@ class ComplexHeatmapBuilder:
         }
 
         # Computed data (set during build)
-        self._matrix = None
+        self._data = None  # Original long-format data (None if wide format)
+        self._matrix = None  # Value matrix (always set)
         self._row_order = None
         self._col_order = None
         self._row_linkage = None
@@ -504,7 +505,13 @@ class ComplexHeatmapBuilder:
 
 
     def _prepare_data(self) -> pd.DataFrame:
-        """Prepare and optionally cluster the heatmap data."""
+        """
+        Prepare and optionally cluster the heatmap data.
+
+        For long-format data, stores the original data for margin plots.
+        The matrix is used for clustering, while the original data is passed
+        to heatmap to preserve all columns (including size for dotplots).
+        """
         data = self._heatmap_params['data']
         x = self._heatmap_params['x']
         y = self._heatmap_params['y']
@@ -512,8 +519,15 @@ class ComplexHeatmapBuilder:
 
         # Convert to matrix if long format
         if x is not None and y is not None and value is not None:
+            # Store original long-format data for margin plots and heatmap
+            # (preserves all columns: size, hue, etc.)
+            self._data = data
+
+            # Pivot value column to matrix (for clustering only)
             matrix = data.pivot(index=y, columns=x, values=value)
         else:
+            # Wide format - data is already a matrix
+            self._data = None  # No original long-format data
             matrix = data.copy()
 
         # Apply clustering if requested
@@ -525,6 +539,21 @@ class ComplexHeatmapBuilder:
                     col_cluster=self._col_cluster,
                     method=self._cluster_method,
                     metric=self._cluster_metric,
+                )
+
+            # If we have long-format data, apply categorical ordering to match clustered matrix
+            # This ensures both heatmap and margin plots respect the clustered order
+            if self._data is not None:
+                self._data = self._data.copy()
+                self._data[x] = pd.Categorical(
+                    self._data[x],
+                    categories=matrix.columns,
+                    ordered=True
+                )
+                self._data[y] = pd.Categorical(
+                    self._data[y],
+                    categories=matrix.index,
+                    ordered=True
                 )
 
         self._matrix = matrix
@@ -702,10 +731,16 @@ class ComplexHeatmapBuilder:
         ylabel = heatmap_params.pop('ylabel', '')
 
         if self._row_cluster or self._col_cluster:
-            heatmap_params['data'] = self._matrix
-            heatmap_params['x'] = None
-            heatmap_params['y'] = None
-            heatmap_params['value'] = None
+            # If we have long-format data, use the categorically ordered version
+            if self._data is not None:
+                # self._data already has categorical ordering applied in _prepare_data()
+                heatmap_params['data'] = self._data
+            else:
+                # Wide format: switch to matrix
+                heatmap_params['data'] = self._matrix
+                heatmap_params['x'] = None
+                heatmap_params['y'] = None
+                heatmap_params['value'] = None
 
         # Draw main heatmap
         heatmap(ax=ax_main, **heatmap_params)
@@ -917,14 +952,18 @@ class ComplexHeatmapBuilder:
         if not is_dendrogram and not is_ticklabels:
             # Add data
             if data is None:
-                data = self._matrix.T if position in ("left", "right") else self._matrix
+                # Prefer original long-format data if available (preserves all columns)
+                if self._data is not None:
+                    data = self._data
+                else:
+                    # Fallback to matrix (wide format)
+                    data = self._matrix.T if position in ("left", "right") else self._matrix
             kwargs['data'] = data
 
             # Order data appropriately
             if position in ("top", "bottom"):
                 kwargs["order"] = self._matrix.columns
-            
-            elif position == "left":
+            elif position in ("left", "right"):
                 kwargs["order"] = self._matrix.index
 
         # Call the plot function
