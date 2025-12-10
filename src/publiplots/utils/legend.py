@@ -1624,6 +1624,9 @@ def legend(
                 elif element_type == "colorbar":
                     # Extract and recreate colorbar with preserved properties
                     builder.add_existing_colorbar(element)
+                elif element_type == "text":
+                    # Remove old title text objects (they're recreated with colorbars)
+                    element.remove()
 
         # Hide axes frame and ticks for clean legend panel
         ax.set_xlim(0, 1)
