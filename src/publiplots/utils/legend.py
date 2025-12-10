@@ -692,9 +692,8 @@ class LegendBuilder:
         # Store mode first (needed for _get_axes_height)
         self.mode = mode  # 'external' (figure coords) or 'internal' (axes coords)
 
-        # Adjust offsets for internal mode (smaller padding within axes)
+        # Adjust vpad for internal mode (smaller top padding within axes)
         if mode == 'internal':
-            x_offset = min(x_offset, 1)  # Max 1mm padding for internal
             vpad = min(vpad, 2)  # Max 2mm top padding for internal
 
         # Store parameters (all in mm)
@@ -769,12 +768,12 @@ class LegendBuilder:
         x_mm : float
             Horizontal distance from left edge of axes (mm)
         y_mm : float
-            Remaining vertical space (mm). Converted to position from top internally.
+            Remaining vertical space (mm). This is the height from bottom of axes.
 
         Returns
         -------
         x_axes, y_axes : float
-            Position in axes coordinates (0-1 range)
+            Position in axes coordinates (0-1 range, where 0 is bottom/left, 1 is top/right)
         """
         # Get axes dimensions in mm
         ax_pos = self.ax.get_position()
@@ -789,9 +788,10 @@ class LegendBuilder:
         # Convert mm to axes-relative coordinates (0-1)
         x_axes = x_mm / axes_width_mm
 
-        # y_mm represents remaining space from top, convert to position from bottom (matplotlib axes coords)
-        position_from_top_mm = axes_height_mm - y_mm
-        y_axes = position_from_top_mm / axes_height_mm
+        # y_mm is the remaining height from bottom (our tracking system measures from top going down)
+        # In matplotlib axes coords: 0 is bottom, 1 is top
+        # So we directly convert: y_mm / axes_height gives position from bottom
+        y_axes = y_mm / axes_height_mm
 
         return x_axes, y_axes
 
@@ -1430,6 +1430,9 @@ class LegendBuilder:
                 new_cbar.ax.set_yticklabels(tick_labels)
             else:
                 new_cbar.ax.set_xticklabels(tick_labels)
+
+        # Remove original colorbar to avoid duplication
+        cbar.remove()
 
         return new_cbar
 
