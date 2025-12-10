@@ -1204,6 +1204,63 @@ class LegendBuilder:
 
         return cbar
 
+    def add_existing_legend(self, legend: Legend, **kwargs) -> Legend:
+        """
+        Add an already-created legend by repositioning it (no re-rendering).
+
+        This method takes an existing Legend object and repositions it within
+        the legend builder's layout. It's more efficient than recreating legends
+        as it preserves all original styling, handlers, and formatting.
+
+        Parameters
+        ----------
+        legend : Legend
+            Existing matplotlib Legend object to reposition.
+        **kwargs
+            Additional customization options (currently unused, for future extension).
+
+        Returns
+        -------
+        Legend
+            The repositioned legend object.
+
+        Notes
+        -----
+        This method calculates dimensions from the existing legend object,
+        checks for column overflow, and updates its position without recreating
+        it. All legend properties (handles, labels, styling) are preserved.
+        """
+        # Measure existing legend dimensions
+        width, height = self._measure_object_dimensions(legend)
+
+        # Check overflow
+        if self._check_overflow(height):
+            self._start_new_column()
+
+        # Calculate new position in figure coordinates
+        x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
+
+        # Update legend position
+        legend.set_bbox_to_anchor((x_fig, y_fig), transform=self.fig.transFigure)
+
+        # Re-add existing legends (matplotlib limitation)
+        existing_legends = [e[1] for e in self.elements if e[0] == "legend"]
+        for existing_legend in existing_legends:
+            self.ax.add_artist(existing_legend)
+
+        # Add to target axes
+        self.ax.add_artist(legend)
+        legend.set_clip_on(False)
+
+        # Update position tracking
+        self.current_column_width = max(self.current_column_width, width)
+        self.current_y -= height + self.gap
+
+        # Store element
+        self.elements.append(("legend", legend))
+
+        return legend
+
     def add_legend_for(self, type: str, label: Optional[str] = None, **kwargs):
         """
         Add legend by auto-detecting from self.ax stored metadata.
@@ -1405,18 +1462,8 @@ def legend(
             # Iterate through stored elements in the source builder
             for element_type, element in source_builder.elements:
                 if element_type == "legend":
-                    # Extract handles and labels from the legend
-                    title = element.get_title().get_text() if element.get_title() else ""
-                    legend_handles = element.legend_handles
-                    legend_labels = element.get_texts()
-                    [h.set_label(l.get_text()) for h,l in zip(legend_handles, legend_labels)]
-
-                    # Add to the unified builder
-                    builder.add_legend(
-                        handles=element.legend_handles,
-                        label=title,
-                        **kwargs
-                    )
+                    # Reposition existing legend (no re-rendering needed)
+                    builder.add_existing_legend(element)
                 elif element_type == "colorbar":
                     # Add colorbar to unified legend
                     # Extract colorbar properties from the stored colorbar object
