@@ -295,7 +295,8 @@ class ComplexHeatmapBuilder:
         }
 
         # Computed data (set during build)
-        self._matrix = None
+        self._data = None  # Original long-format data (None if wide format)
+        self._matrix = None  # Value matrix (always set)
         self._size_matrix = None  # For dotplots with size encoding
         self._row_order = None
         self._col_order = None
@@ -508,6 +509,7 @@ class ComplexHeatmapBuilder:
         """
         Prepare and optionally cluster the heatmap data.
 
+        For long-format data, stores the original data for margin plots.
         For dotplots (when size parameter is provided), this method handles both
         value and size matrices, applying the same clustering order to both.
         """
@@ -519,6 +521,10 @@ class ComplexHeatmapBuilder:
 
         # Convert to matrix if long format
         if x is not None and y is not None and value is not None:
+            # Store original long-format data for margin plots
+            # (margin plots may need additional columns beyond x, y, value, size)
+            self._data = data
+
             # Pivot value column to matrix
             matrix = data.pivot(index=y, columns=x, values=value)
 
@@ -529,6 +535,7 @@ class ComplexHeatmapBuilder:
                 size_matrix = None
         else:
             # Wide format - data is already a matrix
+            self._data = None  # No original long-format data
             matrix = data.copy()
             # For wide format, size can be a separate DataFrame/array
             # Check if size is a DataFrame (not a column name)
@@ -951,13 +958,18 @@ class ComplexHeatmapBuilder:
         if not is_dendrogram and not is_ticklabels:
             # Add data
             if data is None:
-                data = self._matrix.T if position in ("left", "right") else self._matrix
+                # Prefer original long-format data if available (preserves all columns)
+                if self._data is not None:
+                    data = self._data
+                else:
+                    # Fallback to matrix (wide format)
+                    data = self._matrix.T if position in ("left", "right") else self._matrix
             kwargs['data'] = data
 
             # Order data appropriately
             if position in ("top", "bottom"):
                 kwargs["order"] = self._matrix.columns
-            
+
             elif position == "left":
                 kwargs["order"] = self._matrix.index
 
