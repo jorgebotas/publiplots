@@ -750,6 +750,7 @@ class ComplexHeatmapBuilder:
             if margin['align']:
                 ax.tick_params(labelleft=False)
                 plt.setp(ax.get_yticklabels(), visible=False)
+                ax.invert_xaxis() # Invert x-axis for categorical plots (bars, violins...)
             axes['left'].append(ax)
 
         # Draw right margins
@@ -835,11 +836,12 @@ class ComplexHeatmapBuilder:
         # Add ax to kwargs
         kwargs['ax'] = ax
 
-        # Add data if provided
-        if data is not None:
+        if not is_dendrogram and not is_ticklabels:
+            # Add data
+            if data is None:
+                data = self._matrix.T if position in ("left", "right") else self._matrix
             kwargs['data'] = data
 
-        if not is_dendrogram and not is_ticklabels:
             # Order data appropriately
             if position in ("top", "bottom"):
                 kwargs["order"] = self._matrix.columns
@@ -866,9 +868,9 @@ class ComplexHeatmapBuilder:
         # Categorical plots position elements at 0, 1, 2...
         # Shift by +0.5 to align with cell centers
         if margin['align']:
-            # For top/bottom margins: shift along x-axis (horizontal)
-            # For left/right margins: shift along y-axis (vertical)
-            orientation = "horizontal" if position in ("top", "bottom") else "vertical"
+            # For top/bottom margins: shift along x-axis (vertical)
+            # For left/right margins: shift along y-axis (horizontal)
+            orientation = "vertical" if position in ("top", "bottom") else "horizontal"
             # Offset patches (bars, rectangles, etc.)
             if ax.patches:
                 offset_patches(ax.patches, offset=0.5, orientation=orientation)
