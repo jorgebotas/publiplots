@@ -24,9 +24,12 @@ from publiplots.utils.legend import legend as legend_builder
 
 def block(
     data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
-    # Position/orientation (only one should be set)
+    # Position/orientation (optional when called from complex_heatmap)
     x: Optional[Union[str, bool]] = None,
     y: Optional[Union[str, bool]] = None,
+    # Data handling
+    order: Optional[List[str]] = None,
+    merge: bool = False,
     # Color encoding
     cmap: Optional[str] = None,
     palette: Optional[Union[str, Dict, List]] = None,
@@ -66,10 +69,16 @@ def block(
         - List/array: Single row/column
     x : str or bool, optional
         Column name (if data is DataFrame) or True for horizontal orientation.
-        Use for top/bottom margins. Only one of x or y should be set.
+        Use for top/bottom margins. Can be omitted when called from complex_heatmap
+        builder (orientation inferred from position).
     y : str or bool, optional
         Column name (if data is DataFrame) or True for vertical orientation.
-        Use for left/right margins. Only one of x or y should be set.
+        Use for left/right margins. Can be omitted when called from complex_heatmap.
+    order : list of str, optional
+        Order of categories (passed automatically by complex_heatmap builder).
+    merge : bool, default=False
+        If True and x/y is a column name, merge values from that column
+        (useful for long-format data with multiple rows per category).
     cmap : str, optional
         Colormap for continuous data. Default: 'viridis' for continuous.
     palette : str, dict, or list, optional
@@ -148,35 +157,102 @@ def block(
     # Determine orientation from x/y parameters
     if x is not None and y is not None:
         raise ValueError("Only one of x or y should be set, not both")
-    elif x is None and y is None:
-        raise ValueError("Either x or y must be set")
 
-    # x=True/str means horizontal (top/bottom margins), y=True/str means vertical (left/right margins)
-    horizontal = x is not None
+    # Infer orientation: x → horizontal, y → vertical
+    # If both None, infer from order parameter or default to horizontal for Series
+    if x is not None:
+        horizontal = True
+    elif y is not None:
+        horizontal = False
+    elif order is not None and isinstance(data, pd.DataFrame):
+        # Infer from order matching columns (horizontal) or index (vertical)
+        horizontal = list(data.columns) == list(order) or len(data.columns) == len(order)
+    else:
+        # Default to horizontal for Series/array
+        horizontal = True
 
-    # Extract data from DataFrame if x/y are column names
+    # Extract and prepare data
     if isinstance(data, pd.DataFrame):
+        # Case 1: DataFrame with column name to extract (long format)
         if isinstance(x, str):
-            # x is a column name - extract that column for horizontal blocks
-            data_series = data[x]
-        elif isinstance(y, str):
-            # y is a column name - extract that column for vertical blocks
-            data_series = data[y]
-            data_df = data_series.to_frame()
-        else:
-            # x/y are booleans - index or columns
-            data_series = data.columns if x is not None else data.index
+            if merge:
+                # Aggregate values for each unique x value
+                data_series = data.groupby(x)[x].first()  # Get unique values
+                if order is not None:
+                    data_series = data_series.reindex(order)
+            else:
+                # Simple extraction
+                if order is not None:
+                    # Filter and order data
+                    data_filtered = data[data[x].isin(order)]
+                    data_series = data_filtered[x]
+                    # Get unique values in order
+                    seen = set()
+                    unique_ordered = []
+                    for val in order:
+                        if val not in seen and val in data_series.values:
+                            unique_ordered.append(val)
+                            seen.add(val)
+                    data_series = pd.Series(unique_ordered)
+                else:
+                    data_series = data[x].unique()
+                    data_series = pd.Series(data_series)
 
-        data_df = data_series.to_frame()
-        if x is not None:
-            data_df = data_df.T
+            data_df = data_series.to_frame().T
+
+        elif isinstance(y, str):
+            if merge:
+                # Aggregate values for each unique y value
+                data_series = data.groupby(y)[y].first()
+                if order is not None:
+                    data_series = data_series.reindex(order)
+            else:
+                # Simple extraction
+                if order is not None:
+                    # Filter and order data
+                    data_filtered = data[data[y].isin(order)]
+                    data_series = data_filtered[y]
+                    # Get unique values in order
+                    seen = set()
+                    unique_ordered = []
+                    for val in order:
+                        if val not in seen and val in data_series.values:
+                            unique_ordered.append(val)
+                            seen.add(val)
+                    data_series = pd.Series(unique_ordered)
+                else:
+                    data_series = data[y].unique()
+                    data_series = pd.Series(data_series)
+
+            data_df = data_series.to_frame()
+
+        else:
+            # Case 2: DataFrame as matrix (wide format from complex_heatmap)
+            if horizontal:
+                # Use columns for horizontal (top/bottom)
+                data_series = pd.Series(data.columns)
+                if order is not None:
+                    data_series = data_series.reindex(order)
+                data_df = data_series.to_frame().T
+            else:
+                # Use index for vertical (left/right)
+                data_series = pd.Series(data.index)
+                if order is not None:
+                    data_series = data_series.reindex(order)
+                data_df = data_series.to_frame()
 
     elif isinstance(data, pd.Series):
-        # Convert Series to DataFrame based on orientation
+        # Series data
+        if order is not None:
+            data = data.reindex(order)
         data_df = data.to_frame().T if horizontal else data.to_frame()
+
     elif isinstance(data, (list, np.ndarray)):
+        # Array/list data
         data_array = np.array(data)
         if data_array.ndim == 1:
+            if order is not None and len(order) == len(data_array):
+                data_array = data_array[np.argsort(order)]
             data_df = pd.DataFrame([data_array] if horizontal else [[d] for d in data_array])
         else:
             data_df = pd.DataFrame(data_array)
@@ -240,10 +316,12 @@ def block(
         for j in range(n_cols):
             if horizontal:
                 # Horizontal: blocks go left-to-right (x varies), rows stack vertically
-                x, y, w, h = j, n_rows - i - 1, 1, 1
+                x_pos, y_pos, w, h = j, n_rows - i - 1, 1, 1
             else:
-                # Vertical: blocks go top-to-bottom (y varies), columns stack horizontally
-                x, y, w, h = i, j, 1, 1
+                # Vertical: blocks stack top-to-bottom (y varies), x is constant
+                # For n_rows x n_cols DataFrame, blocks should be at:
+                # (x=j, y=i) so they stack vertically
+                x_pos, y_pos, w, h = j, i, 1, 1
 
             # Get color for this block
             if isinstance(color_values[0], list):
@@ -254,7 +332,7 @@ def block(
             # Create rectangle with double-layer rendering
             # Layer 1: Transparent fill
             rect_fill = Rectangle(
-                (x, y), w, h,
+                (x_pos, y_pos), w, h,
                 facecolor=color,
                 edgecolor='none',
                 linewidth=0,
@@ -265,7 +343,7 @@ def block(
             # Layer 2: Opaque edge
             edge_c = edgecolor if edgecolor else color
             rect_edge = Rectangle(
-                (x, y), w, h,
+                (x_pos, y_pos), w, h,
                 facecolor='none',
                 edgecolor=edge_c,
                 linewidth=linewidth,
@@ -289,7 +367,7 @@ def block(
                 text_defaults.update(text_kwargs)
 
                 ax.text(
-                    x + w/2, y + h/2, str(val),
+                    x_pos + w/2, y_pos + h/2, str(val),
                     **text_defaults,
                     zorder=3
                 )
@@ -298,13 +376,14 @@ def block(
     apply_transparency(patches, face_alpha=alpha, edge_alpha=1.0)
 
     # Set axis limits and appearance
-    if horizontal:
-        ax.set_xlim(0, n_cols)
-        ax.set_ylim(0, n_rows)
-        ax.invert_yaxis()
+    # Both horizontal and vertical use same limits based on DataFrame shape
+    ax.set_xlim(0, n_cols)
+    ax.set_ylim(0, n_rows)
+    if not horizontal:
+        # For vertical blocks, don't invert y-axis so blocks go top-to-bottom
+        pass
     else:
-        ax.set_xlim(0, n_rows)
-        ax.set_ylim(0, n_cols)
+        # For horizontal blocks, invert so first row is at top
         ax.invert_yaxis()
 
     # Clean axes
