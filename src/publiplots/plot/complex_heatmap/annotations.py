@@ -616,17 +616,19 @@ MM2INCH = 1 / 25.4
 
 def _get_arrow_params(
     arrow_direction: str,
-    horizontal: bool
-) -> Dict[str, Union[int, float]]:
+    rotation: float = 0
+) -> Dict[str, Union[int, float, str]]:
     """
     Get arrow angle and orientation parameters based on arrow direction.
+
+    This follows PyComplexHeatmap's approach for arrow angles.
 
     Parameters
     ----------
     arrow_direction : str
         Direction of arrow: 'up', 'down', 'left', 'right'.
-    horizontal : bool
-        Whether labels are arranged horizontally (True) or vertically (False).
+    rotation : float
+        Text rotation angle in degrees (incorporated into angleA).
 
     Returns
     -------
@@ -634,42 +636,38 @@ def _get_arrow_params(
         Dictionary with keys:
         - angleA: angle at data point (arrow base)
         - angleB: angle at text (arrow tip)
-        - text_rotation: default text rotation for this orientation
-        - text_coord_type: 'xaxis' or 'yaxis' for coordinate transform
+        - axis_transform: 'xaxis' or 'yaxis' for coordinate transform
+        - y_position: position along perpendicular axis (0 or 1)
     """
     params = {}
 
     if arrow_direction == 'up':
-        # Arrow points up from data toward text above
-        params['angleA'] = -180  # Point upward from data
-        params['angleB'] = 90    # Arrive from below at text
-        params['text_rotation'] = 90  # Vertical text
-        params['text_coord_type'] = 'xaxis'
-        params['text_anchor'] = 'below'  # Text is below in axes coords
+        # Arrow points up from data (at bottom) toward text above
+        params['angleA'] = rotation - 180
+        params['angleB'] = 90
+        params['axis_transform'] = 'xaxis'
+        params['y_position'] = 0  # Arrow starts at bottom of axes
 
     elif arrow_direction == 'down':
-        # Arrow points down from data toward text below
-        params['angleA'] = 180   # Point downward from data
-        params['angleB'] = -90   # Arrive from above at text
-        params['text_rotation'] = -90  # Vertical text
-        params['text_coord_type'] = 'xaxis'
-        params['text_anchor'] = 'above'  # Text is above in axes coords
+        # Arrow points down from data (at top) toward text below
+        params['angleA'] = 180 + rotation
+        params['angleB'] = -90
+        params['axis_transform'] = 'xaxis'
+        params['y_position'] = 1  # Arrow starts at top of axes
 
     elif arrow_direction == 'left':
-        # Arrow points left from data toward text on left
-        params['angleA'] = 0     # Point left from data
-        params['angleB'] = -180  # Arrive from right at text
-        params['text_rotation'] = 0  # Horizontal text
-        params['text_coord_type'] = 'yaxis'
-        params['text_anchor'] = 'right'  # Text is to right in axes coords
+        # Arrow points left from data (at right) toward text on left
+        params['angleA'] = rotation
+        params['angleB'] = -180
+        params['axis_transform'] = 'yaxis'
+        params['y_position'] = 1  # Arrow starts at right of axes
 
     elif arrow_direction == 'right':
-        # Arrow points right from data toward text on right
-        params['angleA'] = -180  # Point right from data
-        params['angleB'] = 0     # Arrive from left at text
-        params['text_rotation'] = 0  # Horizontal text
-        params['text_coord_type'] = 'yaxis'
-        params['text_anchor'] = 'left'  # Text is to left in axes coords
+        # Arrow points right from data (at left) toward text on right
+        params['angleA'] = rotation - 180
+        params['angleB'] = 0
+        params['axis_transform'] = 'yaxis'
+        params['y_position'] = 0  # Arrow starts at left of axes
 
     else:
         raise ValueError(f"Invalid arrow direction: {arrow_direction}. "
@@ -691,7 +689,7 @@ def label(
     palette: Optional[Union[str, Dict, List]] = None,
     colors: Optional[List[str]] = None,
     # Text styling
-    rotation: float = 0,
+    rotation: Optional[float] = None,
     fontsize: Optional[float] = None,
     ha: str = "center",
     va: str = "center",
@@ -731,9 +729,10 @@ def label(
         Order of positions (passed automatically by complex_heatmap builder).
     merge : bool, default=True
         If True, merge consecutive identical labels (only show once for the span).
-    rotation : float, default=0
-        Text rotation angle in degrees.
-        Common values: 0, 45, 90, -45, -90.
+    rotation : float, optional
+        Text rotation angle in degrees. If None, uses sensible defaults:
+        - For arrows: 0 degrees (horizontal text)
+        - Common override values: 45, 90, -45, -90
     fontsize : float, optional
         Font size. Uses rcParams default if None.
     ha : str, default='center'
@@ -799,31 +798,23 @@ def label(
     fontsize = resolve_param("font.size", fontsize)
     color = resolve_param("color", color)
 
+    # Default rotation: 0 (horizontal text) unless user specifies otherwise
+    if rotation is None:
+        rotation = 0
+
     # Prepare data using helper function
     data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
 
     # Extract unique label strings for space calculation
     unique_labels = [str(val) for val in data_df.values.ravel()]
 
-    # Get arrow parameters if arrows are requested
-    arrow_params = None
-    if arrow:
-        arrow_params = _get_arrow_params(arrow, horizontal)
-        # Use default rotation from arrow direction if not specified by user
-        if rotation == 0:
-            rotation = arrow_params['text_rotation']
-
-    # Calculate required space for text automatically
-    # This ensures text fits regardless of rotation
+    # Calculate required space for text automatically (if creating new axes)
     if ax is None:
         # Determine position based on arrow direction or orientation
-        if arrow:
-            if arrow_params['text_coord_type'] == 'xaxis':
-                position = 'bottom' if arrow == 'up' else 'top'
-            else:
-                position = 'left' if arrow == 'right' else 'right'
+        if horizontal:
+            position = 'bottom'
         else:
-            position = 'bottom' if horizontal else 'right'
+            position = 'right'
 
         # Calculate space needed for labels in inches
         label_space_inches = calculate_label_space(
@@ -833,7 +824,7 @@ def label(
             fontsize=fontsize,
             rotation=rotation,
             unit='inches',
-            safety_factor=1.2,  # Extra margin for arrows
+            safety_factor=1.2,  # Extra margin
         )
 
         # Create figure with calculated size
@@ -885,32 +876,29 @@ def label(
                 val = data_df.iloc[i, j]
                 labels_to_draw.append((i, j, 1, 1, val))
 
-    # Set axis limits early for coordinate transformations
+    # Set up coordinate system based on orientation
+    # Following PyComplexHeatmap's approach
     if horizontal:
-        ax.set_xlim(0, n_cols)
+        # For horizontal: set up n_cols tick positions
+        ax.set_xticks(ticks=np.arange(0.5, n_cols, 1))
+        ax.set_xlim(-0.5, n_cols - 0.5)
         ax.set_ylim(0, 1)
     else:
+        # For vertical: set up n_rows tick positions
+        ax.set_yticks(ticks=np.arange(0.5, n_rows, 1))
+        ax.set_ylim(-0.5, n_rows - 0.5)
         ax.set_xlim(0, 1)
-        ax.set_ylim(0, n_rows)
 
-    # Position labels and arrows
+    # Position labels (and arrows if requested)
     for label_info in labels_to_draw:
         i, j, col_span, row_span, lbl = label_info
 
         if arrow:
-            # With arrows: use coordinate transformation for proper positioning
-            # Data point coordinates (where arrow starts/ends)
-            if horizontal:
-                data_x = j + col_span / 2
-                data_y_for_text = i  # Not used for horizontal with axis transform
-            else:
-                data_x_for_text = i  # Not used for vertical with axis transform
-                data_y = i + row_span / 2
-
             # Get arrow configuration
             arrow_kwargs = arrow_kws or {}
+            arrow_params = _get_arrow_params(arrow, rotation)
 
-            # Arrow height/width in millimeters (converted to pixels for arm length)
+            # Arrow height/width in millimeters (converted to pixels)
             if horizontal:
                 arrow_height_mm = arrow_kwargs.get('arrow_height', 5)
                 arrow_height_px = arrow_height_mm * MM2INCH * fig.dpi
@@ -918,7 +906,12 @@ def label(
                 arrow_width_mm = arrow_kwargs.get('arrow_width', 5)
                 arrow_height_px = arrow_width_mm * MM2INCH * fig.dpi
 
-            # Arm length as fraction of arrow height (like pyComplexHeatmap)
+            # Calculate text offset in pixels (following PyComplexHeatmap)
+            text_offset_px = arrow_height_px
+            if arrow == 'down' or arrow == 'left':
+                text_offset_px = -1 * arrow_height_px
+
+            # Arm length as fraction of arrow height
             frac = arrow_kwargs.get('frac', 0.2)
             rad = arrow_kwargs.get('rad', 2)
             arm_length = arrow_height_px * frac
@@ -934,78 +927,55 @@ def label(
             arrow_linewidth = arrow_kwargs.get('linewidth', 1)
             arrowstyle = arrow_kwargs.get('arrowstyle', '->')
 
-            # Text position in axes coordinates (0-1 range along the perpendicular axis)
-            # For arrows, text is positioned away from data
-            if arrow == 'up':
-                text_x_data = data_x
-                text_y_axes = 0  # Bottom of axes (text below, arrow points up to data)
-                text_ha = 'center'
-                text_va = 'top'
-                coord_transform = ax.get_xaxis_transform()
-                arrow_start = (data_x, 0)  # Bottom of data range
-                arrow_end = (text_x_data, text_y_axes)
-            elif arrow == 'down':
-                text_x_data = data_x
-                text_y_axes = 1  # Top of axes (text above, arrow points down to data)
-                text_ha = 'center'
-                text_va = 'bottom'
-                coord_transform = ax.get_xaxis_transform()
-                arrow_start = (data_x, n_rows)  # Top of data range
-                arrow_end = (text_x_data, text_y_axes)
-            elif arrow == 'left':
-                text_x_axes = 1  # Right of axes (text on right, arrow points left to data)
-                text_y_data = data_y
-                text_ha = 'left'
-                text_va = 'center'
-                coord_transform = ax.get_yaxis_transform()
-                arrow_start = (0, data_y)  # Left of data range
-                arrow_end = (text_x_axes, text_y_data)
-            elif arrow == 'right':
-                text_x_axes = 0  # Left of axes (text on left, arrow points right to data)
-                text_y_data = data_y
-                text_ha = 'right'
-                text_va = 'center'
-                coord_transform = ax.get_yaxis_transform()
-                arrow_start = (n_cols, data_y)  # Right of data range
-                arrow_end = (text_x_axes, text_y_data)
-            else:
-                continue
+            # Get coordinate transform
+            if arrow_params['axis_transform'] == 'xaxis':
+                xycoords = ax.get_xaxis_transform()
+                # xy is (data_x, axes_y) where axes_y is 0 or 1
+                xy_point = (j + col_span / 2, arrow_params['y_position'])
+                # xytext is offset in pixels from xy
+                xytext_offset = (0, text_offset_px)
+            else:  # yaxis
+                xycoords = ax.get_yaxis_transform()
+                # xy is (axes_x, data_y) where axes_x is 0 or 1
+                xy_point = (arrow_params['y_position'], i + row_span / 2)
+                # xytext is offset in pixels from xy
+                xytext_offset = (text_offset_px, 0)
 
             # Override text alignment if user specified
             if ha != 'center':
                 text_ha = ha
+            else:
+                text_ha = 'center'
             if va != 'center':
                 text_va = va
-
-            # Draw text using coordinate transform
-            text_kwargs = kwargs.copy()
-            text_kwargs.update({
-                'fontsize': fontsize,
-                'ha': text_ha,
-                'va': text_va,
-                'color': color,
-                'weight': fontweight,
-                'rotation': rotation,
-                'transform': coord_transform,
-            })
-
-            if arrow_params['text_coord_type'] == 'xaxis':
-                ax.text(text_x_data, text_y_axes, str(lbl), **text_kwargs, zorder=2)
             else:
-                ax.text(text_x_axes, text_y_data, str(lbl), **text_kwargs, zorder=2)
+                text_va = 'center'
 
-            # Draw arrow with smooth curvature
-            arrow_patch = FancyArrowPatch(
-                arrow_start, arrow_end,
-                arrowstyle=arrowstyle,
-                connectionstyle=connectionstyle,
-                color=arrow_color,
-                linewidth=arrow_linewidth,
-                shrinkA=0,
-                shrinkB=0,
-                zorder=1
+            # Build arrowprops
+            arrowprops = {
+                'arrowstyle': arrowstyle,
+                'connectionstyle': connectionstyle,
+                'color': arrow_color,
+                'linewidth': arrow_linewidth,
+            }
+
+            # Use annotate to draw text with arrow
+            ax.annotate(
+                text=str(lbl),
+                xy=xy_point,
+                xytext=xytext_offset,
+                xycoords=xycoords,
+                textcoords='offset pixels',
+                fontsize=fontsize,
+                ha=text_ha,
+                va=text_va,
+                color=color,
+                weight=fontweight,
+                rotation=rotation,
+                arrowprops=arrowprops,
+                zorder=2,
+                **kwargs
             )
-            ax.add_patch(arrow_patch)
 
         else:
             # Without arrows: simple text positioning
