@@ -862,80 +862,92 @@ def label(
 
         if arrow:
             # Use annotate() like pyComplexHeatmap for proper arrow connections
-            # Text is positioned at opposite end, arrow takes ALL remaining space
+            # Following their exact coordinate system and positioning logic
 
-            # Calculate arm height for arc connectionstyle (20% of total space)
+            # Calculate arrow height in pixels (following pyComplexHeatmap)
             bbox = ax.get_position()
             if horizontal:
-                arm_height_inches = (offset + 0.5) * bbox.height * fig.get_figheight() * 0.2
+                arrow_height_inches = (offset + 0.5) * bbox.height * fig.get_figheight()
             else:
-                arm_height_inches = (offset + 0.5) * bbox.width * fig.get_figwidth() * 0.2
-            arm_height_points = arm_height_inches * 72  # Convert to points
+                arrow_height_inches = (offset + 0.5) * bbox.width * fig.get_figwidth()
+            arrow_height_pixels = arrow_height_inches * fig.dpi
 
-            # Calculate angles based on arrow direction (following pyComplexHeatmap)
+            # Calculate arm height for arc connectionstyle (20% of arrow height)
+            arm_height_pixels = arrow_height_pixels * 0.2
+
+            # Position text and arrow following pyComplexHeatmap's exact logic
             if arrow == 'down':
-                # Text at TOP of space, arrow points down to heatmap
+                # Horizontal annotation, arrow points DOWN
+                # xy: top edge (y=1 in axes coords), xytext: negative offset (downward)
+                xy = (target_x, 1)
+                xytext = (0, -arrow_height_pixels)
+                xycoords = ax.get_xaxis_transform()
+                textcoords = "offset pixels"
                 angleA = 180 + rotation
                 angleB = -90
-                text_x = target_x
-                text_y = 1  # Top of annotation space (axes coords)
                 text_ha = ha if ha != 'center' else 'center'
                 text_va = va if va != 'center' else 'top'
-                xycoords = ax.get_xaxis_transform()
-                textcoords = ax.get_xaxis_transform()
             elif arrow == 'up':
-                # Text at BOTTOM of space, arrow points up to heatmap
+                # Horizontal annotation, arrow points UP
+                # xy: bottom edge (y=0 in axes coords), xytext: positive offset (upward)
+                xy = (target_x, 0)
+                xytext = (0, arrow_height_pixels)
+                xycoords = ax.get_xaxis_transform()
+                textcoords = "offset pixels"
                 angleA = rotation - 180
                 angleB = 90
-                text_x = target_x
-                text_y = 1  # Bottom of annotation space (axes coords, inverted)
                 text_ha = ha if ha != 'center' else 'center'
                 text_va = va if va != 'center' else 'bottom'
-                xycoords = ax.get_xaxis_transform()
-                textcoords = ax.get_xaxis_transform()
             elif arrow == 'left':
-                # Text at RIGHT of space, arrow points left to heatmap
+                # Vertical annotation, arrow points LEFT
+                # xy: right edge (x=1 in axes coords), xytext: negative offset (leftward)
+                xy = (1, target_y)
+                xytext = (-arrow_height_pixels, 0)
+                xycoords = ax.get_yaxis_transform()
+                textcoords = "offset pixels"
                 angleA = rotation
                 angleB = -180
-                text_x = 1  # Right of annotation space (axes coords)
-                text_y = target_y
-                text_ha = ha if ha != 'center' else 'left'
-                text_va = va if va != 'center' else 'center'
-                xycoords = ax.get_yaxis_transform()
-                textcoords = ax.get_yaxis_transform()
-            elif arrow == 'right':
-                # Text at LEFT of space, arrow points right away from heatmap
-                angleA = rotation - 180
-                angleB = 0
-                text_x = 1  # Left of annotation space (axes coords)
-                text_y = target_y
                 text_ha = ha if ha != 'center' else 'right'
                 text_va = va if va != 'center' else 'center'
+            elif arrow == 'right':
+                # Vertical annotation, arrow points RIGHT
+                # xy: left edge (x=0 in axes coords), xytext: positive offset (rightward)
+                xy = (0, target_y)
+                xytext = (arrow_height_pixels, 0)
                 xycoords = ax.get_yaxis_transform()
-                textcoords = ax.get_yaxis_transform()
+                textcoords = "offset pixels"
+                angleA = rotation - 180
+                angleB = 0
+                text_ha = ha if ha != 'center' else 'left'
+                text_va = va if va != 'center' else 'center'
             else:
-                # Shouldn't reach here, but default to up
+                # Default to up
+                xy = (target_x, 0)
+                xytext = (0, arrow_height_pixels)
+                xycoords = ax.get_xaxis_transform()
+                textcoords = "offset pixels"
                 angleA = rotation - 180
                 angleB = 90
-                text_x = target_x
-                text_y = 1
                 text_ha = ha if ha != 'center' else 'center'
                 text_va = va if va != 'center' else 'bottom'
-                xycoords = ax.get_xaxis_transform()
-                textcoords = ax.get_xaxis_transform()
 
             # Setup arrow properties with arc connectionstyle
             arrow_kwargs = arrow_kws or {}
+
+            # Extract arrow-specific parameters
             connectionstyle = arrow_kwargs.pop('connectionstyle', None)
+            rad = arrow_kwargs.pop('rad', 2)
+            arrow_linewidth = arrow_kwargs.pop('linewidth', None)
+            arrow_linewidth = resolve_param("lines.linewidth", arrow_linewidth)
+
             if connectionstyle is None:
                 # Use pyComplexHeatmap-style arc connection
-                rad = arrow_kwargs.pop('rad', 2)  # Curvature parameter
-                connectionstyle = f"arc,angleA={angleA},angleB={angleB},armA={arm_height_points},armB={arm_height_points},rad={rad}"
+                connectionstyle = f"arc,angleA={angleA},angleB={angleB},armA={arm_height_pixels},armB={arm_height_pixels},rad={rad}"
 
             arrowprops = {
                 'arrowstyle': '-',
                 'color': label_color,
-                'linewidth': 0.5,
+                'linewidth': arrow_linewidth,
                 'shrinkA': 0,
                 'shrinkB': 0,
                 'connectionstyle': connectionstyle,
@@ -951,12 +963,13 @@ def label(
                 'color': label_color,
                 'weight': fontweight,
                 'rotation': rotation,
+                'rotation_mode': 'anchor',
             })
 
             ax.annotate(
                 str(lbl),
-                xy=(target_x, target_y),
-                xytext=(text_x, text_y),
+                xy=xy,
+                xytext=xytext,
                 xycoords=xycoords,
                 textcoords=textcoords,
                 arrowprops=arrowprops,
