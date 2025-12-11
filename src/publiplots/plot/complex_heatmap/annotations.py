@@ -624,6 +624,8 @@ def label(
     va: str = "center",
     color: Optional[str] = None,
     fontweight: str = "normal",
+    hue: Optional[str] = None,
+    palette: Optional[Union[str, Dict, List]] = None,
     # Arrow connection
     arrow: Optional[str] = None,
     arrow_kws: Optional[Dict] = None,
@@ -669,8 +671,18 @@ def label(
         Vertical alignment: 'top', 'center', 'bottom', 'baseline'.
     color : str, optional
         Text color. Uses rcParams default if None.
+        Only used when hue is None.
     fontweight : str, default='normal'
         Font weight: 'normal', 'bold', 'light', 'heavy'.
+    hue : str, optional
+        Column name in DataFrame to use for coloring labels.
+        Colors both text and arrow. If provided, overrides 'color' parameter.
+    palette : str, dict, or list, optional
+        Color palette for hue values (used when hue is provided):
+        - str: Palette name (e.g., 'Set2', 'pastel')
+        - dict: Mapping from hue values to colors
+        - list: List of colors
+        If None and hue is provided, uses default palette.
     arrow : str, optional
         Direction of connecting arrows from labels to positions.
         Options: 'up', 'down', 'left', 'right', or None (no arrows).
@@ -715,6 +727,16 @@ def label(
     >>> fig, ax = pp.label(categories, x=True, fontsize=12, fontweight='bold',
     ...                     color='darkblue', rotation=90)
 
+    With hue coloring from DataFrame:
+
+    >>> metadata = pd.DataFrame({
+    ...     'gene': ['BRCA1', 'TP53', 'EGFR'],
+    ...     'category': ['Oncogene', 'Tumor suppressor', 'Oncogene']
+    ... })
+    >>> fig, ax = pp.label(metadata, y='gene', hue='category',
+    ...                     palette={'Oncogene': 'red', 'Tumor suppressor': 'blue'},
+    ...                     arrow='left')
+
     Notes
     -----
     - Designed for complex_heatmap margins but works standalone
@@ -724,7 +746,17 @@ def label(
     """
     # Resolve defaults
     fontsize = resolve_param("font.size", fontsize)
-    color = resolve_param("color", color)
+    if color is None and hue is None:
+        color = resolve_param("color", color)
+
+    # Extract hue data if provided (before preparing annotation data)
+    hue_data = None
+    original_data = data
+    if hue is not None and isinstance(data, pd.DataFrame):
+        if hue in data.columns:
+            hue_data = data[hue]
+        else:
+            raise ValueError(f"Hue column '{hue}' not found in DataFrame")
 
     # Prepare data using helper function
     data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
@@ -735,6 +767,49 @@ def label(
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.get_figure()
+
+    # Process hue and palette for color mapping (following publiplots pattern)
+    color_map = None
+    if hue is not None and hue_data is not None:
+        # Get unique label values
+        unique_labels = pd.unique(data_df.values.ravel())
+
+        # Map labels to hue values
+        # Need to align labels with their corresponding hue values
+        label_to_hue = {}
+        if isinstance(original_data, pd.DataFrame):
+            # Create mapping from labels to hue values
+            for label in unique_labels:
+                # Find hue value for this label
+                # Handle both cases: when label column is x/y, or when it's a separate column
+                if isinstance(x, str) and x in original_data.columns:
+                    # x is the label column
+                    rows = original_data[original_data[x] == label]
+                    if len(rows) > 0:
+                        label_to_hue[label] = rows[hue].iloc[0]
+                elif isinstance(y, str) and y in original_data.columns:
+                    # y is the label column
+                    rows = original_data[original_data[y] == label]
+                    if len(rows) > 0:
+                        label_to_hue[label] = rows[hue].iloc[0]
+
+        # Get unique hue values
+        unique_hue_values = pd.unique(pd.Series(list(label_to_hue.values()))) if label_to_hue else unique_labels
+
+        # Resolve palette to color mapping
+        if palette is None:
+            palette = 'pastel'  # Default palette
+
+        hue_color_map = resolve_palette_map(
+            values=unique_hue_values,
+            palette=palette
+        )
+
+        # Create label to color mapping
+        if label_to_hue:
+            color_map = {label: hue_color_map[hue_val] for label, hue_val in label_to_hue.items()}
+        else:
+            color_map = hue_color_map
 
     # Build list of labels to draw (with merging if requested)
     labels_to_draw = []
@@ -763,94 +838,204 @@ def label(
                 val = data_df.iloc[i, j]
                 labels_to_draw.append((i, j, 1, 1, val))
 
-    # Position labels
+    # Position labels (with or without arrows)
+    # Arrow takes ALL remaining space - text is at opposite end
+    total_space = offset + 0.5
+
     for label_info in labels_to_draw:
         i, j, col_span, row_span, lbl = label_info
+
+        # Get color for this label
+        label_color = color
+        if color_map is not None and lbl in color_map:
+            label_color = color_map[lbl]
+        elif label_color is None:
+            label_color = 'black'
+
+        # Calculate target position (where arrow points to)
         if horizontal:
-            # Labels below axis (for top/bottom margins)
-            # Center on the span
-            x_pos = j + col_span / 2
-            y_pos = offset
+            target_x = j + col_span / 2
+            target_y = 0  # Points to heatmap edge
+        else:
+            target_x = 0  # Points to heatmap edge
+            target_y = i + row_span / 2
 
-            # Adjust alignment for rotation
-            if rotation > 0:  # Rotated right
+        if arrow:
+            # Use annotate() like pyComplexHeatmap for proper arrow connections
+            # Following their exact coordinate system and positioning logic
+
+            # Calculate arrow height in pixels (following pyComplexHeatmap)
+            bbox = ax.get_position()
+            if horizontal:
+                arrow_height_inches = (offset + 0.5) * bbox.height * fig.get_figheight()
+            else:
+                arrow_height_inches = (offset + 0.5) * bbox.width * fig.get_figwidth()
+            arrow_height_pixels = arrow_height_inches * fig.dpi
+
+            # Calculate arm height for arc connectionstyle (20% of arrow height)
+            arm_height_pixels = arrow_height_pixels * 0.2
+
+            # Position text and arrow following pyComplexHeatmap's exact logic
+            if arrow == 'down':
+                # Horizontal annotation, arrow points DOWN (toward heatmap)
+                # xy: bottom edge near heatmap (y=0), xytext: above it (positive offset)
+                xy = (target_x, 0)
+                xytext = (0, arrow_height_pixels)
+                xycoords = ax.get_xaxis_transform()
+                textcoords = "offset pixels"
+                angleA = 180 + rotation
+                angleB = -90
+                relpos = (0.5, 0.0)  # Bottom center of text box
+                # Adjust alignment for rotation
+                if rotation == -90:
+                    text_ha = 'left'
+                    text_va = 'center'
+                elif rotation == 90:
+                    text_ha = 'right'
+                    text_va = 'center'
+                else:
+                    text_ha = ha if ha != 'center' else 'center'
+                    text_va = va if va != 'center' else 'top'
+            elif arrow == 'up':
+                # Horizontal annotation, arrow points UP (away from heatmap)
+                # xy: top edge far from heatmap (y=1), xytext: below it (negative offset)
+                xy = (target_x, 1)
+                xytext = (0, -arrow_height_pixels)
+                xycoords = ax.get_xaxis_transform()
+                textcoords = "offset pixels"
+                angleA = rotation - 180
+                angleB = 90
+                relpos = (0.5, 1.0)  # Top center of text box
+                # Adjust alignment for rotation
+                if rotation == 90:
+                    text_ha = 'left'
+                    text_va = 'center'
+                elif rotation == -90:
+                    text_ha = 'right'
+                    text_va = 'center'
+                else:
+                    text_ha = ha if ha != 'center' else 'center'
+                    text_va = va if va != 'center' else 'bottom'
+            elif arrow == 'left':
+                # Vertical annotation, arrow points LEFT (away from heatmap)
+                # xy: left edge far from heatmap (x=0), xytext: right of it (positive offset)
+                xy = (0, target_y)
+                xytext = (arrow_height_pixels, 0)
+                xycoords = ax.get_yaxis_transform()
+                textcoords = "offset pixels"
+                angleA = rotation
+                angleB = -180
+                relpos = (0.0, 0.5)  # Left center of text box
                 text_ha = ha if ha != 'center' else 'right'
-                text_va = va if va != 'center' else 'bottom'
-            elif rotation < 0:  # Rotated left
-                text_ha = ha if ha != 'center' else 'left'
-                text_va = va if va != 'center' else 'bottom'
-            else:  # No rotation
-                text_ha = ha
-                text_va = va
-
-        else:  # vertical
-            # Labels to right of axis (for left/right margins)
-            # Center on the span
-            x_pos = offset
-            y_pos = i + row_span / 2
-
-            # Adjust alignment for vertical orientation
-            if rotation == 0:
+                text_va = va if va != 'center' else 'center'
+            elif arrow == 'right':
+                # Vertical annotation, arrow points RIGHT (toward heatmap)
+                # xy: right edge near heatmap (x=1), xytext: left of it (negative offset)
+                xy = (1, target_y)
+                xytext = (-arrow_height_pixels, 0)
+                xycoords = ax.get_yaxis_transform()
+                textcoords = "offset pixels"
+                angleA = rotation - 180
+                angleB = 0
+                relpos = (1.0, 0.5)  # Right center of text box
                 text_ha = ha if ha != 'center' else 'left'
                 text_va = va if va != 'center' else 'center'
             else:
-                text_ha = ha
-                text_va = va
+                # Default to down
+                xy = (target_x, 0)
+                xytext = (0, arrow_height_pixels)
+                xycoords = ax.get_xaxis_transform()
+                textcoords = "offset pixels"
+                angleA = 180 + rotation
+                angleB = -90
+                text_ha = ha if ha != 'center' else 'center'
+                text_va = va if va != 'center' else 'top'
+                relpos = (0.5, 0.0)
 
-        # Draw text
-        text_kwargs = kwargs.copy()
-        text_kwargs.update({
-            'fontsize': fontsize,
-            'ha': text_ha,
-            'va': text_va,
-            'color': color,
-            'weight': fontweight,
-            'rotation': rotation,
-        })
-
-        ax.text(x_pos, y_pos, str(lbl), **text_kwargs, zorder=2)
-
-        # Draw arrow if requested
-        if arrow:
+            # Setup arrow properties with arc connectionstyle
             arrow_kwargs = arrow_kws or {}
-            arrow_defaults = {
-                'arrowstyle': '->',
-                'color': color or 'black',
-                'linewidth': 1,
-                'shrinkA': 2,
-                'shrinkB': 2,
+
+            # Extract arrow-specific parameters
+            connectionstyle = arrow_kwargs.pop('connectionstyle', None)
+            rad = arrow_kwargs.pop('rad', 2)
+            arrow_linewidth = arrow_kwargs.pop('linewidth', None)
+            arrow_linewidth = resolve_param("lines.linewidth", arrow_linewidth)
+
+            if connectionstyle is None:
+                # Use pyComplexHeatmap-style arc connection
+                connectionstyle = f"arc,angleA={angleA},angleB={angleB},armA={arm_height_pixels},armB={arm_height_pixels},rad={rad}"
+
+            arrowprops = {
+                'arrowstyle': '-',
+                'color': label_color,
+                'linewidth': arrow_linewidth,
+                'shrinkA': 1,  # 1 point shrink from text (like pyComplexHeatmap)
+                'shrinkB': 1,  # 1 point shrink from target
+                'connectionstyle': connectionstyle,
+                'relpos': relpos,
             }
-            arrow_defaults.update(arrow_kwargs)
+            arrowprops.update(arrow_kwargs)
 
-            # Determine arrow endpoints based on direction
-            arrow_length = 0.3  # Length of arrow in data coordinates
+            # Draw text with arrow using annotate
+            text_kwargs = kwargs.copy()
+            text_kwargs.update({
+                'fontsize': fontsize,
+                'ha': text_ha,
+                'va': text_va,
+                'color': label_color,
+                'weight': fontweight,
+                'rotation': rotation,
+                'rotation_mode': 'anchor',
+            })
 
-            if arrow == 'down':
-                # Arrow pointing down (from text toward axis below)
-                arrow_start = (x_pos, y_pos)
-                arrow_end = (x_pos, y_pos - arrow_length)
-            elif arrow == 'up':
-                # Arrow pointing up (from text toward axis above)
-                arrow_start = (x_pos, y_pos)
-                arrow_end = (x_pos, y_pos + arrow_length)
-            elif arrow == 'left':
-                # Arrow pointing left (from text toward axis on left)
-                arrow_start = (x_pos, y_pos)
-                arrow_end = (x_pos - arrow_length, y_pos)
-            elif arrow == 'right':
-                # Arrow pointing right (from text toward axis on right)
-                arrow_start = (x_pos, y_pos)
-                arrow_end = (x_pos + arrow_length, y_pos)
-            else:
-                # Invalid direction - skip arrow
-                continue
-
-            arrow_patch = FancyArrowPatch(
-                arrow_start, arrow_end,
-                **arrow_defaults,
-                zorder=1
+            ax.annotate(
+                str(lbl),
+                xy=xy,
+                xytext=xytext,
+                xycoords=xycoords,
+                textcoords=textcoords,
+                arrowprops=arrowprops,
+                **text_kwargs,
+                zorder=2
             )
-            ax.add_patch(arrow_patch)
+        else:
+            # No arrow - draw text only
+            if horizontal:
+                x_pos = target_x
+                y_pos = offset
+                # Adjust alignment for rotation
+                if rotation > 0:  # Rotated right
+                    text_ha = ha if ha != 'center' else 'right'
+                    text_va = va if va != 'center' else 'bottom'
+                elif rotation < 0:  # Rotated left
+                    text_ha = ha if ha != 'center' else 'left'
+                    text_va = va if va != 'center' else 'bottom'
+                else:  # No rotation
+                    text_ha = ha
+                    text_va = va
+            else:  # vertical
+                x_pos = offset
+                y_pos = target_y
+                # Adjust alignment for vertical orientation
+                if rotation == 0:
+                    text_ha = ha if ha != 'center' else 'left'
+                    text_va = va if va != 'center' else 'center'
+                else:
+                    text_ha = ha
+                    text_va = va
+
+            # Draw text
+            text_kwargs = kwargs.copy()
+            text_kwargs.update({
+                'fontsize': fontsize,
+                'ha': text_ha,
+                'va': text_va,
+                'color': label_color,
+                'weight': fontweight,
+                'rotation': rotation,
+            })
+
+            ax.text(x_pos, y_pos, str(lbl), **text_kwargs, zorder=2)
 
     # Set axis limits
     if horizontal:
