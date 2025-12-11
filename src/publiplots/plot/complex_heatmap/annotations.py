@@ -233,6 +233,9 @@ def block(
                 if order is not None:
                     # Filter and reorder columns based on order
                     data_series = pd.Series([col for col in order if col in data.columns])
+                    # Fallback: if filtering produced empty result, use all columns
+                    if len(data_series) == 0:
+                        data_series = pd.Series(data.columns)
                 else:
                     data_series = pd.Series(data.columns)
                 data_df = data_series.to_frame().T
@@ -241,6 +244,9 @@ def block(
                 if order is not None:
                     # Filter and reorder index based on order
                     data_series = pd.Series([idx for idx in order if idx in data.index])
+                    # Fallback: if filtering produced empty result, use all index
+                    if len(data_series) == 0:
+                        data_series = pd.Series(data.index)
                 else:
                     data_series = pd.Series(data.index)
                 data_df = data_series.to_frame()
@@ -271,6 +277,16 @@ def block(
         fig = ax.get_figure()
 
     n_rows, n_cols = data_df.shape
+
+    # Debug: Check if data_df is empty
+    if n_rows == 0 or n_cols == 0:
+        import warnings
+        warnings.warn(
+            f"block() received empty data: n_rows={n_rows}, n_cols={n_cols}. "
+            f"data_df shape: {data_df.shape}, values: {data_df.values if n_rows > 0 and n_cols > 0 else 'empty'}. "
+            f"x={x}, y={y}, horizontal={horizontal}, order={'provided' if order is not None else 'None'}",
+            UserWarning
+        )
 
     # Determine if data is categorical or continuous
     # Check the flattened values, not the DataFrame structure
@@ -334,9 +350,11 @@ def block(
                 color = color_values[j] if horizontal else color_values[i]
 
             # Create rectangle with double-layer rendering
-            # Layer 1: Transparent fill
+            # Layer 1: Transparent fill with slight inset to show edges clearly
+            # Inset by half linewidth in data coordinates to prevent edge overlap
+            inset = linewidth * 0.01 if linewidth > 0 else 0  # Small inset in data units
             rect_fill = Rectangle(
-                (x_pos, y_pos), w, h,
+                (x_pos + inset, y_pos + inset), w - 2*inset, h - 2*inset,
                 facecolor=color,
                 edgecolor='none',
                 linewidth=0,
@@ -398,7 +416,7 @@ def block(
         spine.set_visible(False)
 
     # Store legend metadata on axes for complex_heatmap reconciliation
-    if legend:
+    if legend and len(patches) > 0:
         legend_kws = legend_kws or {}
         label = legend_kws.get('label', '')
 
@@ -414,10 +432,10 @@ def block(
                 style='rectangle'
             )
 
-            # Store for later
-            if not hasattr(ax.patches[0], '_legend_data'):
-                ax.patches[0]._legend_data = {}
-            ax.patches[0]._legend_data['hue'] = {
+            # Store for later (use first patch from local patches list)
+            if not hasattr(patches[0], '_legend_data'):
+                patches[0]._legend_data = {}
+            patches[0]._legend_data['hue'] = {
                 'handles': handles,
                 'label': label
             }
@@ -425,10 +443,10 @@ def block(
             # Continuous colorbar
             mappable = ScalarMappable(norm=norm, cmap=cmap_obj)
 
-            # Store for later
-            if not hasattr(ax.patches[0], '_legend_data'):
-                ax.patches[0]._legend_data = {}
-            ax.patches[0]._legend_data['hue'] = {
+            # Store for later (use first patch from local patches list)
+            if not hasattr(patches[0], '_legend_data'):
+                patches[0]._legend_data = {}
+            patches[0]._legend_data['hue'] = {
                 'type': 'colorbar',
                 'mappable': mappable,
                 'label': label
