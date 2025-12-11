@@ -953,8 +953,9 @@ def label(
             if arrow == 'down' or arrow == 'left':
                 text_offset_px = -1 * arrow_height_px
 
-            # Arm length as fraction of arrow height (PyComplexHeatmap default: frac=0.2)
-            frac = arrow_kwargs.get('frac', 0.2)
+            # Arm length as fraction of arrow height
+            # Use smaller frac for shorter arrows
+            frac = arrow_kwargs.get('frac', 0.15)  # Reduced from 0.2 for shorter arrows
             rad = arrow_kwargs.get('rad', 2)
             arm_length = arrow_height_px * frac
 
@@ -972,24 +973,34 @@ def label(
 
             # Arrow styling defaults matching PyComplexHeatmap
             arrow_color = arrow_kwargs.get('color', label_color)
-            arrow_linewidth = arrow_kwargs.get('linewidth', 0.5)  # PyComplexHeatmap default: 0.5
+            arrow_linewidth = resolve_param("lines.linewidth", arrow_kwargs.get('linewidth'))
             arrowstyle = arrow_kwargs.get('arrowstyle', '-')  # PyComplexHeatmap default: '-' (line)
             shrinkA = arrow_kwargs.get('shrinkA', 1)  # PyComplexHeatmap default: 1
             shrinkB = arrow_kwargs.get('shrinkB', 1)  # PyComplexHeatmap default: 1
 
-            # Set relpos based on orientation (PyComplexHeatmap approach)
+            # Set relpos based on orientation and rotation
+            # relpos: arrow start position relative to text box
+            # (0,0)=bottom-left, (1,1)=top-right, (0.5,0.5)=center
             if arrow_params['axis_transform'] == 'xaxis':
                 # For horizontal (column annotations)
-                if arrow == 'up':
-                    relpos = (0, 0)  # Arrow starts from bottom-left of text
-                else:  # down
-                    relpos = (0, 1)  # Arrow starts from top-left of text
+                if rotation == 0:
+                    # Horizontal text: center the arrow horizontally
+                    if arrow == 'up':
+                        relpos = (0.5, 0)  # Arrow from bottom-center of text
+                    else:  # down
+                        relpos = (0.5, 1)  # Arrow from top-center of text
+                else:
+                    # Rotated text: use PyComplexHeatmap defaults
+                    if arrow == 'up':
+                        relpos = (0, 0)  # Arrow from bottom-left of text
+                    else:  # down
+                        relpos = (0, 1)  # Arrow from top-left of text
             else:
                 # For vertical (row annotations)
                 if arrow == 'left':
-                    relpos = (1, 1)  # Arrow starts from top-right of text
+                    relpos = (1, 0.5)  # Arrow from right-center of text
                 else:  # right
-                    relpos = (0, 0)  # Arrow starts from bottom-left of text
+                    relpos = (0, 0.5)  # Arrow from left-center of text
 
             # Allow override of relpos
             relpos = arrow_kwargs.get('relpos', relpos)
@@ -1008,10 +1019,17 @@ def label(
                 # xytext is offset in pixels from xy
                 xytext_offset = (text_offset_px, 0)
 
-            # Text alignment following PyComplexHeatmap
+            # Text alignment - adjusted based on rotation
+            # PyComplexHeatmap uses ha='left' because they assume rotation=90/-90
+            # We need to adjust for rotation=0 (horizontal text)
             if arrow_params['axis_transform'] == 'xaxis':
                 # Column annotations (horizontal)
-                text_ha = 'left'  # PyComplexHeatmap uses 'left' for columns
+                if rotation == 0:
+                    # Horizontal text: center it
+                    text_ha = 'center'
+                else:
+                    # Rotated text: use left alignment (PyComplexHeatmap style)
+                    text_ha = 'left'
                 text_va = 'center'
             else:
                 # Row annotations (vertical)
