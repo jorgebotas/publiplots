@@ -349,31 +349,17 @@ def block(
             else:
                 color = color_values[j] if horizontal else color_values[i]
 
-            # Create rectangle with double-layer rendering
-            # Layer 1: Transparent fill with slight inset to show edges clearly
-            # Inset by half linewidth in data coordinates to prevent edge overlap
-            inset = linewidth * 0.01 if linewidth > 0 else 0  # Small inset in data units
-            rect_fill = Rectangle(
-                (x_pos + inset, y_pos + inset), w - 2*inset, h - 2*inset,
-                facecolor=color,
-                edgecolor='none',
-                linewidth=0,
-                zorder=1
-            )
-            ax.add_patch(rect_fill)
-
-            # Layer 2: Opaque edge
+            # Create single rectangle - apply_transparency will handle the double-layer effect
             edge_c = edgecolor if edgecolor else color
-            rect_edge = Rectangle(
+            rect = Rectangle(
                 (x_pos, y_pos), w, h,
-                facecolor='none',
+                facecolor=color,
                 edgecolor=edge_c,
                 linewidth=linewidth,
-                zorder=2
+                zorder=1
             )
-            ax.add_patch(rect_edge)
-
-            patches.append(rect_fill)
+            ax.add_patch(rect)
+            patches.append(rect)
 
             # Add text overlay if requested
             if text:
