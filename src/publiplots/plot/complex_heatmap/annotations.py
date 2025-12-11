@@ -624,6 +624,7 @@ def label(
     va: str = "center",
     color: Optional[str] = None,
     fontweight: str = "normal",
+    hue: Optional[Union[str, Dict, List]] = None,
     # Arrow connection
     arrow: Optional[str] = None,
     arrow_kws: Optional[Dict] = None,
@@ -671,6 +672,12 @@ def label(
         Text color. Uses rcParams default if None.
     fontweight : str, default='normal'
         Font weight: 'normal', 'bold', 'light', 'heavy'.
+    hue : str, dict, or list, optional
+        Color mapping for labels (colors both text and arrow):
+        - str: Column name in DataFrame to map colors from
+        - dict: Mapping from label values to colors
+        - list: List of colors for each label
+        If provided, overrides the 'color' parameter.
     arrow : str, optional
         Direction of connecting arrows from labels to positions.
         Options: 'up', 'down', 'left', 'right', or None (no arrows).
@@ -724,7 +731,8 @@ def label(
     """
     # Resolve defaults
     fontsize = resolve_param("font.size", fontsize)
-    color = resolve_param("color", color)
+    if color is None and hue is None:
+        color = resolve_param("color", color)
 
     # Prepare data using helper function
     data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
@@ -735,6 +743,22 @@ def label(
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.get_figure()
+
+    # Process hue parameter for color mapping
+    color_map = None
+    if hue is not None:
+        if isinstance(hue, dict):
+            # Direct mapping provided
+            color_map = hue
+        elif isinstance(hue, list):
+            # List of colors - map to unique values in order
+            unique_values = pd.unique(data_df.values.ravel())
+            color_map = {val: hue[i % len(hue)] for i, val in enumerate(unique_values)}
+        elif isinstance(hue, str):
+            # Column name or palette name
+            unique_values = pd.unique(data_df.values.ravel())
+            # Try to resolve as palette
+            color_map = resolve_palette_map(values=unique_values, palette=hue)
 
     # Build list of labels to draw (with merging if requested)
     labels_to_draw = []
@@ -763,39 +787,99 @@ def label(
                 val = data_df.iloc[i, j]
                 labels_to_draw.append((i, j, 1, 1, val))
 
+    # Calculate dimensions for positioning
+    # When arrow is present, split the available space between text and arrow
+    total_space = offset + 0.5
+    if arrow:
+        # Arrow takes about 30% of space, text gets the rest
+        arrow_space = total_space * 0.4
+        text_space = total_space * 0.6
+    else:
+        arrow_space = 0
+        text_space = total_space
+
     # Position labels
     for label_info in labels_to_draw:
         i, j, col_span, row_span, lbl = label_info
+
+        # Get color for this label
+        label_color = color
+        if color_map is not None and lbl in color_map:
+            label_color = color_map[lbl]
+        elif label_color is None:
+            label_color = 'black'
+
+        # Calculate target position (where arrow points to)
         if horizontal:
-            # Labels below axis (for top/bottom margins)
-            # Center on the span
-            x_pos = j + col_span / 2
-            y_pos = offset
+            target_x = j + col_span / 2
+            target_y = 0
+        else:
+            target_x = 0
+            target_y = i + row_span / 2
 
-            # Adjust alignment for rotation
-            if rotation > 0:  # Rotated right
-                text_ha = ha if ha != 'center' else 'right'
-                text_va = va if va != 'center' else 'bottom'
-            elif rotation < 0:  # Rotated left
-                text_ha = ha if ha != 'center' else 'left'
-                text_va = va if va != 'center' else 'bottom'
-            else:  # No rotation
-                text_ha = ha
-                text_va = va
-
-        else:  # vertical
-            # Labels to right of axis (for left/right margins)
-            # Center on the span
-            x_pos = offset
-            y_pos = i + row_span / 2
-
-            # Adjust alignment for vertical orientation
-            if rotation == 0:
-                text_ha = ha if ha != 'center' else 'left'
-                text_va = va if va != 'center' else 'center'
-            else:
-                text_ha = ha
-                text_va = va
+        # Position text based on arrow direction
+        # Note: y-axis is inverted, so y=0 is at top, higher y is at bottom visually
+        if arrow == 'down':
+            # Arrow points down (toward higher y), text goes above arrow (at lower y)
+            x_pos = target_x
+            y_pos = arrow_space  # Text near the heatmap
+            text_ha = ha if ha != 'center' else 'center'
+            text_va = va if va != 'center' else 'top'
+            # Arrow starts at bottom edge of text (higher y) and points to target
+            arrow_start = (x_pos, y_pos)
+            arrow_end = (target_x, total_space)
+        elif arrow == 'up':
+            # Arrow points up (toward lower y/heatmap), text goes below arrow (at higher y)
+            x_pos = target_x
+            y_pos = total_space  # Text far from heatmap
+            text_ha = ha if ha != 'center' else 'center'
+            text_va = va if va != 'center' else 'bottom'
+            # Arrow starts at top edge of text (lower y) and points to target (y=0)
+            arrow_start = (x_pos, arrow_space)
+            arrow_end = (target_x, target_y)
+        elif arrow == 'left':
+            # Arrow points left (toward lower x/heatmap), text goes right of arrow (at higher x)
+            x_pos = total_space  # Text far from heatmap
+            y_pos = target_y
+            text_ha = ha if ha != 'center' else 'left'
+            text_va = va if va != 'center' else 'center'
+            # Arrow starts at left edge of text (lower x) and points to target (x=0)
+            arrow_start = (arrow_space, y_pos)
+            arrow_end = (target_x, target_y)
+        elif arrow == 'right':
+            # Arrow points right (toward higher x), text goes left of arrow (at lower x)
+            x_pos = arrow_space  # Text near heatmap
+            y_pos = target_y
+            text_ha = ha if ha != 'center' else 'right'
+            text_va = va if va != 'center' else 'center'
+            # Arrow starts at right edge of text (higher x) and points to target
+            arrow_start = (x_pos, y_pos)
+            arrow_end = (total_space, target_y)
+        else:
+            # No arrow - position text normally
+            if horizontal:
+                x_pos = target_x
+                y_pos = offset
+                # Adjust alignment for rotation
+                if rotation > 0:  # Rotated right
+                    text_ha = ha if ha != 'center' else 'right'
+                    text_va = va if va != 'center' else 'bottom'
+                elif rotation < 0:  # Rotated left
+                    text_ha = ha if ha != 'center' else 'left'
+                    text_va = va if va != 'center' else 'bottom'
+                else:  # No rotation
+                    text_ha = ha
+                    text_va = va
+            else:  # vertical
+                x_pos = offset
+                y_pos = target_y
+                # Adjust alignment for vertical orientation
+                if rotation == 0:
+                    text_ha = ha if ha != 'center' else 'left'
+                    text_va = va if va != 'center' else 'center'
+                else:
+                    text_ha = ha
+                    text_va = va
 
         # Draw text
         text_kwargs = kwargs.copy()
@@ -803,7 +887,7 @@ def label(
             'fontsize': fontsize,
             'ha': text_ha,
             'va': text_va,
-            'color': color,
+            'color': label_color,
             'weight': fontweight,
             'rotation': rotation,
         })
@@ -814,36 +898,13 @@ def label(
         if arrow:
             arrow_kwargs = arrow_kws or {}
             arrow_defaults = {
-                'arrowstyle': '->',
-                'color': color or 'black',
-                'linewidth': 1,
-                'shrinkA': 2,
-                'shrinkB': 2,
+                'arrowstyle': '-',  # Simple line like pyComplexHeatmap
+                'color': label_color,
+                'linewidth': 0.5,
+                'shrinkA': 0,
+                'shrinkB': 0,
             }
             arrow_defaults.update(arrow_kwargs)
-
-            # Determine arrow endpoints based on direction
-            arrow_length = 0.3  # Length of arrow in data coordinates
-
-            if arrow == 'down':
-                # Arrow pointing down (from text toward axis below)
-                arrow_start = (x_pos, y_pos)
-                arrow_end = (x_pos, y_pos - arrow_length)
-            elif arrow == 'up':
-                # Arrow pointing up (from text toward axis above)
-                arrow_start = (x_pos, y_pos)
-                arrow_end = (x_pos, y_pos + arrow_length)
-            elif arrow == 'left':
-                # Arrow pointing left (from text toward axis on left)
-                arrow_start = (x_pos, y_pos)
-                arrow_end = (x_pos - arrow_length, y_pos)
-            elif arrow == 'right':
-                # Arrow pointing right (from text toward axis on right)
-                arrow_start = (x_pos, y_pos)
-                arrow_end = (x_pos + arrow_length, y_pos)
-            else:
-                # Invalid direction - skip arrow
-                continue
 
             arrow_patch = FancyArrowPatch(
                 arrow_start, arrow_end,
