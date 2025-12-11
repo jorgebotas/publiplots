@@ -175,112 +175,102 @@ def block(
     if isinstance(data, pd.DataFrame):
         # Case 1: DataFrame with column name to extract (long format)
         if isinstance(x, str):
-            if merge:
-                # Aggregate values for each unique x value
-                data_series = data.groupby(x)[x].first()  # Get unique values
-                if order is not None:
-                    data_series = data_series.reindex(order)
-            else:
-                # Simple extraction
-                if order is not None:
-                    # Check if x column values match order (axis column like 'sample')
-                    x_values_match_order = any(val in data[x].values for val in order)
+            # Note: merge parameter affects drawing, not data extraction
+            # Always extract one value per position in order
+            if order is not None:
+                # Check if x column values match order (axis column like 'sample')
+                x_values_match_order = any(val in data[x].values for val in order)
 
-                    if x_values_match_order:
-                        # x is the axis column - extract in order
-                        data_filtered = data[data[x].isin(order)]
-                        data_series = data_filtered[x]
-                        # Get unique values in order
-                        seen = set()
-                        unique_ordered = []
-                        for val in order:
-                            if val not in seen and val in data_series.values:
-                                unique_ordered.append(val)
-                                seen.add(val)
-                        data_series = pd.Series(unique_ordered)
-                    else:
-                        # x is a metadata column - need to map from axis to metadata
-                        # Find axis column (column whose unique values match order)
-                        axis_col = None
-                        for col in data.columns:
-                            if col != x:
-                                col_unique = set(data[col].unique())
-                                if set(order).issubset(col_unique) or col_unique.issubset(set(order)):
-                                    axis_col = col
-                                    break
-
-                        if axis_col is not None:
-                            # Map from order to x values via axis column
-                            mapped_values = []
-                            for axis_val in order:
-                                # Get rows for this axis value
-                                rows = data[data[axis_col] == axis_val]
-                                if len(rows) > 0:
-                                    # Get the x value (assume same for all rows with this axis value)
-                                    mapped_values.append(rows[x].iloc[0])
-                            data_series = pd.Series(mapped_values)
-                        else:
-                            # Fallback: couldn't find axis column
-                            data_series = data[x].unique()
-                            data_series = pd.Series(data_series)
+                if x_values_match_order:
+                    # x is the axis column - extract in order
+                    data_filtered = data[data[x].isin(order)]
+                    data_series = data_filtered[x]
+                    # Get unique values in order
+                    seen = set()
+                    unique_ordered = []
+                    for val in order:
+                        if val not in seen and val in data_series.values:
+                            unique_ordered.append(val)
+                            seen.add(val)
+                    data_series = pd.Series(unique_ordered)
                 else:
-                    data_series = data[x].unique()
-                    data_series = pd.Series(data_series)
+                    # x is a metadata column - need to map from axis to metadata
+                    # Find axis column (column whose unique values match order)
+                    axis_col = None
+                    for col in data.columns:
+                        if col != x:
+                            col_unique = set(data[col].unique())
+                            if set(order).issubset(col_unique) or col_unique.issubset(set(order)):
+                                axis_col = col
+                                break
+
+                    if axis_col is not None:
+                        # Map from order to x values via axis column
+                        mapped_values = []
+                        for axis_val in order:
+                            # Get rows for this axis value
+                            rows = data[data[axis_col] == axis_val]
+                            if len(rows) > 0:
+                                # Get the x value (assume same for all rows with this axis value)
+                                mapped_values.append(rows[x].iloc[0])
+                        data_series = pd.Series(mapped_values)
+                    else:
+                        # Fallback: couldn't find axis column
+                        data_series = data[x].unique()
+                        data_series = pd.Series(data_series)
+            else:
+                data_series = data[x].unique()
+                data_series = pd.Series(data_series)
 
             data_df = data_series.to_frame().T
 
         elif isinstance(y, str):
-            if merge:
-                # Aggregate values for each unique y value
-                data_series = data.groupby(y)[y].first()
-                if order is not None:
-                    data_series = data_series.reindex(order)
-            else:
-                # Simple extraction
-                if order is not None:
-                    # Check if y column values match order (axis column like 'gene')
-                    y_values_match_order = any(val in data[y].values for val in order)
+            # Note: merge parameter affects drawing, not data extraction
+            # Always extract one value per position in order
+            if order is not None:
+                # Check if y column values match order (axis column like 'gene')
+                y_values_match_order = any(val in data[y].values for val in order)
 
-                    if y_values_match_order:
-                        # y is the axis column - extract in order
-                        data_filtered = data[data[y].isin(order)]
-                        data_series = data_filtered[y]
-                        # Get unique values in order
-                        seen = set()
-                        unique_ordered = []
-                        for val in order:
-                            if val not in seen and val in data_series.values:
-                                unique_ordered.append(val)
-                                seen.add(val)
-                        data_series = pd.Series(unique_ordered)
-                    else:
-                        # y is a metadata column - need to map from axis to metadata
-                        # Find axis column (column whose unique values match order)
-                        axis_col = None
-                        for col in data.columns:
-                            if col != y:
-                                col_unique = set(data[col].unique())
-                                if set(order).issubset(col_unique) or col_unique.issubset(set(order)):
-                                    axis_col = col
-                                    break
-
-                        if axis_col is not None:
-                            # Map from order to y values via axis column
-                            mapped_values = []
-                            for axis_val in order:
-                                # Get rows for this axis value
-                                rows = data[data[axis_col] == axis_val]
-                                if len(rows) > 0:
-                                    # Get the y value (assume same for all rows with this axis value)
-                                    mapped_values.append(rows[y].iloc[0])
-                            data_series = pd.Series(mapped_values)
-                        else:
-                            # Fallback: couldn't find axis column
-                            data_series = data[y].unique()
-                            data_series = pd.Series(data_series)
+                if y_values_match_order:
+                    # y is the axis column - extract in order
+                    data_filtered = data[data[y].isin(order)]
+                    data_series = data_filtered[y]
+                    # Get unique values in order
+                    seen = set()
+                    unique_ordered = []
+                    for val in order:
+                        if val not in seen and val in data_series.values:
+                            unique_ordered.append(val)
+                            seen.add(val)
+                    data_series = pd.Series(unique_ordered)
                 else:
-                    data_series = data[y].unique()
-                    data_series = pd.Series(data_series)
+                    # y is a metadata column - need to map from axis to metadata
+                    # Find axis column (column whose unique values match order)
+                    axis_col = None
+                    for col in data.columns:
+                        if col != y:
+                            col_unique = set(data[col].unique())
+                            if set(order).issubset(col_unique) or col_unique.issubset(set(order)):
+                                axis_col = col
+                                break
+
+                    if axis_col is not None:
+                        # Map from order to y values via axis column
+                        mapped_values = []
+                        for axis_val in order:
+                            # Get rows for this axis value
+                            rows = data[data[axis_col] == axis_val]
+                            if len(rows) > 0:
+                                # Get the y value (assume same for all rows with this axis value)
+                                mapped_values.append(rows[y].iloc[0])
+                        data_series = pd.Series(mapped_values)
+                    else:
+                        # Fallback: couldn't find axis column
+                        data_series = data[y].unique()
+                        data_series = pd.Series(data_series)
+            else:
+                data_series = data[y].unique()
+                data_series = pd.Series(data_series)
 
             data_df = data_series.to_frame()
 
@@ -426,65 +416,97 @@ def block(
         inset_x = 0
         inset_y = 0
 
-    for i in range(n_rows):
-        for j in range(n_cols):
-            if horizontal:
-                # Horizontal: blocks go left-to-right (x varies), rows stack vertically
-                x_pos, y_pos, w, h = j, n_rows - i - 1, 1, 1
-            else:
-                # Vertical: blocks stack top-to-bottom (y varies), x is constant
-                # For n_rows x n_cols DataFrame, blocks should be at:
-                # (x=j, y=i) so they stack vertically
-                x_pos, y_pos, w, h = j, i, 1, 1
+    # Build list of rectangles to draw (with merging if requested)
+    rectangles_to_draw = []
 
-            # Store original center position for text (before inset)
-            text_x = x_pos + 0.5
-            text_y = y_pos + 0.5
-
-            # Apply inset so linewidth grows inward, not outward
-            x_pos += inset_x
-            y_pos += inset_y
-            w -= 2 * inset_x
-            h -= 2 * inset_y
-
-            # Get color for this block
-            if isinstance(color_values[0], list):
-                color = color_values[i][j]
-            else:
-                color = color_values[j] if horizontal else color_values[i]
-
-            # Create single rectangle - apply_transparency will handle the double-layer effect
-            edge_c = edgecolor if edgecolor else color
-            rect = Rectangle(
-                (x_pos, y_pos), w, h,
-                facecolor=color,
-                edgecolor=edge_c,
-                linewidth=linewidth,
-                zorder=1
-            )
-            ax.add_patch(rect)
-            patches.append(rect)
-
-            # Add text overlay if requested
-            if text:
+    if merge:
+        # Merge consecutive identical values into single rectangles
+        for i in range(n_rows):
+            j = 0
+            while j < n_cols:
+                # Get value at current position
                 val = data_df.iloc[i, j]
-                text_kwargs = text_kws or {}
-                text_defaults = {
-                    'fontsize': resolve_param("font.size"),
-                    'ha': 'center',
-                    'va': 'center',
-                    'color': 'black',
-                    'weight': 'normal',
-                    'rotation': 90 if not horizontal else 0  # Rotate text for vertical blocks
-                }
-                text_defaults.update(text_kwargs)
 
-                # Use original center position (not inset position) for text alignment
-                ax.text(
-                    text_x, text_y, str(val),
-                    **text_defaults,
-                    zorder=3
-                )
+                # Find extent of consecutive identical values
+                start_j = j
+                while j < n_cols and data_df.iloc[i, j] == val:
+                    j += 1
+                span = j - start_j
+
+                # Store rectangle info: (row, col_start, col_span, row_span, value)
+                rectangles_to_draw.append((i, start_j, span, 1, val))
+    else:
+        # No merging - one rectangle per cell
+        for i in range(n_rows):
+            for j in range(n_cols):
+                val = data_df.iloc[i, j]
+                rectangles_to_draw.append((i, j, 1, 1, val))
+
+    # Draw the rectangles
+    for rect_info in rectangles_to_draw:
+        i, j, col_span, row_span, val = rect_info
+
+        if horizontal:
+            # Horizontal: blocks go left-to-right (x varies), rows stack vertically
+            x_pos = j
+            y_pos = n_rows - i - 1
+            w = col_span
+            h = row_span
+        else:
+            # Vertical: blocks stack top-to-bottom (y varies), x is constant
+            x_pos = j
+            y_pos = i
+            w = col_span
+            h = row_span
+
+        # Store original center position for text (before inset)
+        text_x = x_pos + w / 2
+        text_y = y_pos + h / 2
+
+        # Apply inset so linewidth grows inward, not outward
+        x_pos += inset_x
+        y_pos += inset_y
+        w -= 2 * inset_x
+        h -= 2 * inset_y
+
+        # Get color for this block
+        if isinstance(color_values[0], list):
+            color = color_values[i][j]
+        else:
+            # For merged blocks, use color from first cell
+            color = color_values[j] if horizontal else color_values[i]
+
+        # Create single rectangle - apply_transparency will handle the double-layer effect
+        edge_c = edgecolor if edgecolor else color
+        rect = Rectangle(
+            (x_pos, y_pos), w, h,
+            facecolor=color,
+            edgecolor=edge_c,
+            linewidth=linewidth,
+            zorder=1
+        )
+        ax.add_patch(rect)
+        patches.append(rect)
+
+        # Add text overlay if requested
+        if text:
+            text_kwargs = text_kws or {}
+            text_defaults = {
+                'fontsize': resolve_param("font.size"),
+                'ha': 'center',
+                'va': 'center',
+                'color': 'black',
+                'weight': 'normal',
+                'rotation': 90 if not horizontal else 0  # Rotate text for vertical blocks
+            }
+            text_defaults.update(text_kwargs)
+
+            # Use original center position (not inset position) for text alignment
+            ax.text(
+                text_x, text_y, str(val),
+                **text_defaults,
+                zorder=3
+            )
 
     # Apply transparency using publiplots utility
     apply_transparency(patches, face_alpha=alpha, edge_alpha=1.0)
