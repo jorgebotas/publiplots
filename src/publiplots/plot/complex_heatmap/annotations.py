@@ -288,6 +288,12 @@ def block(
             UserWarning
         )
 
+    # Set axis limits early so we can convert linewidth from points to data coordinates
+    ax.set_xlim(0, n_cols)
+    ax.set_ylim(0, n_rows)
+    if horizontal:
+        ax.invert_yaxis()
+
     # Determine if data is categorical or continuous
     # Check the flattened values, not the DataFrame structure
     flat_values = data_df.values.ravel()
@@ -333,10 +339,34 @@ def block(
     # Draw rectangles
     patches = []
 
-    # Calculate inset to prevent edge overlap
-    # When linewidth > 0, inset rectangles slightly to show clean edges
-    # Inset by a fraction of the linewidth to create small gaps between adjacent rectangles
-    gap = 0.002 * linewidth if linewidth > 0 else 0  # Small gap in data coordinates
+    # Convert linewidth from points to data coordinates
+    # This ensures linewidth grows inward, keeping all edges visible
+    if linewidth > 0:
+        # Get figure and axes info
+        fig = ax.get_figure()
+        bbox = ax.get_position()  # Axes position in figure coordinates (0-1)
+        fig_width_inches, fig_height_inches = fig.get_size_inches()
+
+        # Calculate axes size in inches
+        ax_width_inches = bbox.width * fig_width_inches
+        ax_height_inches = bbox.height * fig_height_inches
+
+        # Data range (already set above)
+        data_width = n_cols  # xlim is (0, n_cols)
+        data_height = n_rows  # ylim is (0, n_rows)
+
+        # Convert linewidth from points to data coordinates
+        # 72 points per inch
+        points_per_inch = 72
+        lw_data_x = linewidth * data_width / (ax_width_inches * points_per_inch)
+        lw_data_y = linewidth * data_height / (ax_height_inches * points_per_inch)
+
+        # Inset by half linewidth so edge grows inward
+        inset_x = lw_data_x / 2
+        inset_y = lw_data_y / 2
+    else:
+        inset_x = 0
+        inset_y = 0
 
     for i in range(n_rows):
         for j in range(n_cols):
@@ -349,11 +379,11 @@ def block(
                 # (x=j, y=i) so they stack vertically
                 x_pos, y_pos, w, h = j, i, 1, 1
 
-            # Apply inset for clean edges
-            x_pos += gap
-            y_pos += gap
-            w -= 2 * gap
-            h -= 2 * gap
+            # Apply inset so linewidth grows inward, not outward
+            x_pos += inset_x
+            y_pos += inset_y
+            w -= 2 * inset_x
+            h -= 2 * inset_y
 
             # Get color for this block
             if isinstance(color_values[0], list):
@@ -395,17 +425,6 @@ def block(
 
     # Apply transparency using publiplots utility
     apply_transparency(patches, face_alpha=alpha, edge_alpha=1.0)
-
-    # Set axis limits and appearance
-    # Both horizontal and vertical use same limits based on DataFrame shape
-    ax.set_xlim(0, n_cols)
-    ax.set_ylim(0, n_rows)
-    if not horizontal:
-        # For vertical blocks, don't invert y-axis so blocks go top-to-bottom
-        pass
-    else:
-        # For horizontal blocks, invert so first row is at top
-        ax.invert_yaxis()
 
     # Clean axes
     ax.set_xticks([])
