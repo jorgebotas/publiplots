@@ -22,144 +22,58 @@ from publiplots.utils.transparency import apply_transparency
 from publiplots.utils.legend import legend as legend_builder
 
 
-def block(
+def _prepare_annotation_data(
     data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
-    # Position/orientation (optional when called from complex_heatmap)
     x: Optional[Union[str, bool]] = None,
     y: Optional[Union[str, bool]] = None,
-    # Data handling
     order: Optional[List[str]] = None,
-    merge: bool = False,
-    # Color encoding
-    cmap: Optional[str] = None,
-    palette: Optional[Union[str, Dict, List]] = None,
-    vmin: Optional[float] = None,
-    vmax: Optional[float] = None,
-    colors: Optional[List[str]] = None,
-    # Styling
-    alpha: Optional[float] = None,
-    linewidth: Optional[float] = None,
-    edgecolor: Optional[str] = None,
-    # Legend
-    legend: bool = True,
-    legend_kws: Optional[Dict] = None,
-    # Text overlay
-    text: bool = False,
-    text_kws: Optional[Dict] = None,
-    # Axes
-    ax: Optional[Axes] = None,
-    **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Tuple[pd.DataFrame, bool, int, int]:
     """
-    Create simple annotation blocks (colored rectangles) for categorical or
-    continuous variables.
+    Prepare data for annotation functions (block, label, etc.).
 
-    This creates a single row or column of colored blocks, similar to
-    PyComplexHeatmap's anno_simple. Perfect for showing metadata like sample
-    groups, tissue types, or any categorical/continuous variable.
-
-    Uses publiplots' double-layer rendering: transparent fill + opaque edge.
+    This helper function handles all common data preprocessing:
+    - Determines orientation (horizontal vs vertical)
+    - Extracts data from various input formats (DataFrame, Series, array)
+    - Handles metadata column mapping (e.g., x="condition" when order has sample names)
+    - Returns properly formatted DataFrame
 
     Parameters
     ----------
     data : Series, DataFrame, list, or array
-        Data to visualize as blocks. Can be:
-        - Series: Single row/column of categorical or continuous values
-        - DataFrame: Multiple rows/columns stacked (with column name in x/y)
-        - List/array: Single row/column
+        Input data to process.
     x : str or bool, optional
-        Column name (if data is DataFrame) or True for horizontal orientation.
-        Use for top/bottom margins. Can be omitted when called from complex_heatmap
-        builder (orientation inferred from position).
+        Column name (if DataFrame) or True for horizontal orientation.
     y : str or bool, optional
-        Column name (if data is DataFrame) or True for vertical orientation.
-        Use for left/right margins. Can be omitted when called from complex_heatmap.
+        Column name (if DataFrame) or True for vertical orientation.
     order : list of str, optional
-        Order of categories (passed automatically by complex_heatmap builder).
-    merge : bool, default=False
-        If True and x/y is a column name, merge values from that column
-        (useful for long-format data with multiple rows per category).
-    cmap : str, optional
-        Colormap for continuous data. Default: 'viridis' for continuous.
-    palette : str, dict, or list, optional
-        Color palette for categorical data:
-        - str: Palette name (e.g., 'Set2', 'pastel')
-        - dict: Mapping from categories to colors
-        - list: List of colors
-    vmin, vmax : float, optional
-        Value range for continuous data colormapping.
-    colors : list of str, optional
-        Explicit colors for each block (overrides cmap/palette).
-    alpha : float, optional
-        Face transparency (0-1). Uses rcParams default. Edge always opaque.
-    linewidth : float, optional
-        Edge linewidth. Uses rcParams default.
-    edgecolor : str, optional
-        Edge color. If None, uses face color.
-    legend : bool, default=True
-        Whether to show legend (stored for later legend building).
-    legend_kws : dict, optional
-        Legend customization (label, title, etc.).
-    text : bool, default=False
-        Whether to overlay text labels on blocks.
-    text_kws : dict, optional
-        Text styling (fontsize, color, ha, va, etc.).
-    ax : Axes, optional
-        Matplotlib axes. If None, creates new figure.
-    **kwargs
-        Additional keyword arguments (for future extensions).
+        Order of positions (typically from heatmap columns/index).
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure.
-    ax : Axes
-        Matplotlib axes.
+    data_df : DataFrame
+        Processed data as DataFrame (1 row for horizontal, n rows for vertical).
+    horizontal : bool
+        True if horizontal orientation, False if vertical.
+    n_rows : int
+        Number of rows in data_df.
+    n_cols : int
+        Number of columns in data_df.
 
     Examples
     --------
-    Categorical blocks (horizontal, for top/bottom margins):
+    >>> # Extract from DataFrame column
+    >>> df = pd.DataFrame({'sample': ['S1', 'S2'], 'condition': ['A', 'B']})
+    >>> data_df, horiz, nr, nc = _prepare_annotation_data(df, x='condition', order=['S1', 'S2'])
 
-    >>> tissue_types = pd.Series(['Brain', 'Liver', 'Heart', 'Brain', 'Liver'])
-    >>> fig, ax = pp.block(tissue_types, x=True, palette='Set2')
-
-    Continuous blocks (vertical, for left/right margins):
-
-    >>> quality_scores = pd.Series([0.95, 0.87, 0.92, 0.78])
-    >>> fig, ax = pp.block(quality_scores, y=True,
-    ...                     cmap='RdYlGn', vmin=0, vmax=1)
-
-    Using DataFrame with column names:
-
-    >>> metadata = pd.DataFrame({
-    ...     'sample': ['S1', 'S2', 'S3'],
-    ...     'tissue': ['Brain', 'Liver', 'Heart'],
-    ...     'condition': ['Control', 'Treatment', 'Control']
-    ... })
-    >>> fig, ax = pp.block(metadata, x='sample', y='tissue', palette='pastel')
-
-    With text overlay:
-
-    >>> groups = pd.Series(['A', 'B', 'C', 'A', 'B'])
-    >>> fig, ax = pp.block(groups, x=True, text=True, text_kws={'fontsize': 10})
-
-    Notes
-    -----
-    - Designed for use with complex_heatmap margins, but works standalone
-    - Automatically detects categorical vs continuous data
-    - Uses publiplots transparency styling (transparent fill + opaque edge)
-    - Legend metadata stored on axes for complex_heatmap legend reconciliation
+    >>> # Wide format matrix
+    >>> matrix = pd.DataFrame([[1, 2]], columns=['S1', 'S2'])
+    >>> data_df, horiz, nr, nc = _prepare_annotation_data(matrix, x=True, order=['S1', 'S2'])
     """
-    # Resolve defaults from rcParams
-    alpha = resolve_param("alpha", alpha)
-    linewidth = resolve_param("lines.linewidth", linewidth)
-
     # Determine orientation from x/y parameters
     if x is not None and y is not None:
         raise ValueError("Only one of x or y should be set, not both")
 
     # Infer orientation: x → horizontal, y → vertical
-    # If both None, infer from order parameter or default to horizontal for Series
     if x is not None:
         horizontal = True
     elif y is not None:
@@ -317,14 +231,152 @@ def block(
     else:
         raise ValueError(f"Unsupported data type: {type(data)}")
 
+    n_rows, n_cols = data_df.shape
+
+    return data_df, horizontal, n_rows, n_cols
+
+
+def block(
+    data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
+    # Position/orientation (optional when called from complex_heatmap)
+    x: Optional[Union[str, bool]] = None,
+    y: Optional[Union[str, bool]] = None,
+    # Data handling
+    order: Optional[List[str]] = None,
+    merge: bool = False,
+    # Color encoding
+    cmap: Optional[str] = None,
+    palette: Optional[Union[str, Dict, List]] = None,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    colors: Optional[List[str]] = None,
+    # Styling
+    alpha: Optional[float] = None,
+    linewidth: Optional[float] = None,
+    edgecolor: Optional[str] = None,
+    # Legend
+    legend: bool = True,
+    legend_kws: Optional[Dict] = None,
+    # Text overlay
+    text: bool = False,
+    text_kws: Optional[Dict] = None,
+    # Axes
+    ax: Optional[Axes] = None,
+    **kwargs
+) -> Tuple[plt.Figure, Axes]:
+    """
+    Create simple annotation blocks (colored rectangles) for categorical or
+    continuous variables.
+
+    This creates a single row or column of colored blocks, similar to
+    PyComplexHeatmap's anno_simple. Perfect for showing metadata like sample
+    groups, tissue types, or any categorical/continuous variable.
+
+    Uses publiplots' double-layer rendering: transparent fill + opaque edge.
+
+    Parameters
+    ----------
+    data : Series, DataFrame, list, or array
+        Data to visualize as blocks. Can be:
+        - Series: Single row/column of categorical or continuous values
+        - DataFrame: Multiple rows/columns stacked (with column name in x/y)
+        - List/array: Single row/column
+    x : str or bool, optional
+        Column name (if data is DataFrame) or True for horizontal orientation.
+        Use for top/bottom margins. Can be omitted when called from complex_heatmap
+        builder (orientation inferred from position).
+    y : str or bool, optional
+        Column name (if data is DataFrame) or True for vertical orientation.
+        Use for left/right margins. Can be omitted when called from complex_heatmap.
+    order : list of str, optional
+        Order of categories (passed automatically by complex_heatmap builder).
+    merge : bool, default=False
+        If True and x/y is a column name, merge values from that column
+        (useful for long-format data with multiple rows per category).
+    cmap : str, optional
+        Colormap for continuous data. Default: 'viridis' for continuous.
+    palette : str, dict, or list, optional
+        Color palette for categorical data:
+        - str: Palette name (e.g., 'Set2', 'pastel')
+        - dict: Mapping from categories to colors
+        - list: List of colors
+    vmin, vmax : float, optional
+        Value range for continuous data colormapping.
+    colors : list of str, optional
+        Explicit colors for each block (overrides cmap/palette).
+    alpha : float, optional
+        Face transparency (0-1). Uses rcParams default. Edge always opaque.
+    linewidth : float, optional
+        Edge linewidth. Uses rcParams default.
+    edgecolor : str, optional
+        Edge color. If None, uses face color.
+    legend : bool, default=True
+        Whether to show legend (stored for later legend building).
+    legend_kws : dict, optional
+        Legend customization (label, title, etc.).
+    text : bool, default=False
+        Whether to overlay text labels on blocks.
+    text_kws : dict, optional
+        Text styling (fontsize, color, ha, va, etc.).
+    ax : Axes, optional
+        Matplotlib axes. If None, creates new figure.
+    **kwargs
+        Additional keyword arguments (for future extensions).
+
+    Returns
+    -------
+    fig : Figure
+        Matplotlib figure.
+    ax : Axes
+        Matplotlib axes.
+
+    Examples
+    --------
+    Categorical blocks (horizontal, for top/bottom margins):
+
+    >>> tissue_types = pd.Series(['Brain', 'Liver', 'Heart', 'Brain', 'Liver'])
+    >>> fig, ax = pp.block(tissue_types, x=True, palette='Set2')
+
+    Continuous blocks (vertical, for left/right margins):
+
+    >>> quality_scores = pd.Series([0.95, 0.87, 0.92, 0.78])
+    >>> fig, ax = pp.block(quality_scores, y=True,
+    ...                     cmap='RdYlGn', vmin=0, vmax=1)
+
+    Using DataFrame with column names:
+
+    >>> metadata = pd.DataFrame({
+    ...     'sample': ['S1', 'S2', 'S3'],
+    ...     'tissue': ['Brain', 'Liver', 'Heart'],
+    ...     'condition': ['Control', 'Treatment', 'Control']
+    ... })
+    >>> fig, ax = pp.block(metadata, x='sample', y='tissue', palette='pastel')
+
+    With text overlay:
+
+    >>> groups = pd.Series(['A', 'B', 'C', 'A', 'B'])
+    >>> fig, ax = pp.block(groups, x=True, text=True, text_kws={'fontsize': 10})
+
+    Notes
+    -----
+    - Designed for use with complex_heatmap margins, but works standalone
+    - Automatically detects categorical vs continuous data
+    - Uses publiplots transparency styling (transparent fill + opaque edge)
+    - Legend metadata stored on axes for complex_heatmap legend reconciliation
+    """
+    # Resolve defaults from rcParams
+    alpha = resolve_param("alpha", alpha)
+    linewidth = resolve_param("lines.linewidth", linewidth)
+
+    # Prepare data using helper function
+    data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
+
     # Create figure if needed
     if ax is None:
         figsize = (6, 0.5) if horizontal else (0.5, 6)
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.get_figure()
-
-    n_rows, n_cols = data_df.shape
 
     # Debug: Check if data_df is empty
     if n_rows == 0 or n_cols == 0:
@@ -558,10 +610,13 @@ def block(
 
 
 def label(
-    labels: Union[List[str], pd.Series, np.ndarray],
-    # Position/orientation (only one should be set)
-    x: Optional[bool] = None,
-    y: Optional[bool] = None,
+    data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
+    # Position/orientation (optional when called from complex_heatmap)
+    x: Optional[Union[str, bool]] = None,
+    y: Optional[Union[str, bool]] = None,
+    # Data handling
+    order: Optional[List[str]] = None,
+    merge: bool = False,
     # Text styling
     rotation: float = 0,
     fontsize: Optional[float] = None,
@@ -588,12 +643,21 @@ def label(
 
     Parameters
     ----------
-    labels : list, Series, or array
-        Text labels to display.
-    x : bool, optional
-        True for horizontal labels (top/bottom margins). Only one of x or y should be set.
-    y : bool, optional
-        True for vertical labels (left/right margins). Only one of x or y should be set.
+    data : Series, DataFrame, list, or array
+        Data containing labels to display. Can be:
+        - Series: Simple label list
+        - DataFrame: Extract labels from column specified by x/y parameter
+        - List/array: Simple label list
+    x : str or bool, optional
+        Column name (if data is DataFrame) or True for horizontal orientation.
+        Use for top/bottom margins. Can be omitted when called from complex_heatmap.
+    y : str or bool, optional
+        Column name (if data is DataFrame) or True for vertical orientation.
+        Use for left/right margins. Can be omitted when called from complex_heatmap.
+    order : list of str, optional
+        Order of positions (passed automatically by complex_heatmap builder).
+    merge : bool, default=False
+        If True, merge consecutive identical labels (only show once for the span).
     rotation : float, default=0
         Text rotation angle in degrees.
         Common values: 0, 45, 90, -45, -90.
@@ -659,23 +723,8 @@ def label(
     fontsize = resolve_param("font.size", fontsize)
     color = resolve_param("color", color)
 
-    # Determine orientation from x/y parameters
-    if x is not None and y is not None:
-        raise ValueError("Only one of x or y should be set, not both")
-    elif x is None and y is None:
-        raise ValueError("Either x or y must be set")
-
-    horizontal = x is not None
-
-    # Convert labels to list
-    if isinstance(labels, pd.Series):
-        labels = labels.tolist()
-    elif isinstance(labels, np.ndarray):
-        labels = labels.tolist()
-    elif not isinstance(labels, list):
-        labels = list(labels)
-
-    n_labels = len(labels)
+    # Prepare data using helper function
+    data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
 
     # Create figure if needed
     if ax is None:
@@ -684,11 +733,40 @@ def label(
     else:
         fig = ax.get_figure()
 
+    # Build list of labels to draw (with merging if requested)
+    labels_to_draw = []
+
+    if merge:
+        # Merge consecutive identical values - only label once for the span
+        for i in range(n_rows):
+            j = 0
+            while j < n_cols:
+                # Get value at current position
+                val = data_df.iloc[i, j]
+
+                # Find extent of consecutive identical values
+                start_j = j
+                while j < n_cols and data_df.iloc[i, j] == val:
+                    j += 1
+                span = j - start_j
+
+                # Store label info: (row, col_start, col_span, row_span, value)
+                # Label will be centered on the span
+                labels_to_draw.append((i, start_j, span, 1, val))
+    else:
+        # No merging - one label per cell
+        for i in range(n_rows):
+            for j in range(n_cols):
+                val = data_df.iloc[i, j]
+                labels_to_draw.append((i, j, 1, 1, val))
+
     # Position labels
-    for i, lbl in enumerate(labels):
+    for label_info in labels_to_draw:
+        i, j, col_span, row_span, lbl = label_info
         if horizontal:
             # Labels below axis (for top/bottom margins)
-            x_pos = i + 0.5
+            # Center on the span
+            x_pos = j + col_span / 2
             y_pos = offset
 
             # Adjust alignment for rotation
@@ -704,8 +782,9 @@ def label(
 
         else:  # vertical
             # Labels to right of axis (for left/right margins)
+            # Center on the span
             x_pos = offset
-            y_pos = i + 0.5
+            y_pos = i + row_span / 2
 
             # Adjust alignment for vertical orientation
             if rotation == 0:
@@ -759,12 +838,12 @@ def label(
 
     # Set axis limits
     if horizontal:
-        ax.set_xlim(0, n_labels)
+        ax.set_xlim(0, n_cols)
         ax.set_ylim(0, offset + 0.5)
         ax.invert_yaxis()
     else:
         ax.set_xlim(0, offset + 0.5)
-        ax.set_ylim(0, n_labels)
+        ax.set_ylim(0, n_rows)
         ax.invert_yaxis()
 
     # Clean axes
