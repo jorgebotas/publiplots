@@ -625,7 +625,7 @@ def label(
     color: Optional[str] = None,
     fontweight: str = "normal",
     # Arrow connection
-    arrow: bool = False,
+    arrow: Optional[str] = None,
     arrow_kws: Optional[Dict] = None,
     # Positioning
     offset: float = 0.5,
@@ -671,8 +671,11 @@ def label(
         Text color. Uses rcParams default if None.
     fontweight : str, default='normal'
         Font weight: 'normal', 'bold', 'light', 'heavy'.
-    arrow : bool, default=False
-        Whether to draw connecting arrows from labels to positions.
+    arrow : str, optional
+        Direction of connecting arrows from labels to positions.
+        Options: 'up', 'down', 'left', 'right', or None (no arrows).
+        For horizontal labels (top/bottom), use 'up' or 'down'.
+        For vertical labels (left/right), use 'left' or 'right'.
     arrow_kws : dict, optional
         Arrow styling:
         - arrowstyle: Arrow style (e.g., '->', '-|>', 'fancy')
@@ -704,7 +707,7 @@ def label(
 
     >>> sample_ids = ['S001', 'S002', 'S003']
     >>> fig, ax = pp.label(sample_ids, y=True,
-    ...                     arrow=True, arrow_kws={'arrowstyle': '->'})
+    ...                     arrow='left', arrow_kws={'arrowstyle': '->'})
 
     Custom styling:
 
@@ -819,15 +822,28 @@ def label(
             }
             arrow_defaults.update(arrow_kwargs)
 
-            # Determine arrow endpoints
-            if horizontal:
-                # Arrow from text to axis
-                arrow_start = (x_pos, y_pos - 0.1)
-                arrow_end = (x_pos, 0)
+            # Determine arrow endpoints based on direction
+            arrow_length = 0.3  # Length of arrow in data coordinates
+
+            if arrow == 'down':
+                # Arrow pointing down (from text toward axis below)
+                arrow_start = (x_pos, y_pos)
+                arrow_end = (x_pos, y_pos - arrow_length)
+            elif arrow == 'up':
+                # Arrow pointing up (from text toward axis above)
+                arrow_start = (x_pos, y_pos)
+                arrow_end = (x_pos, y_pos + arrow_length)
+            elif arrow == 'left':
+                # Arrow pointing left (from text toward axis on left)
+                arrow_start = (x_pos, y_pos)
+                arrow_end = (x_pos - arrow_length, y_pos)
+            elif arrow == 'right':
+                # Arrow pointing right (from text toward axis on right)
+                arrow_start = (x_pos, y_pos)
+                arrow_end = (x_pos + arrow_length, y_pos)
             else:
-                # Arrow from text to axis
-                arrow_start = (x_pos - 0.1, y_pos)
-                arrow_end = (0, y_pos)
+                # Invalid direction - skip arrow
+                continue
 
             arrow_patch = FancyArrowPatch(
                 arrow_start, arrow_end,
