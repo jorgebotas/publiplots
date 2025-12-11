@@ -230,15 +230,19 @@ def block(
             # Case 2: DataFrame as matrix (wide format from complex_heatmap)
             if horizontal:
                 # Use columns for horizontal (top/bottom)
-                data_series = pd.Series(data.columns)
                 if order is not None:
-                    data_series = data_series.reindex(order)
+                    # Filter and reorder columns based on order
+                    data_series = pd.Series([col for col in order if col in data.columns])
+                else:
+                    data_series = pd.Series(data.columns)
                 data_df = data_series.to_frame().T
             else:
                 # Use index for vertical (left/right)
-                data_series = pd.Series(data.index)
                 if order is not None:
-                    data_series = data_series.reindex(order)
+                    # Filter and reorder index based on order
+                    data_series = pd.Series([idx for idx in order if idx in data.index])
+                else:
+                    data_series = pd.Series(data.index)
                 data_df = data_series.to_frame()
 
     elif isinstance(data, pd.Series):
@@ -362,7 +366,8 @@ def block(
                     'ha': 'center',
                     'va': 'center',
                     'color': 'black',
-                    'weight': 'normal'
+                    'weight': 'normal',
+                    'rotation': 90 if not horizontal else 0  # Rotate text for vertical blocks
                 }
                 text_defaults.update(text_kwargs)
 

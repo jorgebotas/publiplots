@@ -15,6 +15,7 @@ from publiplots.utils.offset import offset_patches, offset_lines, offset_collect
 from publiplots.utils.legend import legend as legend_from_utils
 from .dendrogram import cluster_data, dendrogram as dendrogram_plot
 from .ticklabels import ticklabels as ticklabels_plot
+from .annotations import block as block_annotation
 
 # Conversion constants
 MM2INCH = 1 / 25.4
@@ -982,9 +983,15 @@ class ComplexHeatmapBuilder:
 
         # Offset elements to align with heatmap cells
         # Heatmap cells are centered at 0.5, 1.5, 2.5...
-        # Categorical plots position elements at 0, 1, 2...
+        # Categorical plots (bars, violins, etc.) position elements at 0, 1, 2...
         # Shift by +0.5 to align with cell centers
-        if margin['align']:
+        #
+        # EXCEPTION: Block annotations already position rectangles at correct coordinates
+        # (0, 1, 2...) matching the heatmap coordinate system, so skip offsetting for them
+        is_block = (func is block_annotation or
+                   getattr(func, '__name__', '') == 'block')
+
+        if margin['align'] and not is_block:
             # For top/bottom margins: shift along x-axis (vertical)
             # For left/right margins: shift along y-axis (horizontal)
             orientation = "vertical" if position in ("top", "bottom") else "horizontal"
