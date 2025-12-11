@@ -877,59 +877,64 @@ def label(
 
             # Position text and arrow following pyComplexHeatmap's exact logic
             if arrow == 'down':
-                # Horizontal annotation, arrow points DOWN
-                # xy: top edge (y=1 in axes coords), xytext: negative offset (downward)
-                xy = (target_x, 1)
-                xytext = (0, -arrow_height_pixels)
+                # Horizontal annotation, arrow points DOWN (toward heatmap)
+                # xy: bottom edge near heatmap (y=0), xytext: above it (positive offset)
+                xy = (target_x, 0)
+                xytext = (0, arrow_height_pixels)
                 xycoords = ax.get_xaxis_transform()
                 textcoords = "offset pixels"
                 angleA = 180 + rotation
                 angleB = -90
                 text_ha = ha if ha != 'center' else 'center'
                 text_va = va if va != 'center' else 'top'
+                relpos = (0.5, 0.0)  # Arrow starts from bottom of text box
             elif arrow == 'up':
-                # Horizontal annotation, arrow points UP
-                # xy: bottom edge (y=0 in axes coords), xytext: positive offset (upward)
-                xy = (target_x, 0)
-                xytext = (0, arrow_height_pixels)
+                # Horizontal annotation, arrow points UP (away from heatmap)
+                # xy: top edge far from heatmap (y=1), xytext: below it (negative offset)
+                xy = (target_x, 1)
+                xytext = (0, -arrow_height_pixels)
                 xycoords = ax.get_xaxis_transform()
                 textcoords = "offset pixels"
                 angleA = rotation - 180
                 angleB = 90
                 text_ha = ha if ha != 'center' else 'center'
                 text_va = va if va != 'center' else 'bottom'
+                relpos = (0.5, 1.0)  # Arrow starts from top of text box
             elif arrow == 'left':
-                # Vertical annotation, arrow points LEFT
-                # xy: right edge (x=1 in axes coords), xytext: negative offset (leftward)
-                xy = (1, target_y)
-                xytext = (-arrow_height_pixels, 0)
+                # Vertical annotation, arrow points LEFT (away from heatmap)
+                # xy: left edge far from heatmap (x=0), xytext: right of it (positive offset)
+                xy = (0, target_y)
+                xytext = (arrow_height_pixels, 0)
                 xycoords = ax.get_yaxis_transform()
                 textcoords = "offset pixels"
                 angleA = rotation
                 angleB = -180
                 text_ha = ha if ha != 'center' else 'right'
                 text_va = va if va != 'center' else 'center'
+                relpos = (0.0, 0.5)  # Arrow starts from left edge of text box
             elif arrow == 'right':
-                # Vertical annotation, arrow points RIGHT
-                # xy: left edge (x=0 in axes coords), xytext: positive offset (rightward)
-                xy = (0, target_y)
-                xytext = (arrow_height_pixels, 0)
+                # Vertical annotation, arrow points RIGHT (toward heatmap)
+                # xy: right edge near heatmap (x=1), xytext: left of it (negative offset)
+                xy = (1, target_y)
+                xytext = (-arrow_height_pixels, 0)
                 xycoords = ax.get_yaxis_transform()
                 textcoords = "offset pixels"
                 angleA = rotation - 180
                 angleB = 0
                 text_ha = ha if ha != 'center' else 'left'
                 text_va = va if va != 'center' else 'center'
+                relpos = (1.0, 0.5)  # Arrow starts from right edge of text box
             else:
-                # Default to up
+                # Default to down
                 xy = (target_x, 0)
                 xytext = (0, arrow_height_pixels)
                 xycoords = ax.get_xaxis_transform()
                 textcoords = "offset pixels"
-                angleA = rotation - 180
-                angleB = 90
+                angleA = 180 + rotation
+                angleB = -90
                 text_ha = ha if ha != 'center' else 'center'
-                text_va = va if va != 'center' else 'bottom'
+                text_va = va if va != 'center' else 'top'
+                relpos = (0.5, 0.0)
 
             # Setup arrow properties with arc connectionstyle
             arrow_kwargs = arrow_kws or {}
@@ -951,6 +956,7 @@ def label(
                 'shrinkA': 0,
                 'shrinkB': 0,
                 'connectionstyle': connectionstyle,
+                'relpos': relpos,
             }
             arrowprops.update(arrow_kwargs)
 
