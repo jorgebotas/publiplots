@@ -379,6 +379,10 @@ def block(
                 # (x=j, y=i) so they stack vertically
                 x_pos, y_pos, w, h = j, i, 1, 1
 
+            # Store original center position for text (before inset)
+            text_x = x_pos + 0.5
+            text_y = y_pos + 0.5
+
             # Apply inset so linewidth grows inward, not outward
             x_pos += inset_x
             y_pos += inset_y
@@ -417,8 +421,9 @@ def block(
                 }
                 text_defaults.update(text_kwargs)
 
+                # Use original center position (not inset position) for text alignment
                 ax.text(
-                    x_pos + w/2, y_pos + h/2, str(val),
+                    text_x, text_y, str(val),
                     **text_defaults,
                     zorder=3
                 )
