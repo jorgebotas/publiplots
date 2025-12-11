@@ -729,6 +729,20 @@ def label(
         Order of positions (passed automatically by complex_heatmap builder).
     merge : bool, default=True
         If True, merge consecutive identical labels (only show once for the span).
+    hue : str, dict, or list, optional
+        Column name or mapping for coloring labels:
+        - If provided, colors text and arrows by label value
+        - Use with palette parameter to specify color scheme
+        - Overridden by colors parameter if both provided
+    palette : str, dict, or list, optional
+        Color palette for categorical coloring when hue is used:
+        - str: Palette name (e.g., 'Set2', 'pastel')
+        - dict: Mapping from categories to colors
+        - list: List of colors
+        Default: 'pastel' if hue is provided
+    colors : list of str, optional
+        Explicit colors for each unique label value.
+        Overrides palette if both provided.
     rotation : float, optional
         Text rotation angle in degrees. If None, uses sensible defaults:
         - For arrows: 0 degrees (horizontal text)
@@ -740,7 +754,8 @@ def label(
     va : str, default='center'
         Vertical alignment: 'top', 'center', 'bottom', 'baseline'.
     color : str, optional
-        Text color. Uses rcParams default if None.
+        Text and arrow color. Uses rcParams default if None.
+        Overridden by hue/palette/colors if provided.
     fontweight : str, default='normal'
         Font weight: 'normal', 'bold', 'light', 'heavy'.
     arrow : str, optional
@@ -807,6 +822,22 @@ def label(
 
     # Extract unique label strings for space calculation
     unique_labels = [str(val) for val in data_df.values.ravel()]
+
+    # Set up color mapping if hue parameter is provided
+    color_map = None
+    if hue or colors:
+        if colors is not None:
+            # Explicit colors provided - map to unique labels
+            unique_vals = pd.unique(data_df.values.ravel())
+            if len(colors) < len(unique_vals):
+                raise ValueError(f"Not enough colors: {len(colors)} colors for {len(unique_vals)} unique values")
+            color_map = {val: colors[i] for i, val in enumerate(unique_vals)}
+        else:
+            # Use palette to generate colors
+            unique_vals = pd.unique(data_df.values.ravel())
+            if palette is None:
+                palette = 'pastel'
+            color_map = resolve_palette_map(values=unique_vals, palette=palette)
 
     # Calculate required space for text automatically (if creating new axes)
     if ax is None:
@@ -922,8 +953,14 @@ def label(
                 f"armA={arm_length},armB={arm_length},rad={rad}"
             )
 
+            # Determine color for this label (use color_map if available)
+            if color_map is not None:
+                label_color = color_map.get(lbl, color or 'black')
+            else:
+                label_color = color or 'black'
+
             # Arrow styling
-            arrow_color = arrow_kwargs.get('color', color or 'black')
+            arrow_color = arrow_kwargs.get('color', label_color)
             arrow_linewidth = arrow_kwargs.get('linewidth', 1)
             arrowstyle = arrow_kwargs.get('arrowstyle', '->')
 
@@ -969,7 +1006,7 @@ def label(
                 fontsize=fontsize,
                 ha=text_ha,
                 va=text_va,
-                color=color,
+                color=label_color,
                 weight=fontweight,
                 rotation=rotation,
                 arrowprops=arrowprops,
@@ -979,6 +1016,13 @@ def label(
 
         else:
             # Without arrows: simple text positioning
+
+            # Determine color for this label (use color_map if available)
+            if color_map is not None:
+                label_color = color_map.get(lbl, color or 'black')
+            else:
+                label_color = color or 'black'
+
             if horizontal:
                 x_pos = j + col_span / 2
                 y_pos = 0.5  # Center in axes coordinates
@@ -1015,7 +1059,7 @@ def label(
                 'fontsize': fontsize,
                 'ha': text_ha,
                 'va': text_va,
-                'color': color,
+                'color': label_color,
                 'weight': fontweight,
                 'rotation': rotation,
                 'transform': coord_transform,

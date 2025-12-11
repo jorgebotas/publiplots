@@ -66,9 +66,9 @@ fig, axes = (
         row_cluster=False,
         col_cluster=False,
     )
-    .add_top(pp.label, x="condition", arrow="down")  # No rotation specified!
+    .add_top(pp.label, x="condition", arrow="down", hue="condition")  # Colored by condition
     .add_top(pp.block, x="condition", height=5)
-    .add_left(pp.label, y="gene", arrow="right")  # No rotation specified!
+    .add_left(pp.label, y="gene", arrow="right")  # No coloring
     .add_left(pp.block, y="gene", width=5)
     .add_right(pp.legend)
     .build()
