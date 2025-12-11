@@ -24,8 +24,9 @@ from publiplots.utils.legend import legend as legend_builder
 
 def block(
     data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
-    # Orientation and position
-    orientation: str = "horizontal",
+    # Position/orientation (only one should be set)
+    x: Optional[Union[str, bool]] = None,
+    y: Optional[Union[str, bool]] = None,
     # Color encoding
     cmap: Optional[str] = None,
     palette: Optional[Union[str, Dict, List]] = None,
@@ -61,12 +62,14 @@ def block(
     data : Series, DataFrame, list, or array
         Data to visualize as blocks. Can be:
         - Series: Single row/column of categorical or continuous values
-        - DataFrame: Multiple rows/columns stacked
+        - DataFrame: Multiple rows/columns stacked (with column name in x/y)
         - List/array: Single row/column
-    orientation : {'horizontal', 'vertical'}, default='horizontal'
-        Block orientation:
-        - 'horizontal': Blocks arranged left-to-right (for top/bottom margins)
-        - 'vertical': Blocks arranged top-to-bottom (for left/right margins)
+    x : str or bool, optional
+        Column name (if data is DataFrame) or True for horizontal orientation.
+        Use for top/bottom margins. Only one of x or y should be set.
+    y : str or bool, optional
+        Column name (if data is DataFrame) or True for vertical orientation.
+        Use for left/right margins. Only one of x or y should be set.
     cmap : str, optional
         Colormap for continuous data. Default: 'viridis' for continuous.
     palette : str, dict, or list, optional
@@ -106,29 +109,30 @@ def block(
 
     Examples
     --------
-    Categorical blocks (horizontal):
+    Categorical blocks (horizontal, for top/bottom margins):
 
     >>> tissue_types = pd.Series(['Brain', 'Liver', 'Heart', 'Brain', 'Liver'])
-    >>> fig, ax = pp.block(tissue_types, palette='Set2')
+    >>> fig, ax = pp.block(tissue_types, x=True, palette='Set2')
 
-    Continuous blocks (vertical):
+    Continuous blocks (vertical, for left/right margins):
 
     >>> quality_scores = pd.Series([0.95, 0.87, 0.92, 0.78])
-    >>> fig, ax = pp.block(quality_scores, orientation='vertical',
+    >>> fig, ax = pp.block(quality_scores, y=True,
     ...                     cmap='RdYlGn', vmin=0, vmax=1)
 
-    Multiple rows stacked:
+    Using DataFrame with column names:
 
     >>> metadata = pd.DataFrame({
+    ...     'sample': ['S1', 'S2', 'S3'],
     ...     'tissue': ['Brain', 'Liver', 'Heart'],
     ...     'condition': ['Control', 'Treatment', 'Control']
     ... })
-    >>> fig, ax = pp.block(metadata, palette='pastel')
+    >>> fig, ax = pp.block(metadata, x='sample', y='tissue', palette='pastel')
 
     With text overlay:
 
     >>> groups = pd.Series(['A', 'B', 'C', 'A', 'B'])
-    >>> fig, ax = pp.block(groups, text=True, text_kws={'fontsize': 10})
+    >>> fig, ax = pp.block(groups, x=True, text=True, text_kws={'fontsize': 10})
 
     Notes
     -----
@@ -141,26 +145,46 @@ def block(
     alpha = resolve_param("alpha", alpha)
     linewidth = resolve_param("lines.linewidth", linewidth)
 
-    # Create figure if needed
-    if ax is None:
-        figsize = (6, 0.5) if orientation == 'horizontal' else (0.5, 6)
-        fig, ax = plt.subplots(figsize=figsize)
-    else:
-        fig = ax.get_figure()
+    # Determine orientation from x/y parameters
+    if x is not None and y is not None:
+        raise ValueError("Only one of x or y should be set, not both")
+    elif x is None and y is None:
+        raise ValueError("Either x or y must be set")
 
-    # Convert data to DataFrame for uniform handling
-    if isinstance(data, pd.Series):
-        data_df = data.to_frame().T if orientation == 'horizontal' else data.to_frame()
-    elif isinstance(data, pd.DataFrame):
-        data_df = data if orientation == 'horizontal' else data.T
+    # x=True/str means horizontal (top/bottom margins), y=True/str means vertical (left/right margins)
+    horizontal = x is not None
+
+    # Extract data from DataFrame if x/y are column names
+    if isinstance(data, pd.DataFrame):
+        if isinstance(x, str):
+            # x is a column name - extract that column for horizontal blocks
+            data_series = data[x]
+            data_df = data_series.to_frame().T
+        elif isinstance(y, str):
+            # y is a column name - extract that column for vertical blocks
+            data_series = data[y]
+            data_df = data_series.to_frame()
+        else:
+            # x/y are booleans - use DataFrame as-is
+            data_df = data if horizontal else data.T
+    elif isinstance(data, pd.Series):
+        # Convert Series to DataFrame based on orientation
+        data_df = data.to_frame().T if horizontal else data.to_frame()
     elif isinstance(data, (list, np.ndarray)):
         data_array = np.array(data)
         if data_array.ndim == 1:
-            data_df = pd.DataFrame([data_array] if orientation == 'horizontal' else [[d] for d in data_array])
+            data_df = pd.DataFrame([data_array] if horizontal else [[d] for d in data_array])
         else:
             data_df = pd.DataFrame(data_array)
     else:
         raise ValueError(f"Unsupported data type: {type(data)}")
+
+    # Create figure if needed
+    if ax is None:
+        figsize = (6, 0.5) if horizontal else (0.5, 6)
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
 
     n_rows, n_cols = data_df.shape
 
@@ -210,16 +234,18 @@ def block(
     patches = []
     for i in range(n_rows):
         for j in range(n_cols):
-            if orientation == 'horizontal':
+            if horizontal:
+                # Horizontal: blocks go left-to-right (x varies), rows stack vertically
                 x, y, w, h = j, n_rows - i - 1, 1, 1
             else:
+                # Vertical: blocks go top-to-bottom (y varies), columns stack horizontally
                 x, y, w, h = i, j, 1, 1
 
             # Get color for this block
             if isinstance(color_values[0], list):
                 color = color_values[i][j]
             else:
-                color = color_values[j] if orientation == 'horizontal' else color_values[i]
+                color = color_values[j] if horizontal else color_values[i]
 
             # Create rectangle with double-layer rendering
             # Layer 1: Transparent fill
@@ -268,7 +294,7 @@ def block(
     apply_transparency(patches, face_alpha=alpha, edge_alpha=1.0)
 
     # Set axis limits and appearance
-    if orientation == 'horizontal':
+    if horizontal:
         ax.set_xlim(0, n_cols)
         ax.set_ylim(0, n_rows)
         ax.invert_yaxis()
@@ -325,8 +351,9 @@ def block(
 
 def label(
     labels: Union[List[str], pd.Series, np.ndarray],
-    # Orientation and position
-    orientation: str = "horizontal",
+    # Position/orientation (only one should be set)
+    x: Optional[bool] = None,
+    y: Optional[bool] = None,
     # Text styling
     rotation: float = 0,
     fontsize: Optional[float] = None,
@@ -355,10 +382,10 @@ def label(
     ----------
     labels : list, Series, or array
         Text labels to display.
-    orientation : {'horizontal', 'vertical'}, default='horizontal'
-        Label orientation:
-        - 'horizontal': Labels arranged left-to-right (for top/bottom margins)
-        - 'vertical': Labels arranged top-to-bottom (for left/right margins)
+    x : bool, optional
+        True for horizontal labels (top/bottom margins). Only one of x or y should be set.
+    y : bool, optional
+        True for vertical labels (left/right margins). Only one of x or y should be set.
     rotation : float, default=0
         Text rotation angle in degrees.
         Common values: 0, 45, 90, -45, -90.
@@ -396,21 +423,21 @@ def label(
 
     Examples
     --------
-    Simple horizontal labels:
+    Simple horizontal labels (for top/bottom margins):
 
     >>> gene_names = ['BRCA1', 'TP53', 'EGFR', 'MYC']
-    >>> fig, ax = pp.label(gene_names, rotation=45, ha='right')
+    >>> fig, ax = pp.label(gene_names, x=True, rotation=45, ha='right')
 
-    Vertical labels with arrows:
+    Vertical labels with arrows (for left/right margins):
 
     >>> sample_ids = ['S001', 'S002', 'S003']
-    >>> fig, ax = pp.label(sample_ids, orientation='vertical',
+    >>> fig, ax = pp.label(sample_ids, y=True,
     ...                     arrow=True, arrow_kws={'arrowstyle': '->'})
 
     Custom styling:
 
     >>> categories = ['Group A', 'Group B', 'Group C']
-    >>> fig, ax = pp.label(categories, fontsize=12, fontweight='bold',
+    >>> fig, ax = pp.label(categories, x=True, fontsize=12, fontweight='bold',
     ...                     color='darkblue', rotation=90)
 
     Notes
@@ -424,6 +451,14 @@ def label(
     fontsize = resolve_param("font.size", fontsize)
     color = resolve_param("color", color)
 
+    # Determine orientation from x/y parameters
+    if x is not None and y is not None:
+        raise ValueError("Only one of x or y should be set, not both")
+    elif x is None and y is None:
+        raise ValueError("Either x or y must be set")
+
+    horizontal = x is not None
+
     # Convert labels to list
     if isinstance(labels, pd.Series):
         labels = labels.tolist()
@@ -436,17 +471,17 @@ def label(
 
     # Create figure if needed
     if ax is None:
-        figsize = (6, 0.8) if orientation == 'horizontal' else (0.8, 6)
+        figsize = (6, 0.8) if horizontal else (0.8, 6)
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.get_figure()
 
     # Position labels
     for i, lbl in enumerate(labels):
-        if orientation == 'horizontal':
+        if horizontal:
             # Labels below axis (for top/bottom margins)
-            x = i + 0.5
-            y = offset
+            x_pos = i + 0.5
+            y_pos = offset
 
             # Adjust alignment for rotation
             if rotation > 0:  # Rotated right
@@ -461,8 +496,8 @@ def label(
 
         else:  # vertical
             # Labels to right of axis (for left/right margins)
-            x = offset
-            y = i + 0.5
+            x_pos = offset
+            y_pos = i + 0.5
 
             # Adjust alignment for vertical orientation
             if rotation == 0:
@@ -483,7 +518,7 @@ def label(
             'rotation': rotation,
         })
 
-        ax.text(x, y, str(lbl), **text_kwargs, zorder=2)
+        ax.text(x_pos, y_pos, str(lbl), **text_kwargs, zorder=2)
 
         # Draw arrow if requested
         if arrow:
@@ -498,14 +533,14 @@ def label(
             arrow_defaults.update(arrow_kwargs)
 
             # Determine arrow endpoints
-            if orientation == 'horizontal':
+            if horizontal:
                 # Arrow from text to axis
-                arrow_start = (x, y - 0.1)
-                arrow_end = (x, 0)
+                arrow_start = (x_pos, y_pos - 0.1)
+                arrow_end = (x_pos, 0)
             else:
                 # Arrow from text to axis
-                arrow_start = (x - 0.1, y)
-                arrow_end = (0, y)
+                arrow_start = (x_pos - 0.1, y_pos)
+                arrow_end = (0, y_pos)
 
             arrow_patch = FancyArrowPatch(
                 arrow_start, arrow_end,
@@ -515,7 +550,7 @@ def label(
             ax.add_patch(arrow_patch)
 
     # Set axis limits
-    if orientation == 'horizontal':
+    if horizontal:
         ax.set_xlim(0, n_labels)
         ax.set_ylim(0, offset + 0.5)
         ax.invert_yaxis()
