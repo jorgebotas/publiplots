@@ -947,6 +947,9 @@ class ComplexHeatmapBuilder:
                 else:  # left, right
                     kwargs['labels'] = [str(r) for r in self._matrix.index]
 
+        is_block = (func is block_annotation or
+                   getattr(func, '__name__', '') == 'block')
+
         # Add ax to kwargs
         kwargs['ax'] = ax
 
@@ -958,7 +961,12 @@ class ComplexHeatmapBuilder:
                     data = self._data
                 else:
                     # Fallback to matrix (wide format)
-                    data = self._matrix.T if position in ("left", "right") else self._matrix
+                    # For block annotations, don't transpose - block() extracts from index/columns directly
+                    # For other plot types, transpose for left/right to match expected data layout
+                    if is_block:
+                        data = self._matrix
+                    else:
+                        data = self._matrix.T if position in ("left", "right") else self._matrix
             kwargs['data'] = data
 
             # Order data appropriately
@@ -988,8 +996,6 @@ class ComplexHeatmapBuilder:
         #
         # EXCEPTION: Block annotations already position rectangles at correct coordinates
         # (0, 1, 2...) matching the heatmap coordinate system, so skip offsetting for them
-        is_block = (func is block_annotation or
-                   getattr(func, '__name__', '') == 'block')
 
         if margin['align'] and not is_block:
             # For top/bottom margins: shift along x-axis (vertical)

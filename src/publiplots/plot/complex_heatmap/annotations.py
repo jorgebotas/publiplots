@@ -22,6 +22,220 @@ from publiplots.utils.transparency import apply_transparency
 from publiplots.utils.legend import legend as legend_builder
 
 
+def _prepare_annotation_data(
+    data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
+    x: Optional[Union[str, bool]] = None,
+    y: Optional[Union[str, bool]] = None,
+    order: Optional[List[str]] = None,
+) -> Tuple[pd.DataFrame, bool, int, int]:
+    """
+    Prepare data for annotation functions (block, label, etc.).
+
+    This helper function handles all common data preprocessing:
+    - Determines orientation (horizontal vs vertical)
+    - Extracts data from various input formats (DataFrame, Series, array)
+    - Handles metadata column mapping (e.g., x="condition" when order has sample names)
+    - Returns properly formatted DataFrame
+
+    Parameters
+    ----------
+    data : Series, DataFrame, list, or array
+        Input data to process.
+    x : str or bool, optional
+        Column name (if DataFrame) or True for horizontal orientation.
+    y : str or bool, optional
+        Column name (if DataFrame) or True for vertical orientation.
+    order : list of str, optional
+        Order of positions (typically from heatmap columns/index).
+
+    Returns
+    -------
+    data_df : DataFrame
+        Processed data as DataFrame (1 row for horizontal, n rows for vertical).
+    horizontal : bool
+        True if horizontal orientation, False if vertical.
+    n_rows : int
+        Number of rows in data_df.
+    n_cols : int
+        Number of columns in data_df.
+
+    Examples
+    --------
+    >>> # Extract from DataFrame column
+    >>> df = pd.DataFrame({'sample': ['S1', 'S2'], 'condition': ['A', 'B']})
+    >>> data_df, horiz, nr, nc = _prepare_annotation_data(df, x='condition', order=['S1', 'S2'])
+
+    >>> # Wide format matrix
+    >>> matrix = pd.DataFrame([[1, 2]], columns=['S1', 'S2'])
+    >>> data_df, horiz, nr, nc = _prepare_annotation_data(matrix, x=True, order=['S1', 'S2'])
+    """
+    # Determine orientation from x/y parameters
+    if x is not None and y is not None:
+        raise ValueError("Only one of x or y should be set, not both")
+
+    # Infer orientation: x → horizontal, y → vertical
+    if x is not None:
+        horizontal = True
+    elif y is not None:
+        horizontal = False
+    elif order is not None and isinstance(data, pd.DataFrame):
+        # Infer from order matching columns (horizontal) or index (vertical)
+        horizontal = list(data.columns) == list(order) or len(data.columns) == len(order)
+    else:
+        # Default to horizontal for Series/array
+        horizontal = True
+
+    # Extract and prepare data
+    if isinstance(data, pd.DataFrame):
+        # Case 1: DataFrame with column name to extract (long format)
+        if isinstance(x, str):
+            # Note: merge parameter affects drawing, not data extraction
+            # Always extract one value per position in order
+            if order is not None:
+                # Check if x column values match order (axis column like 'sample')
+                x_values_match_order = any(val in data[x].values for val in order)
+
+                if x_values_match_order:
+                    # x is the axis column - extract in order
+                    data_filtered = data[data[x].isin(order)]
+                    data_series = data_filtered[x]
+                    # Get unique values in order
+                    seen = set()
+                    unique_ordered = []
+                    for val in order:
+                        if val not in seen and val in data_series.values:
+                            unique_ordered.append(val)
+                            seen.add(val)
+                    data_series = pd.Series(unique_ordered)
+                else:
+                    # x is a metadata column - need to map from axis to metadata
+                    # Find axis column (column whose unique values match order)
+                    axis_col = None
+                    for col in data.columns:
+                        if col != x:
+                            col_unique = set(data[col].unique())
+                            if set(order).issubset(col_unique) or col_unique.issubset(set(order)):
+                                axis_col = col
+                                break
+
+                    if axis_col is not None:
+                        # Map from order to x values via axis column
+                        mapped_values = []
+                        for axis_val in order:
+                            # Get rows for this axis value
+                            rows = data[data[axis_col] == axis_val]
+                            if len(rows) > 0:
+                                # Get the x value (assume same for all rows with this axis value)
+                                mapped_values.append(rows[x].iloc[0])
+                        data_series = pd.Series(mapped_values)
+                    else:
+                        # Fallback: couldn't find axis column
+                        data_series = data[x].unique()
+                        data_series = pd.Series(data_series)
+            else:
+                data_series = data[x].unique()
+                data_series = pd.Series(data_series)
+
+            data_df = data_series.to_frame().T
+
+        elif isinstance(y, str):
+            # Note: merge parameter affects drawing, not data extraction
+            # Always extract one value per position in order
+            if order is not None:
+                # Check if y column values match order (axis column like 'gene')
+                y_values_match_order = any(val in data[y].values for val in order)
+
+                if y_values_match_order:
+                    # y is the axis column - extract in order
+                    data_filtered = data[data[y].isin(order)]
+                    data_series = data_filtered[y]
+                    # Get unique values in order
+                    seen = set()
+                    unique_ordered = []
+                    for val in order:
+                        if val not in seen and val in data_series.values:
+                            unique_ordered.append(val)
+                            seen.add(val)
+                    data_series = pd.Series(unique_ordered)
+                else:
+                    # y is a metadata column - need to map from axis to metadata
+                    # Find axis column (column whose unique values match order)
+                    axis_col = None
+                    for col in data.columns:
+                        if col != y:
+                            col_unique = set(data[col].unique())
+                            if set(order).issubset(col_unique) or col_unique.issubset(set(order)):
+                                axis_col = col
+                                break
+
+                    if axis_col is not None:
+                        # Map from order to y values via axis column
+                        mapped_values = []
+                        for axis_val in order:
+                            # Get rows for this axis value
+                            rows = data[data[axis_col] == axis_val]
+                            if len(rows) > 0:
+                                # Get the y value (assume same for all rows with this axis value)
+                                mapped_values.append(rows[y].iloc[0])
+                        data_series = pd.Series(mapped_values)
+                    else:
+                        # Fallback: couldn't find axis column
+                        data_series = data[y].unique()
+                        data_series = pd.Series(data_series)
+            else:
+                data_series = data[y].unique()
+                data_series = pd.Series(data_series)
+
+            data_df = data_series.to_frame()
+
+        else:
+            # Case 2: DataFrame as matrix (wide format from complex_heatmap)
+            if horizontal:
+                # Use columns for horizontal (top/bottom)
+                if order is not None:
+                    # Filter and reorder columns based on order
+                    data_series = pd.Series([col for col in order if col in data.columns])
+                    # Fallback: if filtering produced empty result, use all columns
+                    if len(data_series) == 0:
+                        data_series = pd.Series(data.columns)
+                else:
+                    data_series = pd.Series(data.columns)
+                data_df = data_series.to_frame().T
+            else:
+                # Use index for vertical (left/right)
+                if order is not None:
+                    # Filter and reorder index based on order
+                    data_series = pd.Series([idx for idx in order if idx in data.index])
+                    # Fallback: if filtering produced empty result, use all index
+                    if len(data_series) == 0:
+                        data_series = pd.Series(data.index)
+                else:
+                    data_series = pd.Series(data.index)
+                data_df = data_series.to_frame()
+
+    elif isinstance(data, pd.Series):
+        # Series data
+        if order is not None:
+            data = data.reindex(order)
+        data_df = data.to_frame().T if horizontal else data.to_frame()
+
+    elif isinstance(data, (list, np.ndarray)):
+        # Array/list data
+        data_array = np.array(data)
+        if data_array.ndim == 1:
+            if order is not None and len(order) == len(data_array):
+                data_array = data_array[np.argsort(order)]
+            data_df = pd.DataFrame([data_array] if horizontal else [[d] for d in data_array])
+        else:
+            data_df = pd.DataFrame(data_array)
+    else:
+        raise ValueError(f"Unsupported data type: {type(data)}")
+
+    n_rows, n_cols = data_df.shape
+
+    return data_df, horizontal, n_rows, n_cols
+
+
 def block(
     data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
     # Position/orientation (optional when called from complex_heatmap)
@@ -29,7 +243,7 @@ def block(
     y: Optional[Union[str, bool]] = None,
     # Data handling
     order: Optional[List[str]] = None,
-    merge: bool = False,
+    merge: bool = True,
     # Color encoding
     cmap: Optional[str] = None,
     palette: Optional[Union[str, Dict, List]] = None,
@@ -76,7 +290,7 @@ def block(
         Use for left/right margins. Can be omitted when called from complex_heatmap.
     order : list of str, optional
         Order of categories (passed automatically by complex_heatmap builder).
-    merge : bool, default=False
+    merge : bool, default=True
         If True and x/y is a column name, merge values from that column
         (useful for long-format data with multiple rows per category).
     cmap : str, optional
@@ -154,114 +368,8 @@ def block(
     alpha = resolve_param("alpha", alpha)
     linewidth = resolve_param("lines.linewidth", linewidth)
 
-    # Determine orientation from x/y parameters
-    if x is not None and y is not None:
-        raise ValueError("Only one of x or y should be set, not both")
-
-    # Infer orientation: x → horizontal, y → vertical
-    # If both None, infer from order parameter or default to horizontal for Series
-    if x is not None:
-        horizontal = True
-    elif y is not None:
-        horizontal = False
-    elif order is not None and isinstance(data, pd.DataFrame):
-        # Infer from order matching columns (horizontal) or index (vertical)
-        horizontal = list(data.columns) == list(order) or len(data.columns) == len(order)
-    else:
-        # Default to horizontal for Series/array
-        horizontal = True
-
-    # Extract and prepare data
-    if isinstance(data, pd.DataFrame):
-        # Case 1: DataFrame with column name to extract (long format)
-        if isinstance(x, str):
-            if merge:
-                # Aggregate values for each unique x value
-                data_series = data.groupby(x)[x].first()  # Get unique values
-                if order is not None:
-                    data_series = data_series.reindex(order)
-            else:
-                # Simple extraction
-                if order is not None:
-                    # Filter and order data
-                    data_filtered = data[data[x].isin(order)]
-                    data_series = data_filtered[x]
-                    # Get unique values in order
-                    seen = set()
-                    unique_ordered = []
-                    for val in order:
-                        if val not in seen and val in data_series.values:
-                            unique_ordered.append(val)
-                            seen.add(val)
-                    data_series = pd.Series(unique_ordered)
-                else:
-                    data_series = data[x].unique()
-                    data_series = pd.Series(data_series)
-
-            data_df = data_series.to_frame().T
-
-        elif isinstance(y, str):
-            if merge:
-                # Aggregate values for each unique y value
-                data_series = data.groupby(y)[y].first()
-                if order is not None:
-                    data_series = data_series.reindex(order)
-            else:
-                # Simple extraction
-                if order is not None:
-                    # Filter and order data
-                    data_filtered = data[data[y].isin(order)]
-                    data_series = data_filtered[y]
-                    # Get unique values in order
-                    seen = set()
-                    unique_ordered = []
-                    for val in order:
-                        if val not in seen and val in data_series.values:
-                            unique_ordered.append(val)
-                            seen.add(val)
-                    data_series = pd.Series(unique_ordered)
-                else:
-                    data_series = data[y].unique()
-                    data_series = pd.Series(data_series)
-
-            data_df = data_series.to_frame()
-
-        else:
-            # Case 2: DataFrame as matrix (wide format from complex_heatmap)
-            if horizontal:
-                # Use columns for horizontal (top/bottom)
-                if order is not None:
-                    # Filter and reorder columns based on order
-                    data_series = pd.Series([col for col in order if col in data.columns])
-                else:
-                    data_series = pd.Series(data.columns)
-                data_df = data_series.to_frame().T
-            else:
-                # Use index for vertical (left/right)
-                if order is not None:
-                    # Filter and reorder index based on order
-                    data_series = pd.Series([idx for idx in order if idx in data.index])
-                else:
-                    data_series = pd.Series(data.index)
-                data_df = data_series.to_frame()
-
-    elif isinstance(data, pd.Series):
-        # Series data
-        if order is not None:
-            data = data.reindex(order)
-        data_df = data.to_frame().T if horizontal else data.to_frame()
-
-    elif isinstance(data, (list, np.ndarray)):
-        # Array/list data
-        data_array = np.array(data)
-        if data_array.ndim == 1:
-            if order is not None and len(order) == len(data_array):
-                data_array = data_array[np.argsort(order)]
-            data_df = pd.DataFrame([data_array] if horizontal else [[d] for d in data_array])
-        else:
-            data_df = pd.DataFrame(data_array)
-    else:
-        raise ValueError(f"Unsupported data type: {type(data)}")
+    # Prepare data using helper function
+    data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
 
     # Create figure if needed
     if ax is None:
@@ -270,7 +378,21 @@ def block(
     else:
         fig = ax.get_figure()
 
-    n_rows, n_cols = data_df.shape
+    # Debug: Check if data_df is empty
+    if n_rows == 0 or n_cols == 0:
+        import warnings
+        warnings.warn(
+            f"block() received empty data: n_rows={n_rows}, n_cols={n_cols}. "
+            f"data_df shape: {data_df.shape}, values: {data_df.values if n_rows > 0 and n_cols > 0 else 'empty'}. "
+            f"x={x}, y={y}, horizontal={horizontal}, order={'provided' if order is not None else 'None'}",
+            UserWarning
+        )
+
+    # Set axis limits early so we can convert linewidth from points to data coordinates
+    ax.set_xlim(0, n_cols)
+    ax.set_ylim(0, n_rows)
+    if horizontal:
+        ax.invert_yaxis()
 
     # Determine if data is categorical or continuous
     # Check the flattened values, not the DataFrame structure
@@ -316,80 +438,130 @@ def block(
 
     # Draw rectangles
     patches = []
-    for i in range(n_rows):
-        for j in range(n_cols):
-            if horizontal:
-                # Horizontal: blocks go left-to-right (x varies), rows stack vertically
-                x_pos, y_pos, w, h = j, n_rows - i - 1, 1, 1
-            else:
-                # Vertical: blocks stack top-to-bottom (y varies), x is constant
-                # For n_rows x n_cols DataFrame, blocks should be at:
-                # (x=j, y=i) so they stack vertically
-                x_pos, y_pos, w, h = j, i, 1, 1
 
-            # Get color for this block
-            if isinstance(color_values[0], list):
-                color = color_values[i][j]
-            else:
-                color = color_values[j] if horizontal else color_values[i]
+    # Convert linewidth from points to data coordinates
+    # This ensures linewidth grows inward, keeping all edges visible
+    if linewidth > 0:
+        # Get figure and axes info
+        fig = ax.get_figure()
+        bbox = ax.get_position()  # Axes position in figure coordinates (0-1)
+        fig_width_inches, fig_height_inches = fig.get_size_inches()
 
-            # Create rectangle with double-layer rendering
-            # Layer 1: Transparent fill
-            rect_fill = Rectangle(
-                (x_pos, y_pos), w, h,
-                facecolor=color,
-                edgecolor='none',
-                linewidth=0,
-                zorder=1
-            )
-            ax.add_patch(rect_fill)
+        # Calculate axes size in inches
+        ax_width_inches = bbox.width * fig_width_inches
+        ax_height_inches = bbox.height * fig_height_inches
 
-            # Layer 2: Opaque edge
-            edge_c = edgecolor if edgecolor else color
-            rect_edge = Rectangle(
-                (x_pos, y_pos), w, h,
-                facecolor='none',
-                edgecolor=edge_c,
-                linewidth=linewidth,
-                zorder=2
-            )
-            ax.add_patch(rect_edge)
+        # Data range (already set above)
+        data_width = n_cols  # xlim is (0, n_cols)
+        data_height = n_rows  # ylim is (0, n_rows)
 
-            patches.append(rect_fill)
+        # Convert linewidth from points to data coordinates
+        # 72 points per inch
+        points_per_inch = 72
+        lw_data_x = linewidth * data_width / (ax_width_inches * points_per_inch)
+        lw_data_y = linewidth * data_height / (ax_height_inches * points_per_inch)
 
-            # Add text overlay if requested
-            if text:
+        # Inset by half linewidth so edge grows inward
+        inset_x = lw_data_x / 2
+        inset_y = lw_data_y / 2
+    else:
+        inset_x = 0
+        inset_y = 0
+
+    # Build list of rectangles to draw (with merging if requested)
+    rectangles_to_draw = []
+
+    if merge:
+        # Merge consecutive identical values into single rectangles
+        for i in range(n_rows):
+            j = 0
+            while j < n_cols:
+                # Get value at current position
                 val = data_df.iloc[i, j]
-                text_kwargs = text_kws or {}
-                text_defaults = {
-                    'fontsize': resolve_param("font.size"),
-                    'ha': 'center',
-                    'va': 'center',
-                    'color': 'black',
-                    'weight': 'normal',
-                    'rotation': 90 if not horizontal else 0  # Rotate text for vertical blocks
-                }
-                text_defaults.update(text_kwargs)
 
-                ax.text(
-                    x_pos + w/2, y_pos + h/2, str(val),
-                    **text_defaults,
-                    zorder=3
-                )
+                # Find extent of consecutive identical values
+                start_j = j
+                while j < n_cols and data_df.iloc[i, j] == val:
+                    j += 1
+                span = j - start_j
+
+                # Store rectangle info: (row, col_start, col_span, row_span, value)
+                rectangles_to_draw.append((i, start_j, span, 1, val))
+    else:
+        # No merging - one rectangle per cell
+        for i in range(n_rows):
+            for j in range(n_cols):
+                val = data_df.iloc[i, j]
+                rectangles_to_draw.append((i, j, 1, 1, val))
+
+    # Draw the rectangles
+    for rect_info in rectangles_to_draw:
+        i, j, col_span, row_span, val = rect_info
+
+        if horizontal:
+            # Horizontal: blocks go left-to-right (x varies), rows stack vertically
+            x_pos = j
+            y_pos = n_rows - i - 1
+            w = col_span
+            h = row_span
+        else:
+            # Vertical: blocks stack top-to-bottom (y varies), x is constant
+            x_pos = j
+            y_pos = i
+            w = col_span
+            h = row_span
+
+        # Store original center position for text (before inset)
+        text_x = x_pos + w / 2
+        text_y = y_pos + h / 2
+
+        # Apply inset so linewidth grows inward, not outward
+        x_pos += inset_x
+        y_pos += inset_y
+        w -= 2 * inset_x
+        h -= 2 * inset_y
+
+        # Get color for this block
+        if isinstance(color_values[0], list):
+            color = color_values[i][j]
+        else:
+            # For merged blocks, use color from first cell
+            color = color_values[j] if horizontal else color_values[i]
+
+        # Create single rectangle - apply_transparency will handle the double-layer effect
+        edge_c = edgecolor if edgecolor else color
+        rect = Rectangle(
+            (x_pos, y_pos), w, h,
+            facecolor=color,
+            edgecolor=edge_c,
+            linewidth=linewidth,
+            zorder=1
+        )
+        ax.add_patch(rect)
+        patches.append(rect)
+
+        # Add text overlay if requested
+        if text:
+            text_kwargs = text_kws or {}
+            text_defaults = {
+                'fontsize': resolve_param("font.size"),
+                'ha': 'center',
+                'va': 'center',
+                'color': 'black',
+                'weight': 'normal',
+                'rotation': 90 if not horizontal else 0  # Rotate text for vertical blocks
+            }
+            text_defaults.update(text_kwargs)
+
+            # Use original center position (not inset position) for text alignment
+            ax.text(
+                text_x, text_y, str(val),
+                **text_defaults,
+                zorder=3
+            )
 
     # Apply transparency using publiplots utility
     apply_transparency(patches, face_alpha=alpha, edge_alpha=1.0)
-
-    # Set axis limits and appearance
-    # Both horizontal and vertical use same limits based on DataFrame shape
-    ax.set_xlim(0, n_cols)
-    ax.set_ylim(0, n_rows)
-    if not horizontal:
-        # For vertical blocks, don't invert y-axis so blocks go top-to-bottom
-        pass
-    else:
-        # For horizontal blocks, invert so first row is at top
-        ax.invert_yaxis()
 
     # Clean axes
     ax.set_xticks([])
@@ -398,7 +570,7 @@ def block(
         spine.set_visible(False)
 
     # Store legend metadata on axes for complex_heatmap reconciliation
-    if legend:
+    if legend and len(patches) > 0:
         legend_kws = legend_kws or {}
         label = legend_kws.get('label', '')
 
@@ -414,10 +586,10 @@ def block(
                 style='rectangle'
             )
 
-            # Store for later
-            if not hasattr(ax.patches[0], '_legend_data'):
-                ax.patches[0]._legend_data = {}
-            ax.patches[0]._legend_data['hue'] = {
+            # Store for later (use first patch from local patches list)
+            if not hasattr(patches[0], '_legend_data'):
+                patches[0]._legend_data = {}
+            patches[0]._legend_data['hue'] = {
                 'handles': handles,
                 'label': label
             }
@@ -425,10 +597,10 @@ def block(
             # Continuous colorbar
             mappable = ScalarMappable(norm=norm, cmap=cmap_obj)
 
-            # Store for later
-            if not hasattr(ax.patches[0], '_legend_data'):
-                ax.patches[0]._legend_data = {}
-            ax.patches[0]._legend_data['hue'] = {
+            # Store for later (use first patch from local patches list)
+            if not hasattr(patches[0], '_legend_data'):
+                patches[0]._legend_data = {}
+            patches[0]._legend_data['hue'] = {
                 'type': 'colorbar',
                 'mappable': mappable,
                 'label': label
@@ -438,10 +610,13 @@ def block(
 
 
 def label(
-    labels: Union[List[str], pd.Series, np.ndarray],
-    # Position/orientation (only one should be set)
-    x: Optional[bool] = None,
-    y: Optional[bool] = None,
+    data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
+    # Position/orientation (optional when called from complex_heatmap)
+    x: Optional[Union[str, bool]] = None,
+    y: Optional[Union[str, bool]] = None,
+    # Data handling
+    order: Optional[List[str]] = None,
+    merge: bool = True,
     # Text styling
     rotation: float = 0,
     fontsize: Optional[float] = None,
@@ -450,7 +625,7 @@ def label(
     color: Optional[str] = None,
     fontweight: str = "normal",
     # Arrow connection
-    arrow: bool = False,
+    arrow: Optional[str] = None,
     arrow_kws: Optional[Dict] = None,
     # Positioning
     offset: float = 0.5,
@@ -468,12 +643,21 @@ def label(
 
     Parameters
     ----------
-    labels : list, Series, or array
-        Text labels to display.
-    x : bool, optional
-        True for horizontal labels (top/bottom margins). Only one of x or y should be set.
-    y : bool, optional
-        True for vertical labels (left/right margins). Only one of x or y should be set.
+    data : Series, DataFrame, list, or array
+        Data containing labels to display. Can be:
+        - Series: Simple label list
+        - DataFrame: Extract labels from column specified by x/y parameter
+        - List/array: Simple label list
+    x : str or bool, optional
+        Column name (if data is DataFrame) or True for horizontal orientation.
+        Use for top/bottom margins. Can be omitted when called from complex_heatmap.
+    y : str or bool, optional
+        Column name (if data is DataFrame) or True for vertical orientation.
+        Use for left/right margins. Can be omitted when called from complex_heatmap.
+    order : list of str, optional
+        Order of positions (passed automatically by complex_heatmap builder).
+    merge : bool, default=True
+        If True, merge consecutive identical labels (only show once for the span).
     rotation : float, default=0
         Text rotation angle in degrees.
         Common values: 0, 45, 90, -45, -90.
@@ -487,8 +671,11 @@ def label(
         Text color. Uses rcParams default if None.
     fontweight : str, default='normal'
         Font weight: 'normal', 'bold', 'light', 'heavy'.
-    arrow : bool, default=False
-        Whether to draw connecting arrows from labels to positions.
+    arrow : str, optional
+        Direction of connecting arrows from labels to positions.
+        Options: 'up', 'down', 'left', 'right', or None (no arrows).
+        For horizontal labels (top/bottom), use 'up' or 'down'.
+        For vertical labels (left/right), use 'left' or 'right'.
     arrow_kws : dict, optional
         Arrow styling:
         - arrowstyle: Arrow style (e.g., '->', '-|>', 'fancy')
@@ -520,7 +707,7 @@ def label(
 
     >>> sample_ids = ['S001', 'S002', 'S003']
     >>> fig, ax = pp.label(sample_ids, y=True,
-    ...                     arrow=True, arrow_kws={'arrowstyle': '->'})
+    ...                     arrow='left', arrow_kws={'arrowstyle': '->'})
 
     Custom styling:
 
@@ -539,23 +726,8 @@ def label(
     fontsize = resolve_param("font.size", fontsize)
     color = resolve_param("color", color)
 
-    # Determine orientation from x/y parameters
-    if x is not None and y is not None:
-        raise ValueError("Only one of x or y should be set, not both")
-    elif x is None and y is None:
-        raise ValueError("Either x or y must be set")
-
-    horizontal = x is not None
-
-    # Convert labels to list
-    if isinstance(labels, pd.Series):
-        labels = labels.tolist()
-    elif isinstance(labels, np.ndarray):
-        labels = labels.tolist()
-    elif not isinstance(labels, list):
-        labels = list(labels)
-
-    n_labels = len(labels)
+    # Prepare data using helper function
+    data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
 
     # Create figure if needed
     if ax is None:
@@ -564,11 +736,40 @@ def label(
     else:
         fig = ax.get_figure()
 
+    # Build list of labels to draw (with merging if requested)
+    labels_to_draw = []
+
+    if merge:
+        # Merge consecutive identical values - only label once for the span
+        for i in range(n_rows):
+            j = 0
+            while j < n_cols:
+                # Get value at current position
+                val = data_df.iloc[i, j]
+
+                # Find extent of consecutive identical values
+                start_j = j
+                while j < n_cols and data_df.iloc[i, j] == val:
+                    j += 1
+                span = j - start_j
+
+                # Store label info: (row, col_start, col_span, row_span, value)
+                # Label will be centered on the span
+                labels_to_draw.append((i, start_j, span, 1, val))
+    else:
+        # No merging - one label per cell
+        for i in range(n_rows):
+            for j in range(n_cols):
+                val = data_df.iloc[i, j]
+                labels_to_draw.append((i, j, 1, 1, val))
+
     # Position labels
-    for i, lbl in enumerate(labels):
+    for label_info in labels_to_draw:
+        i, j, col_span, row_span, lbl = label_info
         if horizontal:
             # Labels below axis (for top/bottom margins)
-            x_pos = i + 0.5
+            # Center on the span
+            x_pos = j + col_span / 2
             y_pos = offset
 
             # Adjust alignment for rotation
@@ -584,8 +785,9 @@ def label(
 
         else:  # vertical
             # Labels to right of axis (for left/right margins)
+            # Center on the span
             x_pos = offset
-            y_pos = i + 0.5
+            y_pos = i + row_span / 2
 
             # Adjust alignment for vertical orientation
             if rotation == 0:
@@ -620,15 +822,28 @@ def label(
             }
             arrow_defaults.update(arrow_kwargs)
 
-            # Determine arrow endpoints
-            if horizontal:
-                # Arrow from text to axis
-                arrow_start = (x_pos, y_pos - 0.1)
-                arrow_end = (x_pos, 0)
+            # Determine arrow endpoints based on direction
+            arrow_length = 0.3  # Length of arrow in data coordinates
+
+            if arrow == 'down':
+                # Arrow pointing down (from text toward axis below)
+                arrow_start = (x_pos, y_pos)
+                arrow_end = (x_pos, y_pos - arrow_length)
+            elif arrow == 'up':
+                # Arrow pointing up (from text toward axis above)
+                arrow_start = (x_pos, y_pos)
+                arrow_end = (x_pos, y_pos + arrow_length)
+            elif arrow == 'left':
+                # Arrow pointing left (from text toward axis on left)
+                arrow_start = (x_pos, y_pos)
+                arrow_end = (x_pos - arrow_length, y_pos)
+            elif arrow == 'right':
+                # Arrow pointing right (from text toward axis on right)
+                arrow_start = (x_pos, y_pos)
+                arrow_end = (x_pos + arrow_length, y_pos)
             else:
-                # Arrow from text to axis
-                arrow_start = (x_pos - 0.1, y_pos)
-                arrow_end = (0, y_pos)
+                # Invalid direction - skip arrow
+                continue
 
             arrow_patch = FancyArrowPatch(
                 arrow_start, arrow_end,
@@ -639,12 +854,12 @@ def label(
 
     # Set axis limits
     if horizontal:
-        ax.set_xlim(0, n_labels)
+        ax.set_xlim(0, n_cols)
         ax.set_ylim(0, offset + 0.5)
         ax.invert_yaxis()
     else:
         ax.set_xlim(0, offset + 0.5)
-        ax.set_ylim(0, n_labels)
+        ax.set_ylim(0, n_rows)
         ax.invert_yaxis()
 
     # Clean axes

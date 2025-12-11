@@ -29,11 +29,15 @@ def offset_patches(
     Offset patches by a given amount.
     """
     from matplotlib.path import Path as MplPath
-    from matplotlib.patches import Rectangle
+    from matplotlib.patches import Rectangle, FancyArrowPatch
 
     for patch in patches:
+        # Skip FancyArrowPatch - arrows are positioned by their coordinates, not paths
+        # They should be positioned correctly when created
+        if isinstance(patch, FancyArrowPatch):
+            pass
         # Handle Rectangle patches specially (barplot uses Rectangles)
-        if isinstance(patch, Rectangle):
+        elif isinstance(patch, Rectangle):
             if orientation == "vertical":
                 # Shift x position
                 patch.set_x(patch.get_x() + offset)
