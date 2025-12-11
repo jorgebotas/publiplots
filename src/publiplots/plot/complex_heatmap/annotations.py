@@ -159,14 +159,18 @@ def block(
         if isinstance(x, str):
             # x is a column name - extract that column for horizontal blocks
             data_series = data[x]
-            data_df = data_series.to_frame().T
         elif isinstance(y, str):
             # y is a column name - extract that column for vertical blocks
             data_series = data[y]
             data_df = data_series.to_frame()
         else:
-            # x/y are booleans - use DataFrame as-is
-            data_df = data if horizontal else data.T
+            # x/y are booleans - index or columns
+            data_series = data.columns if x is not None else data.index
+
+        data_df = data_series.to_frame()
+        if x is not None:
+            data_df = data_df.T
+
     elif isinstance(data, pd.Series):
         # Convert Series to DataFrame based on orientation
         data_df = data.to_frame().T if horizontal else data.to_frame()
