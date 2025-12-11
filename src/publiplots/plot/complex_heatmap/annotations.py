@@ -20,6 +20,7 @@ from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical
 from publiplots.utils.transparency import apply_transparency
 from publiplots.utils.legend import legend as legend_builder
+from publiplots.utils.text import measure_text_dimensions
 
 
 def _prepare_annotation_data(
@@ -624,7 +625,8 @@ def label(
     va: str = "center",
     color: Optional[str] = None,
     fontweight: str = "normal",
-    hue: Optional[Union[str, Dict, List]] = None,
+    hue: Optional[str] = None,
+    palette: Optional[Union[str, Dict, List]] = None,
     # Arrow connection
     arrow: Optional[str] = None,
     arrow_kws: Optional[Dict] = None,
@@ -670,14 +672,18 @@ def label(
         Vertical alignment: 'top', 'center', 'bottom', 'baseline'.
     color : str, optional
         Text color. Uses rcParams default if None.
+        Only used when hue is None.
     fontweight : str, default='normal'
         Font weight: 'normal', 'bold', 'light', 'heavy'.
-    hue : str, dict, or list, optional
-        Color mapping for labels (colors both text and arrow):
-        - str: Column name in DataFrame to map colors from
-        - dict: Mapping from label values to colors
-        - list: List of colors for each label
-        If provided, overrides the 'color' parameter.
+    hue : str, optional
+        Column name in DataFrame to use for coloring labels.
+        Colors both text and arrow. If provided, overrides 'color' parameter.
+    palette : str, dict, or list, optional
+        Color palette for hue values (used when hue is provided):
+        - str: Palette name (e.g., 'Set2', 'pastel')
+        - dict: Mapping from hue values to colors
+        - list: List of colors
+        If None and hue is provided, uses default palette.
     arrow : str, optional
         Direction of connecting arrows from labels to positions.
         Options: 'up', 'down', 'left', 'right', or None (no arrows).
@@ -722,6 +728,16 @@ def label(
     >>> fig, ax = pp.label(categories, x=True, fontsize=12, fontweight='bold',
     ...                     color='darkblue', rotation=90)
 
+    With hue coloring from DataFrame:
+
+    >>> metadata = pd.DataFrame({
+    ...     'gene': ['BRCA1', 'TP53', 'EGFR'],
+    ...     'category': ['Oncogene', 'Tumor suppressor', 'Oncogene']
+    ... })
+    >>> fig, ax = pp.label(metadata, y='gene', hue='category',
+    ...                     palette={'Oncogene': 'red', 'Tumor suppressor': 'blue'},
+    ...                     arrow='left')
+
     Notes
     -----
     - Designed for complex_heatmap margins but works standalone
@@ -734,6 +750,15 @@ def label(
     if color is None and hue is None:
         color = resolve_param("color", color)
 
+    # Extract hue data if provided (before preparing annotation data)
+    hue_data = None
+    original_data = data
+    if hue is not None and isinstance(data, pd.DataFrame):
+        if hue in data.columns:
+            hue_data = data[hue]
+        else:
+            raise ValueError(f"Hue column '{hue}' not found in DataFrame")
+
     # Prepare data using helper function
     data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
 
@@ -744,21 +769,48 @@ def label(
     else:
         fig = ax.get_figure()
 
-    # Process hue parameter for color mapping
+    # Process hue and palette for color mapping (following publiplots pattern)
     color_map = None
-    if hue is not None:
-        if isinstance(hue, dict):
-            # Direct mapping provided
-            color_map = hue
-        elif isinstance(hue, list):
-            # List of colors - map to unique values in order
-            unique_values = pd.unique(data_df.values.ravel())
-            color_map = {val: hue[i % len(hue)] for i, val in enumerate(unique_values)}
-        elif isinstance(hue, str):
-            # Column name or palette name
-            unique_values = pd.unique(data_df.values.ravel())
-            # Try to resolve as palette
-            color_map = resolve_palette_map(values=unique_values, palette=hue)
+    if hue is not None and hue_data is not None:
+        # Get unique label values
+        unique_labels = pd.unique(data_df.values.ravel())
+
+        # Map labels to hue values
+        # Need to align labels with their corresponding hue values
+        label_to_hue = {}
+        if isinstance(original_data, pd.DataFrame):
+            # Create mapping from labels to hue values
+            for label in unique_labels:
+                # Find hue value for this label
+                # Handle both cases: when label column is x/y, or when it's a separate column
+                if isinstance(x, str) and x in original_data.columns:
+                    # x is the label column
+                    rows = original_data[original_data[x] == label]
+                    if len(rows) > 0:
+                        label_to_hue[label] = rows[hue].iloc[0]
+                elif isinstance(y, str) and y in original_data.columns:
+                    # y is the label column
+                    rows = original_data[original_data[y] == label]
+                    if len(rows) > 0:
+                        label_to_hue[label] = rows[hue].iloc[0]
+
+        # Get unique hue values
+        unique_hue_values = pd.unique(pd.Series(list(label_to_hue.values()))) if label_to_hue else unique_labels
+
+        # Resolve palette to color mapping
+        if palette is None:
+            palette = 'pastel'  # Default palette
+
+        hue_color_map = resolve_palette_map(
+            values=unique_hue_values,
+            palette=palette
+        )
+
+        # Create label to color mapping
+        if label_to_hue:
+            color_map = {label: hue_color_map[hue_val] for label, hue_val in label_to_hue.items()}
+        else:
+            color_map = hue_color_map
 
     # Build list of labels to draw (with merging if requested)
     labels_to_draw = []
@@ -788,12 +840,48 @@ def label(
                 labels_to_draw.append((i, j, 1, 1, val))
 
     # Calculate dimensions for positioning
-    # When arrow is present, split the available space between text and arrow
+    # When arrow is present, calculate text space based on actual text dimensions
     total_space = offset + 0.5
     if arrow:
-        # Arrow takes about 30% of space, text gets the rest
-        arrow_space = total_space * 0.4
-        text_space = total_space * 0.6
+        # Measure text dimensions to calculate required space
+        labels_list = [str(val) for _, _, _, _, val in labels_to_draw]
+
+        # Determine orientation for text measurement
+        orientation_for_text = "horizontal" if horizontal else "vertical"
+
+        # Measure text dimensions in data coordinates
+        text_width, text_height = measure_text_dimensions(
+            labels=labels_list,
+            fig=fig,
+            fontsize=fontsize,
+            orientation=orientation_for_text,
+            rotation=rotation,
+            unit="points",
+        )
+
+        # Convert from points to data coordinates
+        # For vertical annotations (left/right), we care about width
+        # For horizontal annotations (top/bottom), we care about height
+        # Add small padding for arrow
+        dpi = fig.dpi
+        if horizontal:
+            # Convert height from points to data units
+            text_dim_inches = text_height / 72.0
+            # Calculate data coordinate scale
+            bbox = ax.get_position()
+            ax_height_inches = bbox.height * fig.get_figheight()
+            text_space_data = text_dim_inches * total_space / ax_height_inches
+        else:
+            # Convert width from points to data units
+            text_dim_inches = text_width / 72.0
+            bbox = ax.get_position()
+            ax_width_inches = bbox.width * fig.get_figwidth()
+            text_space_data = text_dim_inches * total_space / ax_width_inches
+
+        # Arrow takes remaining space (minimum 20% of total)
+        arrow_space = min(total_space * 0.5, total_space - text_space_data)
+        arrow_space = max(arrow_space, total_space * 0.2)
+        text_space = total_space - arrow_space
     else:
         arrow_space = 0
         text_space = total_space
