@@ -175,9 +175,6 @@ def violinplot(
     if side not in ("both", "left", "right"):
         raise ValueError(f"side must be 'both', 'left', or 'right', got '{side}'")
 
-    if orient is not None:
-        raise DeprecationWarning("orient is deprecated. Use x and y instead.")
-
     # Create figure if not provided
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -204,7 +201,7 @@ def violinplot(
         "hue": hue,
         "order": order,
         "hue_order": hue_order,
-        # "orient": orient,
+        "orient": orient,
         "color": color if hue is None else None,
         "palette": palette if hue else None,
         "saturation": saturation,

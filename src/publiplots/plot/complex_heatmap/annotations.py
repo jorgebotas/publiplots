@@ -250,7 +250,7 @@ def block(
                 val = data_df.iloc[i, j]
                 text_kwargs = text_kws or {}
                 text_defaults = {
-                    'fontsize': 8,
+                    'fontsize': resolve_param("font.size"),
                     'ha': 'center',
                     'va': 'center',
                     'color': 'black',
