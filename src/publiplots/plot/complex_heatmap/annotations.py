@@ -243,7 +243,7 @@ def block(
     y: Optional[Union[str, bool]] = None,
     # Data handling
     order: Optional[List[str]] = None,
-    merge: bool = False,
+    merge: bool = True,
     # Color encoding
     cmap: Optional[str] = None,
     palette: Optional[Union[str, Dict, List]] = None,
@@ -290,7 +290,7 @@ def block(
         Use for left/right margins. Can be omitted when called from complex_heatmap.
     order : list of str, optional
         Order of categories (passed automatically by complex_heatmap builder).
-    merge : bool, default=False
+    merge : bool, default=True
         If True and x/y is a column name, merge values from that column
         (useful for long-format data with multiple rows per category).
     cmap : str, optional
@@ -616,7 +616,7 @@ def label(
     y: Optional[Union[str, bool]] = None,
     # Data handling
     order: Optional[List[str]] = None,
-    merge: bool = False,
+    merge: bool = True,
     # Text styling
     rotation: float = 0,
     fontsize: Optional[float] = None,
@@ -656,7 +656,7 @@ def label(
         Use for left/right margins. Can be omitted when called from complex_heatmap.
     order : list of str, optional
         Order of positions (passed automatically by complex_heatmap builder).
-    merge : bool, default=False
+    merge : bool, default=True
         If True, merge consecutive identical labels (only show once for the span).
     rotation : float, default=0
         Text rotation angle in degrees.
