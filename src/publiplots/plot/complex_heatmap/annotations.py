@@ -183,17 +183,46 @@ def block(
             else:
                 # Simple extraction
                 if order is not None:
-                    # Filter and order data
-                    data_filtered = data[data[x].isin(order)]
-                    data_series = data_filtered[x]
-                    # Get unique values in order
-                    seen = set()
-                    unique_ordered = []
-                    for val in order:
-                        if val not in seen and val in data_series.values:
-                            unique_ordered.append(val)
-                            seen.add(val)
-                    data_series = pd.Series(unique_ordered)
+                    # Check if x column values match order (axis column like 'sample')
+                    x_values_match_order = any(val in data[x].values for val in order)
+
+                    if x_values_match_order:
+                        # x is the axis column - extract in order
+                        data_filtered = data[data[x].isin(order)]
+                        data_series = data_filtered[x]
+                        # Get unique values in order
+                        seen = set()
+                        unique_ordered = []
+                        for val in order:
+                            if val not in seen and val in data_series.values:
+                                unique_ordered.append(val)
+                                seen.add(val)
+                        data_series = pd.Series(unique_ordered)
+                    else:
+                        # x is a metadata column - need to map from axis to metadata
+                        # Find axis column (column whose unique values match order)
+                        axis_col = None
+                        for col in data.columns:
+                            if col != x:
+                                col_unique = set(data[col].unique())
+                                if set(order).issubset(col_unique) or col_unique.issubset(set(order)):
+                                    axis_col = col
+                                    break
+
+                        if axis_col is not None:
+                            # Map from order to x values via axis column
+                            mapped_values = []
+                            for axis_val in order:
+                                # Get rows for this axis value
+                                rows = data[data[axis_col] == axis_val]
+                                if len(rows) > 0:
+                                    # Get the x value (assume same for all rows with this axis value)
+                                    mapped_values.append(rows[x].iloc[0])
+                            data_series = pd.Series(mapped_values)
+                        else:
+                            # Fallback: couldn't find axis column
+                            data_series = data[x].unique()
+                            data_series = pd.Series(data_series)
                 else:
                     data_series = data[x].unique()
                     data_series = pd.Series(data_series)
@@ -209,17 +238,46 @@ def block(
             else:
                 # Simple extraction
                 if order is not None:
-                    # Filter and order data
-                    data_filtered = data[data[y].isin(order)]
-                    data_series = data_filtered[y]
-                    # Get unique values in order
-                    seen = set()
-                    unique_ordered = []
-                    for val in order:
-                        if val not in seen and val in data_series.values:
-                            unique_ordered.append(val)
-                            seen.add(val)
-                    data_series = pd.Series(unique_ordered)
+                    # Check if y column values match order (axis column like 'gene')
+                    y_values_match_order = any(val in data[y].values for val in order)
+
+                    if y_values_match_order:
+                        # y is the axis column - extract in order
+                        data_filtered = data[data[y].isin(order)]
+                        data_series = data_filtered[y]
+                        # Get unique values in order
+                        seen = set()
+                        unique_ordered = []
+                        for val in order:
+                            if val not in seen and val in data_series.values:
+                                unique_ordered.append(val)
+                                seen.add(val)
+                        data_series = pd.Series(unique_ordered)
+                    else:
+                        # y is a metadata column - need to map from axis to metadata
+                        # Find axis column (column whose unique values match order)
+                        axis_col = None
+                        for col in data.columns:
+                            if col != y:
+                                col_unique = set(data[col].unique())
+                                if set(order).issubset(col_unique) or col_unique.issubset(set(order)):
+                                    axis_col = col
+                                    break
+
+                        if axis_col is not None:
+                            # Map from order to y values via axis column
+                            mapped_values = []
+                            for axis_val in order:
+                                # Get rows for this axis value
+                                rows = data[data[axis_col] == axis_val]
+                                if len(rows) > 0:
+                                    # Get the y value (assume same for all rows with this axis value)
+                                    mapped_values.append(rows[y].iloc[0])
+                            data_series = pd.Series(mapped_values)
+                        else:
+                            # Fallback: couldn't find axis column
+                            data_series = data[y].unique()
+                            data_series = pd.Series(data_series)
                 else:
                     data_series = data[y].unique()
                     data_series = pd.Series(data_series)
