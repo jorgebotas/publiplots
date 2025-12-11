@@ -20,7 +20,6 @@ from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical
 from publiplots.utils.transparency import apply_transparency
 from publiplots.utils.legend import legend as legend_builder
-from publiplots.utils.text import measure_text_dimensions
 
 
 def _prepare_annotation_data(
@@ -839,54 +838,10 @@ def label(
                 val = data_df.iloc[i, j]
                 labels_to_draw.append((i, j, 1, 1, val))
 
-    # Calculate dimensions for positioning
-    # When arrow is present, calculate text space based on actual text dimensions
+    # Position labels (with or without arrows)
+    # Arrow takes ALL remaining space - text is at opposite end
     total_space = offset + 0.5
-    if arrow:
-        # Measure text dimensions to calculate required space
-        labels_list = [str(val) for _, _, _, _, val in labels_to_draw]
 
-        # Determine orientation for text measurement
-        orientation_for_text = "horizontal" if horizontal else "vertical"
-
-        # Measure text dimensions in data coordinates
-        text_width, text_height = measure_text_dimensions(
-            labels=labels_list,
-            fig=fig,
-            fontsize=fontsize,
-            orientation=orientation_for_text,
-            rotation=rotation,
-            unit="points",
-        )
-
-        # Convert from points to data coordinates
-        # For vertical annotations (left/right), we care about width
-        # For horizontal annotations (top/bottom), we care about height
-        # Add small padding for arrow
-        dpi = fig.dpi
-        if horizontal:
-            # Convert height from points to data units
-            text_dim_inches = text_height / 72.0
-            # Calculate data coordinate scale
-            bbox = ax.get_position()
-            ax_height_inches = bbox.height * fig.get_figheight()
-            text_space_data = text_dim_inches * total_space / ax_height_inches
-        else:
-            # Convert width from points to data units
-            text_dim_inches = text_width / 72.0
-            bbox = ax.get_position()
-            ax_width_inches = bbox.width * fig.get_figwidth()
-            text_space_data = text_dim_inches * total_space / ax_width_inches
-
-        # Arrow takes remaining space (minimum 20% of total)
-        arrow_space = min(total_space * 0.5, total_space - text_space_data)
-        arrow_space = max(arrow_space, total_space * 0.2)
-        text_space = total_space - arrow_space
-    else:
-        arrow_space = 0
-        text_space = total_space
-
-    # Position labels
     for label_info in labels_to_draw:
         i, j, col_span, row_span, lbl = label_info
 
@@ -900,51 +855,116 @@ def label(
         # Calculate target position (where arrow points to)
         if horizontal:
             target_x = j + col_span / 2
-            target_y = 0
+            target_y = 0  # Points to heatmap edge
         else:
-            target_x = 0
+            target_x = 0  # Points to heatmap edge
             target_y = i + row_span / 2
 
-        # Position text based on arrow direction
-        # Note: y-axis is inverted, so y=0 is at top, higher y is at bottom visually
-        if arrow == 'down':
-            # Arrow points down (toward higher y), text goes above arrow (at lower y)
-            x_pos = target_x
-            y_pos = arrow_space  # Text near the heatmap
-            text_ha = ha if ha != 'center' else 'center'
-            text_va = va if va != 'center' else 'top'
-            # Arrow starts at bottom edge of text (higher y) and points to target
-            arrow_start = (x_pos, y_pos)
-            arrow_end = (target_x, total_space)
-        elif arrow == 'up':
-            # Arrow points up (toward lower y/heatmap), text goes below arrow (at higher y)
-            x_pos = target_x
-            y_pos = total_space  # Text far from heatmap
-            text_ha = ha if ha != 'center' else 'center'
-            text_va = va if va != 'center' else 'bottom'
-            # Arrow starts at top edge of text (lower y) and points to target (y=0)
-            arrow_start = (x_pos, arrow_space)
-            arrow_end = (target_x, target_y)
-        elif arrow == 'left':
-            # Arrow points left (toward lower x/heatmap), text goes right of arrow (at higher x)
-            x_pos = total_space  # Text far from heatmap
-            y_pos = target_y
-            text_ha = ha if ha != 'center' else 'left'
-            text_va = va if va != 'center' else 'center'
-            # Arrow starts at left edge of text (lower x) and points to target (x=0)
-            arrow_start = (arrow_space, y_pos)
-            arrow_end = (target_x, target_y)
-        elif arrow == 'right':
-            # Arrow points right (toward higher x), text goes left of arrow (at lower x)
-            x_pos = arrow_space  # Text near heatmap
-            y_pos = target_y
-            text_ha = ha if ha != 'center' else 'right'
-            text_va = va if va != 'center' else 'center'
-            # Arrow starts at right edge of text (higher x) and points to target
-            arrow_start = (x_pos, y_pos)
-            arrow_end = (total_space, target_y)
+        if arrow:
+            # Use annotate() like pyComplexHeatmap for proper arrow connections
+            # Text is positioned at opposite end, arrow takes ALL remaining space
+
+            # Calculate arm height for arc connectionstyle (20% of total space)
+            bbox = ax.get_position()
+            if horizontal:
+                arm_height_inches = (offset + 0.5) * bbox.height * fig.get_figheight() * 0.2
+            else:
+                arm_height_inches = (offset + 0.5) * bbox.width * fig.get_figwidth() * 0.2
+            arm_height_points = arm_height_inches * 72  # Convert to points
+
+            # Calculate angles based on arrow direction (following pyComplexHeatmap)
+            if arrow == 'down':
+                # Text at TOP of space, arrow points down to heatmap
+                angleA = 180 + rotation
+                angleB = -90
+                text_x = target_x
+                text_y = 1  # Top of annotation space (axes coords)
+                text_ha = ha if ha != 'center' else 'center'
+                text_va = va if va != 'center' else 'top'
+                xycoords = ax.get_xaxis_transform()
+                textcoords = ax.get_xaxis_transform()
+            elif arrow == 'up':
+                # Text at BOTTOM of space, arrow points up to heatmap
+                angleA = rotation - 180
+                angleB = 90
+                text_x = target_x
+                text_y = 1  # Bottom of annotation space (axes coords, inverted)
+                text_ha = ha if ha != 'center' else 'center'
+                text_va = va if va != 'center' else 'bottom'
+                xycoords = ax.get_xaxis_transform()
+                textcoords = ax.get_xaxis_transform()
+            elif arrow == 'left':
+                # Text at RIGHT of space, arrow points left to heatmap
+                angleA = rotation
+                angleB = -180
+                text_x = 1  # Right of annotation space (axes coords)
+                text_y = target_y
+                text_ha = ha if ha != 'center' else 'left'
+                text_va = va if va != 'center' else 'center'
+                xycoords = ax.get_yaxis_transform()
+                textcoords = ax.get_yaxis_transform()
+            elif arrow == 'right':
+                # Text at LEFT of space, arrow points right away from heatmap
+                angleA = rotation - 180
+                angleB = 0
+                text_x = 1  # Left of annotation space (axes coords)
+                text_y = target_y
+                text_ha = ha if ha != 'center' else 'right'
+                text_va = va if va != 'center' else 'center'
+                xycoords = ax.get_yaxis_transform()
+                textcoords = ax.get_yaxis_transform()
+            else:
+                # Shouldn't reach here, but default to up
+                angleA = rotation - 180
+                angleB = 90
+                text_x = target_x
+                text_y = 1
+                text_ha = ha if ha != 'center' else 'center'
+                text_va = va if va != 'center' else 'bottom'
+                xycoords = ax.get_xaxis_transform()
+                textcoords = ax.get_xaxis_transform()
+
+            # Setup arrow properties with arc connectionstyle
+            arrow_kwargs = arrow_kws or {}
+            connectionstyle = arrow_kwargs.pop('connectionstyle', None)
+            if connectionstyle is None:
+                # Use pyComplexHeatmap-style arc connection
+                rad = arrow_kwargs.pop('rad', 2)  # Curvature parameter
+                connectionstyle = f"arc,angleA={angleA},angleB={angleB},armA={arm_height_points},armB={arm_height_points},rad={rad}"
+
+            arrowprops = {
+                'arrowstyle': '-',
+                'color': label_color,
+                'linewidth': 0.5,
+                'shrinkA': 0,
+                'shrinkB': 0,
+                'connectionstyle': connectionstyle,
+            }
+            arrowprops.update(arrow_kwargs)
+
+            # Draw text with arrow using annotate
+            text_kwargs = kwargs.copy()
+            text_kwargs.update({
+                'fontsize': fontsize,
+                'ha': text_ha,
+                'va': text_va,
+                'color': label_color,
+                'weight': fontweight,
+                'rotation': rotation,
+            })
+
+            ax.annotate(
+                str(lbl),
+                xy=(target_x, target_y),
+                xytext=(text_x, text_y),
+                xycoords=xycoords,
+                textcoords=textcoords,
+                arrowprops=arrowprops,
+                **text_kwargs,
+                zorder=2
+            )
         else:
-            # No arrow - position text normally
+            # No arrow - draw text only
             if horizontal:
                 x_pos = target_x
                 y_pos = offset
@@ -969,37 +989,18 @@ def label(
                     text_ha = ha
                     text_va = va
 
-        # Draw text
-        text_kwargs = kwargs.copy()
-        text_kwargs.update({
-            'fontsize': fontsize,
-            'ha': text_ha,
-            'va': text_va,
-            'color': label_color,
-            'weight': fontweight,
-            'rotation': rotation,
-        })
-
-        ax.text(x_pos, y_pos, str(lbl), **text_kwargs, zorder=2)
-
-        # Draw arrow if requested
-        if arrow:
-            arrow_kwargs = arrow_kws or {}
-            arrow_defaults = {
-                'arrowstyle': '-',  # Simple line like pyComplexHeatmap
+            # Draw text
+            text_kwargs = kwargs.copy()
+            text_kwargs.update({
+                'fontsize': fontsize,
+                'ha': text_ha,
+                'va': text_va,
                 'color': label_color,
-                'linewidth': 0.5,
-                'shrinkA': 0,
-                'shrinkB': 0,
-            }
-            arrow_defaults.update(arrow_kwargs)
+                'weight': fontweight,
+                'rotation': rotation,
+            })
 
-            arrow_patch = FancyArrowPatch(
-                arrow_start, arrow_end,
-                **arrow_defaults,
-                zorder=1
-            )
-            ax.add_patch(arrow_patch)
+            ax.text(x_pos, y_pos, str(lbl), **text_kwargs, zorder=2)
 
     # Set axis limits
     if horizontal:
