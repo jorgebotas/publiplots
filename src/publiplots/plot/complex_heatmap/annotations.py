@@ -617,6 +617,10 @@ def label(
     # Data handling
     order: Optional[List[str]] = None,
     merge: bool = True,
+    # Color encoding
+    hue: Optional[Union[str, Dict, List]] = None,
+    palette: Optional[Union[str, Dict, List]] = None,
+    colors: Optional[List[str]] = None,
     # Text styling
     rotation: float = 0,
     fontsize: Optional[float] = None,
