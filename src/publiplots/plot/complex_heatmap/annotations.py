@@ -332,6 +332,12 @@ def block(
 
     # Draw rectangles
     patches = []
+
+    # Calculate inset to prevent edge overlap
+    # When linewidth > 0, inset rectangles slightly to show clean edges
+    # Inset by a fraction of the linewidth to create small gaps between adjacent rectangles
+    gap = 0.002 * linewidth if linewidth > 0 else 0  # Small gap in data coordinates
+
     for i in range(n_rows):
         for j in range(n_cols):
             if horizontal:
@@ -342,6 +348,12 @@ def block(
                 # For n_rows x n_cols DataFrame, blocks should be at:
                 # (x=j, y=i) so they stack vertically
                 x_pos, y_pos, w, h = j, i, 1, 1
+
+            # Apply inset for clean edges
+            x_pos += gap
+            y_pos += gap
+            w -= 2 * gap
+            h -= 2 * gap
 
             # Get color for this block
             if isinstance(color_values[0], list):

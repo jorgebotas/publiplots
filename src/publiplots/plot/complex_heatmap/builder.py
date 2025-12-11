@@ -958,7 +958,12 @@ class ComplexHeatmapBuilder:
                     data = self._data
                 else:
                     # Fallback to matrix (wide format)
-                    data = self._matrix.T if position in ("left", "right") else self._matrix
+                    # For block annotations, don't transpose - block() extracts from index/columns directly
+                    # For other plot types, transpose for left/right to match expected data layout
+                    if is_block:
+                        data = self._matrix
+                    else:
+                        data = self._matrix.T if position in ("left", "right") else self._matrix
             kwargs['data'] = data
 
             # Order data appropriately
