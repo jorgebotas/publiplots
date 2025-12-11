@@ -765,10 +765,14 @@ def label(
         For vertical labels (left/right), use 'left' or 'right'.
     arrow_kws : dict, optional
         Arrow styling:
-        - arrowstyle: Arrow style (e.g., '->', '-|>', 'fancy')
-        - color: Arrow color
-        - linewidth: Arrow line width
-        - shrinkA, shrinkB: Padding at arrow ends
+        - arrow_height / arrow_width: Space for arrows in mm (default: None, uses axes height)
+        - arrowstyle: Arrow style (default: '-' for line, or '->', '-|>', 'fancy')
+        - color: Arrow color (default: matches text color)
+        - linewidth: Arrow line width (default: 0.5)
+        - shrinkA, shrinkB: Padding at arrow ends in points (default: 1)
+        - frac: Fraction for arm length calculation (default: 0.2)
+        - rad: Curvature radius (default: 2)
+        - relpos: Arrow start position relative to text (default: auto based on direction)
     offset : float, default=0.5
         Distance of labels from axis (in data coordinates).
     ax : Axes, optional
@@ -839,9 +843,14 @@ def label(
                 palette = 'pastel'
             color_map = resolve_palette_map(values=unique_vals, palette=palette)
 
-    # Calculate required space for text automatically (if creating new axes)
+    # Determine annotation height (used for arrow calculations)
+    # Following PyComplexHeatmap: default height is 4mm if not specified
     if ax is None:
-        # Determine position based on arrow direction or orientation
+        # Creating new axes - calculate size automatically
+        # Default annotation height (similar to PyComplexHeatmap's _height method)
+        annotation_height_mm = 4.0  # Default 4mm like PyComplexHeatmap
+
+        # Determine position based on orientation
         if horizontal:
             position = 'bottom'
         else:
@@ -860,25 +869,31 @@ def label(
 
         # Create figure with calculated size
         if horizontal:
-            # For horizontal: height = label space + arrow space
-            height_inches = label_space_inches
-            if arrow:
-                # Add fixed arrow space (default: 5mm)
-                arrow_height_mm = arrow_kws.get('arrow_height', 5) if arrow_kws else 5
-                height_inches += arrow_height_mm * MM2INCH
-            figsize = (6, height_inches)
+            # For horizontal: use label space or default annotation height, whichever is larger
+            height_mm = max(annotation_height_mm, label_space_inches / MM2INCH)
+            figsize = (6, height_mm * MM2INCH)
         else:
-            # For vertical: width = label space + arrow space
-            width_inches = label_space_inches
-            if arrow:
-                # Add fixed arrow space (default: 5mm)
-                arrow_width_mm = arrow_kws.get('arrow_width', 5) if arrow_kws else 5
-                width_inches += arrow_width_mm * MM2INCH
-            figsize = (width_inches, 6)
+            # For vertical: use label space or default annotation height, whichever is larger
+            width_mm = max(annotation_height_mm, label_space_inches / MM2INCH)
+            figsize = (width_mm * MM2INCH, 6)
 
         fig, ax = plt.subplots(figsize=figsize)
+        # Store the height in mm for arrow calculations below
+        annotation_height_mm_for_arrows = height_mm if horizontal else width_mm
     else:
+        # Axes provided by builder - get height from axes dimensions
         fig = ax.get_figure()
+        bbox = ax.get_position()
+        fig_width_inches, fig_height_inches = fig.get_size_inches()
+
+        if horizontal:
+            # Height in inches -> mm
+            ax_height_inches = bbox.height * fig_height_inches
+            annotation_height_mm_for_arrows = ax_height_inches / MM2INCH
+        else:
+            # Width in inches -> mm
+            ax_width_inches = bbox.width * fig_width_inches
+            annotation_height_mm_for_arrows = ax_width_inches / MM2INCH
 
     # Build list of labels to draw (with merging if requested)
     labels_to_draw = []
@@ -929,20 +944,16 @@ def label(
             arrow_kwargs = arrow_kws or {}
             arrow_params = _get_arrow_params(arrow, rotation)
 
-            # Arrow height/width in millimeters (converted to pixels)
-            if horizontal:
-                arrow_height_mm = arrow_kwargs.get('arrow_height', 5)
-                arrow_height_px = arrow_height_mm * MM2INCH * fig.dpi
-            else:
-                arrow_width_mm = arrow_kwargs.get('arrow_width', 5)
-                arrow_height_px = arrow_width_mm * MM2INCH * fig.dpi
+            # Convert annotation height from mm to pixels
+            # Following PyComplexHeatmap: arrow_height = self.height * mm2inch * ax.figure.dpi
+            arrow_height_px = annotation_height_mm_for_arrows * MM2INCH * fig.dpi
 
             # Calculate text offset in pixels (following PyComplexHeatmap)
             text_offset_px = arrow_height_px
             if arrow == 'down' or arrow == 'left':
                 text_offset_px = -1 * arrow_height_px
 
-            # Arm length as fraction of arrow height
+            # Arm length as fraction of arrow height (PyComplexHeatmap default: frac=0.2)
             frac = arrow_kwargs.get('frac', 0.2)
             rad = arrow_kwargs.get('rad', 2)
             arm_length = arrow_height_px * frac
@@ -959,10 +970,29 @@ def label(
             else:
                 label_color = color or 'black'
 
-            # Arrow styling
+            # Arrow styling defaults matching PyComplexHeatmap
             arrow_color = arrow_kwargs.get('color', label_color)
-            arrow_linewidth = arrow_kwargs.get('linewidth', 1)
-            arrowstyle = arrow_kwargs.get('arrowstyle', '->')
+            arrow_linewidth = arrow_kwargs.get('linewidth', 0.5)  # PyComplexHeatmap default: 0.5
+            arrowstyle = arrow_kwargs.get('arrowstyle', '-')  # PyComplexHeatmap default: '-' (line)
+            shrinkA = arrow_kwargs.get('shrinkA', 1)  # PyComplexHeatmap default: 1
+            shrinkB = arrow_kwargs.get('shrinkB', 1)  # PyComplexHeatmap default: 1
+
+            # Set relpos based on orientation (PyComplexHeatmap approach)
+            if arrow_params['axis_transform'] == 'xaxis':
+                # For horizontal (column annotations)
+                if arrow == 'up':
+                    relpos = (0, 0)  # Arrow starts from bottom-left of text
+                else:  # down
+                    relpos = (0, 1)  # Arrow starts from top-left of text
+            else:
+                # For vertical (row annotations)
+                if arrow == 'left':
+                    relpos = (1, 1)  # Arrow starts from top-right of text
+                else:  # right
+                    relpos = (0, 0)  # Arrow starts from bottom-left of text
+
+            # Allow override of relpos
+            relpos = arrow_kwargs.get('relpos', relpos)
 
             # Get coordinate transform
             if arrow_params['axis_transform'] == 'xaxis':
@@ -978,22 +1008,36 @@ def label(
                 # xytext is offset in pixels from xy
                 xytext_offset = (text_offset_px, 0)
 
-            # Override text alignment if user specified
-            if ha != 'center':
-                text_ha = ha
+            # Text alignment following PyComplexHeatmap
+            if arrow_params['axis_transform'] == 'xaxis':
+                # Column annotations (horizontal)
+                text_ha = 'left'  # PyComplexHeatmap uses 'left' for columns
+                text_va = 'center'
             else:
-                text_ha = 'center'
-            if va != 'center':
-                text_va = va
-            else:
+                # Row annotations (vertical)
+                if arrow == 'left':
+                    text_ha = 'right'
+                else:  # right
+                    text_ha = 'left'
                 text_va = 'center'
 
-            # Build arrowprops
+            # Allow user override
+            if ha != 'center':
+                text_ha = ha
+            if va != 'center':
+                text_va = va
+
+            # Build arrowprops matching PyComplexHeatmap
             arrowprops = {
                 'arrowstyle': arrowstyle,
                 'connectionstyle': connectionstyle,
                 'color': arrow_color,
                 'linewidth': arrow_linewidth,
+                'shrinkA': shrinkA,
+                'shrinkB': shrinkB,
+                'relpos': relpos,
+                'patchA': None,
+                'patchB': None,
             }
 
             # Use annotate to draw text with arrow
@@ -1009,6 +1053,7 @@ def label(
                 color=label_color,
                 weight=fontweight,
                 rotation=rotation,
+                rotation_mode='anchor',  # PyComplexHeatmap default
                 arrowprops=arrowprops,
                 zorder=2,
                 **kwargs
