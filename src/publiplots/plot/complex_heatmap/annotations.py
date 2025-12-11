@@ -885,7 +885,7 @@ def label(
                 textcoords = "offset pixels"
                 angleA = 180 + rotation
                 angleB = -90
-                relpos = (0, 1) if rotation == 0 else (0, 1)  # Top-left corner
+                relpos = (0.5, 0.0)  # Bottom center of text box
                 # Adjust alignment for rotation
                 if rotation == -90:
                     text_ha = 'left'
@@ -905,7 +905,7 @@ def label(
                 textcoords = "offset pixels"
                 angleA = rotation - 180
                 angleB = 90
-                relpos = (0, 0) if rotation == 0 else (0, 0)  # Bottom-left corner
+                relpos = (0.5, 1.0)  # Top center of text box
                 # Adjust alignment for rotation
                 if rotation == 90:
                     text_ha = 'left'
@@ -925,7 +925,7 @@ def label(
                 textcoords = "offset pixels"
                 angleA = rotation
                 angleB = -180
-                relpos = (1, 1)  # Top-right corner
+                relpos = (0.0, 0.5)  # Left center of text box
                 text_ha = ha if ha != 'center' else 'right'
                 text_va = va if va != 'center' else 'center'
             elif arrow == 'right':
@@ -937,7 +937,7 @@ def label(
                 textcoords = "offset pixels"
                 angleA = rotation - 180
                 angleB = 0
-                relpos = (0, 0)  # Bottom-left corner
+                relpos = (1.0, 0.5)  # Right center of text box
                 text_ha = ha if ha != 'center' else 'left'
                 text_va = va if va != 'center' else 'center'
             else:
@@ -950,7 +950,7 @@ def label(
                 angleB = -90
                 text_ha = ha if ha != 'center' else 'center'
                 text_va = va if va != 'center' else 'top'
-                relpos = (0, 1)
+                relpos = (0.5, 0.0)
 
             # Setup arrow properties with arc connectionstyle
             arrow_kwargs = arrow_kws or {}
