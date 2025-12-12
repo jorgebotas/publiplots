@@ -913,7 +913,7 @@ def label(
     x0, y0 = ticks, [start] * n
     if extend:
         extend_pos = np.linspace(0, 1, n + 1)
-        x1 = [(extend_pos[i] + extend_pos[i - 1]) / 2 for i in range(1,  + 1)]
+        x1 = [(extend_pos[i] + extend_pos[i - 1]) / 2 for i in range(1, n + 1)]
         y1 = [1 - start] * n
         textcoords = ax.transAxes  # relative coords
     else:
