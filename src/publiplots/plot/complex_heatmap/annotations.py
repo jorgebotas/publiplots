@@ -28,6 +28,7 @@ def _prepare_annotation_data(
     x: Optional[Union[str, bool]] = None,
     y: Optional[Union[str, bool]] = None,
     order: Optional[List[str]] = None,
+    merge: Optional[bool] = True,
 ) -> Tuple[pd.DataFrame, bool, int, int]:
     """
     Prepare data for annotation functions (block, label, etc.).
@@ -48,6 +49,7 @@ def _prepare_annotation_data(
         Column name (if DataFrame) or True for vertical orientation.
     order : list of str, optional
         Order of positions (typically from heatmap columns/index).
+    merge: bool
 
     Returns
     -------
@@ -55,10 +57,7 @@ def _prepare_annotation_data(
         Processed data as DataFrame (1 row for horizontal, n rows for vertical).
     horizontal : bool
         True if horizontal orientation, False if vertical.
-    n_rows : int
-        Number of rows in data_df.
-    n_cols : int
-        Number of columns in data_df.
+    elements_to_draw
 
     Examples
     --------
@@ -232,10 +231,35 @@ def _prepare_annotation_data(
     else:
         raise ValueError(f"Unsupported data type: {type(data)}")
 
+
     n_rows, n_cols = data_df.shape
 
-    return data_df, horizontal, n_rows, n_cols
+    # Build list of labels to draw (with merging if requested)
+    elements_to_draw = []
 
+    if merge:
+        for i in range(n_rows):
+            j = 0
+            while j < n_cols:
+                # Get value at current position
+                val = data_df.iloc[i, j]
+
+                # Find extent of consecutive identical values
+                start_j = j
+                while j < n_cols and data_df.iloc[i, j] == val:
+                    j += 1
+                span = j - start_j
+
+                # Store rectangle info: (row, col_start, col_span, row_span, value)
+                elements_to_draw.append((i, start_j, span, 1, val))
+    else:
+        # No merging - one label per cell
+        for i in range(n_rows):
+            for j in range(n_cols):
+                val = data_df.iloc[i, j]
+                elements_to_draw.append((i, j, 1, 1, val))
+
+    return data_df, horizontal, elements_to_draw
 
 def block(
     data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
@@ -370,7 +394,11 @@ def block(
     linewidth = resolve_param("lines.linewidth", linewidth)
 
     # Prepare data using helper function
-    data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
+    (   data_df, 
+        horizontal, 
+        rectangles_to_draw,
+    ) = _prepare_annotation_data(data, x, y, order, merge)
+    n_rows, n_cols = data_df.shape
 
     # Create figure if needed
     if ax is None:
@@ -469,35 +497,8 @@ def block(
         inset_x = 0
         inset_y = 0
 
-    # Build list of rectangles to draw (with merging if requested)
-    rectangles_to_draw = []
-
-    if merge:
-        # Merge consecutive identical values into single rectangles
-        for i in range(n_rows):
-            j = 0
-            while j < n_cols:
-                # Get value at current position
-                val = data_df.iloc[i, j]
-
-                # Find extent of consecutive identical values
-                start_j = j
-                while j < n_cols and data_df.iloc[i, j] == val:
-                    j += 1
-                span = j - start_j
-
-                # Store rectangle info: (row, col_start, col_span, row_span, value)
-                rectangles_to_draw.append((i, start_j, span, 1, val))
-    else:
-        # No merging - one rectangle per cell
-        for i in range(n_rows):
-            for j in range(n_cols):
-                val = data_df.iloc[i, j]
-                rectangles_to_draw.append((i, j, 1, 1, val))
-
     # Draw the rectangles
-    for rect_info in rectangles_to_draw:
-        i, j, col_span, row_span, val = rect_info
+    for i, j, col_span, row_span, val in rectangles_to_draw:
 
         if horizontal:
             # Horizontal: blocks go left-to-right (x varies), rows stack vertically
@@ -614,9 +615,13 @@ def block(
 MM2INCH = 1 / 25.4
 
 
-def _get_arrow_params(
+def _get_label_params(
     arrow_direction: str,
-    rotation: float = 0
+    arrow_height,
+    arrow_kws: dict,
+    rotation: float = 0,
+    ha = None,
+    va = None,
 ) -> Dict[str, Union[int, float, str]]:
     """
     Get arrow angle and orientation parameters based on arrow direction.
@@ -639,51 +644,76 @@ def _get_arrow_params(
         - axis_transform: 'xaxis' or 'yaxis' for coordinate transform
         - y_position: position along perpendicular axis (0 or 1)
     """
-    params = {}
-
-    if arrow_direction == 'up':
+    if arrow_direction == "up":
         # Arrow points up from data (at bottom) toward text above
-        params['angleA'] = rotation - 180
-        params['angleB'] = 90
-        params['axis_transform'] = 'xaxis'
-        params['y_position'] = 0  # Arrow starts at bottom of axes
+        angleA = 180 + rotation
+        angleB = -90
+        start = 1  # Arrow starts at top of axes
+        relpos = (0, 1)
+        ha = "left" if ha is None else ha
 
-    elif arrow_direction == 'down':
+    elif arrow_direction == "down":
         # Arrow points down from data (at top) toward text below
-        params['angleA'] = 180 + rotation
-        params['angleB'] = -90
-        params['axis_transform'] = 'xaxis'
-        params['y_position'] = 1  # Arrow starts at top of axes
+        angleA = rotation - 180
+        angleB = 90
+        start = 0  # Arrow starts at bottom of axes
+        relpos = (0, 0)
+        ha = "left" if ha is None else ha
 
-    elif arrow_direction == 'left':
+    elif arrow_direction == "left":
         # Arrow points left from data (at right) toward text on left
-        params['angleA'] = rotation
-        params['angleB'] = -180
-        params['axis_transform'] = 'yaxis'
-        params['y_position'] = 1  # Arrow starts at right of axes
+        angleA = rotation - 180
+        angleB = 0
+        start = 0  # Arrow starts at left of axes
+        relpos = (0, 0)
+        ha = "left" if ha is None else ha
 
-    elif arrow_direction == 'right':
+    elif arrow_direction == "right":
         # Arrow points right from data (at left) toward text on right
-        params['angleA'] = rotation - 180
-        params['angleB'] = 0
-        params['axis_transform'] = 'yaxis'
-        params['y_position'] = 0  # Arrow starts at left of axes
+        angleA = rotation
+        angleB = -180
+        start = 1  # Arrow starts at right of axes
+        relpos = (1, 1)
+        ha = "right" if ha is None else ha
 
     else:
         raise ValueError(f"Invalid arrow direction: {arrow_direction}. "
                         "Must be 'up', 'down', 'left', or 'right'.")
 
-    return params
+    textprops = dict(
+        start = start,
+        ha = ha,
+        va = "center" if va is None else va,
+        rotation = rotation,
+    )
+
+    arm = arrow_kws.get("frac", 0.2) * arrow_height
+    rad = arrow_kws.get("rad", 2)
+    arrowprops = dict(
+        arrowstyle = arrow_kws.get("arrowstyle", "-"),
+        color = resolve_param("color", arrow_kws.get("color")),
+        relpos = relpos,
+        linewidth = resolve_param("lines.linewidth", arrow_kws.get("linewidth")),
+        connectionstyle = (
+            f"arc,angleA={angleA},angleB={angleB},armA={arm},armB={arm},rad={rad}"
+        ),
+        shrinkA = arrow_kws.get("shrinkA", 1),
+        shrinkB = arrow_kws.get("shrinkB", 1),
+    )
+    return textprops, arrowprops
 
 
 def label(
     data: Union[pd.Series, pd.DataFrame, List, np.ndarray],
+    # Axes
+    ax: Axes,
     # Position/orientation (optional when called from complex_heatmap)
     x: Optional[Union[str, bool]] = None,
     y: Optional[Union[str, bool]] = None,
     # Data handling
     order: Optional[List[str]] = None,
     merge: bool = True,
+    extend: bool = True,
     # Color encoding
     hue: Optional[Union[str, Dict, List]] = None,
     palette: Optional[Union[str, Dict, List]] = None,
@@ -691,8 +721,8 @@ def label(
     # Text styling
     rotation: Optional[float] = None,
     fontsize: Optional[float] = None,
-    ha: str = "center",
-    va: str = "center",
+    ha: str = None,
+    va: str = None,
     color: Optional[str] = None,
     fontweight: str = "normal",
     # Arrow connection
@@ -700,8 +730,6 @@ def label(
     arrow_kws: Optional[Dict] = None,
     # Positioning
     offset: float = 0.5,
-    # Axes
-    ax: Optional[Axes] = None,
     **kwargs
 ) -> Tuple[plt.Figure, Axes]:
     """
@@ -764,8 +792,7 @@ def label(
         For horizontal labels (top/bottom), use 'up' or 'down'.
         For vertical labels (left/right), use 'left' or 'right'.
     arrow_kws : dict, optional
-        Arrow styling:
-        - arrow_height / arrow_width: Space for arrows in mm (default: None, uses axes height)
+        Arrow styling (see arrowprops in matplotlib Axes.annotate):
         - arrowstyle: Arrow style (default: '-' for line, or '->', '-|>', 'fancy')
         - color: Arrow color (default: matches text color)
         - linewidth: Arrow line width (default: 0.5)
@@ -816,16 +843,21 @@ def label(
     # Resolve defaults
     fontsize = resolve_param("font.size", fontsize)
     color = resolve_param("color", color)
-
-    # Default rotation: 0 (horizontal text) unless user specifies otherwise
-    if rotation is None:
-        rotation = 0
+    arrow_kws = arrow_kws or {}
 
     # Prepare data using helper function
-    data_df, horizontal, n_rows, n_cols = _prepare_annotation_data(data, x, y, order)
+    (   data_df, 
+        horizontal, 
+        labels_to_draw
+    ) = _prepare_annotation_data(data, x, y, order, merge)
+    n_rows, n_cols = data_df.shape
 
-    # Extract unique label strings for space calculation
-    unique_labels = [str(val) for val in data_df.values.ravel()]
+    # Extract labels and tick after merging
+    labels = []
+    ticks = []
+    for _, j, col_span, _, label in labels_to_draw:
+        labels.append(label)
+        ticks.append(j + col_span / 2) # midpoints
 
     # Set up color mapping if hue parameter is provided
     color_map = None
@@ -844,279 +876,80 @@ def label(
             color_map = resolve_palette_map(values=unique_vals, palette=palette)
 
     # Determine annotation height (used for arrow calculations)
-    # Following PyComplexHeatmap: default height is 4mm if not specified
-    if ax is None:
-        # Creating new axes - calculate size automatically
-        # Default annotation height (similar to PyComplexHeatmap's _height method)
-        annotation_height_mm = 4.0  # Default 4mm like PyComplexHeatmap
-
-        # Determine position based on orientation
-        if horizontal:
-            position = 'bottom'
-        else:
-            position = 'right'
-
-        # Calculate space needed for labels in inches
-        label_space_inches = calculate_label_space(
-            labels=unique_labels,
-            fig=None,
-            position=position,
-            fontsize=fontsize,
-            rotation=rotation,
-            unit='inches',
-            safety_factor=1.2,  # Extra margin
-        )
-
-        # Create figure with calculated size
-        if horizontal:
-            # For horizontal: use label space or default annotation height, whichever is larger
-            height_mm = max(annotation_height_mm, label_space_inches / MM2INCH)
-            figsize = (6, height_mm * MM2INCH)
-        else:
-            # For vertical: use label space or default annotation height, whichever is larger
-            width_mm = max(annotation_height_mm, label_space_inches / MM2INCH)
-            figsize = (width_mm * MM2INCH, 6)
-
-        fig, ax = plt.subplots(figsize=figsize)
-        # Store the height in mm for arrow calculations below
-        annotation_height_mm_for_arrows = height_mm if horizontal else width_mm
-    else:
-        # Axes provided by builder - get height from axes dimensions
-        fig = ax.get_figure()
-        bbox = ax.get_position()
-        fig_width_inches, fig_height_inches = fig.get_size_inches()
-
-        if horizontal:
-            # Height in inches -> mm
-            ax_height_inches = bbox.height * fig_height_inches
-            annotation_height_mm_for_arrows = ax_height_inches / MM2INCH
-        else:
-            # Width in inches -> mm
-            ax_width_inches = bbox.width * fig_width_inches
-            annotation_height_mm_for_arrows = ax_width_inches / MM2INCH
-
-    # Build list of labels to draw (with merging if requested)
-    labels_to_draw = []
-
-    if merge:
-        # Merge consecutive identical values - only label once for the span
-        for i in range(n_rows):
-            j = 0
-            while j < n_cols:
-                # Get value at current position
-                val = data_df.iloc[i, j]
-
-                # Find extent of consecutive identical values
-                start_j = j
-                while j < n_cols and data_df.iloc[i, j] == val:
-                    j += 1
-                span = j - start_j
-
-                # Store label info: (row, col_start, col_span, row_span, value)
-                # Label will be centered on the span
-                labels_to_draw.append((i, start_j, span, 1, val))
-    else:
-        # No merging - one label per cell
-        for i in range(n_rows):
-            for j in range(n_cols):
-                val = data_df.iloc[i, j]
-                labels_to_draw.append((i, j, 1, 1, val))
+    fig = ax.get_figure()
+    bbox = ax.get_position()
+    fig_width_inches, fig_height_inches = fig.get_size_inches()
 
     # Set up coordinate system based on orientation
-    # Following PyComplexHeatmap's approach
     if horizontal:
+        # Height in inches -> mm
+        size_inches = bbox.height * fig_height_inches
         # For horizontal: set up n_cols tick positions
         ax.set_xticks(ticks=np.arange(0.5, n_cols, 1))
         ax.set_xlim(-0.5, n_cols - 0.5)
         ax.set_ylim(0, 1)
+        xycoords = ax.get_xaxis_transform()
     else:
+        # Width in inches -> mm
+        size_inches = bbox.width * fig_width_inches
         # For vertical: set up n_rows tick positions
         ax.set_yticks(ticks=np.arange(0.5, n_rows, 1))
         ax.set_ylim(-0.5, n_rows - 0.5)
         ax.set_xlim(0, 1)
+        xycoords = ax.get_yaxis_transform()
+    
 
-    # Position labels (and arrows if requested)
-    for label_info in labels_to_draw:
-        i, j, col_span, row_span, lbl = label_info
+    # Convert annotation height to pixels
+    arrow_height_px = size_inches * fig.dpi
+    text_y = -1 * arrow_height_px if arrow == "up" else arrow_height_px
+        
+    textprops, arrowprops = _get_label_params(
+        arrow, arrow_height_px, arrow_kws, 
+        rotation, ha, va
+    )
 
-        if arrow:
-            # Get arrow configuration
-            arrow_kwargs = arrow_kws or {}
-            arrow_params = _get_arrow_params(arrow, rotation)
+    n = len(labels)
+    start = textprops.pop("start")
+    x0, y0 = ticks, [start] * n
+    if extend:
+        extend_pos = np.linspace(0, 1, n + 1)
+        x1 = [(extend_pos[i] + extend_pos[i - 1]) / 2 for i in range(1,  + 1)]
+        y1 = [1 - start] * n
+        textcoords = ax.transAxes  # relative coords
+    else:
+        x1 = [0] * n
+        y1 = [text_y] * n
+        textcoords = "offset pixels"
+    
+    if not horizontal:  # flip
+        x0, y0 = y0, x0
+        x1, y1 = y1, x1
 
-            # Convert annotation height from mm to pixels
-            # Following PyComplexHeatmap: arrow_height = self.height * mm2inch * ax.figure.dpi
-            arrow_height_px = annotation_height_mm_for_arrows * MM2INCH * fig.dpi
-
-            # Calculate text offset in pixels (following PyComplexHeatmap)
-            text_offset_px = arrow_height_px
-            if arrow == 'down' or arrow == 'left':
-                text_offset_px = -1 * arrow_height_px
-
-            # Arm length as fraction of arrow height (PyComplexHeatmap default: frac=0.2)
-            frac = arrow_kwargs.get('frac', 0.2)
-            rad = arrow_kwargs.get('rad', 2)
-            arm_length = arrow_height_px * frac
-
-            # Build connectionstyle with smooth curvature
-            connectionstyle = (
-                f"arc,angleA={arrow_params['angleA']},angleB={arrow_params['angleB']},"
-                f"armA={arm_length},armB={arm_length},rad={rad}"
-            )
-
-            # Determine color for this label (use color_map if available)
-            if color_map is not None:
-                label_color = color_map.get(lbl, color or 'black')
-            else:
-                label_color = color or 'black'
-
-            # Arrow styling defaults matching PyComplexHeatmap
-            arrow_color = arrow_kwargs.get('color', label_color)
-            arrow_linewidth = arrow_kwargs.get('linewidth', 0.5)  # PyComplexHeatmap default: 0.5
-            arrowstyle = arrow_kwargs.get('arrowstyle', '-')  # PyComplexHeatmap default: '-' (line)
-            shrinkA = arrow_kwargs.get('shrinkA', 1)  # PyComplexHeatmap default: 1
-            shrinkB = arrow_kwargs.get('shrinkB', 1)  # PyComplexHeatmap default: 1
-
-            # Set relpos based on orientation (PyComplexHeatmap approach)
-            if arrow_params['axis_transform'] == 'xaxis':
-                # For horizontal (column annotations)
-                if arrow == 'up':
-                    relpos = (0, 0)  # Arrow starts from bottom-left of text
-                else:  # down
-                    relpos = (0, 1)  # Arrow starts from top-left of text
-            else:
-                # For vertical (row annotations)
-                if arrow == 'left':
-                    relpos = (1, 1)  # Arrow starts from top-right of text
-                else:  # right
-                    relpos = (0, 0)  # Arrow starts from bottom-left of text
-
-            # Allow override of relpos
-            relpos = arrow_kwargs.get('relpos', relpos)
-
-            # Get coordinate transform
-            if arrow_params['axis_transform'] == 'xaxis':
-                xycoords = ax.get_xaxis_transform()
-                # xy is (data_x, axes_y) where axes_y is 0 or 1
-                xy_point = (j + col_span / 2, arrow_params['y_position'])
-                # xytext is offset in pixels from xy
-                xytext_offset = (0, text_offset_px)
-            else:  # yaxis
-                xycoords = ax.get_yaxis_transform()
-                # xy is (axes_x, data_y) where axes_x is 0 or 1
-                xy_point = (arrow_params['y_position'], i + row_span / 2)
-                # xytext is offset in pixels from xy
-                xytext_offset = (text_offset_px, 0)
-
-            # Text alignment following PyComplexHeatmap
-            if arrow_params['axis_transform'] == 'xaxis':
-                # Column annotations (horizontal)
-                text_ha = 'left'  # PyComplexHeatmap uses 'left' for columns
-                text_va = 'center'
-            else:
-                # Row annotations (vertical)
-                if arrow == 'left':
-                    text_ha = 'right'
-                else:  # right
-                    text_ha = 'left'
-                text_va = 'center'
-
-            # Allow user override
-            if ha != 'center':
-                text_ha = ha
-            if va != 'center':
-                text_va = va
-
-            # Build arrowprops matching PyComplexHeatmap
-            arrowprops = {
-                'arrowstyle': arrowstyle,
-                'connectionstyle': connectionstyle,
-                'color': arrow_color,
-                'linewidth': arrow_linewidth,
-                'shrinkA': shrinkA,
-                'shrinkB': shrinkB,
-                'relpos': relpos,
-                'patchA': None,
-                'patchB': None,
-            }
-
-            # Use annotate to draw text with arrow
-            ax.annotate(
-                text=str(lbl),
-                xy=xy_point,
-                xytext=xytext_offset,
-                xycoords=xycoords,
-                textcoords='offset pixels',
-                fontsize=fontsize,
-                ha=text_ha,
-                va=text_va,
-                color=label_color,
-                weight=fontweight,
-                rotation=rotation,
-                rotation_mode='anchor',  # PyComplexHeatmap default
-                arrowprops=arrowprops,
-                zorder=2,
-                **kwargs
-            )
-
-        else:
-            # Without arrows: simple text positioning
-
-            # Determine color for this label (use color_map if available)
-            if color_map is not None:
-                label_color = color_map.get(lbl, color or 'black')
-            else:
-                label_color = color or 'black'
-
-            if horizontal:
-                x_pos = j + col_span / 2
-                y_pos = 0.5  # Center in axes coordinates
-
-                # Adjust alignment for rotation
-                if rotation > 0:  # Rotated right
-                    text_ha = ha if ha != 'center' else 'right'
-                    text_va = va if va != 'center' else 'bottom'
-                elif rotation < 0:  # Rotated left
-                    text_ha = ha if ha != 'center' else 'left'
-                    text_va = va if va != 'center' else 'bottom'
-                else:  # No rotation
-                    text_ha = ha
-                    text_va = va
-
-                coord_transform = ax.get_xaxis_transform()
-            else:  # vertical
-                x_pos = 0.5  # Center in axes coordinates
-                y_pos = i + row_span / 2
-
-                # Adjust alignment for vertical orientation
-                if rotation == 0:
-                    text_ha = ha if ha != 'center' else 'center'
-                    text_va = va if va != 'center' else 'center'
-                else:
-                    text_ha = ha
-                    text_va = va
-
-                coord_transform = ax.get_yaxis_transform()
-
-            # Draw text
-            text_kwargs = kwargs.copy()
-            text_kwargs.update({
-                'fontsize': fontsize,
-                'ha': text_ha,
-                'va': text_va,
-                'color': label_color,
-                'weight': fontweight,
-                'rotation': rotation,
-                'transform': coord_transform,
-            })
-
-            ax.text(x_pos, y_pos, str(lbl), **text_kwargs, zorder=2)
+    for label, x, y, x_text, y_text in zip(labels, x0, y0, x1, y1):
+        label_color = color_map.get(label, color)
+        arrowprops["color"] = arrow_kws.get("color", label_color)
+        annotated = ax.annotate(
+            text=label,
+            xy=(x, y),
+            xytext=(x_text, y_text),
+            xycoords=xycoords,
+            textcoords=textcoords,
+            color=label_color,
+            rotation_mode="anchor",
+            **textprops,
+            fontsize=fontsize,
+            fontweight=fontweight,
+            arrowprops=arrowprops,
+            zorder=2,
+            **kwargs,
+        )
 
     # Clean axes
-    ax.set_xticks([])
-    ax.set_yticks([])
-    for spine in ax.spines.values():
-        spine.set_visible(False)
+    # ax.set_axis_off()
+    # ax.set_xticks([])
+    # ax.set_yticks([])
+    # for spine in ax.spines.values():
+    #     spine.set_visible(False)
 
     return fig, ax
 

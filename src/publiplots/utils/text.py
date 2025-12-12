@@ -12,6 +12,8 @@ from matplotlib.text import Text
 
 from publiplots.themes.rcparams import resolve_param
 
+# Conversion constants
+MM2INCH = 1 / 25.4
 
 def measure_text_dimensions(
     labels: List[str],
@@ -19,7 +21,7 @@ def measure_text_dimensions(
     fontsize: Optional[float] = None,
     orientation: Literal["horizontal", "vertical"] = "horizontal",
     rotation: float = 0,
-    unit: Literal["pixels", "inches", "points"] = "pixels",
+    unit: Literal["pixels", "inches", "points", "mm"] = "pixels",
 ) -> Tuple[float, float]:
     """
     Measure the actual rendered dimensions needed for a list of text labels.
@@ -42,7 +44,7 @@ def measure_text_dimensions(
         - 'vertical': Labels stacked vertically (e.g., y-axis)
     rotation : float, default=0
         Rotation angle in degrees for the text.
-    unit : {'pixels', 'inches', 'points'}, default='pixels'
+    unit : {'pixels', 'inches', 'points', 'mm'}, default='pixels'
         Unit for the returned dimensions.
 
     Returns
@@ -115,6 +117,12 @@ def measure_text_dimensions(
         elif unit == "points":
             dpi = fig.dpi
             return width_px / dpi * 72, height_px / dpi * 72
+        elif unit == "mm":
+            # First convert to inches
+            dpi = fig.dpi
+            width_inch = width_px / dpi
+            height_inch = height_px / dpi
+            return width_inch / MM2INCH, height_inch / MM2INCH
         else:
             raise ValueError(f"Invalid unit '{unit}'. Use 'pixels', 'inches', or 'points'.")
 
