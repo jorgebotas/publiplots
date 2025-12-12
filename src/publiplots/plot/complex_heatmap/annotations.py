@@ -719,7 +719,7 @@ def label(
     palette: Optional[Union[str, Dict, List]] = None,
     colors: Optional[List[str]] = None,
     # Text styling
-    rotation: Optional[float] = None,
+    rotation: Optional[float] = 0,
     fontsize: Optional[float] = None,
     ha: str = None,
     va: str = None,
@@ -860,7 +860,7 @@ def label(
         ticks.append(j + col_span / 2) # midpoints
 
     # Set up color mapping if hue parameter is provided
-    color_map = None
+    color_map = {}
     if hue or colors:
         if colors is not None:
             # Explicit colors provided - map to unique labels
@@ -901,7 +901,7 @@ def label(
 
     # Convert annotation height to pixels
     arrow_height_px = size_inches * fig.dpi
-    text_y = -1 * arrow_height_px if arrow == "up" else arrow_height_px
+    text_y = -1 * arrow_height_px if arrow in ("up", "right") else arrow_height_px
         
     textprops, arrowprops = _get_label_params(
         arrow, arrow_height_px, arrow_kws, 
