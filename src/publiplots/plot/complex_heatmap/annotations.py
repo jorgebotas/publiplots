@@ -688,11 +688,11 @@ def _get_label_params(
     )
 
     arm = arrow_kws.get("frac", 0.2) * arrow_height
-    rad = arrow_kws.get("rad", 2)
+    rad = arrow_kws.get("rad", 5)
     arrowprops = dict(
         arrowstyle = arrow_kws.get("arrowstyle", "-"),
         color = resolve_param("color", arrow_kws.get("color")),
-        relpos = relpos,
+        relpos = arrow_kws.get("relpos", relpos),
         linewidth = resolve_param("lines.linewidth", arrow_kws.get("linewidth")),
         connectionstyle = (
             f"arc,angleA={angleA},angleB={angleB},armA={arm},armB={arm},rad={rad}"
@@ -855,9 +855,12 @@ def label(
     # Extract labels and tick after merging
     labels = []
     ticks = []
-    for _, j, col_span, _, label in labels_to_draw:
+    for i, j, col_span, row_span, label in labels_to_draw:
         labels.append(label)
-        ticks.append(j + col_span / 2) # midpoints
+        if horizontal:
+            ticks.append(j + col_span / 2)    # column midpoints
+        else:
+            ticks.insert(0, i + row_span / 2) # row midpoints
 
     # Set up color mapping if hue parameter is provided
     color_map = {}
