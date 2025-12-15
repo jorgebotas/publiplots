@@ -92,10 +92,24 @@ def _prepare_annotation_data(
             # Note: merge parameter affects drawing, not data extraction
             # Always extract one value per position in order
             if order is not None:
-                # Check if x column values match order (axis column like 'sample')
-                x_values_match_order = any(val in data[x].values for val in order)
+                # Priority 1: Check if DataFrame index matches order (wide format metadata)
+                # This is checked first because index is the most reliable axis identifier
+                index_matches_order = (
+                    set(order).issubset(set(data.index)) or
+                    set(data.index).issubset(set(order))
+                )
 
-                if x_values_match_order:
+                if index_matches_order:
+                    # Map from order to x values via index
+                    mapped_values = [
+                        data.loc[axis_val, x]
+                        for axis_val in order
+                        if axis_val in data.index
+                    ]
+                    data_series = pd.Series(mapped_values)
+
+                # Priority 2: Check if x column IS the axis (values match order exactly)
+                elif set(order).issubset(set(data[x].values)):
                     # x is the axis column - extract in order
                     data_filtered = data[data[x].isin(order)]
                     data_series = data_filtered[x]
@@ -107,9 +121,9 @@ def _prepare_annotation_data(
                             unique_ordered.append(val)
                             seen.add(val)
                     data_series = pd.Series(unique_ordered)
+
                 else:
-                    # x is a metadata column - need to map from axis to metadata
-                    # Find axis column (column whose unique values match order)
+                    # Priority 3: Find axis column (column whose values match order)
                     axis_col = None
                     for col in data.columns:
                         if col != x:
@@ -142,10 +156,24 @@ def _prepare_annotation_data(
             # Note: merge parameter affects drawing, not data extraction
             # Always extract one value per position in order
             if order is not None:
-                # Check if y column values match order (axis column like 'gene')
-                y_values_match_order = any(val in data[y].values for val in order)
+                # Priority 1: Check if DataFrame index matches order (wide format metadata)
+                # This is checked first because index is the most reliable axis identifier
+                index_matches_order = (
+                    set(order).issubset(set(data.index)) or
+                    set(data.index).issubset(set(order))
+                )
 
-                if y_values_match_order:
+                if index_matches_order:
+                    # Map from order to y values via index
+                    mapped_values = [
+                        data.loc[axis_val, y]
+                        for axis_val in order
+                        if axis_val in data.index
+                    ]
+                    data_series = pd.Series(mapped_values)
+
+                # Priority 2: Check if y column IS the axis (values match order exactly)
+                elif set(order).issubset(set(data[y].values)):
                     # y is the axis column - extract in order
                     data_filtered = data[data[y].isin(order)]
                     data_series = data_filtered[y]
@@ -157,9 +185,9 @@ def _prepare_annotation_data(
                             unique_ordered.append(val)
                             seen.add(val)
                     data_series = pd.Series(unique_ordered)
+
                 else:
-                    # y is a metadata column - need to map from axis to metadata
-                    # Find axis column (column whose unique values match order)
+                    # Priority 3: Find axis column (column whose values match order)
                     axis_col = None
                     for col in data.columns:
                         if col != y:
