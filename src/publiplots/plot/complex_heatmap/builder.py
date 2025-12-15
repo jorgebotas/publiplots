@@ -669,9 +669,9 @@ class ComplexHeatmapBuilder:
         #   - First margin in list (e.g., dendrogram) → gets col_idx 0
         #   - Last margin in list (e.g., labels) → gets col_idx n_left-1
         # So sizes should be in ORIGINAL order (not reversed) to match column assignment
-        top_sizes = [m['size'] * MM2INCH for m in self._margins['top']]
+        top_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['top'])]
         bottom_sizes = [m['size'] * MM2INCH for m in self._margins['bottom']]
-        left_sizes = [m['size'] * MM2INCH for m in self._margins['left']]
+        left_sizes = [m['size'] * MM2INCH for m in reversed(self._margins['left'])]
         right_sizes = [m['size'] * MM2INCH for m in self._margins['right']]
 
         # Build height and width ratios
@@ -771,7 +771,7 @@ class ComplexHeatmapBuilder:
         }
 
         # Draw top margins (from closest to heatmap outward)
-        for i, margin in enumerate(reversed(self._margins['top'])):
+        for i, margin in enumerate(self._margins['top']):
             row_idx = n_top - 1 - i
             ax = fig.add_subplot(
                 gs[row_idx, main_col],
@@ -802,7 +802,7 @@ class ComplexHeatmapBuilder:
             axes['bottom'].append(ax)
 
         # Draw left margins (from closest to heatmap outward)
-        for i, margin in enumerate(reversed(self._margins['left'])):
+        for i, margin in enumerate(self._margins['left']):
             col_idx = n_left - 1 - i
             ax = fig.add_subplot(
                 gs[main_row, col_idx],
