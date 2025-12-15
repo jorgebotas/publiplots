@@ -15,6 +15,7 @@ from publiplots.utils.offset import offset_patches, offset_lines, offset_collect
 from publiplots.utils.legend import legend as legend_from_utils
 from .dendrogram import cluster_data, dendrogram as dendrogram_plot
 from .ticklabels import ticklabels as ticklabels_plot
+from .annotations import block as block_annotation
 
 # Conversion constants
 MM2INCH = 1 / 25.4
@@ -946,6 +947,9 @@ class ComplexHeatmapBuilder:
                 else:  # left, right
                     kwargs['labels'] = [str(r) for r in self._matrix.index]
 
+        is_block = (func is block_annotation or
+                   getattr(func, '__name__', '') == 'block')
+
         # Add ax to kwargs
         kwargs['ax'] = ax
 
@@ -957,7 +961,12 @@ class ComplexHeatmapBuilder:
                     data = self._data
                 else:
                     # Fallback to matrix (wide format)
-                    data = self._matrix.T if position in ("left", "right") else self._matrix
+                    # For block annotations, don't transpose - block() extracts from index/columns directly
+                    # For other plot types, transpose for left/right to match expected data layout
+                    if is_block:
+                        data = self._matrix
+                    else:
+                        data = self._matrix.T if position in ("left", "right") else self._matrix
             kwargs['data'] = data
 
             # Order data appropriately
@@ -982,9 +991,13 @@ class ComplexHeatmapBuilder:
 
         # Offset elements to align with heatmap cells
         # Heatmap cells are centered at 0.5, 1.5, 2.5...
-        # Categorical plots position elements at 0, 1, 2...
+        # Categorical plots (bars, violins, etc.) position elements at 0, 1, 2...
         # Shift by +0.5 to align with cell centers
-        if margin['align']:
+        #
+        # EXCEPTION: Block annotations already position rectangles at correct coordinates
+        # (0, 1, 2...) matching the heatmap coordinate system, so skip offsetting for them
+
+        if margin['align'] and not is_block:
             # For top/bottom margins: shift along x-axis (vertical)
             # For left/right margins: shift along y-axis (horizontal)
             orientation = "vertical" if position in ("top", "bottom") else "horizontal"
