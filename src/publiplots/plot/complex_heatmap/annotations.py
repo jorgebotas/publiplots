@@ -727,6 +727,8 @@ def _get_label_params(
         ),
         shrinkA = arrow_kws.get("shrinkA", 1),
         shrinkB = arrow_kws.get("shrinkB", 1),
+        capstyle="round",
+        joinstyle="round",
     )
     return textprops, arrowprops
 
