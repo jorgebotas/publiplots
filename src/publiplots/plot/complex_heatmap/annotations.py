@@ -266,20 +266,38 @@ def _prepare_annotation_data(
     elements_to_draw = []
 
     if merge:
-        for i in range(n_rows):
-            j = 0
-            while j < n_cols:
-                # Get value at current position
-                val = data_df.iloc[i, j]
+        if horizontal:
+            # Horizontal annotations (top/bottom): merge across columns within each row
+            for i in range(n_rows):
+                j = 0
+                while j < n_cols:
+                    # Get value at current position
+                    val = data_df.iloc[i, j]
 
-                # Find extent of consecutive identical values
-                start_j = j
-                while j < n_cols and data_df.iloc[i, j] == val:
-                    j += 1
-                span = j - start_j
+                    # Find extent of consecutive identical values across columns
+                    start_j = j
+                    while j < n_cols and data_df.iloc[i, j] == val:
+                        j += 1
+                    col_span = j - start_j
 
-                # Store rectangle info: (row, col_start, col_span, row_span, value)
-                elements_to_draw.append((i, start_j, span, 1, val))
+                    # Store rectangle info: (row, col_start, col_span, row_span, value)
+                    elements_to_draw.append((i, start_j, col_span, 1, val))
+        else:
+            # Vertical annotations (left/right): merge across rows within each column
+            for j in range(n_cols):
+                i = 0
+                while i < n_rows:
+                    # Get value at current position
+                    val = data_df.iloc[i, j]
+
+                    # Find extent of consecutive identical values down rows
+                    start_i = i
+                    while i < n_rows and data_df.iloc[i, j] == val:
+                        i += 1
+                    row_span = i - start_i
+
+                    # Store rectangle info: (row_start, col, col_span, row_span, value)
+                    elements_to_draw.append((start_i, j, 1, row_span, val))
     else:
         # No merging - one label per cell
         for i in range(n_rows):
@@ -677,7 +695,7 @@ def _get_label_params(
         angleA = 180 + rotation
         angleB = -90
         start = 1  # Arrow starts at top of axes
-        relpos = (0, 1)
+        relpos = (0.5 if rotation == 90 else 0, 1)
         ha = "left" if ha is None else ha
 
     elif arrow_direction == "down":
@@ -685,7 +703,7 @@ def _get_label_params(
         angleA = rotation - 180
         angleB = 90
         start = 0  # Arrow starts at bottom of axes
-        relpos = (0, 0)
+        relpos = (0.5 if rotation == 90 else 0, 0)
         ha = "left" if ha is None else ha
 
     elif arrow_direction == "left":
@@ -693,7 +711,7 @@ def _get_label_params(
         angleA = rotation - 180
         angleB = 0
         start = 0  # Arrow starts at left of axes
-        relpos = (0, 0)
+        relpos = (0, 0.5)
         ha = "left" if ha is None else ha
 
     elif arrow_direction == "right":
@@ -701,7 +719,7 @@ def _get_label_params(
         angleA = rotation
         angleB = -180
         start = 1  # Arrow starts at right of axes
-        relpos = (1, 1)
+        relpos = (1, 0.5)
         ha = "right" if ha is None else ha
 
     else:
