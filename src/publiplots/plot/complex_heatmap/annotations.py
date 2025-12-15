@@ -716,7 +716,7 @@ def _get_label_params(
     )
 
     arm = arrow_kws.get("frac", 0.2) * arrow_height
-    rad = arrow_kws.get("rad", 5)
+    rad = arrow_kws.get("rad", 10)
     arrowprops = dict(
         arrowstyle = arrow_kws.get("arrowstyle", "-"),
         color = resolve_param("color", arrow_kws.get("color")),
@@ -888,7 +888,7 @@ def label(
         if horizontal:
             ticks.append(j + col_span / 2)    # column midpoints
         else:
-            ticks.insert(0, i + row_span / 2) # row midpoints
+            ticks.append(i + row_span / 2) # row midpoints
 
     # Set up color mapping if hue parameter is provided
     color_map = {}
@@ -943,7 +943,7 @@ def label(
     start = textprops.pop("start")
     x0, y0 = ticks, [start] * n
     if extend:
-        extend_pos = np.linspace(0, 1, n + 1)
+        extend_pos = np.linspace(0, 1, n + 1) if horizontal else np.linspace(1, 0, n + 1)  # top → bottom
         x1 = [(extend_pos[i] + extend_pos[i - 1]) / 2 for i in range(1, n + 1)]
         y1 = [1 - start] * n
         textcoords = ax.transAxes  # relative coords
