@@ -583,4 +583,3 @@ def _create_size_legend(
     )
 
     return handles, tick_labels
-
