@@ -191,6 +191,12 @@ def barplot(
     sns_hue = hue
     sns_palette = palette
 
+    # When hue == categorical axis, seaborn doesn't need hue for splitting —
+    # it would only cause unwanted dodge/grouping. Color by palette via x instead.
+    if hue is not None and hue == categorical_axis:
+        sns_hue = None
+        sns_palette = None
+
     # hatch split only needed if hatch is not the same as the categorical axis
     split_by_hatch = hatch is not None and hatch != categorical_axis
     double_split = split_by_hatch and hue is not None and hue != categorical_axis and hatch != hue
@@ -237,6 +243,18 @@ def barplot(
 
     # Create bars
     sns.barplot(**barplot_kwargs)
+
+    # When hue == categorical axis, recolor bars from palette
+    if hue is not None and hue == categorical_axis and palette:
+        categories = order if order else list(data[categorical_axis].cat.categories)
+        for idx, patch in enumerate(tracker.get_new_patches()):
+            if idx < len(categories):
+                bar_color = palette.get(categories[idx], color)
+                patch.set_edgecolor(bar_color)
+        # Also recolor error bar lines
+        for idx, line in enumerate(tracker.get_new_lines()):
+            if idx < len(categories):
+                line.set_color(palette.get(categories[idx], color))
 
     # Apply hatch patterns and override colors if needed
     if hatch is not None:
