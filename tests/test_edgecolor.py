@@ -285,3 +285,16 @@ class TestPointplotEdgecolor:
             if (line.get_marker() == "None" or line.get_markersize() == 0) and line.get_linestyle() != "None":
                 lc = to_rgba(line.get_color())
                 assert lc[:3] != pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+
+class TestRaincloudplotEdgecolor:
+    """Tests for raincloudplot edgecolor passthrough."""
+
+    def test_edgecolor_passed_to_subplots(self, sample_data):
+        """Edgecolor should be applied across all sub-components."""
+        fig, ax = pp.raincloudplot(data=sample_data, x="category", y="value",
+                                    edgecolor="black", legend=False)
+        # Check box patches have black edges
+        for patch in ax.patches:
+            ec = patch.get_edgecolor()
+            assert to_rgba(ec)[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
