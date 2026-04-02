@@ -43,6 +43,7 @@ def pointplot(
     dodge: Union[bool, float] = False,
     orient: Optional[str] = None,
     capsize: float = 0,
+    edgecolor: Optional[str] = None,
     err_kws: Optional[Dict] = None,
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
@@ -282,6 +283,7 @@ def pointplot(
     _apply_marker_styling(
         ax=ax,
         alpha=alpha,
+        edgecolor=edgecolor,
     )
 
     # Set labels
@@ -302,6 +304,7 @@ def pointplot(
             linestyles=list(linestyle_map.values()),
             markersize=markersize,
             markeredgewidth=markeredgewidth,
+            edgecolor=edgecolor,
             alpha=alpha,
             linewidth=linewidth,
             kwargs=legend_kws,
@@ -348,6 +351,7 @@ def _format_for_custom_errorbar(
 def _apply_marker_styling(
     ax: Axes,
     alpha: float,
+    edgecolor: Optional[str] = None,
 ) -> List[Dict]:
     """
     Apply double-layer marker styling to pointplot.
@@ -396,7 +400,7 @@ def _apply_marker_styling(
         # Layer 1: White background (no edge)
         ax.plot(
             x, y, marker,
-            markeredgecolor=color,
+            markeredgecolor=edgecolor if edgecolor else color,
             markerfacecolor="white",
             markersize=size,
             markeredgewidth=0,
@@ -407,7 +411,7 @@ def _apply_marker_styling(
         # Layer 2: Semi-transparent colored fill with edge
         ax.plot(
             x, y, marker,
-            markeredgecolor=color,
+            markeredgecolor=edgecolor if edgecolor else color,
             markerfacecolor=to_rgba(color, alpha),
             markersize=size,
             markeredgewidth=markeredgewidth,
@@ -424,6 +428,7 @@ def _legend(
     linestyles: Union[List, Dict],
     markersize: Optional[float] = None,
     markeredgewidth: Optional[float] = None,
+    edgecolor: Optional[str] = None,
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     kwargs: Optional[Dict] = None,
@@ -473,6 +478,7 @@ def _legend(
         hue_handles = create_legend_handles(
             labels=[str(label) for label in labels],
             colors=colors,
+            edgecolors=[edgecolor] * len(labels) if edgecolor else None,
             markers=markers,
             linestyles=linestyles,
             alpha=alpha,

@@ -186,6 +186,7 @@ def stripplot(
             ax=ax,
             hue=hue,
             color=color,
+            edgecolor=edgecolor,
             palette=palette,
             hue_norm=hue_norm,
             alpha=alpha,
@@ -208,8 +209,9 @@ def _legend(
     ax: Axes,
     hue: Optional[str],
     color: Optional[str],
-    palette: Optional[Union[str, Dict, List]],
-    hue_norm: Optional[Normalize],
+    edgecolor: Optional[str] = None,
+    palette: Optional[Union[str, Dict, List]] = None,
+    hue_norm: Optional[Normalize] = None,
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     kwargs: Optional[Dict] = None,
@@ -234,6 +236,7 @@ def _legend(
             hue_handles = create_legend_handles(
                 labels=list(palette.keys()),
                 colors=list(palette.values()),
+                edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 **handle_kwargs
             )
             legend_data["hue"] = {

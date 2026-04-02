@@ -125,3 +125,163 @@ class TestBarplotEdgecolor:
         for patch in ax.patches:
             ec = patch.get_edgecolor()
             assert to_rgba(ec)[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+
+class TestBoxplotEdgecolor:
+    def test_default_edgecolor_matches_face(self, sample_data):
+        fig, ax = pp.boxplot(data=sample_data, x="category", y="value", hue="category", legend=False)
+        for patch in ax.patches:
+            fc = patch.get_facecolor()
+            ec = patch.get_edgecolor()
+            assert to_rgba(ec)[:3] == pytest.approx(to_rgba(fc)[:3], abs=0.01)
+
+    def test_custom_edgecolor_on_patches(self, sample_data):
+        fig, ax = pp.boxplot(data=sample_data, x="category", y="value", hue="category",
+                             edgecolor="black", legend=False)
+        for patch in ax.patches:
+            ec = patch.get_edgecolor()
+            assert to_rgba(ec)[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+            fc = patch.get_facecolor()
+            assert to_rgba(fc)[:3] != pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+    def test_custom_edgecolor_structural_lines(self, sample_data):
+        fig, ax = pp.boxplot(data=sample_data, x="category", y="value",
+                             edgecolor="red", legend=False)
+        for line in ax.lines:
+            marker = line.get_marker()
+            if marker == "None" or marker == "" or marker is None:
+                lc = to_rgba(line.get_color())
+                assert lc[:3] == pytest.approx(to_rgba("red")[:3], abs=0.01)
+
+    def test_linecolor_backward_compat(self, sample_data):
+        fig, ax = pp.boxplot(data=sample_data, x="category", y="value",
+                             linecolor="blue", legend=False)
+        for patch in ax.patches:
+            ec = patch.get_edgecolor()
+            assert to_rgba(ec)[:3] == pytest.approx(to_rgba("blue")[:3], abs=0.01)
+
+    def test_edgecolor_overrides_linecolor(self, sample_data):
+        with pytest.warns(FutureWarning, match="linecolor.*deprecated"):
+            fig, ax = pp.boxplot(data=sample_data, x="category", y="value",
+                                 edgecolor="black", linecolor="blue", legend=False)
+        for patch in ax.patches:
+            ec = patch.get_edgecolor()
+            assert to_rgba(ec)[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+
+class TestScatterplotEdgecolor:
+    def test_custom_edgecolor_on_collection(self, sample_data):
+        fig, ax = pp.scatterplot(data=sample_data, x="value", y="value",
+                                  edgecolor="black", legend=False)
+        collection = ax.collections[0]
+        ecs = collection.get_edgecolors()
+        for ec in ecs:
+            assert ec[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+    def test_edgecolor_in_legend_handles(self, sample_data):
+        fig, ax = pp.scatterplot(data=sample_data, x="value", y="value",
+                                  hue="category", edgecolor="black")
+        collection = ax.collections[0]
+        if hasattr(collection, '_legend_data') and 'hue' in collection._legend_data:
+            handles = collection._legend_data['hue'].get('handles', [])
+            for h in handles:
+                assert to_rgba(h.get_edgecolor())[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+
+class TestViolinplotEdgecolor:
+    """Tests for violinplot edgecolor parameter."""
+
+    def test_edgecolor_maps_to_linecolor(self, sample_data):
+        """edgecolor maps to seaborn's linecolor (visible with fill=True)."""
+        fig, ax = pp.violinplot(data=sample_data, x="category", y="value",
+                                 edgecolor="black", fill=True, legend=False)
+        from matplotlib.collections import FillBetweenPolyCollection
+        for coll in ax.collections:
+            if isinstance(coll, FillBetweenPolyCollection):
+                ecs = coll.get_edgecolors()
+                for ec in ecs:
+                    assert ec[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+    def test_edgecolor_precedence_over_linecolor(self, sample_data):
+        """edgecolor takes precedence over linecolor with deprecation warning."""
+        with pytest.warns(FutureWarning):
+            fig, ax = pp.violinplot(data=sample_data, x="category", y="value",
+                                     edgecolor="black", linecolor="red", legend=False)
+
+    def test_edgecolor_none_preserves_linecolor(self, sample_data):
+        """When edgecolor is None, linecolor is used as before (no warning)."""
+        # Should not emit FutureWarning
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            fig, ax = pp.violinplot(data=sample_data, x="category", y="value",
+                                     linecolor="red", legend=False)
+        # Just verify it returns without error
+        assert fig is not None
+        assert ax is not None
+
+    def test_edgecolor_no_fill_accepted(self, sample_data):
+        """edgecolor is accepted even with fill=False (default)."""
+        fig, ax = pp.violinplot(data=sample_data, x="category", y="value",
+                                 edgecolor="black", legend=False)
+        assert fig is not None
+        assert ax is not None
+
+
+class TestStripplotEdgecolor:
+    def test_edgecolor_applied_to_collection(self, sample_data):
+        fig, ax = pp.stripplot(data=sample_data, x="category", y="value",
+                                edgecolor="black", legend=False)
+        for coll in ax.collections:
+            ecs = coll.get_edgecolors()
+            for ec in ecs:
+                assert ec[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+    def test_edgecolor_in_legend(self, sample_data):
+        fig, ax = pp.stripplot(data=sample_data, x="category", y="value",
+                                hue="category", edgecolor="black")
+        collection = ax.collections[0]
+        if hasattr(collection, '_legend_data') and 'hue' in collection._legend_data:
+            handles = collection._legend_data['hue'].get('handles', [])
+            for h in handles:
+                assert to_rgba(h.get_edgecolor())[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+
+class TestSwarmplotEdgecolor:
+    def test_edgecolor_applied_to_collection(self, sample_data):
+        fig, ax = pp.swarmplot(data=sample_data, x="category", y="value",
+                                edgecolor="black", legend=False)
+        for coll in ax.collections:
+            ecs = coll.get_edgecolors()
+            for ec in ecs:
+                assert ec[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+    def test_edgecolor_in_legend(self, sample_data):
+        fig, ax = pp.swarmplot(data=sample_data, x="category", y="value",
+                                hue="category", edgecolor="black")
+        collection = ax.collections[0]
+        if hasattr(collection, '_legend_data') and 'hue' in collection._legend_data:
+            handles = collection._legend_data['hue'].get('handles', [])
+            for h in handles:
+                assert to_rgba(h.get_edgecolor())[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+
+class TestPointplotEdgecolor:
+    def test_custom_edgecolor_on_markers(self, sample_data):
+        fig, ax = pp.pointplot(data=sample_data, x="category", y="value",
+                                edgecolor="black", legend=False)
+        found_marker = False
+        for line in ax.lines:
+            mec = line.get_markeredgecolor()
+            if line.get_markersize() > 0 and line.get_marker() != "None":
+                found_marker = True
+                assert to_rgba(mec)[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+        assert found_marker, "No markers found on plot"
+
+    def test_edgecolor_does_not_affect_connecting_lines(self, sample_data):
+        fig, ax = pp.pointplot(data=sample_data, x="category", y="value",
+                                hue="group", edgecolor="black", legend=False)
+        for line in ax.lines:
+            if (line.get_marker() == "None" or line.get_markersize() == 0) and line.get_linestyle() != "None":
+                lc = to_rgba(line.get_color())
+                assert lc[:3] != pytest.approx(to_rgba("black")[:3], abs=0.01)

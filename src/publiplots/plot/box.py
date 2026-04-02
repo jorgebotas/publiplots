@@ -5,6 +5,7 @@ This module provides publication-ready box plot visualizations with
 transparent fill and opaque edges.
 """
 
+import warnings
 from typing import Optional, List, Dict, Tuple, Union
 
 from publiplots.themes.rcparams import resolve_param
@@ -30,6 +31,7 @@ def boxplot(
     orient: Optional[str] = None,
     color: Optional[str] = None,
     linecolor: Optional[str] = None,
+    edgecolor: Optional[str] = None,
     palette: Optional[Union[str, Dict, List]] = None,
     width: float = 0.8,
     gap: float = 0,
@@ -72,7 +74,10 @@ def boxplot(
     color : str, optional
         Fixed color for all boxes (only used when hue is None).
     linecolor : str, optional
-        Color of the box edges.
+        Deprecated. Use edgecolor instead. Color of the box edges.
+    edgecolor : str, optional
+        Color of the box edges, whiskers, caps, and outlier marker edges.
+        When None, edges match the palette face color for each group.
     palette : str, dict, or list, optional
         Color palette for hue grouping.
     width : float, default=0.8
@@ -132,6 +137,16 @@ def boxplot(
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
 
+    # Resolve edgecolor vs linecolor (backward compat)
+    if edgecolor is not None and linecolor is not None:
+        warnings.warn(
+            "linecolor is deprecated in favor of edgecolor. "
+            "edgecolor takes precedence when both are provided.",
+            FutureWarning,
+            stacklevel=2,
+        )
+    resolved_edgecolor = edgecolor if edgecolor is not None else linecolor
+
     # Create figure if not provided
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -162,7 +177,7 @@ def boxplot(
         "hue_order": hue_order,
         "orient": orient,
         "color": color if hue is None else None,
-        "linecolor": linecolor,
+        "linecolor": resolved_edgecolor,
         "palette": palette if hue else None,
         "width": width,
         "gap": gap,
@@ -204,35 +219,47 @@ def boxplot(
     markeredgewidth = flierprops.get("markeredgewidth", None)
     markeredgewidth = resolve_param("lines.markeredgewidth", markeredgewidth)
 
-    # Recolor all new lines (whiskers, caps, medians, outliers) based on position
-    if linecolor is None:
-        for line in new_lines:
-            line_data = line.get_xdata() if categorical_axis == "x" else line.get_ydata()
-            if len(line_data) == 0:
-                continue
-            pos = np.mean(line_data)
-            # Find closest patch position
-            closest_pos = min(patch_colors.keys(), key=lambda p: abs(p - pos))
-            base_color = patch_colors[closest_pos]
-            line.set_color(base_color)
-            line.set_linewidth(linewidth)
+    # Recolor lines based on position and edgecolor
+    for line in new_lines:
+        line_data = line.get_xdata() if categorical_axis == "x" else line.get_ydata()
+        if len(line_data) == 0:
+            continue
+        pos = np.mean(line_data)
+        closest_pos = min(patch_colors.keys(), key=lambda p: abs(p - pos))
+        base_color = patch_colors[closest_pos]
+
+        if line.get_marker() and line.get_marker() != 'None':
+            # Outlier markers: face = palette color, edge = edgecolor or palette
+            line.set_markerfacecolor(base_color)
+            line.set_markeredgecolor(resolved_edgecolor if resolved_edgecolor else base_color)
             line.set_markeredgewidth(markeredgewidth)
+        else:
+            # Structural lines (whiskers, caps, medians)
+            line.set_color(resolved_edgecolor if resolved_edgecolor else base_color)
+            line.set_linewidth(linewidth)
 
-        # Set edge colors to match face colors
-        for patch in new_patches:
-            patch.set_edgecolor(patch.get_facecolor())
+    # Set edge colors on box patches
+    for patch in new_patches:
+        patch.set_edgecolor(resolved_edgecolor if resolved_edgecolor else patch.get_facecolor())
 
-    # Apply transparency to new patches and lines
-    tracker.apply_transparency(on=["patches", "lines"], face_alpha=alpha)
+    # Apply transparency to box patch faces
+    tracker.apply_transparency(on="patches", face_alpha=alpha)
+    # Apply transparency to outlier marker faces only
+    for line in new_lines:
+        if line.get_marker() and line.get_marker() != 'None':
+            fc = line.get_markerfacecolor()
+            line.set_markerfacecolor(to_rgba(fc, alpha))
 
     # Add legend if hue is used
     if legend and hue is not None:
         from publiplots.utils.legend import legend as pp_legend
         from publiplots.utils.legend import create_legend_handles
 
+        palette_colors = list(palette.values()) if isinstance(palette, dict) else None
         handles = create_legend_handles(
             labels=list(palette.keys()) if isinstance(palette, dict) else None,
-            colors=list(palette.values()) if isinstance(palette, dict) else None,
+            colors=palette_colors,
+            edgecolors=[resolved_edgecolor] * len(palette) if resolved_edgecolor and isinstance(palette, dict) else None,
             alpha=alpha,
             linewidth=linewidth,
         )

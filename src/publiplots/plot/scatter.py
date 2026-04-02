@@ -306,6 +306,7 @@ def scatterplot(
         palette=palette,
         alpha=alpha,
         linewidth=linewidth,
+        edgecolor=edgecolor,
         hue_norm=hue_norm,
         size_norm=size_norm,
         sizes=sizes,
@@ -470,6 +471,7 @@ def _legend(
         sizes: Tuple[float, float],
         alpha: Optional[float] = None,
         linewidth: Optional[float] = None,
+        edgecolor: Optional[str] = None,
         kwargs: Optional[Dict] = None,
         create_legend: bool = True,
     ) -> None:
@@ -498,6 +500,7 @@ def _legend(
             hue_handles = create_legend_handles(
                 labels=list(palette.keys()),
                 colors=list(palette.values()),
+                edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 **handle_kwargs
             )
             legend_data["hue"] = {
@@ -561,6 +564,7 @@ def _legend(
         style_handles = create_legend_handles(
             labels=[str(val) for val in style_values],
             markers=[marker_map[val] for val in style_values],
+            edgecolors=[edgecolor] * len(style_values) if edgecolor else None,
             **style_handle_kwargs
         )
         legend_data["style"] = {
