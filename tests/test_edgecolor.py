@@ -298,3 +298,73 @@ class TestRaincloudplotEdgecolor:
         for patch in ax.patches:
             ec = patch.get_edgecolor()
             assert to_rgba(ec)[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+
+class TestEdgecolorIntegration:
+    """Cross-cutting tests for edgecolor consistency."""
+
+    def test_all_plot_types_accept_edgecolor(self, sample_data):
+        """Every plot function should accept edgecolor without error."""
+        common = dict(data=sample_data, x="category", y="value", edgecolor="black", legend=False)
+        pp.barplot(**common)
+        plt.close("all")
+        pp.boxplot(**common)
+        plt.close("all")
+        pp.violinplot(**common)
+        plt.close("all")
+        pp.stripplot(**common)
+        plt.close("all")
+        pp.swarmplot(**common)
+        plt.close("all")
+        pp.pointplot(**common)
+        plt.close("all")
+        pp.raincloudplot(**common)
+        plt.close("all")
+
+    def test_all_plot_types_accept_edgecolor_none(self, sample_data):
+        """edgecolor=None should preserve default behavior for all types."""
+        common = dict(data=sample_data, x="category", y="value", edgecolor=None, legend=False)
+        pp.barplot(**common)
+        plt.close("all")
+        pp.boxplot(**common)
+        plt.close("all")
+        pp.violinplot(**common)
+        plt.close("all")
+        pp.stripplot(**common)
+        plt.close("all")
+        pp.swarmplot(**common)
+        plt.close("all")
+        pp.pointplot(**common)
+        plt.close("all")
+        pp.raincloudplot(**common)
+        plt.close("all")
+
+    def test_scatterplot_edgecolor_unchanged(self, sample_data):
+        """Scatterplot's existing edgecolor behavior should be preserved."""
+        fig, ax = pp.scatterplot(data=sample_data, x="value", y="value",
+                                  edgecolor="black", legend=False)
+        collection = ax.collections[0]
+        ecs = collection.get_edgecolors()
+        for ec in ecs:
+            assert ec[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+    def test_combined_overlay_with_edgecolor(self, sample_data):
+        """Overlaying plots with edgecolor should work correctly."""
+        fig, ax = pp.violinplot(data=sample_data, x="category", y="value",
+                                 edgecolor="black", legend=False)
+        pp.stripplot(data=sample_data, x="category", y="value",
+                      edgecolor="black", ax=ax, legend=False)
+
+    def test_hue_with_edgecolor(self, sample_data):
+        """Edgecolor should work alongside hue grouping for all types."""
+        common = dict(data=sample_data, x="category", y="value", hue="group", edgecolor="black", legend=False)
+        pp.barplot(**common)
+        plt.close("all")
+        pp.boxplot(**common)
+        plt.close("all")
+        pp.violinplot(**common)
+        plt.close("all")
+        pp.stripplot(**common)
+        plt.close("all")
+        pp.pointplot(**common)
+        plt.close("all")
