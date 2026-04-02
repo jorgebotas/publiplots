@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 # =============================================================================
 # Base Default Dictionaries
 # =============================================================================
-
+TEXT_COLOR = "black"
 MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     # Figure settings - compact by default (publication-ready)
     "figure.figsize": [3, 1.8],
@@ -34,14 +34,14 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     "font.sans-serif": ["Arial", "Helvetica", "sans-serif"],
 
     # Text settings
-    "text.color": "0.2",
-    "axes.labelcolor": "0.2",
-    "axes.titlecolor": "0.2",
-    "xtick.color": "0.2",
-    "xtick.labelcolor": "0.2",
-    "ytick.color": "0.2",
-    "ytick.labelcolor": "0.2",
-    "legend.labelcolor": "0.2",
+    "text.color": TEXT_COLOR,
+    "axes.labelcolor": TEXT_COLOR,
+    "axes.titlecolor": TEXT_COLOR,
+    "xtick.color": TEXT_COLOR,
+    "xtick.labelcolor": TEXT_COLOR,
+    "ytick.color": TEXT_COLOR,
+    "ytick.labelcolor": TEXT_COLOR,
+    "legend.labelcolor": TEXT_COLOR,
 
     # Axes settings
     "axes.linewidth": 1.0,
@@ -62,7 +62,7 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
 
     # Patch settings (for bars, etc.)
     "patch.linewidth": 1.0,
-    "patch.edgecolor": "0.2",
+    "patch.edgecolor": TEXT_COLOR,
 
     # Tick settings
     "xtick.labelsize": 8,
