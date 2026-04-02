@@ -93,3 +93,35 @@ class TestCreateLegendHandles:
         )
         for h in handles:
             assert to_rgba(h.get_edgecolor())[:3] == to_rgba("black")[:3]
+
+
+class TestBarplotEdgecolor:
+    def test_default_edgecolor_matches_face(self, sample_data):
+        fig, ax = pp.barplot(data=sample_data, x="category", y="value", hue="category", legend=False)
+        for patch in ax.patches:
+            fc = patch.get_facecolor()
+            ec = patch.get_edgecolor()
+            assert to_rgba(ec)[:3] == pytest.approx(to_rgba(fc)[:3], abs=0.01)
+
+    def test_custom_edgecolor_applied_to_patches(self, sample_data):
+        fig, ax = pp.barplot(data=sample_data, x="category", y="value", hue="category",
+                             edgecolor="black", legend=False)
+        for patch in ax.patches:
+            ec = patch.get_edgecolor()
+            fc = patch.get_facecolor()
+            assert to_rgba(ec)[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+            assert to_rgba(fc)[:3] != pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+    def test_custom_edgecolor_applied_to_error_bars(self, sample_data):
+        fig, ax = pp.barplot(data=sample_data, x="category", y="value", hue="category",
+                             edgecolor="black", legend=False)
+        for line in ax.lines:
+            lc = to_rgba(line.get_color())
+            assert lc[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)
+
+    def test_no_hue_with_edgecolor(self, sample_data):
+        fig, ax = pp.barplot(data=sample_data, x="category", y="value",
+                             edgecolor="black", legend=False)
+        for patch in ax.patches:
+            ec = patch.get_edgecolor()
+            assert to_rgba(ec)[:3] == pytest.approx(to_rgba("black")[:3], abs=0.01)

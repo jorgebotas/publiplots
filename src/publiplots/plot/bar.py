@@ -27,6 +27,7 @@ def barplot(
     hue: Optional[str] = None,
     hatch: Optional[str] = None,
     color: Optional[str] = None,
+    edgecolor: Optional[str] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
@@ -250,11 +251,12 @@ def barplot(
         for idx, patch in enumerate(tracker.get_new_patches()):
             if idx < len(categories):
                 bar_color = palette.get(categories[idx], color)
+                # Set edge to palette color so the main flow copies it to face correctly
                 patch.set_edgecolor(bar_color)
         # Also recolor error bar lines
         for idx, line in enumerate(tracker.get_new_lines()):
             if idx < len(categories):
-                line.set_color(palette.get(categories[idx], color))
+                line.set_color(edgecolor if edgecolor is not None else palette.get(categories[idx], color))
 
     # Apply hatch patterns and override colors if needed
     if hatch is not None:
@@ -267,15 +269,24 @@ def barplot(
             double_split=double_split,
             linewidth=linewidth,
             color=color,
+            edgecolor=edgecolor,
             palette=palette,
             hatch_map=hatch_map,
         )
 
-    # Face color is the same as the edge color
+    # Set facecolor from seaborn's edge (palette color), optionally override edgecolor
     for patch in tracker.get_new_patches():
-        patch.set_facecolor(patch.get_edgecolor())
+        palette_color = patch.get_edgecolor()  # seaborn fill=False puts palette color on edge
+        patch.set_facecolor(palette_color)
+        if edgecolor is not None:
+            patch.set_edgecolor(edgecolor)
     # Apply differential transparency to face vs edge
     tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
+
+    # Apply edgecolor to error bar lines
+    if edgecolor is not None:
+        for line in tracker.get_new_lines():
+            line.set_color(edgecolor)
 
     # Add legend if hue or hatch is used
     if legend:
@@ -287,6 +298,7 @@ def barplot(
             alpha=alpha,
             linewidth=linewidth,
             color=color,
+            edgecolor=edgecolor,
             palette=palette,
             hatch_map=hatch_map,
             kwargs=legend_kws,
@@ -382,6 +394,7 @@ def _apply_hatches_and_override_colors(
         double_split: bool,
         linewidth: float,
         color: Optional[str],
+        edgecolor: Optional[str],
         palette: Optional[Union[str, Dict, List]],
         hatch_map: Optional[Dict[str, str]],
     ) -> None:
@@ -431,12 +444,12 @@ def _apply_hatches_and_override_colors(
         bar_color = palette[hue_order[hue_idx]] if hue is not None else color
         if not (double_split or hatch == categorical_axis):
             # Use the same color for all bars
-            patch.set_edgecolor(bar_color)
+            patch.set_edgecolor(edgecolor if edgecolor is not None else bar_color)
             patch.set_facecolor(bar_color)
 
             # Match error bar colors to bar colors
             if bar_idx < len(errorbars):
-                errorbars[bar_idx].set_color(bar_color)
+                errorbars[bar_idx].set_color(edgecolor if edgecolor is not None else bar_color)
 
 def _legend(
         ax: Axes,
@@ -446,6 +459,7 @@ def _legend(
         alpha: float,
         linewidth: float,
         color: Optional[str],
+        edgecolor: Optional[str],
         palette: Optional[Union[str, Dict, List]],
         hatch_map: Optional[Dict[str, str]],
         kwargs: Optional[Dict] = None,
@@ -472,6 +486,7 @@ def _legend(
             handles=create_legend_handles(
                 labels=values,
                 colors=[palette[v] for v in values],
+                edgecolors=[edgecolor] * len(values) if edgecolor else None,
                 hatches=[hatch_map[v] for v in values],
                 **handle_kwargs
             ),
@@ -484,6 +499,7 @@ def _legend(
             handles=create_legend_handles(
                 labels=list(hatch_map.keys()),
                 colors=[resolve_param("color", color)] * len(hatch_map),
+                edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
                 hatches=list(hatch_map.values()),
                 **handle_kwargs
             ),
@@ -496,6 +512,7 @@ def _legend(
             handles=create_legend_handles(
                 labels=list(palette.keys()),
                 colors=[palette[v] for v in palette.keys()],
+                edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 hatches=None,
                 **handle_kwargs
             ),
@@ -509,6 +526,7 @@ def _legend(
                 handles=create_legend_handles(
                     labels=list(palette.keys()),
                     colors=[palette[v] for v in palette.keys()],
+                    edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                     hatches=None,
                     **handle_kwargs
                 ),
@@ -523,6 +541,7 @@ def _legend(
                 handles=create_legend_handles(
                     labels=list(hatch_map.keys()),
                     colors=[hatch_color] * len(hatch_map),
+                    edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
                     hatches=list(hatch_map.values()),
                     **handle_kwargs
                 ),
