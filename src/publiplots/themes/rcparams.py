@@ -108,6 +108,7 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     # Color and transparency
     "color": "#5d83c3",  # Default blue
     "alpha": 0.1,  # Default transparency for bars
+    "edgecolor": None,  # Global edge color for patches and marker outlines; None = "auto" (match face)
 
     # Error bars
     "capsize": 0.0,  # Error bar cap size
