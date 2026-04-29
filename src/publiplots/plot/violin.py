@@ -174,6 +174,7 @@ def violinplot(
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
+    edgecolor = resolve_param("edgecolor", edgecolor)
 
     # Resolve edgecolor vs linecolor (backward compat)
     if edgecolor is not None and linecolor != "auto":
