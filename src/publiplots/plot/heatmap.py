@@ -175,6 +175,7 @@ def heatmap(
     figsize = resolve_param("figure.figsize", figsize)
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
+    edgecolor = resolve_param("edgecolor", edgecolor)
 
     # Create figure if not provided
     if ax is None:
