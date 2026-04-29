@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-04-29
+
+### Added
+- `heatmap()` and `complex_heatmap()` builder with dot-heatmap and margin-plot support
+- Unified `edgecolor` parameter across `barplot`, `boxplot`, `violinplot`, `scatterplot`, `stripplot`, `swarmplot`, `pointplot`, and `raincloudplot`
+- `edgecolors` parameter on `create_legend_handles` (decouples edge from face in legend entries)
+- `as_categorical()` helper in `publiplots.utils` that guarantees `category` dtype
+- Optional `ax` parameter on `pp.legend()` (defaults to `plt.gca()`)
+- `rotate()` helper for axis-label rotation
+- Scatterplot colorbar rendering test coverage
+
+### Changed
+- `LegendBuilder` now uses mm-based positioning with automatic column overflow and a singleton per-axes pattern
+- Default text color set to black
+- Barplot skips seaborn `hue` when `hue == categorical_axis` (avoids unwanted dodge)
+
+### Fixed
+- `AttributeError: Can only use .cat accessor with a 'category' dtype` in `barplot` when the categorical axis column was object-dtype strings
+- Face/edge color bug in `barplot` when recoloring from palette
+- Legend overlap bug caused by inaccurate title-height measurement
+- Colorbar positioning bugs (vpad subtraction, xmargin/ymargin, remaining-space math)
+
+### Dependencies
+- Added `scipy>=1.10.0` (required by `heatmap` clustering)
+
+[0.4.7]: https://github.com/jorgebotas/publiplots/releases/tag/v0.4.7
+
 ## [0.4.6] - 2025-12-04
 
 ### Added
