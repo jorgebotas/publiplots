@@ -28,6 +28,7 @@ from publiplots.utils.axes import (
 
 from publiplots.utils.validation import (
     is_categorical,
+    as_categorical,
     is_numeric,
     validate_data,
     validate_numeric,
@@ -88,6 +89,7 @@ __all__ = [
     "tighten_layout",
     # Validation functions
     "is_categorical",
+    "as_categorical",
     "is_numeric",
     "validate_data",
     "validate_numeric",

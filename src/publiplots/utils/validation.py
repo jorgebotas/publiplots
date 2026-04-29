@@ -43,6 +43,49 @@ def is_categorical(
     return isinstance(values, pd.Categorical) or not is_numeric(values)
 
 
+def as_categorical(
+        values: pd.Series,
+        categories: Optional[List[Any]] = None,
+        ordered: bool = True,
+    ) -> pd.Series:
+    """
+    Ensure a Series has pandas ``category`` dtype so the ``.cat`` accessor works.
+
+    ``is_categorical`` in this module is semantic (non-numeric), so an object-dtype
+    string column reports as categorical but does not expose ``.cat``. Use this
+    helper any time downstream code needs ``.cat.categories`` or
+    ``.cat.remove_unused_categories()``.
+
+    Parameters
+    ----------
+    values : pd.Series
+        Series to coerce.
+    categories : list, optional
+        Explicit category order. Defaults to ``values.unique()`` preserving
+        first-occurrence order.
+    ordered : bool, default True
+        Whether the resulting Categorical is ordered.
+
+    Returns
+    -------
+    pd.Series
+        Series with ``category`` dtype.
+
+    Examples
+    --------
+    >>> s = pd.Series(["a", "b", "a"])
+    >>> as_categorical(s).cat.categories.tolist()
+    ['a', 'b']
+    """
+    if categories is None:
+        categories = values.unique()
+    return pd.Series(
+        pd.Categorical(values, categories=categories, ordered=ordered),
+        index=values.index if isinstance(values, pd.Series) else None,
+        name=values.name if isinstance(values, pd.Series) else None,
+    )
+
+
 def is_numeric(values: Union[pd.Series, pd.Categorical, np.ndarray, list, tuple]) -> bool:
     """
     Check if values are numeric.

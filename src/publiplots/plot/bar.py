@@ -15,7 +15,7 @@ import pandas as pd
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.hatches import resolve_hatch_map
-from publiplots.utils import is_categorical, create_legend_handles, legend
+from publiplots.utils import is_categorical, as_categorical, create_legend_handles, legend
 from publiplots.utils.transparency import ArtistTracker
 
 _SPLIT_SEPARATOR = "---"
@@ -151,11 +151,6 @@ def barplot(
     else:
         fig = ax.get_figure()
 
-    if hue is not None and not is_categorical(data[hue]):
-        data[hue] = pd.Categorical(data[hue], categories=data[hue].unique(), ordered=True)
-    if hatch is not None and not is_categorical(data[hatch]):
-        data[hatch] = pd.Categorical(data[hatch], categories=data[hatch].unique(), ordered=True)
-
     # Find out categorical axis
     categorical_axis = x if is_categorical(data[x]) else y
     if not (is_categorical(data[x]) or is_categorical(data[y])):
@@ -163,6 +158,14 @@ def barplot(
             "At least one of x or y must be categorical. "
             "Run data[x].astype('category') or data[y].astype('category')"
         )
+
+    # Ensure category dtype on every column we'll touch with the .cat accessor
+    data = data.copy()
+    data[categorical_axis] = as_categorical(data[categorical_axis])
+    if hue is not None and hue != categorical_axis:
+        data[hue] = as_categorical(data[hue])
+    if hatch is not None and hatch != categorical_axis:
+        data[hatch] = as_categorical(data[hatch])
 
     # Get hue palette and hatch mappings
     palette = resolve_palette_map(
@@ -350,38 +353,30 @@ def _prepare_split_data(
         New column name is f"{colA}_{colB}"
     """
     data = data.copy()
-    
+
     # If order is provided, ensure the split column follows that order
     prepareA = colA is not None and orderA is not None
     prepareB = colB is not None and orderB is not None
     if prepareA:
-        data[colA] = pd.Categorical(data[colA], categories=orderA, ordered=True)
-        data[colA] = data[colA].cat.remove_unused_categories()
+        data[colA] = as_categorical(data[colA], categories=orderA).cat.remove_unused_categories()
         data = data.sort_values([colA])
     if prepareB:
-        data[colB] = pd.Categorical(data[colB], categories=orderB, ordered=True)
-        data[colB] = data[colB].cat.remove_unused_categories()
+        data[colB] = as_categorical(data[colB], categories=orderB).cat.remove_unused_categories()
         data = data.sort_values([colB])
 
     # Sort the data by the columns in the order of the columns
     columns = ([colA] if prepareA else []) + ([colB] if prepareB else [])
     if order_categorical_axis is not None:
-        data[categorical_axis] = pd.Categorical(
-            data[categorical_axis], 
-            categories=order_categorical_axis, 
-            ordered=True
-        )
-        data[categorical_axis] = data[categorical_axis].cat.remove_unused_categories()
+        data[categorical_axis] = as_categorical(
+            data[categorical_axis], categories=order_categorical_axis
+        ).cat.remove_unused_categories()
         columns.insert(0, categorical_axis)
     data.sort_values(columns, inplace=True)
-    
+
     if prepareA and prepareB:
         # Create a combined column that seaborn will use to separate bars
-        data[f"{colA}_{colB}"] = data[colA].astype(str) + _SPLIT_SEPARATOR + data[colB].astype(str)
-        data[f"{colA}_{colB}"] = pd.Categorical(
-            data[f"{colA}_{colB}"],
-            categories=data[f"{colA}_{colB}"].unique(),
-            ordered=True
+        data[f"{colA}_{colB}"] = as_categorical(
+            data[colA].astype(str) + _SPLIT_SEPARATOR + data[colB].astype(str)
         )
     return data
 
