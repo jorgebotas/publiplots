@@ -70,3 +70,19 @@ def test_barplot_passthrough_preserves_auto_edge():
         edge = to_rgba(patch.get_edgecolor())
         # Compare only RGB — bar face is alpha-dimmed but edge is full opacity
         assert face[:3] == edge[:3]
+
+
+def test_boxplot_rcparam_applies():
+    """boxplot respects rcParams['edgecolor']."""
+    pp.rcParams["edgecolor"] = "red"
+    data = pd.DataFrame({
+        "group": pd.Categorical(np.repeat(["A", "B"], 20)),
+        "value": np.concatenate([np.random.RandomState(0).randn(20),
+                                  np.random.RandomState(1).randn(20)]),
+    })
+    fig, ax = plt.subplots()
+    pp.boxplot(data=data, x="group", y="value", ax=ax)
+    red = to_rgba("red")
+    # Box edges live on ax.patches in seaborn's boxplot
+    for patch in ax.patches:
+        assert to_rgba(patch.get_edgecolor()) == red
