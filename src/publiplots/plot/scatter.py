@@ -169,6 +169,7 @@ def scatterplot(
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
+    edgecolor = resolve_param("edgecolor", edgecolor)
 
     # Validate required columns
     required_cols = [x, y]

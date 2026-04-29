@@ -86,3 +86,18 @@ def test_boxplot_rcparam_applies():
     # Box edges live on ax.patches in seaborn's boxplot
     for patch in ax.patches:
         assert to_rgba(patch.get_edgecolor()) == red
+
+
+def test_scatterplot_rcparam_applies():
+    """scatterplot respects rcParams['edgecolor']."""
+    pp.rcParams["edgecolor"] = "red"
+    data = pd.DataFrame({"x": [1.0, 2.0, 3.0], "y": [4.0, 5.0, 6.0]})
+    fig, ax = plt.subplots()
+    pp.scatterplot(data=data, x="x", y="y", ax=ax)
+    red = to_rgba("red")
+    assert ax.collections, "expected a PathCollection from scatter"
+    for collection in ax.collections:
+        edges = collection.get_edgecolors()
+        assert len(edges) > 0
+        for edge in edges:
+            assert tuple(edge) == red
