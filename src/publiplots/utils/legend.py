@@ -486,6 +486,7 @@ def get_legend_handler_map() -> Dict[type, HandlerBase]:
 def create_legend_handles(
     labels: List[str],
     colors: Optional[List[str]] = None,
+    edgecolors: Optional[Union[str, List[str]]] = None,
     hatches: Optional[List[str]] = None,
     sizes: Optional[List[float]] = None,
     markers: Optional[List[str]] = None,
@@ -505,6 +506,9 @@ def create_legend_handles(
         Labels for each legend entry.
     colors : List[str], optional
         Colors for each legend entry.
+    edgecolors : str or List[str], optional
+        Edge colors for each legend entry. If None, defaults to colors.
+        If str, broadcasts to all entries. If list, one per entry.
     hatches : List[str], optional
         Hatch patterns for each legend entry (for rectangles).
     sizes : List[float], optional
@@ -542,6 +546,11 @@ def create_legend_handles(
         default_color = resolve_param("color", None)
         colors = [color if color is not None else default_color] * len(labels)
 
+    if edgecolors is None:
+        edgecolors = colors
+    elif isinstance(edgecolors, str):
+        edgecolors = [edgecolors] * len(labels)
+
     if hatches is None or len(hatches) == 0 or style == "circle" or markers is not None:
         hatches = [""] * len(labels)
 
@@ -564,12 +573,12 @@ def create_legend_handles(
     # Determine patch type
     if markers is not None and linestyles is not None:
         # Use LineMarkerPatch when both markers and linestyles are specified
-        for label, col, size, marker, linestyle in zip(labels, colors, sizes, markers, linestyles):
+        for label, col, edge_col, size, marker, linestyle in zip(labels, colors, edgecolors, sizes, markers, linestyles):
             handle = LineMarkerPatch(
                 marker=marker,
                 linestyle=linestyle,
                 facecolor=col,
-                edgecolor=col,
+                edgecolor=edge_col,
                 alpha=alpha,
                 linewidth=linewidth,
                 label=label,
@@ -579,11 +588,11 @@ def create_legend_handles(
             handles.append(handle)
     elif markers is not None:
         # Use MarkerPatch when only markers are specified
-        for label, col, hatch, size, marker in zip(labels, colors, hatches, sizes, markers):
+        for label, col, edge_col, hatch, size, marker in zip(labels, colors, edgecolors, hatches, sizes, markers):
             handle = MarkerPatch(
                 marker=marker,
                 facecolor=col,
-                edgecolor=col,
+                edgecolor=edge_col,
                 alpha=alpha,
                 linewidth=linewidth,
                 label=label,
@@ -595,11 +604,11 @@ def create_legend_handles(
         # Use MarkerPatch for circles, RectanglePatch for rectangles
         if style == "circle":
             # Circle is just a marker with 'o' symbol
-            for label, col, hatch, size in zip(labels, colors, hatches, sizes):
+            for label, col, edge_col, hatch, size in zip(labels, colors, edgecolors, hatches, sizes):
                 handle = MarkerPatch(
                     marker='o',
                     facecolor=col,
-                    edgecolor=col,
+                    edgecolor=edge_col,
                     alpha=alpha,
                     linewidth=linewidth,
                     label=label,
@@ -609,10 +618,10 @@ def create_legend_handles(
                 handles.append(handle)
         else:
             # Rectangle patches (for bar plots with hatches)
-            for label, col, hatch, size in zip(labels, colors, hatches, sizes):
+            for label, col, edge_col, hatch, size in zip(labels, colors, edgecolors, hatches, sizes):
                 handle = RectanglePatch(
                     facecolor=col,
-                    edgecolor=col,
+                    edgecolor=edge_col,
                     alpha=alpha,
                     linewidth=linewidth,
                     label=label,

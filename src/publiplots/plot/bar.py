@@ -15,7 +15,7 @@ import pandas as pd
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.hatches import resolve_hatch_map
-from publiplots.utils import is_categorical, create_legend_handles, legend
+from publiplots.utils import is_categorical, as_categorical, create_legend_handles, legend
 from publiplots.utils.transparency import ArtistTracker
 
 _SPLIT_SEPARATOR = "---"
@@ -27,6 +27,7 @@ def barplot(
     hue: Optional[str] = None,
     hatch: Optional[str] = None,
     color: Optional[str] = None,
+    edgecolor: Optional[str] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
@@ -150,11 +151,6 @@ def barplot(
     else:
         fig = ax.get_figure()
 
-    if hue is not None and not is_categorical(data[hue]):
-        data[hue] = pd.Categorical(data[hue], categories=data[hue].unique(), ordered=True)
-    if hatch is not None and not is_categorical(data[hatch]):
-        data[hatch] = pd.Categorical(data[hatch], categories=data[hatch].unique(), ordered=True)
-
     # Find out categorical axis
     categorical_axis = x if is_categorical(data[x]) else y
     if not (is_categorical(data[x]) or is_categorical(data[y])):
@@ -162,6 +158,14 @@ def barplot(
             "At least one of x or y must be categorical. "
             "Run data[x].astype('category') or data[y].astype('category')"
         )
+
+    # Ensure category dtype on every column we'll touch with the .cat accessor
+    data = data.copy()
+    data[categorical_axis] = as_categorical(data[categorical_axis])
+    if hue is not None and hue != categorical_axis:
+        data[hue] = as_categorical(data[hue])
+    if hatch is not None and hatch != categorical_axis:
+        data[hatch] = as_categorical(data[hatch])
 
     # Get hue palette and hatch mappings
     palette = resolve_palette_map(
@@ -190,6 +194,12 @@ def barplot(
     # Key insight: use hue=hatch for splitting when needed, then override colors
     sns_hue = hue
     sns_palette = palette
+
+    # When hue == categorical axis, seaborn doesn't need hue for splitting —
+    # it would only cause unwanted dodge/grouping. Color by palette via x instead.
+    if hue is not None and hue == categorical_axis:
+        sns_hue = None
+        sns_palette = None
 
     # hatch split only needed if hatch is not the same as the categorical axis
     split_by_hatch = hatch is not None and hatch != categorical_axis
@@ -238,6 +248,19 @@ def barplot(
     # Create bars
     sns.barplot(**barplot_kwargs)
 
+    # When hue == categorical axis, recolor bars from palette
+    if hue is not None and hue == categorical_axis and palette:
+        categories = order if order else list(data[categorical_axis].cat.categories)
+        for idx, patch in enumerate(tracker.get_new_patches()):
+            if idx < len(categories):
+                bar_color = palette.get(categories[idx], color)
+                # Set edge to palette color so the main flow copies it to face correctly
+                patch.set_edgecolor(bar_color)
+        # Also recolor error bar lines
+        for idx, line in enumerate(tracker.get_new_lines()):
+            if idx < len(categories):
+                line.set_color(edgecolor if edgecolor is not None else palette.get(categories[idx], color))
+
     # Apply hatch patterns and override colors if needed
     if hatch is not None:
         _apply_hatches_and_override_colors(
@@ -249,15 +272,24 @@ def barplot(
             double_split=double_split,
             linewidth=linewidth,
             color=color,
+            edgecolor=edgecolor,
             palette=palette,
             hatch_map=hatch_map,
         )
 
-    # Face color is the same as the edge color
+    # Set facecolor from seaborn's edge (palette color), optionally override edgecolor
     for patch in tracker.get_new_patches():
-        patch.set_facecolor(patch.get_edgecolor())
+        palette_color = patch.get_edgecolor()  # seaborn fill=False puts palette color on edge
+        patch.set_facecolor(palette_color)
+        if edgecolor is not None:
+            patch.set_edgecolor(edgecolor)
     # Apply differential transparency to face vs edge
     tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
+
+    # Apply edgecolor to error bar lines
+    if edgecolor is not None:
+        for line in tracker.get_new_lines():
+            line.set_color(edgecolor)
 
     # Add legend if hue or hatch is used
     if legend:
@@ -269,6 +301,7 @@ def barplot(
             alpha=alpha,
             linewidth=linewidth,
             color=color,
+            edgecolor=edgecolor,
             palette=palette,
             hatch_map=hatch_map,
             kwargs=legend_kws,
@@ -320,38 +353,30 @@ def _prepare_split_data(
         New column name is f"{colA}_{colB}"
     """
     data = data.copy()
-    
+
     # If order is provided, ensure the split column follows that order
     prepareA = colA is not None and orderA is not None
     prepareB = colB is not None and orderB is not None
     if prepareA:
-        data[colA] = pd.Categorical(data[colA], categories=orderA, ordered=True)
-        data[colA] = data[colA].cat.remove_unused_categories()
+        data[colA] = as_categorical(data[colA], categories=orderA).cat.remove_unused_categories()
         data = data.sort_values([colA])
     if prepareB:
-        data[colB] = pd.Categorical(data[colB], categories=orderB, ordered=True)
-        data[colB] = data[colB].cat.remove_unused_categories()
+        data[colB] = as_categorical(data[colB], categories=orderB).cat.remove_unused_categories()
         data = data.sort_values([colB])
 
     # Sort the data by the columns in the order of the columns
     columns = ([colA] if prepareA else []) + ([colB] if prepareB else [])
     if order_categorical_axis is not None:
-        data[categorical_axis] = pd.Categorical(
-            data[categorical_axis], 
-            categories=order_categorical_axis, 
-            ordered=True
-        )
-        data[categorical_axis] = data[categorical_axis].cat.remove_unused_categories()
+        data[categorical_axis] = as_categorical(
+            data[categorical_axis], categories=order_categorical_axis
+        ).cat.remove_unused_categories()
         columns.insert(0, categorical_axis)
     data.sort_values(columns, inplace=True)
-    
+
     if prepareA and prepareB:
         # Create a combined column that seaborn will use to separate bars
-        data[f"{colA}_{colB}"] = data[colA].astype(str) + _SPLIT_SEPARATOR + data[colB].astype(str)
-        data[f"{colA}_{colB}"] = pd.Categorical(
-            data[f"{colA}_{colB}"],
-            categories=data[f"{colA}_{colB}"].unique(),
-            ordered=True
+        data[f"{colA}_{colB}"] = as_categorical(
+            data[colA].astype(str) + _SPLIT_SEPARATOR + data[colB].astype(str)
         )
     return data
 
@@ -364,6 +389,7 @@ def _apply_hatches_and_override_colors(
         double_split: bool,
         linewidth: float,
         color: Optional[str],
+        edgecolor: Optional[str],
         palette: Optional[Union[str, Dict, List]],
         hatch_map: Optional[Dict[str, str]],
     ) -> None:
@@ -413,12 +439,12 @@ def _apply_hatches_and_override_colors(
         bar_color = palette[hue_order[hue_idx]] if hue is not None else color
         if not (double_split or hatch == categorical_axis):
             # Use the same color for all bars
-            patch.set_edgecolor(bar_color)
+            patch.set_edgecolor(edgecolor if edgecolor is not None else bar_color)
             patch.set_facecolor(bar_color)
 
             # Match error bar colors to bar colors
             if bar_idx < len(errorbars):
-                errorbars[bar_idx].set_color(bar_color)
+                errorbars[bar_idx].set_color(edgecolor if edgecolor is not None else bar_color)
 
 def _legend(
         ax: Axes,
@@ -428,6 +454,7 @@ def _legend(
         alpha: float,
         linewidth: float,
         color: Optional[str],
+        edgecolor: Optional[str],
         palette: Optional[Union[str, Dict, List]],
         hatch_map: Optional[Dict[str, str]],
         kwargs: Optional[Dict] = None,
@@ -454,6 +481,7 @@ def _legend(
             handles=create_legend_handles(
                 labels=values,
                 colors=[palette[v] for v in values],
+                edgecolors=[edgecolor] * len(values) if edgecolor else None,
                 hatches=[hatch_map[v] for v in values],
                 **handle_kwargs
             ),
@@ -466,6 +494,7 @@ def _legend(
             handles=create_legend_handles(
                 labels=list(hatch_map.keys()),
                 colors=[resolve_param("color", color)] * len(hatch_map),
+                edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
                 hatches=list(hatch_map.values()),
                 **handle_kwargs
             ),
@@ -478,6 +507,7 @@ def _legend(
             handles=create_legend_handles(
                 labels=list(palette.keys()),
                 colors=[palette[v] for v in palette.keys()],
+                edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 hatches=None,
                 **handle_kwargs
             ),
@@ -491,6 +521,7 @@ def _legend(
                 handles=create_legend_handles(
                     labels=list(palette.keys()),
                     colors=[palette[v] for v in palette.keys()],
+                    edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                     hatches=None,
                     **handle_kwargs
                 ),
@@ -505,6 +536,7 @@ def _legend(
                 handles=create_legend_handles(
                     labels=list(hatch_map.keys()),
                     colors=[hatch_color] * len(hatch_map),
+                    edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
                     hatches=list(hatch_map.values()),
                     **handle_kwargs
                 ),

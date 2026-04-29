@@ -33,6 +33,7 @@ def violinplot(
     hue_order: Optional[List] = None,
     orient: Optional[str] = None,
     color: Optional[str] = None,
+    edgecolor: Optional[str] = None,
     palette: Optional[Union[str, Dict, List]] = None,
     saturation: float = 1.0,
     fill: bool = False,
@@ -85,6 +86,9 @@ def violinplot(
         Deprecated: use x and y instead.
     color : str, optional
         Fixed color for all violins (only used when hue is None).
+    edgecolor : str, optional
+        Color of violin edges. When provided, overrides linecolor.
+        Preferred over linecolor (which is deprecated in favor of edgecolor).
     palette : str, dict, or list, optional
         Color palette for hue grouping.
     saturation : float, default=1.0
@@ -171,6 +175,18 @@ def violinplot(
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
 
+    # Resolve edgecolor vs linecolor (backward compat)
+    if edgecolor is not None and linecolor != "auto":
+        import warnings
+        warnings.warn(
+            "linecolor is deprecated in favor of edgecolor. "
+            "edgecolor takes precedence when both are provided.",
+            FutureWarning,
+            stacklevel=2,
+        )
+    if edgecolor is not None:
+        linecolor = edgecolor
+
     # Validate side parameter
     if side not in ("both", "left", "right"):
         raise ValueError(f"side must be 'both', 'left', or 'right', got '{side}'")
@@ -253,6 +269,7 @@ def violinplot(
         handles = create_legend_handles(
             labels=list(palette.keys()) if isinstance(palette, dict) else None,
             colors=list(palette.values()) if isinstance(palette, dict) else None,
+            edgecolors=[edgecolor] * len(palette) if edgecolor and isinstance(palette, dict) else None,
             alpha=alpha,
             linewidth=linewidth,
         )
