@@ -1220,12 +1220,18 @@ class LegendBuilder:
         else:
             total_height_actual = cbar_height
 
-        # Capture position BEFORE advancing the cursor for the colorbar.
+        # Colorbar top sits below the title (if any) by title_height + title_pad.
+        # The layout cursor still points at the title position, so we compute
+        # the colorbar's offset explicitly before advancing.
         placement_x_mm = self._layout.current_x
-        # mm_y_from_top is tracked directly in the layout.
-        mm_y_from_top = self._layout.current_y_from_top
+        if title_position == "top" and label:
+            mm_y_from_top = (
+                self._layout.current_y_from_top + title_height_actual + title_pad
+            )
+        else:
+            mm_y_from_top = self._layout.current_y_from_top
 
-        # Update layout cursor
+        # Update layout cursor past the full title+colorbar block.
         self._layout.update_width(actual_width)
         self._layout.advance_y(total_height_actual)
 
