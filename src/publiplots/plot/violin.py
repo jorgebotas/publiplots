@@ -259,6 +259,14 @@ def violinplot(
         is_vertical = is_categorical(data[x])
         _side_clip_violin(tracker, side, is_vertical, inner)
 
+    # Override edge color on the violin PolyCollections. Seaborn's linecolor
+    # only colors its inner stat lines; the FillBetweenPolyCollection edges
+    # otherwise keep the palette color and ignore our edgecolor request.
+    if edgecolor is not None:
+        for coll in tracker.get_new_collections():
+            if isinstance(coll, FillBetweenPolyCollection):
+                coll.set_edgecolors(edgecolor)
+
     # Apply transparency only to new violin collections
     tracker.apply_transparency(on="collections", face_alpha=alpha)
 

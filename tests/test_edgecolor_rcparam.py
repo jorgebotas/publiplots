@@ -101,3 +101,32 @@ def test_scatterplot_rcparam_applies():
         assert len(edges) > 0
         for edge in edges:
             assert tuple(edge) == red
+
+
+def test_violinplot_rcparam_applies_to_cloud_polys():
+    """violinplot cloud PolyCollections respect rcParams['edgecolor'].
+
+    Regression guard: seaborn's linecolor kwarg colors inner stat lines only;
+    the FillBetweenPolyCollection edges keep the palette color unless we
+    override them explicitly in violinplot's post-processing.
+    """
+    from matplotlib.collections import FillBetweenPolyCollection
+
+    pp.rcParams["edgecolor"] = "red"
+    data = pd.DataFrame({
+        "group": pd.Categorical(np.repeat(["A", "B"], 30)),
+        "value": np.concatenate([np.random.RandomState(0).randn(30),
+                                  np.random.RandomState(1).randn(30)]),
+    })
+    fig, ax = plt.subplots()
+    pp.violinplot(data=data, x="group", y="value", hue="group",
+                  palette="pastel", ax=ax)
+    red = to_rgba("red")
+    poly_collections = [c for c in ax.collections
+                        if isinstance(c, FillBetweenPolyCollection)]
+    assert poly_collections, "expected FillBetweenPolyCollection violin bodies"
+    for coll in poly_collections:
+        edges = coll.get_edgecolors()
+        assert len(edges) > 0
+        for edge in edges:
+            assert tuple(edge) == red
