@@ -52,7 +52,7 @@ plt.show()
 
 # %%
 # Global Override via rcParams
-# ---------------------------
+# ----------------------------
 # Set ``pp.rcParams['edgecolor']`` to apply a single edge color across every
 # plot in the script. This is the recommended way to enforce a consistent
 # publication style without repeating ``edgecolor=`` on every call.
