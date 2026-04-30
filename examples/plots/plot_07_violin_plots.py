@@ -107,7 +107,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Overlay swarm plot on violin plot to show distribution shape and individual data points.
 
-fig, ax = plt.subplots(figsize=(6, 5))
+fig, ax = pp.subplots(axes_size=(80, 65))
 
 # First, create the violin plot
 pp.violinplot(
@@ -160,7 +160,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Compare different inner representations: box, quart, stick, point.
 
-fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+fig, axes = pp.subplots(2, 2, axes_size=(70, 55))
 
 inner_types = ['box', 'quart', 'stick', 'point']
 for ax, inner in zip(axes.flat, inner_types):
@@ -182,7 +182,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~
 # Create one-sided (half) violin plots using the side parameter.
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+fig, axes = pp.subplots(1, 2, axes_size=(70, 60))
 
 # Left-sided violin
 pp.violinplot(

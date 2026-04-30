@@ -36,7 +36,7 @@ hatch_mode_data = pd.DataFrame({
 })
 
 # Create figure comparing different hatch modes
-fig, axes = plt.subplots(2, 2, figsize=(10, 8), sharex=True, sharey=True)
+fig, axes = pp.subplots(2, 2, axes_size=(70, 55), sharex=True, sharey=True)
 kwargs = dict(
     data=hatch_mode_data,
     x='sample',

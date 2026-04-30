@@ -122,7 +122,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Control which side the cloud appears on.
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+fig, axes = pp.subplots(1, 2, axes_size=(70, 60))
 
 # Cloud on the left
 pp.raincloudplot(
