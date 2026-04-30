@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**00:02.560** total execution time for 14 files **from all galleries**:
+**00:02.202** total execution time for 14 files **from all galleries**:
 
 .. container::
 
@@ -33,7 +33,7 @@ Computation times
      - Time
      - Mem (MB)
    * - :ref:`sphx_glr_auto_examples_plot_14_edgecolor_control.py` (``../../examples/plots/plot_14_edgecolor_control.py``)
-     - 00:02.560
+     - 00:02.202
      - 0.0
    * - :ref:`sphx_glr_auto_examples_plot_01_bar_plots.py` (``../../examples/plots/plot_01_bar_plots.py``)
      - 00:00.000

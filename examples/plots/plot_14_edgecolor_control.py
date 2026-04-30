@@ -51,7 +51,6 @@ pp.barplot(
     title='Default: edges match palette',
     ax=ax,
 )
-plt.tight_layout()
 plt.show()
 
 # %%
@@ -74,7 +73,6 @@ pp.barplot(
     title="rcParams['edgecolor'] = 'black'",
     ax=ax,
 )
-plt.tight_layout()
 plt.show()
 
 # %%
@@ -106,7 +104,6 @@ pp.scatterplot(
     data=mixed_data, x='group', y='value', hue='group',
     palette='pastel', title='Scatter', ax=axes[2],
 )
-plt.tight_layout()
 plt.show()
 
 # %%
@@ -153,7 +150,6 @@ pp.raincloudplot(
     title="rcParams['edgecolor'] = 'black'",
     ax=axes[1],
 )
-plt.tight_layout()
 plt.show()
 
 # %%
@@ -184,7 +180,6 @@ pp.barplot(
     title="edgecolor='#c0392b' (per-call)",
     ax=axes[1],
 )
-plt.tight_layout()
 plt.show()
 
 # %%
@@ -205,7 +200,6 @@ pp.barplot(
     title="Back to default (None = auto)",
     ax=ax,
 )
-plt.tight_layout()
 plt.show()
 
 # Restore the global alpha default.
