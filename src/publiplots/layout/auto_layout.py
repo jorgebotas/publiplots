@@ -119,23 +119,12 @@ class SubplotsAutoLayout:
     def _needs_update(self, measured: dict) -> bool:
         for side, new_val in measured.items():
             current = getattr(self._layout, side)
-            # Only update if the new measurement requires more space
-            if new_val > current + _UPDATE_THRESHOLD_MM:
+            if abs(new_val - current) >= _UPDATE_THRESHOLD_MM:
                 return True
         return False
 
     def _apply(self, measured: dict) -> None:
-        # Only grow reservations, never shrink them
-        updates = {}
-        for side, new_val in measured.items():
-            current = getattr(self._layout, side)
-            if new_val > current + _UPDATE_THRESHOLD_MM:
-                updates[side] = new_val
-
-        if not updates:
-            return
-
-        new_layout = self._layout.with_updated_reservations(**updates)
+        new_layout = self._layout.with_updated_reservations(**measured)
         self._layout = new_layout
         self._fig._publiplots_layout = new_layout
 
