@@ -27,6 +27,14 @@ _ALL_SIDES = {"title_space", "xlabel_space", "ylabel_space", "right"}
 class SubplotsAutoLayout:
     """Per-figure draw-event listener that resizes the figure to fit decorations."""
 
+    # At class scope, define the per-side bbox calculators as a constant:
+    _SIDE_CALCULATORS = {
+        "title_space": lambda ax_bbox, tight: tight.y1 - ax_bbox.y1,
+        "xlabel_space": lambda ax_bbox, tight: ax_bbox.y0 - tight.y0,
+        "ylabel_space": lambda ax_bbox, tight: ax_bbox.x0 - tight.x0,
+        "right": lambda ax_bbox, tight: tight.x1 - ax_bbox.x1,
+    }
+
     def __init__(self, fig, layout: FigureLayout, locked: Set[str]):
         self._fig = fig
         self._layout = layout
@@ -58,62 +66,25 @@ class SubplotsAutoLayout:
             self._updating = False
 
     def _measure(self) -> dict:
-        """Measure max decoration size per side across all axes, in mm."""
+        """Measure max decoration size per unlocked side across all axes, in mm."""
         fig = self._fig
         dpi = fig.dpi
         if dpi <= 0:
             return {}
-        # Collect axes in grid order
         axes_matrix = self._axes_matrix()
         measured: dict = {}
-
-        def _mm(px: float) -> float:
-            return px / dpi * 25.4
-
-        if "title_space" not in self._locked:
-            max_top_px = 0.0
+        for side, calc in self._SIDE_CALCULATORS.items():
+            if side in self._locked:
+                continue
+            max_px = 0.0
             for row in axes_matrix:
                 for ax in row:
                     ax_bbox = ax.get_window_extent()
                     tight = ax.get_tightbbox()
                     if tight is None:
                         continue
-                    max_top_px = max(max_top_px, tight.y1 - ax_bbox.y1)
-            measured["title_space"] = max(_mm(max_top_px), 0.0)
-
-        if "xlabel_space" not in self._locked:
-            max_bot_px = 0.0
-            for row in axes_matrix:
-                for ax in row:
-                    ax_bbox = ax.get_window_extent()
-                    tight = ax.get_tightbbox()
-                    if tight is None:
-                        continue
-                    max_bot_px = max(max_bot_px, ax_bbox.y0 - tight.y0)
-            measured["xlabel_space"] = max(_mm(max_bot_px), 0.0)
-
-        if "ylabel_space" not in self._locked:
-            max_left_px = 0.0
-            for row in axes_matrix:
-                for ax in row:
-                    ax_bbox = ax.get_window_extent()
-                    tight = ax.get_tightbbox()
-                    if tight is None:
-                        continue
-                    max_left_px = max(max_left_px, ax_bbox.x0 - tight.x0)
-            measured["ylabel_space"] = max(_mm(max_left_px), 0.0)
-
-        if "right" not in self._locked:
-            max_right_px = 0.0
-            for row in axes_matrix:
-                for ax in row:
-                    ax_bbox = ax.get_window_extent()
-                    tight = ax.get_tightbbox()
-                    if tight is None:
-                        continue
-                    max_right_px = max(max_right_px, tight.x1 - ax_bbox.x1)
-            measured["right"] = max(_mm(max_right_px), 0.0)
-
+                    max_px = max(max_px, calc(ax_bbox, tight))
+            measured[side] = max(max_px / dpi * 25.4, 0.0)
         return measured
 
     def _needs_update(self, measured: dict) -> bool:
