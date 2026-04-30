@@ -19,6 +19,10 @@ import matplotlib.pyplot as plt
 # Set style
 pp.set_notebook_style()
 
+# Use a higher alpha for this example so face colors are vivid — it makes
+# edge colors easier to spot by contrast.
+pp.rcParams['alpha'] = 0.8
+
 # %%
 # Default Behavior: Automatic Edges
 # ---------------------------------
@@ -106,6 +110,53 @@ plt.tight_layout()
 plt.show()
 
 # %%
+# Composite Plots: Raincloud
+# --------------------------
+# Raincloud plots layer a violin (KDE cloud), a box, and a strip of raw points
+# in one figure. Before the rcParam, each layer had to be passed ``edgecolor``
+# individually (or inherit palette edges per layer). Setting the rcParam once
+# gives every sub-artist the same outline, which reads much cleaner for
+# publications — especially across groups sharing a palette.
+
+np.random.seed(21)
+rain_data = pd.DataFrame({
+    'condition': np.repeat(['Control', 'Low Dose', 'High Dose'], 40),
+    'response': np.concatenate([
+        np.random.normal(50, 8, 40),
+        np.random.normal(62, 10, 40),
+        np.random.normal(78, 9, 40),
+    ]),
+})
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
+
+# Left: palette-driven edges (rcParam temporarily off)
+pp.rcParams['edgecolor'] = None
+pp.raincloudplot(
+    data=rain_data,
+    x='condition',
+    y='response',
+    hue='condition',
+    palette='pastel',
+    title='Auto edges (palette)',
+    ax=axes[0],
+)
+
+# Right: uniform black edges via rcParam
+pp.rcParams['edgecolor'] = 'black'
+pp.raincloudplot(
+    data=rain_data,
+    x='condition',
+    y='response',
+    hue='condition',
+    palette='pastel',
+    title="rcParams['edgecolor'] = 'black'",
+    ax=axes[1],
+)
+plt.tight_layout()
+plt.show()
+
+# %%
 # Per-Call Override
 # -----------------
 # A per-call ``edgecolor=`` argument always wins over the rcParam. Use this
@@ -156,3 +207,6 @@ pp.barplot(
 )
 plt.tight_layout()
 plt.show()
+
+# Restore the global alpha default.
+pp.rcParams['alpha'] = 0.1
