@@ -187,6 +187,7 @@ def pointplot(
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     linestyle = resolve_param("lines.linestyle", linestyle)
+    edgecolor = resolve_param("edgecolor", edgecolor)
     
     if kwargs.pop("join", None) is not None:
         raise DeprecationWarning(

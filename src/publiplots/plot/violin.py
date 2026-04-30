@@ -174,6 +174,7 @@ def violinplot(
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
+    edgecolor = resolve_param("edgecolor", edgecolor)
 
     # Resolve edgecolor vs linecolor (backward compat)
     if edgecolor is not None and linecolor != "auto":
@@ -260,6 +261,17 @@ def violinplot(
 
     # Apply transparency only to new violin collections
     tracker.apply_transparency(on="collections", face_alpha=alpha)
+
+    # Override edge color on the violin PolyCollections. Seaborn's linecolor
+    # only strokes the inner stat lines; the FillBetweenPolyCollection edges
+    # otherwise keep the palette color and ignore our edgecolor request.
+    # This MUST run after apply_transparency — otherwise the transparency
+    # helper sees empty face_colors (fill=False) and falls back to our
+    # edgecolor, turning faces into alpha-dimmed versions of the edge.
+    if edgecolor is not None:
+        for coll in tracker.get_new_collections():
+            if isinstance(coll, FillBetweenPolyCollection):
+                coll.set_edgecolors(edgecolor)
 
     # Add legend if hue is used
     if legend and hue is not None:

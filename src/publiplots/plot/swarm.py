@@ -125,6 +125,7 @@ def swarmplot(
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
+    edgecolor = resolve_param("edgecolor", edgecolor)
 
     # Create figure if not provided
     if ax is None:

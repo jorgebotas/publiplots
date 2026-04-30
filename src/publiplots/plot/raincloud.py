@@ -164,6 +164,7 @@ def raincloudplot(
     linewidth = resolve_param("lines.linewidth", linewidth)
     cloud_alpha = resolve_param("alpha", cloud_alpha)
     color = resolve_param("color", color)
+    edgecolor = resolve_param("edgecolor", edgecolor)
 
     # Resolve palette
     if hue is not None:

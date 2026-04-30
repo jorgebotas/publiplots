@@ -144,6 +144,7 @@ def barplot(
     alpha = resolve_param("alpha", alpha)
     capsize = resolve_param("capsize", capsize)
     color = resolve_param("color", color)
+    edgecolor = resolve_param("edgecolor", edgecolor)
 
     # Create figure if not provided
     if ax is None:

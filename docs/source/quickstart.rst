@@ -202,6 +202,11 @@ Configure global plotting parameters using ``pp.rcParams``:
    pp.rcParams['color'] = '#E67E7E'
    pp.rcParams['alpha'] = 0.3
 
+   # Set a global edge color for patches and marker outlines.
+   # Default is None (each plot picks its own — typically the face color).
+   # Per-call ``edgecolor=`` arguments override the rcParam.
+   pp.rcParams['edgecolor'] = 'black'
+
    # Set figure size
    pp.rcParams['figure.figsize'] = (8, 6)
 

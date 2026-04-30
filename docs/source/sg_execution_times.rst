@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**00:36.501** total execution time for 13 files **from all galleries**:
+**00:02.448** total execution time for 14 files **from all galleries**:
 
 .. container::
 
@@ -32,42 +32,45 @@ Computation times
    * - Example
      - Time
      - Mem (MB)
-   * - :ref:`sphx_glr_auto_examples_plot_10_upset_plots.py` (``../../examples/plots/plot_10_upset_plots.py``)
-     - 00:06.231
-     - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_07_violin_plots.py` (``../../examples/plots/plot_07_violin_plots.py``)
-     - 00:05.659
-     - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_08_raincloud_plots.py` (``../../examples/plots/plot_08_raincloud_plots.py``)
-     - 00:03.406
-     - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_03_pointplot.py` (``../../examples/plots/plot_03_pointplot.py``)
-     - 00:03.299
-     - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_13_heatmap.py` (``../../examples/plots/plot_13_heatmap.py``)
-     - 00:03.268
-     - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_02_scatter_plots.py` (``../../examples/plots/plot_02_scatter_plots.py``)
-     - 00:02.529
-     - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_12_configuration.py` (``../../examples/plots/plot_12_configuration.py``)
-     - 00:02.508
-     - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_11_hatch_patterns.py` (``../../examples/plots/plot_11_hatch_patterns.py``)
-     - 00:01.983
+   * - :ref:`sphx_glr_auto_examples_plot_14_edgecolor_control.py` (``../../examples/plots/plot_14_edgecolor_control.py``)
+     - 00:02.448
      - 0.0
    * - :ref:`sphx_glr_auto_examples_plot_01_bar_plots.py` (``../../examples/plots/plot_01_bar_plots.py``)
-     - 00:01.892
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_02_scatter_plots.py` (``../../examples/plots/plot_02_scatter_plots.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_03_pointplot.py` (``../../examples/plots/plot_03_pointplot.py``)
+     - 00:00.000
      - 0.0
    * - :ref:`sphx_glr_auto_examples_plot_04_swarm_plots.py` (``../../examples/plots/plot_04_swarm_plots.py``)
-     - 00:01.849
-     - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_06_box_plots.py` (``../../examples/plots/plot_06_box_plots.py``)
-     - 00:01.583
+     - 00:00.000
      - 0.0
    * - :ref:`sphx_glr_auto_examples_plot_05_strip_plots.py` (``../../examples/plots/plot_05_strip_plots.py``)
-     - 00:01.297
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_06_box_plots.py` (``../../examples/plots/plot_06_box_plots.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_07_violin_plots.py` (``../../examples/plots/plot_07_violin_plots.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_08_raincloud_plots.py` (``../../examples/plots/plot_08_raincloud_plots.py``)
+     - 00:00.000
      - 0.0
    * - :ref:`sphx_glr_auto_examples_plot_09_venn_diagrams.py` (``../../examples/plots/plot_09_venn_diagrams.py``)
-     - 00:00.999
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_10_upset_plots.py` (``../../examples/plots/plot_10_upset_plots.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_11_heatmap.py` (``../../examples/plots/plot_11_heatmap.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_12_hatch_patterns.py` (``../../examples/plots/plot_12_hatch_patterns.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_plot_13_configuration.py` (``../../examples/plots/plot_13_configuration.py``)
+     - 00:00.000
      - 0.0

@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 print("PubliPlots Custom Parameters:")
 print(f"  Default color: {pp.rcParams['color']}")
 print(f"  Default alpha: {pp.rcParams['alpha']}")
+print(f"  Default edgecolor: {pp.rcParams['edgecolor']}")
 print(f"  Default capsize: {pp.rcParams['capsize']}")
 print(f"  Hatch mode: {pp.rcParams['hatch_mode']}")
 
