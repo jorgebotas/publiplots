@@ -40,6 +40,8 @@ from publiplots.utils.validation import (
     check_required_columns,
 )
 
+from publiplots.utils.legend_layout import LegendLayout  # internal; not in __all__
+
 from publiplots.utils.fonts import (
     _register_fonts,
     list_registered_fonts,
