@@ -24,9 +24,9 @@ _MM2INCH = 1 / 25.4
 _DISPLACEMENT_WARNING = (
     "A LegendBuilder element was displaced by a layout change "
     "(likely plt.tight_layout() or fig.subplots_adjust). "
-    "publiplots enables constrained_layout in set_notebook_style() and "
-    "set_publication_style() — using those avoids this issue. The element "
-    "was re-anchored automatically; rendered output is correct."
+    "For deterministic subplot geometry, use pp.subplots(axes_size=...) — "
+    "declared axes dimensions stay fixed and the figure grows around them. "
+    "The element was re-anchored automatically; rendered output is correct."
 )
 
 
@@ -97,7 +97,12 @@ class LayoutReactor:
         self._updating = True
         try:
             any_displaced = self._refresh_all()
-            if any_displaced and not self._warned and not self._has_constrained_layout():
+            if (
+                any_displaced
+                and not self._warned
+                and not self._has_constrained_layout()
+                and not self._has_publiplots_auto_layout()
+            ):
                 warnings.warn(_DISPLACEMENT_WARNING, UserWarning, stacklevel=2)
                 self._warned = True
         finally:
@@ -151,6 +156,10 @@ class LayoutReactor:
         if engine is None:
             return False
         return type(engine).__name__ == "ConstrainedLayoutEngine"
+
+    def _has_publiplots_auto_layout(self) -> bool:
+        """True when pp.subplots() owns this figure — axes repositioning is expected."""
+        return getattr(self._fig, "_publiplots_auto_layout", None) is not None
 
 
 def _bboxes_equal(a, b, tol_frac: float = 3e-4) -> bool:

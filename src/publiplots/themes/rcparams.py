@@ -129,8 +129,8 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     "subplots.xlabel_space": 8,   # reserved below each row
     "subplots.ylabel_space": 10,  # reserved left of each col
     "subplots.right": 2,          # reserved right of each col
-    "subplots.hspace": 8,         # vertical gap between rows
-    "subplots.wspace": 10,        # horizontal gap between cols
+    "subplots.hspace": 3,         # vertical gap between rows (on top of per-cell title/xlabel reservations)
+    "subplots.wspace": 3,         # horizontal gap between cols (on top of per-cell ylabel/right reservations)
     "subplots.outer_pad": 2,      # figure outer margin (all sides)
 }
 """

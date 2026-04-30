@@ -67,8 +67,11 @@ def subplots(
         Gaps and outer margin in mm. ``None`` falls back to rcParams.
         Never auto-measured.
     legend_column : float, default 0
-        Extra width reserved on the far right (e.g., for
-        ``pp.legend_group``). Never auto-measured — opt-in only.
+        Extra width reserved on the far right of the figure (outside the
+        grid, applied once — not per-cell). Intended for a single unified
+        ``pp.legend_group`` anchored to the rightmost axes. Never
+        auto-measured — opt-in only. Future: legend-width awareness will
+        compute this automatically from registered legend content.
     **fig_kw
         Forwarded to ``plt.figure``. ``figsize`` is rejected; layout-
         engine kwargs are ignored with a warning.

@@ -48,8 +48,8 @@ NOTEBOOK_STYLE = {
     "subplots.title_space": 8,
     "subplots.xlabel_space": 12,
     "subplots.ylabel_space": 14,
-    "subplots.hspace": 12,
-    "subplots.wspace": 14,
+    "subplots.hspace": 4,
+    "subplots.wspace": 4,
     "subplots.outer_pad": 3,
 }
 """
