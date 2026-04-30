@@ -1143,6 +1143,18 @@ class LegendBuilder:
             # Measure actual title dimensions
             title_width_actual, title_height_actual = self._measure_object_dimensions(title_obj)
 
+            # Register the title with the reactor so it follows axes changes
+            # (otherwise the colorbar would reposition but the title would stay pinned).
+            title_x_mm = self._layout.current_x
+            title_y_mm = self._layout.current_y
+            axes_height_mm = self._get_axes_height()
+            self._reactor.register(
+                ax=self.ax,
+                artist=title_obj,
+                mm_x_from_right=title_x_mm,
+                mm_y_from_top=axes_height_mm - title_y_mm,
+            )
+
             # Position colorbar below measured title
             cbar_y_start = self._layout.current_y - title_height_actual - title_pad
         else:

@@ -116,6 +116,8 @@ class LayoutReactor:
         return any_displaced
 
     def _update_artist_anchor(self, reg: _Registration) -> None:
+        from matplotlib.text import Text
+
         fig = self._fig
         ax_pos = reg.ax.get_position()
         fig_extent = fig.get_window_extent()
@@ -130,6 +132,14 @@ class LayoutReactor:
             w_frac = (reg.mm_width * _MM2INCH * fig.dpi) / fig_extent.width
             h_frac = (reg.mm_height * _MM2INCH * fig.dpi) / fig_extent.height
             reg.artist.ax.set_position([new_x, new_y - h_frac, w_frac, h_frac])
+            return
+
+        # Text path — figure-level text (e.g., colorbar titles added via fig.text).
+        # set_position takes (x, y) in the text's current transform; since we pin
+        # these via transform=fig.transFigure at creation time, figure fractions
+        # are correct here.
+        if isinstance(reg.artist, Text):
+            reg.artist.set_position((new_x, new_y))
             return
 
         # Legend path.
