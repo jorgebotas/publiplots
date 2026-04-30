@@ -168,17 +168,17 @@ def _make_fig_with_layout(layout, ncells=None):
     return fig, axes
 
 
-def test_auto_layout_resizes_figure_for_title():
+def test_auto_layout_grows_title_space_for_title():
     layout = _make_layout(nrows=1, ncols=1, title_space=1.0)  # deliberately too small
     fig, axes = _make_fig_with_layout(layout)
     ax = axes[0][0]
     ax.set_title("A title that needs more vertical room than 1 mm")
     reactor = SubplotsAutoLayout(fig, layout, locked=set())
-    initial_h_mm = fig.get_figheight() / MM2INCH
     fig.canvas.draw()
-    final_h_mm = fig.get_figheight() / MM2INCH
-    assert final_h_mm > initial_h_mm, (
-        f"figure should have grown; initial {initial_h_mm:.2f} mm, final {final_h_mm:.2f} mm"
+    # With bidirectional updates, the figure-height proxy is noisy (other
+    # sides may shrink), so assert directly on the reservation we care about.
+    assert reactor._layout.title_space > 1.0, (
+        f"title_space should have grown past 1.0 mm, got {reactor._layout.title_space:.2f}"
     )
 
 
@@ -206,13 +206,11 @@ def test_auto_layout_locked_side_not_remeasured():
     layout = _make_layout(title_space=25.0)  # locked oversize reservation
     fig, axes = _make_fig_with_layout(layout)
     axes[0][0].set_title("tiny")  # way less than 25 mm
-    initial_h_mm = fig.get_figheight() / MM2INCH
-    SubplotsAutoLayout(fig, layout, locked={"title_space"})
+    reactor = SubplotsAutoLayout(fig, layout, locked={"title_space"})
     fig.canvas.draw()
-    final_h_mm = fig.get_figheight() / MM2INCH
-    # Locked → height should not shrink (only allow growth from auto-measured sides)
-    assert final_h_mm >= initial_h_mm - 0.5, (
-        f"locked side should not shrink figure; {initial_h_mm:.2f} -> {final_h_mm:.2f} mm"
+    # Locked reservation must stay pinned regardless of measured decoration size.
+    assert reactor._layout.title_space == 25.0, (
+        f"locked title_space should remain 25.0 mm, got {reactor._layout.title_space:.2f}"
     )
 
 
