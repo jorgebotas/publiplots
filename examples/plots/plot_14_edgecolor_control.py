@@ -91,11 +91,10 @@ mixed_data = pd.DataFrame({
     ]),
 })
 
-# Wider figure with subplots_adjust to reserve ~12% on the right for the
-# unified legend column. publiplots leaves the matplotlib layout engine off
-# by default, so manual subplots_adjust works as expected.
-fig, axes = plt.subplots(1, 3, figsize=(14, 3))
-fig.subplots_adjust(left=0.05, right=0.88, wspace=0.25)
+# pp.subplots declares axes dimensions in mm and extends the figure to
+# accommodate decorations. legend_column=30 reserves a 30 mm strip on
+# the right for the unified legend; pp.legend_group lands in that strip.
+fig, axes = pp.subplots(1, 3, axes_size=(45, 30), legend_column=30)
 pp.barplot(
     data=mixed_data, x='group', y='value', hue='group',
     palette='pastel', errorbar='se', title='Bar', ax=axes[0], legend=False,
@@ -149,8 +148,7 @@ rain_data = pd.DataFrame({
     ]),
 })
 
-fig, axes = plt.subplots(1, 2, figsize=(13, 4), sharey=True)
-fig.subplots_adjust(left=0.06, right=0.85, wspace=0.1)
+fig, axes = pp.subplots(1, 2, axes_size=(55, 50), sharey=True, legend_column=30)
 
 # Left: palette-driven edges (rcParam temporarily off)
 pp.rcParams['edgecolor'] = None
