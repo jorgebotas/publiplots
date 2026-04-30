@@ -144,3 +144,101 @@ def test_figure_layout_row_zero_is_top():
     y0_mid = layout.axes_position(1, 0)[1]
     y0_bot = layout.axes_position(2, 0)[1]
     assert y0_top > y0_mid > y0_bot
+
+
+# ---------------------------------------------------------------------------
+# SubplotsAutoLayout — draw-event hook
+# ---------------------------------------------------------------------------
+from publiplots.layout.auto_layout import SubplotsAutoLayout
+
+MM2INCH = 1 / 25.4
+
+
+def _make_fig_with_layout(layout, ncells=None):
+    """Build a matplotlib figure with axes placed per the layout. Returns (fig, axes_matrix)."""
+    W, H = layout.figure_size()
+    fig = plt.figure(figsize=(W * MM2INCH, H * MM2INCH), layout=None)
+    axes = []
+    for r in range(layout.nrows):
+        row = []
+        for c in range(layout.ncols):
+            ax = fig.add_axes(layout.axes_position(r, c))
+            row.append(ax)
+        axes.append(row)
+    return fig, axes
+
+
+def test_auto_layout_resizes_figure_for_title():
+    layout = _make_layout(nrows=1, ncols=1, title_space=1.0)  # deliberately too small
+    fig, axes = _make_fig_with_layout(layout)
+    ax = axes[0][0]
+    ax.set_title("A title that needs more vertical room than 1 mm")
+    reactor = SubplotsAutoLayout(fig, layout, locked=set())
+    initial_h_mm = fig.get_figheight() / MM2INCH
+    fig.canvas.draw()
+    final_h_mm = fig.get_figheight() / MM2INCH
+    assert final_h_mm > initial_h_mm, (
+        f"figure should have grown; initial {initial_h_mm:.2f} mm, final {final_h_mm:.2f} mm"
+    )
+
+
+def test_auto_layout_preserves_axes_size_after_resize():
+    declared_w, declared_h = 50.0, 30.0
+    layout = _make_layout(axes_size=(declared_w, declared_h))
+    fig, axes = _make_fig_with_layout(layout)
+    ax = axes[0][0]
+    ax.set_title("A title")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    SubplotsAutoLayout(fig, layout, locked=set())
+    fig.canvas.draw()
+
+    # Actual axes bbox in mm
+    pos = ax.get_position()
+    fig_w_in, fig_h_in = fig.get_size_inches()
+    ax_w_mm = pos.width * fig_w_in / MM2INCH
+    ax_h_mm = pos.height * fig_h_in / MM2INCH
+    assert ax_w_mm == pytest.approx(declared_w, abs=0.5)
+    assert ax_h_mm == pytest.approx(declared_h, abs=0.5)
+
+
+def test_auto_layout_locked_side_not_remeasured():
+    layout = _make_layout(title_space=25.0)  # locked oversize reservation
+    fig, axes = _make_fig_with_layout(layout)
+    axes[0][0].set_title("tiny")  # way less than 25 mm
+    initial_h_mm = fig.get_figheight() / MM2INCH
+    SubplotsAutoLayout(fig, layout, locked={"title_space"})
+    fig.canvas.draw()
+    final_h_mm = fig.get_figheight() / MM2INCH
+    # Locked → height should not shrink (only allow growth from auto-measured sides)
+    assert final_h_mm >= initial_h_mm - 0.5, (
+        f"locked side should not shrink figure; {initial_h_mm:.2f} -> {final_h_mm:.2f} mm"
+    )
+
+
+def test_auto_layout_no_hook_when_all_sides_locked():
+    layout = _make_layout()
+    fig, _ = _make_fig_with_layout(layout)
+    all_sides = {"title_space", "xlabel_space", "ylabel_space", "right"}
+    reactor = SubplotsAutoLayout(fig, layout, locked=all_sides)
+    # No draw-event callback should be connected
+    assert reactor._cid is None
+
+
+def test_auto_layout_second_draw_no_change_within_threshold():
+    layout = _make_layout()
+    fig, axes = _make_fig_with_layout(layout)
+    axes[0][0].set_title("stable")
+    SubplotsAutoLayout(fig, layout, locked=set())
+    fig.canvas.draw()
+    size_after_first = fig.get_size_inches().copy()
+    fig.canvas.draw()
+    size_after_second = fig.get_size_inches()
+    assert np.allclose(size_after_first, size_after_second, atol=1e-4)
+
+
+def test_auto_layout_attaches_layout_to_figure():
+    layout = _make_layout()
+    fig, _ = _make_fig_with_layout(layout)
+    SubplotsAutoLayout(fig, layout, locked=set())
+    assert getattr(fig, "_publiplots_layout", None) is layout

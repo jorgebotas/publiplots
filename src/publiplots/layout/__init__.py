@@ -1,5 +1,6 @@
 """publiplots layout engine — fixed-axes, flexible-canvas helpers."""
 
 from publiplots.layout.figure_layout import FigureLayout
+from publiplots.layout.auto_layout import SubplotsAutoLayout
 
-__all__ = ["FigureLayout"]
+__all__ = ["FigureLayout", "SubplotsAutoLayout"]
