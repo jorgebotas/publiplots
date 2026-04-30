@@ -44,6 +44,11 @@ NOTEBOOK_STYLE = {
     "lines.markersize": 6,
     "lines.markeredgewidth": 2.0,
     "patch.linewidth": 2.0,
+    # Layout engine: constrained_layout handles legends outside axes and
+    # colorbars correctly, avoiding the tight_layout displacement problem.
+    "figure.constrained_layout.use": True,
+    "figure.constrained_layout.h_pad": 0.04,
+    "figure.constrained_layout.w_pad": 0.04,
 }
 """
 Notebook-ready style optimized for interactive work and exploration.
@@ -68,6 +73,11 @@ PUBLICATION_STYLE = {
     "ytick.major.width": 0.75,
     "figure.dpi": 600,
     "savefig.dpi": 600,
+    # Layout engine: constrained_layout handles legends outside axes and
+    # colorbars correctly, avoiding the tight_layout displacement problem.
+    "figure.constrained_layout.use": True,
+    "figure.constrained_layout.h_pad": 0.04,
+    "figure.constrained_layout.w_pad": 0.04,
 }
 """
 Publication-ready style optimized for final publication figures.

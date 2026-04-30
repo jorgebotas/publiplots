@@ -98,3 +98,21 @@ def test_colorbar_title_follows_axes_after_tight_layout():
     title_vs_cbar_delta = final_title_pos[0] - final_cbar_x
     initial_delta = initial_title_pos[0] - initial_cbar_x
     assert abs(title_vs_cbar_delta - initial_delta) < 3e-3
+
+
+def test_set_notebook_style_enables_constrained_layout():
+    """publiplots styles opt users into constrained_layout by default."""
+    pp.set_notebook_style()
+    try:
+        assert matplotlib.rcParams["figure.constrained_layout.use"] is True
+    finally:
+        pp.reset_style()
+
+
+def test_set_publication_style_enables_constrained_layout():
+    """Publication style also enables constrained_layout."""
+    pp.set_publication_style()
+    try:
+        assert matplotlib.rcParams["figure.constrained_layout.use"] is True
+    finally:
+        pp.reset_style()
