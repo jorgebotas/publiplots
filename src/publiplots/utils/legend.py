@@ -700,7 +700,7 @@ class LegendBuilder:
         ----------
         ax : Axes
             Axes the legend/colorbar artist is attached to (for picking,
-            legend_ association, etc.).
+            ``ax.legend_`` association, etc.).
         anchor_ax : Axes, optional
             Axes whose right edge is used as the origin for mm-based
             placement math and for reactor registration. Defaults to `ax`.
@@ -1024,15 +1024,15 @@ class LegendBuilder:
         # Capture position BEFORE advancing the cursor — this is where the
         # legend was actually placed, and what the reactor needs.
         placement_x_mm = self._layout.current_x
-        placement_y_mm = self._layout.current_y
+        # mm_y_from_top is tracked directly in the layout (stable across
+        # axes height changes from constrained_layout etc).
+        mm_y_from_top = self._layout.current_y_from_top
 
         # Update layout cursor for the next element
         self._layout.update_width(width)
         self._layout.advance_y(height)
 
         # Register with the reactor so the anchor follows axes changes.
-        axes_height_mm = self._get_axes_height()
-        mm_y_from_top = axes_height_mm - placement_y_mm
         self._reactor.register(
             ax=self._anchor_ax,
             artist=legend,
@@ -1160,13 +1160,12 @@ class LegendBuilder:
             # Register the title with the reactor so it follows axes changes
             # (otherwise the colorbar would reposition but the title would stay pinned).
             title_x_mm = self._layout.current_x
-            title_y_mm = self._layout.current_y
-            axes_height_mm = self._get_axes_height()
+            title_mm_y_from_top = self._layout.current_y_from_top
             self._reactor.register(
                 ax=self._anchor_ax,
                 artist=title_obj,
                 mm_x_from_right=title_x_mm,
-                mm_y_from_top=axes_height_mm - title_y_mm,
+                mm_y_from_top=title_mm_y_from_top,
             )
 
             # Position colorbar below measured title
@@ -1221,11 +1220,10 @@ class LegendBuilder:
         else:
             total_height_actual = cbar_height
 
-        # Capture position BEFORE advancing the cursor — the colorbar's left
-        # edge is at self._layout.current_x (reactor expects mm_x_from_right
-        # as the DISTANCE, not the final coord; same as legend).
+        # Capture position BEFORE advancing the cursor for the colorbar.
         placement_x_mm = self._layout.current_x
-        placement_y_mm_top = cbar_y_start  # top of the colorbar itself
+        # mm_y_from_top is tracked directly in the layout.
+        mm_y_from_top = self._layout.current_y_from_top
 
         # Update layout cursor
         self._layout.update_width(actual_width)
@@ -1234,8 +1232,6 @@ class LegendBuilder:
         # Register with the reactor. Colorbars need mm_width + mm_height so
         # the reactor dispatches to cbar.ax.set_position instead of
         # set_bbox_to_anchor (Colorbar doesn't implement set_bbox_to_anchor).
-        axes_height_mm = self._get_axes_height()
-        mm_y_from_top = axes_height_mm - placement_y_mm_top
         self._reactor.register(
             ax=self._anchor_ax,
             artist=cbar,

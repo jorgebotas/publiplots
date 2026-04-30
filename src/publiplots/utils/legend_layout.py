@@ -50,6 +50,7 @@ class LegendLayout:
     current_column_width: float = field(init=False, default=0.0)
     columns: List[float] = field(init=False, default_factory=list)
     _column_top_y: float = field(init=False, default=0.0)
+    _y_from_top_mm: float = field(init=False, default=0.0)
 
     def reset_to(self, axes_height_mm: float) -> None:
         """Reset the cursor. Called at builder init and after axes resize."""
@@ -61,6 +62,10 @@ class LegendLayout:
         self._column_top_y = top_y
         self.current_column_width = 0.0
         self.columns = []
+        # mm offset from axes top — starts at vpad for the first element.
+        # Unlike current_y, this does NOT depend on axes_height_mm, so it's
+        # stable across layout changes.
+        self._y_from_top_mm: float = self.vpad
 
     def check_overflow(self, required_height: float) -> bool:
         """True if an element of this height would overflow the current column."""
@@ -72,12 +77,19 @@ class LegendLayout:
         self.current_x += self.current_column_width + self.column_spacing
         self.current_column_width = 0.0
         self.current_y = self._column_top_y
+        self._y_from_top_mm = self.vpad  # reset for new column
 
     def advance_y(self, element_height: float) -> None:
         """Move cursor down by element_height + gap."""
         self.current_y -= element_height + self.gap
+        self._y_from_top_mm += element_height + self.gap
 
     def update_width(self, element_width: float) -> None:
         """Grow current column width to at least this value (never shrinks)."""
         if element_width > self.current_column_width:
             self.current_column_width = element_width
+
+    @property
+    def current_y_from_top(self) -> float:
+        """mm offset of the current cursor from the axes top (stable across layout)."""
+        return self._y_from_top_mm

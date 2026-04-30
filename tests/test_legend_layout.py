@@ -93,3 +93,41 @@ def test_zero_width_elements_do_not_corrupt_state():
     layout.advance_y(0)
     layout.start_new_column()
     assert layout.columns == [0]
+
+
+def test_current_y_from_top_starts_at_vpad():
+    layout = LegendLayout(vpad=5, gap=2)
+    layout.reset_to(axes_height_mm=80.0)
+    assert layout.current_y_from_top == 5
+
+
+def test_current_y_from_top_advances_correctly():
+    layout = LegendLayout(vpad=5, gap=2)
+    layout.reset_to(axes_height_mm=80.0)
+    layout.advance_y(10.0)
+    assert layout.current_y_from_top == 5 + 10 + 2  # vpad + height + gap
+    layout.advance_y(3.0)
+    assert layout.current_y_from_top == 5 + 10 + 2 + 3 + 2
+
+
+def test_current_y_from_top_is_independent_of_axes_height():
+    """The bug fix: y_from_top must not change when axes height changes."""
+    layout1 = LegendLayout(vpad=5)
+    layout1.reset_to(axes_height_mm=80.0)
+    layout1.advance_y(10.0)
+    y1 = layout1.current_y_from_top
+
+    layout2 = LegendLayout(vpad=5)
+    layout2.reset_to(axes_height_mm=40.0)  # half the height
+    layout2.advance_y(10.0)
+    y2 = layout2.current_y_from_top
+    assert y1 == y2
+
+
+def test_current_y_from_top_resets_on_new_column():
+    layout = LegendLayout(vpad=5, gap=2)
+    layout.reset_to(axes_height_mm=80.0)
+    layout.advance_y(10.0)
+    assert layout.current_y_from_top > 5
+    layout.start_new_column()
+    assert layout.current_y_from_top == 5
