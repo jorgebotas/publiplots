@@ -240,3 +240,154 @@ def test_auto_layout_attaches_layout_to_figure():
     fig, _ = _make_fig_with_layout(layout)
     SubplotsAutoLayout(fig, layout, locked=set())
     assert getattr(fig, "_publiplots_layout", None) is layout
+
+
+# ---------------------------------------------------------------------------
+# pp.subplots() — public API
+# ---------------------------------------------------------------------------
+from matplotlib.axes import Axes as _Axes
+from matplotlib.figure import Figure as _Figure
+
+
+def test_subplots_scalar_axes_size_coerced_to_tuple():
+    fig, ax = pp.subplots(axes_size=30)
+    assert fig._publiplots_layout.axes_size == (30.0, 30.0)
+
+
+def test_subplots_rejects_figsize_kwarg():
+    with pytest.raises(TypeError, match="axes_size"):
+        pp.subplots(axes_size=(50, 30), figsize=(5, 3))
+
+
+def test_subplots_warns_on_layout_engine_kwarg():
+    with pytest.warns(UserWarning, match="publiplots manages layout"):
+        fig, ax = pp.subplots(axes_size=(50, 30), constrained_layout=True)
+    assert fig.get_layout_engine() is None
+
+
+def test_subplots_disables_layout_engine():
+    fig, ax = pp.subplots(axes_size=(50, 30))
+    assert fig.get_layout_engine() is None
+
+
+def test_subplots_squeeze_returns_scalar_for_1x1():
+    fig, ax = pp.subplots(axes_size=(50, 30))
+    assert isinstance(ax, _Axes)
+
+
+def test_subplots_returns_1d_array_for_single_row():
+    fig, axes = pp.subplots(1, 3, axes_size=(50, 30))
+    assert axes.shape == (3,)
+
+
+def test_subplots_returns_1d_array_for_single_col():
+    fig, axes = pp.subplots(3, 1, axes_size=(50, 30))
+    assert axes.shape == (3,)
+
+
+def test_subplots_returns_2d_array_for_grid():
+    fig, axes = pp.subplots(2, 3, axes_size=(50, 30))
+    assert axes.shape == (2, 3)
+
+
+def test_subplots_attaches_figure_layout_to_fig():
+    fig, _ = pp.subplots(2, 3, axes_size=(50, 30))
+    from publiplots.layout.figure_layout import FigureLayout
+    assert isinstance(fig._publiplots_layout, FigureLayout)
+    assert fig._publiplots_layout.nrows == 2
+    assert fig._publiplots_layout.ncols == 3
+
+
+def test_subplots_validates_nrows():
+    with pytest.raises(ValueError, match="nrows"):
+        pp.subplots(nrows=0, ncols=1, axes_size=(50, 30))
+
+
+def test_subplots_validates_ncols():
+    with pytest.raises(ValueError, match="ncols"):
+        pp.subplots(nrows=1, ncols=0, axes_size=(50, 30))
+
+
+def test_subplots_validates_axes_size_scalar():
+    with pytest.raises(ValueError, match="axes_size"):
+        pp.subplots(axes_size=-5)
+
+
+def test_subplots_validates_axes_size_tuple():
+    with pytest.raises(ValueError, match="axes_size"):
+        pp.subplots(axes_size=(50, 0))
+
+
+def test_subplots_validates_negative_reservation():
+    with pytest.raises(ValueError, match="title_space"):
+        pp.subplots(axes_size=(50, 30), title_space=-1.0)
+
+
+def test_subplots_legend_column_reserves_extra_width():
+    fig_no_col, _ = pp.subplots(axes_size=(50, 30), legend_column=0,
+                                title_space=5, xlabel_space=8,
+                                ylabel_space=10, right=2,
+                                hspace=8, wspace=10, outer_pad=2)
+    fig_with_col, _ = pp.subplots(axes_size=(50, 30), legend_column=30,
+                                  title_space=5, xlabel_space=8,
+                                  ylabel_space=10, right=2,
+                                  hspace=8, wspace=10, outer_pad=2)
+    w_no = fig_no_col.get_figwidth()
+    w_with = fig_with_col.get_figwidth()
+    assert w_with == pytest.approx(w_no + 30 * MM2INCH, abs=1e-3)
+
+
+def test_subplots_sharex_true_shares_all():
+    fig, axes = pp.subplots(2, 3, axes_size=(50, 30), sharex=True)
+    # sharex=True -> every axes shares with (0,0)
+    shared = axes[0, 0].get_shared_x_axes()
+    for r in range(2):
+        for c in range(3):
+            assert shared.joined(axes[0, 0], axes[r, c])
+
+
+def test_subplots_sharex_row_shares_within_row_only():
+    fig, axes = pp.subplots(2, 3, axes_size=(50, 30), sharex="row")
+    shared_top = axes[0, 0].get_shared_x_axes()
+    # Same row is shared
+    assert shared_top.joined(axes[0, 0], axes[0, 2])
+    # Different rows are NOT shared
+    assert not shared_top.joined(axes[0, 0], axes[1, 0])
+
+
+def test_subplots_all_locked_skips_hook():
+    fig, ax = pp.subplots(
+        axes_size=(50, 30),
+        title_space=5, xlabel_space=8, ylabel_space=10, right=2,
+    )
+    assert fig._publiplots_auto_layout._cid is None
+
+
+def test_subplots_any_auto_side_attaches_hook():
+    fig, ax = pp.subplots(
+        axes_size=(50, 30),
+        title_space=5, xlabel_space=8, ylabel_space=10,
+        # right left as auto
+    )
+    assert fig._publiplots_auto_layout._cid is not None
+
+
+def test_subplots_works_with_legend_builder_after_auto_resize():
+    """pp.legend() on a pp.subplots axes should follow the auto-layout resize."""
+    from publiplots.utils.legend import create_legend_handles
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    ax.set_title("A")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    handles = create_legend_handles(labels=["A"], colors=["#5d83c3"],
+                                    alpha=0.2, linewidth=1.0)
+    builder = pp.legend(ax, auto=False)
+    builder.add_legend(handles=handles, label="group")
+    fig.canvas.draw()
+    # Simple sanity: axes bbox in mm matches declared size within tolerance
+    pos = ax.get_position()
+    fig_w_in, fig_h_in = fig.get_size_inches()
+    ax_w_mm = pos.width * fig_w_in / MM2INCH
+    ax_h_mm = pos.height * fig_h_in / MM2INCH
+    assert ax_w_mm == pytest.approx(60.0, abs=0.5)
+    assert ax_h_mm == pytest.approx(40.0, abs=0.5)

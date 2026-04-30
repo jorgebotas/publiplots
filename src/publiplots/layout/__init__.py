@@ -2,5 +2,6 @@
 
 from publiplots.layout.figure_layout import FigureLayout
 from publiplots.layout.auto_layout import SubplotsAutoLayout
+from publiplots.layout.subplots import subplots
 
-__all__ = ["FigureLayout", "SubplotsAutoLayout"]
+__all__ = ["FigureLayout", "SubplotsAutoLayout", "subplots"]
