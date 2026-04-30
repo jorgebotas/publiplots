@@ -132,7 +132,6 @@ pp.swarmplot(
 ax.set_title('Combined Violin and Swarm Plot')
 ax.set_xlabel('Category')
 ax.set_ylabel('Value')
-plt.tight_layout()
 plt.show()
 
 # %%
@@ -176,7 +175,6 @@ for ax, inner in zip(axes.flat, inner_types):
         ylabel='Value',
     )
 
-plt.tight_layout()
 plt.show()
 
 # %%
@@ -216,6 +214,5 @@ pp.violinplot(
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
 
-plt.tight_layout()
 plt.show()
 

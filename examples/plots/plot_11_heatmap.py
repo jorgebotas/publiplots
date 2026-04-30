@@ -250,7 +250,6 @@ fig, ax = pp.heatmap(
         'size_label': '-log10(p-value)',
     },
 )
-plt.tight_layout()
 plt.show()
 
 # %%
