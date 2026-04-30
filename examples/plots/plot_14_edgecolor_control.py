@@ -40,7 +40,7 @@ bar_data = pd.DataFrame({
     ])
 })
 
-fig, ax = plt.subplots(figsize=(5, 3))
+fig, ax = pp.subplots(axes_size=(60, 40))
 pp.barplot(
     data=bar_data,
     x='group',
@@ -62,7 +62,7 @@ plt.show()
 
 pp.rcParams['edgecolor'] = 'black'
 
-fig, ax = plt.subplots(figsize=(5, 3))
+fig, ax = pp.subplots(axes_size=(60, 40))
 pp.barplot(
     data=bar_data,
     x='group',
@@ -198,7 +198,7 @@ plt.show()
 # A per-call ``edgecolor=`` argument always wins over the rcParam. Use this
 # to tweak a single plot without resetting the global default.
 
-fig, axes = plt.subplots(1, 2, figsize=(9, 3))
+fig, axes = pp.subplots(1, 2, axes_size=(55, 35))
 pp.barplot(
     data=bar_data,
     x='group',
@@ -229,7 +229,7 @@ plt.show()
 
 pp.rcParams['edgecolor'] = None
 
-fig, ax = plt.subplots(figsize=(5, 3))
+fig, ax = pp.subplots(axes_size=(60, 40))
 pp.barplot(
     data=bar_data,
     x='group',
