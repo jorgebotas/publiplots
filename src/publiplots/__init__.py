@@ -55,6 +55,7 @@ from publiplots.utils.legend import (
     LegendBuilder,
     legend,
 )
+from publiplots.utils.legend_group import MultiAxesLegendGroup, legend_group
 # Register custom fonts
 from publiplots.utils.fonts import _register_fonts
 _register_fonts()
@@ -123,6 +124,8 @@ __all__ = [
     "create_legend_handles",
     "LegendBuilder",
     "legend",
+    "MultiAxesLegendGroup",
+    "legend_group",
     # Color/palette functions
     "color_palette",
     # Parameter system

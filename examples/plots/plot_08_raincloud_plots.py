@@ -150,7 +150,6 @@ pp.raincloudplot(
     cloud_alpha=0.6,
 )
 
-plt.tight_layout()
 plt.show()
 
 # %%

@@ -294,5 +294,4 @@ ax.axvline(x=placebo_mean, color='red', linestyle=':', linewidth=1.5,
 ax.grid(axis='x', alpha=0.3)
 ax.legend(loc='lower right')
 
-plt.tight_layout()
 plt.show()

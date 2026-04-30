@@ -40,6 +40,9 @@ from publiplots.utils.validation import (
     check_required_columns,
 )
 
+from publiplots.utils.legend_layout import LegendLayout  # internal; not in __all__
+from publiplots.utils.layout_reactor import LayoutReactor  # internal; not in __all__
+
 from publiplots.utils.fonts import (
     _register_fonts,
     list_registered_fonts,
@@ -55,6 +58,8 @@ from publiplots.utils.legend import (
     LegendBuilder,
     legend,
 )
+
+from publiplots.utils.legend_group import MultiAxesLegendGroup, legend_group
 
 from publiplots.utils.offset import (
     offset_lines,
@@ -110,6 +115,8 @@ __all__ = [
     "create_legend_handles",
     "LegendBuilder",
     "legend",
+    "MultiAxesLegendGroup",
+    "legend_group",
     # Transparency functions
     "apply_transparency",
     # Offset functions

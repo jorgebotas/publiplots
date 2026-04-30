@@ -112,7 +112,6 @@ pp.swarmplot(
 ax.set_title('Combined Box and Swarm Plot')
 ax.set_xlabel('Category')
 ax.set_ylabel('Value')
-plt.tight_layout()
 plt.show()
 
 # %%

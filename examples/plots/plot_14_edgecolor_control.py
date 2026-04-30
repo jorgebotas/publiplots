@@ -91,18 +91,37 @@ mixed_data = pd.DataFrame({
     ]),
 })
 
-fig, axes = plt.subplots(1, 3, figsize=(12, 3))
+# Wider figure with subplots_adjust to reserve ~12% on the right for the
+# unified legend column. publiplots leaves the matplotlib layout engine off
+# by default, so manual subplots_adjust works as expected.
+fig, axes = plt.subplots(1, 3, figsize=(14, 3))
+fig.subplots_adjust(left=0.05, right=0.88, wspace=0.25)
 pp.barplot(
     data=mixed_data, x='group', y='value', hue='group',
-    palette='pastel', errorbar='se', title='Bar', ax=axes[0],
+    palette='pastel', errorbar='se', title='Bar', ax=axes[0], legend=False,
 )
 pp.boxplot(
     data=mixed_data, x='group', y='value', hue='group',
-    palette='pastel', title='Box', ax=axes[1],
+    palette='pastel', title='Box', ax=axes[1], legend=False,
 )
 pp.scatterplot(
     data=mixed_data, x='group', y='value', hue='group',
-    palette='pastel', title='Scatter', ax=axes[2],
+    palette='pastel', title='Scatter', ax=axes[2], legend=False,
+)
+
+# One unified legend to the right of the last axes. `pp.legend_group` keeps
+# every entry in a single mm-aligned column anchored to the chosen axes —
+# the right tool when per-axes legends would overlap neighboring subplots.
+group = pp.legend_group(anchor=axes[-1])
+group.add_legend(
+    handles=pp.create_legend_handles(
+        labels=['A', 'B', 'C'],
+        colors=list(pp.color_palette('pastel', 3)),
+        alpha=pp.rcParams['alpha'],
+        linewidth=pp.rcParams['lines.linewidth'],
+        edgecolors=pp.rcParams['edgecolor'],
+    ),
+    label='group',
 )
 plt.show()
 
@@ -130,7 +149,8 @@ rain_data = pd.DataFrame({
     ]),
 })
 
-fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
+fig, axes = plt.subplots(1, 2, figsize=(13, 4), sharey=True)
+fig.subplots_adjust(left=0.06, right=0.85, wspace=0.1)
 
 # Left: palette-driven edges (rcParam temporarily off)
 pp.rcParams['edgecolor'] = None
@@ -142,6 +162,7 @@ pp.raincloudplot(
     palette='pastel',
     title='Auto edges (palette)',
     ax=axes[0],
+    legend=False,
 )
 
 # Right: uniform black edges via rcParam + visible rain-point strokes.
@@ -155,6 +176,21 @@ pp.raincloudplot(
     rain_kws=dict(alpha=0.5, linewidth=0.5),
     title="rcParams['edgecolor'] = 'black'",
     ax=axes[1],
+    legend=False,
+)
+
+# Both panels share the same groups, so one legend to the right of the
+# rightmost axes serves both.
+group = pp.legend_group(anchor=axes[-1])
+group.add_legend(
+    handles=pp.create_legend_handles(
+        labels=['Control', 'Low Dose', 'High Dose'],
+        colors=list(pp.color_palette('pastel', 3)),
+        alpha=pp.rcParams['alpha'],
+        linewidth=pp.rcParams['lines.linewidth'],
+        edgecolors='black',
+    ),
+    label='condition',
 )
 plt.show()
 

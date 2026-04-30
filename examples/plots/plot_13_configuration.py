@@ -191,7 +191,6 @@ pp.barplot(
     ax=axes[1, 1]
 )
 
-plt.tight_layout()
 plt.show()
 
 # %%

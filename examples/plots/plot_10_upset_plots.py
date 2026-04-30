@@ -146,7 +146,6 @@ plt.text(0.5, 0.5, 'UpSet plot shown separately\n(see next figure)',
 plt.axis('off')
 plt.title('UpSet Plot (Better for 5+ Sets)', fontsize=12, fontweight='bold')
 
-plt.tight_layout()
 plt.show()
 
 # Show the UpSet plot
