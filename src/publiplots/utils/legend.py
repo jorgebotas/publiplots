@@ -694,27 +694,23 @@ class LegendBuilder:
         max_width: Optional[float] = None,
     ):
         """Initialize legend builder. All dimensions in millimeters."""
+        from publiplots.utils.legend_layout import LegendLayout
+        from publiplots.utils.layout_reactor import LayoutReactor
+
         self.ax = ax
         self.fig = ax.get_figure()
-
-        # Store parameters (all in mm)
-        self.x_offset = x_offset
-        self.gap = gap
-        self.column_spacing = column_spacing
-        self.vpad = vpad
-        self.max_width = max_width
-
-        # Initialize position tracking (all in mm)
-        self.current_x = x_offset
-        self.current_y = y_offset if y_offset is not None else self._get_axes_height()
-        self.column_start_y = self.current_y
-
-        # Column tracking
-        self.current_column_width = 0
-        self.columns = []  # List of column widths
-
-        # Element storage
-        self.elements = []  # (type, object) tuples
+        self._layout = LegendLayout(
+            x_offset=x_offset,
+            y_offset=y_offset,
+            gap=gap,
+            column_spacing=column_spacing,
+            vpad=vpad,
+            max_width=max_width,
+        )
+        self._layout.reset_to(axes_height_mm=self._get_axes_height())
+        self._reactor = LayoutReactor.get(self.fig)
+        # Element storage: list of (type, object) tuples
+        self.elements = []
 
     # =========================================================================
     # Conversion Utilities
@@ -877,34 +873,12 @@ class LegendBuilder:
     # =========================================================================
 
     def _check_overflow(self, required_height: float) -> bool:
-        """
-        Check if element fits in current column.
-
-        Parameters
-        ----------
-        required_height : float
-            Height needed in millimeters
-
-        Returns
-        -------
-        bool
-            True if overflow (doesn't fit), False if fits
-        """
-        return self.current_y < required_height
+        """Check if element fits in current column."""
+        return self._layout.check_overflow(required_height)
 
     def _start_new_column(self):
         """Create a new column when vertical space exhausted."""
-        # Record current column width
-        self.columns.append(self.current_column_width)
-
-        # Move horizontally
-        self.current_x += self.current_column_width + self.column_spacing
-
-        # Reset vertical position
-        self.current_y = self.column_start_y
-
-        # Reset width tracking
-        self.current_column_width = 0
+        self._layout.start_new_column()
 
     def _adjust_legend_ncol_for_height(
         self,
@@ -998,7 +972,9 @@ class LegendBuilder:
             self._start_new_column()
 
         # Convert current position to figure coordinates
-        x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
+        x_fig, y_fig = self._mm_to_figure_coords(
+            self._layout.current_x, self._layout.current_y
+        )
 
         # Prepare legend kwargs
         legend_kwargs = {
@@ -1031,9 +1007,24 @@ class LegendBuilder:
         # Measure actual dimensions
         width, height = self._measure_object_dimensions(legend)
 
-        # Update position tracking
-        self.current_column_width = max(self.current_column_width, width)
-        self.current_y -= height + self.gap
+        # Capture position BEFORE advancing the cursor — this is where the
+        # legend was actually placed, and what the reactor needs.
+        placement_x_mm = self._layout.current_x
+        placement_y_mm = self._layout.current_y
+
+        # Update layout cursor for the next element
+        self._layout.update_width(width)
+        self._layout.advance_y(height)
+
+        # Register with the reactor so the anchor follows axes changes.
+        axes_height_mm = self._get_axes_height()
+        mm_y_from_top = axes_height_mm - placement_y_mm
+        self._reactor.register(
+            ax=self.ax,
+            artist=legend,
+            mm_x_from_right=placement_x_mm,
+            mm_y_from_top=mm_y_from_top,
+        )
 
         # Store element
         self.elements.append(("legend", legend))
@@ -1139,7 +1130,9 @@ class LegendBuilder:
         # Add title if needed and measure actual height
         title_height_actual = 0
         if title_position == "top" and label:
-            x_fig, y_fig = self._mm_to_figure_coords(self.current_x, self.current_y)
+            x_fig, y_fig = self._mm_to_figure_coords(
+                self._layout.current_x, self._layout.current_y
+            )
             title_obj = self.fig.text(
                 x_fig, y_fig, label,
                 ha="left", va="top",
@@ -1151,13 +1144,13 @@ class LegendBuilder:
             title_width_actual, title_height_actual = self._measure_object_dimensions(title_obj)
 
             # Position colorbar below measured title
-            cbar_y_start = self.current_y - title_height_actual - title_pad
+            cbar_y_start = self._layout.current_y - title_height_actual - title_pad
         else:
-            cbar_y_start = self.current_y
+            cbar_y_start = self._layout.current_y
             title_width_actual = 0
 
         # Create colorbar axes
-        x_fig, y_fig_top = self._mm_to_figure_coords(self.current_x, cbar_y_start)
+        x_fig, y_fig_top = self._mm_to_figure_coords(self._layout.current_x, cbar_y_start)
 
         fig_extent = self.fig.get_window_extent()
         cbar_width_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
@@ -1202,9 +1195,29 @@ class LegendBuilder:
         else:
             total_height_actual = cbar_height
 
-        # Update position tracking
-        self.current_column_width = max(self.current_column_width, actual_width)
-        self.current_y -= total_height_actual + self.gap
+        # Capture position BEFORE advancing the cursor — the colorbar's left
+        # edge is at self._layout.current_x (reactor expects mm_x_from_right
+        # as the DISTANCE, not the final coord; same as legend).
+        placement_x_mm = self._layout.current_x
+        placement_y_mm_top = cbar_y_start  # top of the colorbar itself
+
+        # Update layout cursor
+        self._layout.update_width(actual_width)
+        self._layout.advance_y(total_height_actual)
+
+        # Register with the reactor. Colorbars need mm_width + mm_height so
+        # the reactor dispatches to cbar.ax.set_position instead of
+        # set_bbox_to_anchor (Colorbar doesn't implement set_bbox_to_anchor).
+        axes_height_mm = self._get_axes_height()
+        mm_y_from_top = axes_height_mm - placement_y_mm_top
+        self._reactor.register(
+            ax=self.ax,
+            artist=cbar,
+            mm_x_from_right=placement_x_mm,
+            mm_y_from_top=mm_y_from_top,
+            mm_width=width,        # the mm width parameter of add_colorbar
+            mm_height=cbar_height, # measured mm height (from _measure_object_dimensions)
+        )
 
         # Store elements
         self.elements.append(("colorbar", cbar))
@@ -1262,7 +1275,7 @@ class LegendBuilder:
 
     def get_remaining_height(self) -> float:
         """Get remaining vertical space."""
-        return max(0, self.current_y)
+        return max(0, self._layout.current_y)
 
 
 def _get_legend_data(ax: Axes) -> dict:
