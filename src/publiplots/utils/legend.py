@@ -692,13 +692,27 @@ class LegendBuilder:
         column_spacing: float = 5,
         vpad: float = 5,
         max_width: Optional[float] = None,
+        anchor_ax: Optional[Axes] = None,
     ):
-        """Initialize legend builder. All dimensions in millimeters."""
+        """Initialize legend builder. All dimensions in millimeters.
+
+        Parameters
+        ----------
+        ax : Axes
+            Axes the legend/colorbar artist is attached to (for picking,
+            legend_ association, etc.).
+        anchor_ax : Axes, optional
+            Axes whose right edge is used as the origin for mm-based
+            placement math and for reactor registration. Defaults to `ax`.
+            Used by MultiAxesLegendGroup to attach artists to one axes
+            while positioning them relative to another.
+        """
         from publiplots.utils.legend_layout import LegendLayout
         from publiplots.utils.layout_reactor import LayoutReactor
 
         self.ax = ax
-        self.fig = ax.get_figure()
+        self._anchor_ax = anchor_ax if anchor_ax is not None else ax
+        self.fig = self._anchor_ax.get_figure()
         self._layout = LegendLayout(
             x_offset=x_offset,
             y_offset=y_offset,
@@ -718,7 +732,7 @@ class LegendBuilder:
 
     def _get_axes_height(self) -> float:
         """Get axes height in millimeters."""
-        ax_pos = self.ax.get_position()
+        ax_pos = self._anchor_ax.get_position()
         fig_height_px = self.fig.get_window_extent().height
         axes_height_px = ax_pos.height * fig_height_px
         return axes_height_px / self.fig.dpi / self.MM2INCH
@@ -739,7 +753,7 @@ class LegendBuilder:
         x_fig, y_fig : float
             Position in figure coordinates
         """
-        ax_pos = self.ax.get_position()
+        ax_pos = self._anchor_ax.get_position()
         fig_extent = self.fig.get_window_extent()
 
         # y_mm represents remaining space, convert to position from top
@@ -996,11 +1010,11 @@ class LegendBuilder:
         legend_kwargs.update(kwargs)
 
         # Create legend
-        existing_legends = [e[1] for e in self.elements if e[0] == "legend"]
+        existing_legends = [e[1] for e in self.elements if e[0] == "legend" and e[1].axes == self.ax]
         legend = self.ax.legend(handles=handles, **legend_kwargs)
         legend.set_clip_on(False)
 
-        # Re-add existing legends (matplotlib limitation)
+        # Re-add existing legends (matplotlib limitation) - only for same axes
         for existing_legend in existing_legends:
             self.ax.add_artist(existing_legend)
 
@@ -1020,7 +1034,7 @@ class LegendBuilder:
         axes_height_mm = self._get_axes_height()
         mm_y_from_top = axes_height_mm - placement_y_mm
         self._reactor.register(
-            ax=self.ax,
+            ax=self._anchor_ax,
             artist=legend,
             mm_x_from_right=placement_x_mm,
             mm_y_from_top=mm_y_from_top,
@@ -1149,7 +1163,7 @@ class LegendBuilder:
             title_y_mm = self._layout.current_y
             axes_height_mm = self._get_axes_height()
             self._reactor.register(
-                ax=self.ax,
+                ax=self._anchor_ax,
                 artist=title_obj,
                 mm_x_from_right=title_x_mm,
                 mm_y_from_top=axes_height_mm - title_y_mm,
@@ -1223,7 +1237,7 @@ class LegendBuilder:
         axes_height_mm = self._get_axes_height()
         mm_y_from_top = axes_height_mm - placement_y_mm_top
         self._reactor.register(
-            ax=self.ax,
+            ax=self._anchor_ax,
             artist=cbar,
             mm_x_from_right=placement_x_mm,
             mm_y_from_top=mm_y_from_top,
