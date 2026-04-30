@@ -129,3 +129,37 @@ def test_reactor_cleaned_up_when_figure_garbage_collected():
     # (Softer test — stronger version would mock fig entirely.)
     # For now, just assert no crash.
     assert True  # smoke — no exception raised during GC cycle
+
+
+def test_register_updates_colorbar_position_after_axes_resize():
+    """Colorbars register with mm_width/mm_height and follow axes via set_position."""
+    import numpy as np
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import Normalize
+
+    fig, ax = plt.subplots(figsize=(5, 3))
+    ax.plot([0, 1], [0, 1])
+
+    # Create a standalone colorbar axes in figure coordinates
+    cbar_ax = fig.add_axes([0.85, 0.3, 0.03, 0.4])
+    sm = ScalarMappable(cmap="viridis", norm=Normalize(0, 1))
+    cbar = fig.colorbar(sm, cax=cbar_ax, orientation="vertical")
+    fig.canvas.draw()
+
+    reactor = LayoutReactor.get(fig)
+    # Register as a colorbar: mm_x_from_right=2, mm_y_from_top=5, width=5mm, height=20mm
+    reactor.register(
+        ax=ax, artist=cbar,
+        mm_x_from_right=2.0, mm_y_from_top=5.0,
+        mm_width=5.0, mm_height=20.0,
+    )
+
+    initial_cbar_pos = cbar.ax.get_position()
+
+    # Move the main axes
+    ax.set_position([0.05, 0.05, 0.85, 0.9])
+    fig.canvas.draw()
+
+    final_cbar_pos = cbar.ax.get_position()
+    # Colorbar should have moved (its left edge follows ax.x1 + offset)
+    assert final_cbar_pos.x0 != initial_cbar_pos.x0

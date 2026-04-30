@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
@@ -36,6 +36,8 @@ class _Registration:
     artist: object  # Legend or Colorbar; duck-typed via set_bbox_to_anchor
     mm_x_from_right: float
     mm_y_from_top: float
+    mm_width: Optional[float] = None
+    mm_height: Optional[float] = None
 
 
 class LayoutReactor:
@@ -71,13 +73,22 @@ class LayoutReactor:
         artist: object,
         mm_x_from_right: float,
         mm_y_from_top: float,
+        mm_width: Optional[float] = None,
+        mm_height: Optional[float] = None,
     ) -> None:
-        """Track this element; its bbox_to_anchor will be refreshed every draw."""
+        """Track this element; its bbox_to_anchor will be refreshed every draw.
+
+        For legends, leave mm_width/mm_height as None. For colorbars, pass the
+        colorbar's mm dimensions so the colorbar axes can be repositioned via
+        set_position (colorbars do not respond to bbox_to_anchor).
+        """
         self._registrations.append(_Registration(
             ax=ax,
             artist=artist,
             mm_x_from_right=mm_x_from_right,
             mm_y_from_top=mm_y_from_top,
+            mm_width=mm_width,
+            mm_height=mm_height,
         ))
 
     def _on_draw(self, event) -> None:
@@ -100,7 +111,7 @@ class LayoutReactor:
             last = self._last_positions.get(id(reg.ax))
             if last is not None and not _bboxes_equal(pos, last):
                 any_displaced = True
-            self._last_positions[id(reg.ax)] = Bbox(pos.get_points().copy())
+            self._last_positions[id(reg.ax)] = pos.frozen()
             self._update_artist_anchor(reg)
         return any_displaced
 
@@ -113,15 +124,17 @@ class LayoutReactor:
         y_frac = (reg.mm_y_from_top * _MM2INCH * fig.dpi) / fig_extent.height
         new_x = ax_pos.x1 + x_frac
         new_y = ax_pos.y1 - y_frac
-        # Update bbox_to_anchor — all Legend/Colorbar objects accept a 2-tuple.
+
+        # Colorbar path — artist has .ax and we stored mm dimensions.
+        if reg.mm_width is not None and reg.mm_height is not None:
+            w_frac = (reg.mm_width * _MM2INCH * fig.dpi) / fig_extent.width
+            h_frac = (reg.mm_height * _MM2INCH * fig.dpi) / fig_extent.height
+            reg.artist.ax.set_position([new_x, new_y - h_frac, w_frac, h_frac])
+            return
+
+        # Legend path.
         if hasattr(reg.artist, "set_bbox_to_anchor"):
             reg.artist.set_bbox_to_anchor((new_x, new_y), transform=fig.transFigure)
-        else:
-            # Fallback: set the private attribute.
-            from matplotlib.transforms import TransformedBbox
-            reg.artist._bbox_to_anchor = TransformedBbox(
-                Bbox.from_bounds(new_x, new_y, 0, 0), fig.transFigure
-            )
 
     def _has_constrained_layout(self) -> bool:
         engine = self._fig.get_layout_engine()
