@@ -114,6 +114,11 @@ plt.show()
 # individually (or inherit palette edges per layer). Setting the rcParam once
 # gives every sub-artist the same outline, which reads much cleaner for
 # publications — especially across groups sharing a palette.
+#
+# Note the ``rain_kws=dict(linewidth=0.5)`` override: the raincloud default
+# draws rain points with ``linewidth=0`` for a clean look, but that also hides
+# any edge color. Pass a small positive linewidth to make the edge visible on
+# the individual points.
 
 np.random.seed(21)
 rain_data = pd.DataFrame({
@@ -139,7 +144,7 @@ pp.raincloudplot(
     ax=axes[0],
 )
 
-# Right: uniform black edges via rcParam
+# Right: uniform black edges via rcParam + visible rain-point strokes.
 pp.rcParams['edgecolor'] = 'black'
 pp.raincloudplot(
     data=rain_data,
@@ -147,6 +152,7 @@ pp.raincloudplot(
     y='response',
     hue='condition',
     palette='pastel',
+    rain_kws=dict(alpha=0.5, linewidth=0.5),
     title="rcParams['edgecolor'] = 'black'",
     ax=axes[1],
 )
