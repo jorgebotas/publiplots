@@ -1,12 +1,12 @@
 """
 Draw-event hook that keeps declared axes sizes fixed while the figure
-grows to fit auto-measured decorations (titles, axis labels, tick labels).
+grows to fit auto-measured decorations.
 
-Only the four per-cell reservations are auto-measured:
-title_space, xlabel_space, ylabel_space, right.
-
-Gaps (hspace, wspace) and outer_pad are never remeasured — users set
-them explicitly or inherit rcParams defaults.
+Reservations are per-row (title_space, xlabel_space) or per-column
+(ylabel_space, right). Measurement excludes LayoutReactor-managed
+artists flagged external_to_axis (e.g., pp.legend_group) — those are
+handled by the reactor's own anchoring geometry plus the user's
+legend_column reservation, not by axis-level tightbbox.
 
 Cooperates with LayoutReactor (utils/layout_reactor.py): both react to
 draw_event, but SubplotsAutoLayout is registered first (during
@@ -14,7 +14,7 @@ pp.subplots()) and therefore fires first, so LayoutReactor sees the
 repositioned axes and re-anchors legends correctly.
 """
 
-from typing import Set
+from typing import Dict, Set, Tuple
 
 from publiplots.layout.figure_layout import FigureLayout
 
@@ -23,17 +23,19 @@ _MM2INCH = 1 / 25.4
 _UPDATE_THRESHOLD_MM = 0.1
 _ALL_SIDES = {"title_space", "xlabel_space", "ylabel_space", "right"}
 
+# side_name -> (axis_kind, bbox_fn)
+#   axis_kind: "row" (result length == nrows) or "col" (length == ncols)
+#   bbox_fn:   float (ax_bbox, tight_bbox) -> px
+_SIDE_CALCULATORS = {
+    "title_space":  ("row", lambda ax_bb, t: t.y1 - ax_bb.y1),
+    "xlabel_space": ("row", lambda ax_bb, t: ax_bb.y0 - t.y0),
+    "ylabel_space": ("col", lambda ax_bb, t: ax_bb.x0 - t.x0),
+    "right":        ("col", lambda ax_bb, t: t.x1 - ax_bb.x1),
+}
+
 
 class SubplotsAutoLayout:
     """Per-figure draw-event listener that resizes the figure to fit decorations."""
-
-    # At class scope, define the per-side bbox calculators as a constant:
-    _SIDE_CALCULATORS = {
-        "title_space": lambda ax_bbox, tight: tight.y1 - ax_bbox.y1,
-        "xlabel_space": lambda ax_bbox, tight: ax_bbox.y0 - tight.y0,
-        "ylabel_space": lambda ax_bbox, tight: ax_bbox.x0 - tight.x0,
-        "right": lambda ax_bbox, tight: tight.x1 - ax_bbox.x1,
-    }
 
     def __init__(self, fig, layout: FigureLayout, locked: Set[str]):
         self._fig = fig
@@ -41,20 +43,15 @@ class SubplotsAutoLayout:
         self._locked = set(locked)
         self._updating = False
 
-        # Expose the layout on the figure for introspection and the
-        # future composer PR. Public-ish but underscore-prefixed until
-        # the composer API ships.
         fig._publiplots_layout = layout
         fig._publiplots_auto_layout = self
 
-        # If every auto-measurable side is locked, no hook is needed —
-        # figure size is fully deterministic.
         if _ALL_SIDES.issubset(self._locked):
             self._cid = None
         else:
             self._cid = fig.canvas.mpl_connect("draw_event", self._on_draw)
 
-    def _on_draw(self, event):
+    def _on_draw(self, event) -> None:
         if self._updating:
             return
         self._updating = True
@@ -65,36 +62,87 @@ class SubplotsAutoLayout:
         finally:
             self._updating = False
 
-    def _measure(self) -> dict:
-        """Measure max decoration size per unlocked side across all axes, in mm."""
+    def _measure(self) -> Dict[str, Tuple[float, ...]]:
         fig = self._fig
         dpi = fig.dpi
         if dpi <= 0:
             return {}
         axes_matrix = self._axes_matrix()
-        measured: dict = {}
-        for side, calc in self._SIDE_CALCULATORS.items():
+        if not axes_matrix or not axes_matrix[0]:
+            return {}
+
+        managed = self._externally_managed_artist_ids()
+        measured: Dict[str, Tuple[float, ...]] = {}
+
+        for side, (axis_kind, calc) in _SIDE_CALCULATORS.items():
             if side in self._locked:
                 continue
-            max_px = 0.0
-            for row in axes_matrix:
-                for ax in row:
-                    ax_bbox = ax.get_window_extent()
-                    tight = ax.get_tightbbox()
-                    if tight is None:
-                        continue
-                    max_px = max(max_px, calc(ax_bbox, tight))
-            measured[side] = max(max_px / dpi * 25.4, 0.0)
+            if axis_kind == "row":
+                per = []
+                for row in axes_matrix:
+                    max_px = 0.0
+                    for ax in row:
+                        max_px = max(max_px, self._side_extent(ax, calc, managed))
+                    per.append(max(max_px / dpi * 25.4, 0.0))
+                measured[side] = tuple(per)
+            else:  # "col"
+                ncols = len(axes_matrix[0])
+                per = []
+                for c in range(ncols):
+                    max_px = 0.0
+                    for row in axes_matrix:
+                        ax = row[c]
+                        max_px = max(max_px, self._side_extent(ax, calc, managed))
+                    per.append(max(max_px / dpi * 25.4, 0.0))
+                measured[side] = tuple(per)
         return measured
 
-    def _needs_update(self, measured: dict) -> bool:
-        for side, new_val in measured.items():
+    def _side_extent(self, ax, calc, managed_artist_ids) -> float:
+        """Measure ax's tight-vs-window extent for one side, excluding managed overlays."""
+        ax_bbox = ax.get_window_extent()
+        # Temporarily drop managed artists from layout consideration.
+        toggled = []
+        for child in ax.get_children():
+            if id(child) in managed_artist_ids and child.get_in_layout():
+                child.set_in_layout(False)
+                toggled.append(child)
+        try:
+            tight = ax.get_tightbbox()
+        finally:
+            for child in toggled:
+                child.set_in_layout(True)
+        if tight is None:
+            return 0.0
+        return calc(ax_bbox, tight)
+
+    def _externally_managed_artist_ids(self) -> set:
+        """IDs of LayoutReactor registrations flagged external_to_axis=True.
+
+        The flag lives on _Registration in utils/layout_reactor.py (added by
+        Task 4 of this amendment). Before Task 4 lands, getattr returns
+        False and nothing is excluded — equivalent to pre-amendment
+        behavior.
+        """
+        reactor = getattr(self._fig, "_publiplots_layout_reactor", None)
+        if reactor is None:
+            return set()
+        return {
+            id(reg.artist)
+            for reg in reactor._registrations
+            if getattr(reg, "external_to_axis", False)
+        }
+
+    def _needs_update(self, measured: Dict[str, Tuple[float, ...]]) -> bool:
+        for side, new_tuple in measured.items():
             current = getattr(self._layout, side)
-            if abs(new_val - current) >= _UPDATE_THRESHOLD_MM:
+            if len(new_tuple) != len(current):
                 return True
+            for new_v, cur_v in zip(new_tuple, current):
+                if abs(new_v - cur_v) >= _UPDATE_THRESHOLD_MM:
+                    return True
         return False
 
-    def _apply(self, measured: dict) -> None:
+    def _apply(self, measured: Dict[str, Tuple[float, ...]]) -> None:
         new_layout = self._layout.with_updated_reservations(**measured)
         self._layout = new_layout
         self._fig._publiplots_layout = new_layout
@@ -107,17 +155,9 @@ class SubplotsAutoLayout:
                 ax.set_position(new_layout.axes_position(r, c))
 
     def _axes_matrix(self):
-        """
-        Return the axes in row-major order.
-
-        Stored by pp.subplots() as ``fig._publiplots_axes`` (list of lists).
-        For figures built manually in tests, this falls back to walking
-        ``fig.axes`` in insertion order.
-        """
         stored = getattr(self._fig, "_publiplots_axes", None)
         if stored is not None:
             return stored
-        # Fallback: reshape fig.axes to (nrows, ncols)
         flat = list(self._fig.axes)
         nrows, ncols = self._layout.nrows, self._layout.ncols
         if len(flat) < nrows * ncols:

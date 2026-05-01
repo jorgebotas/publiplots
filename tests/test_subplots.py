@@ -265,8 +265,8 @@ def test_auto_layout_grows_title_space_for_title():
     fig.canvas.draw()
     # With bidirectional updates, the figure-height proxy is noisy (other
     # sides may shrink), so assert directly on the reservation we care about.
-    assert reactor._layout.title_space > 1.0, (
-        f"title_space should have grown past 1.0 mm, got {reactor._layout.title_space:.2f}"
+    assert reactor._layout.title_space[0] > 1.0, (
+        f"title_space[0] should have grown past 1.0 mm, got {reactor._layout.title_space[0]:.2f}"
     )
 
 
@@ -297,8 +297,8 @@ def test_auto_layout_locked_side_not_remeasured():
     reactor = SubplotsAutoLayout(fig, layout, locked={"title_space"})
     fig.canvas.draw()
     # Locked reservation must stay pinned regardless of measured decoration size.
-    assert reactor._layout.title_space == 25.0, (
-        f"locked title_space should remain 25.0 mm, got {reactor._layout.title_space:.2f}"
+    assert reactor._layout.title_space == (25.0,), (
+        f"locked title_space should remain (25.0,), got {reactor._layout.title_space}"
     )
 
 
@@ -328,6 +328,37 @@ def test_auto_layout_attaches_layout_to_figure():
     fig, _ = _make_fig_with_layout(layout)
     SubplotsAutoLayout(fig, layout, locked=set())
     assert getattr(fig, "_publiplots_layout", None) is layout
+
+
+def test_auto_layout_right_is_per_column():
+    """Adding a wide artist to one column should only grow that column's right."""
+    layout = _make_layout(nrows=1, ncols=3, right=2.0)
+    fig, axes = _make_fig_with_layout(layout)
+    # Attach a wide text artist to the rightmost axes only — it inflates
+    # that axes' tightbbox beyond the spine.
+    axes[0][2].text(
+        1.3, 0.5, "hanging text", transform=axes[0][2].transAxes,
+    )
+    reactor = SubplotsAutoLayout(fig, layout, locked=set())
+    fig.canvas.draw()
+    assert reactor._layout.right[2] > reactor._layout.right[0] + 5.0, (
+        f"right[2] should exceed right[0] by > 5 mm after the text, got "
+        f"right[0]={reactor._layout.right[0]:.1f}, right[2]={reactor._layout.right[2]:.1f}"
+    )
+
+
+def test_auto_layout_title_space_is_per_row():
+    """Set a title on only one row; only that row's title_space grows."""
+    layout = _make_layout(nrows=2, ncols=1)
+    fig, axes = _make_fig_with_layout(layout)
+    axes[0][0].set_title("Top row title")
+    # axes[1][0] has no title.
+    reactor = SubplotsAutoLayout(fig, layout, locked=set())
+    fig.canvas.draw()
+    assert reactor._layout.title_space[0] > reactor._layout.title_space[1] + 2.0, (
+        f"title_space[0] should exceed title_space[1] by > 2 mm, got "
+        f"{reactor._layout.title_space[0]:.1f} vs {reactor._layout.title_space[1]:.1f}"
+    )
 
 
 # ---------------------------------------------------------------------------
