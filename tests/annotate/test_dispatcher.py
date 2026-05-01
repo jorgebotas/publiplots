@@ -60,3 +60,8 @@ def test_text_kws_forwarded():
     texts = annotate(ax, kind="bar_values", fontsize=14, fontweight="bold")
     assert texts[0].get_fontsize() == 14
     assert texts[0].get_fontweight() == "bold"
+
+
+def test_annotate_is_exposed_on_pp():
+    import publiplots as pp
+    assert pp.annotate is annotate

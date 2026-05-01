@@ -37,6 +37,9 @@ from publiplots.plot.heatmap import heatmap, complex_heatmap, dendrogram
 
 # Utilities
 from publiplots.utils.io import savefig, save_multiple, close_all
+
+# Annotations
+from publiplots.annotate import annotate
 from publiplots.utils.axes import (
     adjust_spines,
     add_grid,
