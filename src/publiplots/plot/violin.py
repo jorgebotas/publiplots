@@ -52,7 +52,6 @@ def violinplot(
     density_norm: str = "area",
     common_norm: bool = False,
     alpha: Optional[float] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
@@ -127,8 +126,6 @@ def violinplot(
         When True, normalize across the entire dataset.
     alpha : float, optional
         Transparency of violin fill (0-1).
-    figsize : tuple, optional
-        Figure size (width, height) if creating new figure.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -196,15 +193,12 @@ def violinplot(
     if orient is not None:
         raise DeprecationWarning("orient is deprecated. Use x and y instead.")
 
-    # Create figure if not provided
-    # Only fall back to matplotlib's figsize when the user explicitly provides one;
-    # otherwise use pp.subplots so axes_size comes from pp.rcParams["subplots.axes_size"].
+    # Create figure via pp.subplots to install SubplotsAutoLayout; users who
+    # want custom dimensions should compose with pp.subplots(axes_size=...)
+    # before calling and pass ax=.
     if ax is None:
-        if figsize is not None:
-            fig, ax = plt.subplots(figsize=figsize)
-        else:
-            from publiplots.layout.subplots import subplots as _pp_subplots
-            fig, ax = _pp_subplots()
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 
