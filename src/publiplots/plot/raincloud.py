@@ -161,8 +161,12 @@ def raincloudplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
-    # Read defaults from rcParams if not provided
-    figsize = resolve_param("figure.figsize", figsize)
+    # Read defaults from rcParams if not provided.
+    # Deliberately do NOT fall back on rcParams["figure.figsize"] for the
+    # figsize argument: when figsize is None, the inner violinplot call takes
+    # the pp.subplots() path and SubplotsAutoLayout grows the figure to fit
+    # the legend. Forcing a default figsize here would route us through
+    # plt.subplots(figsize=...), skipping auto-layout and cropping the legend.
     linewidth = resolve_param("lines.linewidth", linewidth)
     cloud_alpha = resolve_param("alpha", cloud_alpha)
     color = resolve_param("color", color)
