@@ -359,7 +359,20 @@ def setup_upset_axes(
     # Add +1 to text columns for margin (like UpSetPlot does)
     figw = colw * (non_text_nelems + np.ceil(textw / colw) + 1)
     fig.set_figwidth(figw / render_ratio)
-    fig.set_figheight((colw * (n_sets + 2)) / render_ratio)
+
+    # Grow the figure vertically to reserve space for bar-top annotations
+    # and the bottom xlabel. Without this, GridSpec spans top=1/bottom=0 and
+    # both decorations get clipped on plt.show / non-tight savefig.
+    # Reserve ~1.2× font-size on top (annotation ascent + margin) and
+    # ~2.5× on bottom (xlabel + ticklabels + margin).
+    font_size_pt = resolve_param("font.size")
+    top_pad_in = 1.2 * font_size_pt / 72
+    bottom_pad_in = 2.5 * font_size_pt / 72
+    panels_height_in = (colw * (n_sets + 2)) / render_ratio
+    total_height_in = panels_height_in + top_pad_in + bottom_pad_in
+    fig.set_figheight(total_height_in)
+    _gs_top = 1.0 - top_pad_in / total_height_in
+    _gs_bottom = bottom_pad_in / total_height_in
 
     # Remeasure after resize
     figw = fig.get_window_extent(renderer=fig.canvas.get_renderer()).width
@@ -403,8 +416,8 @@ def setup_upset_axes(
         wspace=0,  # No space between columns
         left=0,  # Use full figure width
         right=1,
-        bottom=0,
-        top=1,
+        bottom=_gs_bottom,
+        top=_gs_top,
     )
 
     # Top row: intersection bars (over the rightmost matrix_cols columns)
