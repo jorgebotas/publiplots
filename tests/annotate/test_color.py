@@ -81,3 +81,17 @@ def test_auto_on_translucent_dark_fill_returns_light():
     r = _bar(ax, facecolor="#111111", alpha=1.0)
     bar = BarRecord(patch=r, value=1.0, err_low=None, err_high=None, hue_color=None)
     assert resolve_color(bar, color="auto", anchor="inside", ax=ax) == to_rgba("#ffffff")
+
+
+def test_hue_with_hue_active_false_warns_and_falls_back_to_auto():
+    """color='hue' on a no-hue plot should warn and behave like auto."""
+    fig, ax = plt.subplots()
+    ax.set_facecolor("white")
+    r = _bar(ax, facecolor="#000000")
+    bar = BarRecord(patch=r, value=1.0, err_low=None, err_high=None,
+                    hue_color=tuple(to_rgba("#000000")))
+    with pytest.warns(UserWarning, match="plot has no hue"):
+        rgba = resolve_color(bar, color="hue", anchor="inside", ax=ax,
+                             hue_active=False)
+    # Dark bar inside anchor → light text under auto semantics.
+    assert rgba == to_rgba("#ffffff")

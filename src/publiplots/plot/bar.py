@@ -103,6 +103,7 @@ def barplot(
     annotate : bool or dict, optional
         If True, label each bar with its aggregated value. Pass a dict to
         forward options to pp.annotate (e.g. {"fmt": ".3f", "anchor": "inside"}).
+        See :func:`publiplots.annotate` for all supported options.
     errorbar : str, default="se"
         Error bar type: "se" (standard error), "sd" (standard deviation),
         "ci" (confidence interval), or None for no error bars.

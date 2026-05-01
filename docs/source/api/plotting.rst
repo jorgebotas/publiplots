@@ -12,3 +12,4 @@ Plotting Functions
    publiplots.stripplot
    publiplots.venn
    publiplots.upsetplot
+   publiplots.annotate

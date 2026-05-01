@@ -39,6 +39,7 @@ def resolve_color(
     color: Union[str, tuple],
     anchor: str,
     ax: Axes,
+    hue_active: bool = True,
 ) -> RGBA:
     """Return RGBA for the label text."""
     if isinstance(color, str) and color == "auto":
@@ -54,6 +55,15 @@ def resolve_color(
         return to_rgba(plt.rcParams["text.color"])
 
     if isinstance(color, str) and color == "hue":
+        if not hue_active:
+            import warnings
+            warnings.warn(
+                "pp.annotate: color='hue' requested but plot has no hue; "
+                "falling back to color='auto'",
+                UserWarning,
+                stacklevel=3,
+            )
+            return resolve_color(bar, "auto", anchor, ax, hue_active=hue_active)
         if bar.hue_color is not None:
             return to_rgba(bar.hue_color)
         edge = to_rgba(bar.patch.get_edgecolor())

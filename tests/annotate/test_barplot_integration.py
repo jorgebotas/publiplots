@@ -156,3 +156,14 @@ def test_barplot_annotate_errorbar_none_all_none():
     for bar in meta.bars:
         assert bar.err_low is None
         assert bar.err_high is None
+
+
+def test_barplot_annotate_color_hue_without_hue_warns():
+    """annotate={'color': 'hue'} on a no-hue barplot warns and falls back."""
+    df = pd.DataFrame({
+        "category": pd.Categorical(["A", "B", "C"]),
+        "value": [1.0, 2.0, 3.0],
+    })
+    with pytest.warns(UserWarning, match="plot has no hue"):
+        fig, ax = pp.barplot(data=df, x="category", y="value",
+                             annotate={"color": "hue"})

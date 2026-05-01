@@ -65,7 +65,7 @@ def _bar_values_strategy(
         if math.isnan(bar.value):
             continue
         x, y, ha, va = resolve_anchor(bar, anchor, meta.orient, offset, ax)
-        rgba = resolve_color(bar, color, anchor, ax)
+        rgba = resolve_color(bar, color, anchor, ax, hue_active=meta.hue_active)
         label = _format_value(bar.value, fmt)
         t = ax.text(x, y, label, ha=ha, va=va, color=rgba, **text_kws)
 
@@ -73,7 +73,7 @@ def _bar_values_strategy(
             bbox = bar.patch.get_window_extent(renderer)
             if fit_check(t, bbox, meta.orient, anchor, renderer) == "reanchor_outside":
                 x2, y2, ha2, va2 = resolve_anchor(bar, "outside", meta.orient, offset, ax)
-                rgba2 = resolve_color(bar, color, "outside", ax)
+                rgba2 = resolve_color(bar, color, "outside", ax, hue_active=meta.hue_active)
                 t.set_position((x2, y2))
                 t.set_ha(ha2)
                 t.set_va(va2)
