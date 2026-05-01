@@ -10,6 +10,8 @@ from typing import Optional, List, Dict, Tuple, Union
 from publiplots.themes.rcparams import resolve_param
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.patches import Rectangle
+from matplotlib.colors import to_rgba
 import seaborn as sns
 import pandas as pd
 
@@ -17,6 +19,7 @@ from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.hatches import resolve_hatch_map
 from publiplots.utils import is_categorical, as_categorical, create_legend_handles, legend
 from publiplots.utils.transparency import ArtistTracker
+from publiplots.annotate._cache import BarRecord, BarValueMeta
 
 _SPLIT_SEPARATOR = "---"
 
@@ -40,6 +43,7 @@ def barplot(
     hatch_map: Optional[Dict[str, str]] = None,
     legend: bool = True,
     legend_kws: Optional[Dict] = None,
+    annotate: Union[bool, Dict, None] = None,
     errorbar: str = "se",
     gap: float = 0.1,
     order: Optional[List[str]] = None,
@@ -96,6 +100,9 @@ def barplot(
         Example: {"group1": "", "group2": "///", "group3": "\\\\\\"}
     legend : bool, default=True
         Whether to show the legend.
+    annotate : bool or dict, optional
+        If True, label each bar with its aggregated value. Pass a dict to
+        forward options to pp.annotate (e.g. {"fmt": ".3f", "anchor": "inside"}).
     errorbar : str, default="se"
         Error bar type: "se" (standard error), "sd" (standard deviation),
         "ci" (confidence interval), or None for no error bars.
@@ -317,6 +324,17 @@ def barplot(
     if xlabel is not None: ax.set_xlabel(xlabel)
     if ylabel is not None: ax.set_ylabel(ylabel)
     if title is not None: ax.set_title(title)
+
+    if annotate:
+        meta = _build_bar_value_meta(
+            ax=ax, data=data, x=x, y=y, hue=hue,
+            categorical_axis=categorical_axis,
+            palette=palette, errorbar=errorbar,
+        )
+        ax._publiplots_bar_meta = meta
+        from publiplots.annotate import annotate as _annotate_fn
+        opts = annotate if isinstance(annotate, dict) else {}
+        _annotate_fn(ax, kind="bar_values", **opts)
 
     return fig, ax
 
@@ -548,3 +566,115 @@ def _legend(
                 ),
                 label=hatch_label,
             )
+
+
+def _build_bar_value_meta(
+    ax: Axes,
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    hue: Optional[str],
+    categorical_axis: str,
+    palette: Optional[Dict],
+    errorbar: Optional[str],
+) -> BarValueMeta:
+    """Compute aggregated values + errorbar extents aligned with the drawn bars.
+
+    We re-run the same aggregation seaborn uses. The resulting records are
+    paired with the Rectangles on the axes in draw order. Hue colors come
+    from the resolved palette map.
+    """
+    orient: str = "v" if categorical_axis == x else "h"
+
+    # Aggregate and compute errorbar half-widths with the same spec seaborn used.
+    agg = _aggregate_for_annotate(data, x=x, y=y, hue=hue,
+                                  categorical_axis=categorical_axis,
+                                  errorbar=errorbar)
+
+    rects = [p for p in ax.patches
+             if isinstance(p, Rectangle) and p.get_width() > 0 and p.get_height() > 0]
+
+    # Pair each rectangle with an aggregation row, in draw order. Seaborn draws
+    # bars in the same order it iterates the hue × categorical axis groupby,
+    # which matches the order we produce from _aggregate_for_annotate.
+    bars: List[BarRecord] = []
+    for rect, row in zip(rects, agg):
+        value = float(row["mean"])
+        err_low = row.get("err_low")
+        err_high = row.get("err_high")
+        hue_color = None
+        if hue is not None and palette is not None:
+            key = row.get("hue_value")
+            if key is not None and key in palette:
+                hue_color = to_rgba(palette[key])
+        if hue_color is None:
+            hue_color = tuple(rect.get_facecolor())
+        bars.append(BarRecord(
+            patch=rect,
+            value=value,
+            err_low=err_low,
+            err_high=err_high,
+            hue_color=hue_color,
+        ))
+    return BarValueMeta(
+        orient=orient,
+        bars=bars,
+        errorbar_kind=errorbar,
+        hue_active=hue is not None,
+        owner_is_publiplots=True,
+    )
+
+
+def _aggregate_for_annotate(
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    hue: Optional[str],
+    categorical_axis: str,
+    errorbar: Optional[str],
+) -> List[Dict]:
+    """Group by (categorical_axis [, hue]) and return mean plus err_low/err_high.
+
+    Returned row ordering: categorical_axis outer, hue inner — matches
+    seaborn's draw order (dodge-grouped bars within each x category).
+    """
+    import numpy as _np
+
+    value_col = y if categorical_axis == x else x
+    cat_categories = list(data[categorical_axis].cat.categories)
+
+    def _aggregate_group(values: _np.ndarray) -> Dict:
+        mean = float(_np.mean(values))
+        n = len(values)
+        if errorbar is None or n < 2:
+            return {"mean": mean, "err_low": None, "err_high": None}
+        if errorbar == "se":
+            half = float(_np.std(values, ddof=1) / _np.sqrt(n))
+        elif errorbar == "sd":
+            half = float(_np.std(values, ddof=1))
+        elif errorbar == "ci":
+            # 95% CI using normal approx — consistent with seaborn's default
+            half = float(1.96 * _np.std(values, ddof=1) / _np.sqrt(n))
+        else:
+            half = 0.0
+        return {"mean": mean, "err_low": mean - half, "err_high": mean + half}
+
+    rows: List[Dict] = []
+    if hue is None:
+        for cat in cat_categories:
+            mask = data[categorical_axis] == cat
+            agg = _aggregate_group(data.loc[mask, value_col].to_numpy())
+            rows.append(agg)
+        return rows
+
+    hue_categories = list(data[hue].cat.categories)
+    for cat in cat_categories:
+        for h in hue_categories:
+            mask = (data[categorical_axis] == cat) & (data[hue] == h)
+            vals = data.loc[mask, value_col].to_numpy()
+            if len(vals) == 0:
+                continue
+            agg = _aggregate_group(vals)
+            agg["hue_value"] = h
+            rows.append(agg)
+    return rows
