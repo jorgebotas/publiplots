@@ -22,6 +22,8 @@ from publiplots.layout.figure_layout import FigureLayout
 _MM2INCH = 1 / 25.4
 _UPDATE_THRESHOLD_MM = 0.1
 _ALL_SIDES = {"title_space", "xlabel_space", "ylabel_space", "right"}
+# Cap on settle() draws; 1-3 is typical.
+_MAX_CONVERGENCE_ITERS = 5
 
 # side_name -> (axis_kind, bbox_fn)
 #   axis_kind: "row" (result length == nrows) or "col" (length == ncols)
@@ -50,6 +52,44 @@ class SubplotsAutoLayout:
             self._cid = None
         else:
             self._cid = fig.canvas.mpl_connect("draw_event", self._on_draw)
+
+        # Wrap savefig so that by the time it renders, the figure has
+        # been resized to fit its current decorations. draw_event fires
+        # AFTER the renderer has written to its buffer, so resizing
+        # during draw_event is too late — the saved file captures the
+        # pre-resize buffer. Running a settlement draw BEFORE savefig's
+        # internal draw ensures the renderer is allocated at the final
+        # size from the start.
+        self._install_savefig_wrapper()
+
+    def _install_savefig_wrapper(self) -> None:
+        fig = self._fig
+        if getattr(fig, "_publiplots_savefig_wrapped", False):
+            return
+        original_savefig = fig.savefig
+
+        def _wrapped_savefig(*args, **kwargs):
+            self.settle()
+            return original_savefig(*args, **kwargs)
+
+        fig.savefig = _wrapped_savefig
+        fig._publiplots_savefig_wrapped = True
+
+    def settle(self) -> None:
+        """Drive the layout to convergence without leaving stale state.
+
+        Runs canvas.draw() up to a small number of times. Each draw
+        fires our _on_draw, which measures and (if needed) resizes.
+        Once _needs_update returns False, we stop. This is the safe
+        settlement primitive — unlike in-event iteration, each draw is
+        a complete matplotlib pass with its own renderer, avoiding the
+        reentrancy hazards of draw_without_rendering inside draw_event.
+        """
+        fig = self._fig
+        for _ in range(_MAX_CONVERGENCE_ITERS):
+            fig.canvas.draw()
+            if not self._needs_update(self._measure()):
+                return
 
     def _on_draw(self, event) -> None:
         if self._updating:

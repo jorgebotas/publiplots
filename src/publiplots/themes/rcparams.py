@@ -23,7 +23,7 @@ TEXT_COLOR = "black"
 MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     # Figure settings - compact by default (publication-ready)
     "figure.figsize": [3, 1.8],
-    "figure.dpi": 600,
+    "figure.dpi": 150,      # screen rendering; savefig uses savefig.dpi below for print-quality
     "figure.edgecolor": "none",
     "figure.subplot.hspace": 0.05,
     "figure.subplot.wspace": 0.05,
