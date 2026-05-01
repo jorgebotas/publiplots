@@ -108,6 +108,42 @@ intersphinx_mapping = {
 # First, ensure fonts are registered for gallery plots
 import publiplots  # This will register the custom fonts
 
+
+def _reset_publiplots(gallery_conf, fname):
+    """Re-apply publiplots' rcParams after sphinx-gallery's default
+    `plt.rcdefaults()` between examples, so every gallery figure
+    renders with Arial, 0.75pt strokes, subplots.axes_size, etc.
+    Without this, publiplots' styling is only active for the first
+    example and then silently reverts to matplotlib's defaults."""
+    from publiplots.themes.rcparams import init_rcparams
+    init_rcparams()
+
+
+def _publiplots_scraper(block, block_vars, gallery_conf):
+    """Wrap sphinx-gallery's matplotlib scraper to preserve pp.subplots()
+    computed dimensions. publiplots figures already have precise mm-based
+    margins; the default ``savefig.bbox='tight'`` re-crops to the union
+    of all artist bboxes (including legends anchored outside the axes
+    rectangle), which shifts layouts visibly and makes legends appear
+    far to the right of the data panel.
+
+    We temporarily disable ``savefig.bbox='tight'`` for the duration of
+    the scrape. Passing ``bbox_inches=None`` as a kwarg is NOT enough
+    — matplotlib's ``savefig`` falls back to the rcParam when the kwarg
+    is None."""
+    import matplotlib as mpl
+    from sphinx_gallery.scrapers import matplotlib_scraper
+    prev_bbox = mpl.rcParams.get('savefig.bbox')
+    prev_pad = mpl.rcParams.get('savefig.pad_inches')
+    try:
+        mpl.rcParams['savefig.bbox'] = 'standard'
+        mpl.rcParams['savefig.pad_inches'] = 0.0
+        return matplotlib_scraper(block, block_vars, gallery_conf)
+    finally:
+        mpl.rcParams['savefig.bbox'] = prev_bbox
+        mpl.rcParams['savefig.pad_inches'] = prev_pad
+
+
 sphinx_gallery_conf = {
     'examples_dirs': ['../../examples/plots'],
     'gallery_dirs': ['auto_examples'],
@@ -122,11 +158,15 @@ sphinx_gallery_conf = {
     'download_all_examples': False,
     'min_reported_time': 0,
     'matplotlib_animations': True,
-    'image_scrapers': ('matplotlib',),
+    'image_scrapers': (_publiplots_scraper,),
     'default_thumb_file': None,
     'line_numbers': False,
     'nested_sections': True,
     'within_subsection_order': 'FileNameSortKey',
+    # Order matters: matplotlib's reset wipes rcParams; publiplots'
+    # reset then re-applies our baseline. seaborn reset is harmless.
+    'reset_modules': ('matplotlib', 'seaborn', _reset_publiplots),
+    'reset_modules_order': 'before',
 }
 
 # NumPyDoc settings
