@@ -457,10 +457,15 @@ def _apply_hatches_and_override_colors(
         # set_hatch_linewidth
         patch.set_hatch_linewidth(linewidth)
 
-        # Repaint the bars when needed (override colors if not using double split)
-        bar_color = palette[hue_order[hue_idx]] if hue is not None else color
+        # Repaint the bars when needed (override colors if not using double
+        # split AND hatch isn't the categorical axis). `hue_idx` is only a
+        # valid `hue_order` index on this branch — on the `hatch == categorical_axis`
+        # branch it was computed from `axis_idx`, which ranges over `[0, n_axis)`
+        # and can exceed `len(hue_order)` when n_hue < n_axis. Gating the
+        # `bar_color` computation behind the same condition as the recolor
+        # avoids an IndexError on paths where the value was never used anyway.
         if not (double_split or hatch == categorical_axis):
-            # Use the same color for all bars
+            bar_color = palette[hue_order[hue_idx]] if hue is not None else color
             patch.set_edgecolor(edgecolor if edgecolor is not None else bar_color)
             patch.set_facecolor(bar_color)
 
