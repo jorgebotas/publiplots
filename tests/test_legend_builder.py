@@ -100,21 +100,11 @@ def test_colorbar_title_follows_axes_after_tight_layout():
     assert abs(title_vs_cbar_delta - initial_delta) < 3e-3
 
 
-def test_set_notebook_style_does_not_force_constrained_layout():
-    """publiplots styles intentionally leave the layout engine off so users
-    can declare a fixed axes size and let decorations extend the figure.
-    Users who want constrained_layout can opt in per-figure."""
-    pp.set_notebook_style()
-    try:
-        assert matplotlib.rcParams["figure.constrained_layout.use"] is False
-    finally:
-        pp.reset_style()
-
-
-def test_set_publication_style_does_not_force_constrained_layout():
-    """Same philosophy for publication style."""
-    pp.set_publication_style()
-    try:
-        assert matplotlib.rcParams["figure.constrained_layout.use"] is False
-    finally:
-        pp.reset_style()
+def test_publiplots_does_not_force_constrained_layout():
+    """publiplots' default rcParams intentionally leave the layout engine
+    off so users can declare a fixed axes size (via pp.subplots) and let
+    decorations extend the figure. Users who want constrained_layout can
+    opt in per-figure."""
+    from publiplots.themes.rcparams import init_rcparams
+    init_rcparams()
+    assert matplotlib.rcParams["figure.constrained_layout.use"] is False

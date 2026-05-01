@@ -7,9 +7,11 @@ customization options.
 
 Basic usage:
     >>> import publiplots as pp
-    >>> pp.set_notebook_style()  # For interactive work
     >>> fig, ax = pp.barplot(data=df, x='category', y='value')
     >>> pp.savefig(fig, 'output.png')
+
+publiplots applies its publication-grade rcParams on import. Use
+:func:`publiplots.reset_style` to revert to matplotlib defaults.
 """
 
 __version__ = "0.4.7"
@@ -64,11 +66,7 @@ _register_fonts()
 # Theming
 from publiplots.themes.colors import color_palette
 from publiplots.themes.rcparams import rcParams, resolve_param, init_rcparams
-from publiplots.themes.styles import (
-    set_notebook_style,
-    set_publication_style,
-    reset_style,
-)
+from publiplots.themes.styles import reset_style
 # Initialize publiplots rcParams defaults
 init_rcparams()
 from publiplots.themes.markers import (
@@ -135,8 +133,6 @@ __all__ = [
     "rcParams",
     "resolve_param",
     # Style functions
-    "set_notebook_style",
-    "set_publication_style",
     "reset_style",
     # Marker functions
     "resolve_markers",

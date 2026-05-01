@@ -44,7 +44,7 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     "legend.labelcolor": TEXT_COLOR,
 
     # Axes settings
-    "axes.linewidth": 1.0,
+    "axes.linewidth": 0.75,
     "axes.edgecolor": "0.3",
     "axes.facecolor": "white",
     "axes.labelsize": 9,
@@ -67,8 +67,8 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     # Tick settings
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
-    "xtick.major.width": 1.0,
-    "ytick.major.width": 1.0,
+    "xtick.major.width": 0.75,
+    "ytick.major.width": 0.75,
     "xtick.major.size": 0,
     "ytick.major.size": 0,
 
