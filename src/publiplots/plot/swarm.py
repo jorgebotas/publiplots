@@ -126,6 +126,9 @@ def swarmplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)

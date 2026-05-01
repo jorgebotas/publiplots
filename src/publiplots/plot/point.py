@@ -185,6 +185,9 @@ def pointplot(
     ...     markers=["o", "D"], errorbar="se"
     ... )
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     markersize = resolve_param("lines.markersize", markersize)

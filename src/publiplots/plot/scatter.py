@@ -170,6 +170,9 @@ def scatterplot(
     >>> fig, ax = pp.scatterplot(data=df, x="category", y="condition",
     ...                           size="pvalue", hue="log2fc")
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
