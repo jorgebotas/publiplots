@@ -54,7 +54,6 @@ def raincloudplot(
     # General styling
     edgecolor: Optional[str] = None,
     linewidth: Optional[float] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
@@ -124,8 +123,6 @@ def raincloudplot(
         points to the left (for vertical) or down (for horizontal).
     linewidth : float, optional
         Width of edges.
-    figsize : tuple, optional
-        Figure size (width, height) if creating new figure.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -162,11 +159,6 @@ def raincloudplot(
     ... )
     """
     # Read defaults from rcParams if not provided.
-    # Deliberately do NOT fall back on rcParams["figure.figsize"] for the
-    # figsize argument: when figsize is None, the inner violinplot call takes
-    # the pp.subplots() path and SubplotsAutoLayout grows the figure to fit
-    # the legend. Forcing a default figsize here would route us through
-    # plt.subplots(figsize=...), skipping auto-layout and cropping the legend.
     linewidth = resolve_param("lines.linewidth", linewidth)
     cloud_alpha = resolve_param("alpha", cloud_alpha)
     color = resolve_param("color", color)
@@ -207,7 +199,6 @@ def raincloudplot(
         legend=legend,
         legend_kws=legend_kws,
         side=cloud_side,
-        figsize=figsize,
         ax=ax,
     )
 
