@@ -15,7 +15,13 @@ import pandas as pd
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.hatches import resolve_hatch_map
-from publiplots.utils import is_categorical, as_categorical, create_legend_handles, legend
+from publiplots.utils import is_categorical, as_categorical, create_legend_handles
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    resolve_legend_flags,
+)
+from publiplots.utils.plot_legend import render_entries
 from publiplots.utils.transparency import ArtistTracker
 
 _SPLIT_SEPARATOR = "---"
@@ -38,7 +44,7 @@ def barplot(
     figsize: Optional[Tuple[float, float]] = None,
     palette: Optional[Union[str, Dict, List]] = None,
     hatch_map: Optional[Dict[str, str]] = None,
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     errorbar: str = "se",
     gap: float = 0.1,
@@ -297,21 +303,21 @@ def barplot(
         for line in tracker.get_new_lines():
             line.set_color(edgecolor)
 
-    # Add legend if hue or hatch is used
-    if legend:
-        _legend(
-            ax=ax,
-            hue=hue,
-            hatch=hatch,
-            categorical_axis=categorical_axis,
-            alpha=alpha,
-            linewidth=linewidth,
-            color=color,
-            edgecolor=edgecolor,
-            palette=palette,
-            hatch_map=hatch_map,
-            kwargs=legend_kws,
-        )
+    # Stash entries and render per-axis unless claimed by a figure-level group.
+    _legend(
+        ax=ax,
+        hue=hue,
+        hatch=hatch,
+        categorical_axis=categorical_axis,
+        alpha=alpha,
+        linewidth=linewidth,
+        color=color,
+        edgecolor=edgecolor,
+        palette=palette,
+        hatch_map=hatch_map,
+        kwargs=legend_kws,
+        legend=legend,
+    )
 
     # Set labels
     if xlabel is not None: ax.set_xlabel(xlabel)
@@ -464,87 +470,125 @@ def _legend(
         palette: Optional[Union[str, Dict, List]],
         hatch_map: Optional[Dict[str, str]],
         kwargs: Optional[Dict] = None,
+        legend: Union[bool, Dict] = True,
     ) -> None:
-    """
-    Create legend handles for bar plot.
-    If hue or hatch is the same as the categorical axis, we can skip corresponding legend.
-    If matching hatch and hue, we need to create a legend for the combined hue and hatch.
-    If double split, we need to create a legend for the hue and hatch separately.
-    Otherwise, we need to create a legend for the hue and hatch (same as double split)
-    """
-    kwargs = kwargs or {}
+    """Stash LegendEntry objects for the bar plot, then render per-axis
+    legends for entries not claimed by a figure-level pp.legend_group.
 
-    builder = legend(ax=ax, auto=False)
+    Four cases (preserving the original dispatch):
+      - hue == hatch            -> 1 combined entry under kind="hue"
+      - hue == categorical_axis -> 1 hatch-only entry under kind="hatch"
+      - hatch == categorical_axis -> 1 hue-only entry under kind="hue"
+      - double split            -> 1 hue entry + 1 hatch entry
+    """
+    if legend is False:
+        return
 
-    handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="rectangle")
+    flags = resolve_legend_flags(legend)
+    kwargs = dict(kwargs or {})
     hue_label = kwargs.pop("hue_label", hue)
     hatch_label = kwargs.pop("hatch_label", hatch)
+    handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="rectangle")
 
     if hue == hatch:
-        # combined legend for hue and hatch
-        values = list(palette.keys())
-        builder.add_legend(
-            handles=create_legend_handles(
+        # Combined legend for hue and hatch
+        if flags["hue"]:
+            values = list(palette.keys())
+            handles = create_legend_handles(
                 labels=values,
                 colors=[palette[v] for v in values],
                 edgecolors=[edgecolor] * len(values) if edgecolor else None,
                 hatches=[hatch_map[v] for v in values],
-                **handle_kwargs
-            ),
-            label=hue_label,
-        )
-
+                **handle_kwargs,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=handles,
+                    labels=values,
+                ),
+            )
     elif hue == categorical_axis:
-        # legend for hatch only
-        builder.add_legend(
-            handles=create_legend_handles(
-                labels=list(hatch_map.keys()),
+        # Hatch-only legend
+        if flags["hatch"]:
+            labels = list(hatch_map.keys())
+            handles = create_legend_handles(
+                labels=labels,
                 colors=[resolve_param("color", color)] * len(hatch_map),
                 edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
                 hatches=list(hatch_map.values()),
-                **handle_kwargs
-            ),
-            label=hatch_label,
-        )
-
+                **handle_kwargs,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hatch_label,
+                    kind="hatch",
+                    handles=handles,
+                    labels=labels,
+                ),
+            )
     elif hatch == categorical_axis:
-        # legend for hue only
-        builder.add_legend(
-            handles=create_legend_handles(
-                labels=list(palette.keys()),
+        # Hue-only legend
+        if flags["hue"]:
+            labels = list(palette.keys())
+            handles = create_legend_handles(
+                labels=labels,
                 colors=[palette[v] for v in palette.keys()],
                 edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 hatches=None,
-                **handle_kwargs
-            ),
-            label=hue_label,
-        )
-    else:
-        # legend for hue and hatch separately (DOUBLE SPLIT)
-        # Add hue legend first
-        if palette is not None and len(palette) > 0:
-            builder.add_legend(
-                handles=create_legend_handles(
-                    labels=list(palette.keys()),
-                    colors=[palette[v] for v in palette.keys()],
-                    edgecolors=[edgecolor] * len(palette) if edgecolor else None,
-                    hatches=None,
-                    **handle_kwargs
+                **handle_kwargs,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=handles,
+                    labels=labels,
                 ),
-                label=hue_label,
+            )
+    else:
+        # Double split: hue first, then hatch
+        if flags["hue"] and palette is not None and len(palette) > 0:
+            labels = list(palette.keys())
+            handles = create_legend_handles(
+                labels=labels,
+                colors=[palette[v] for v in palette.keys()],
+                edgecolors=[edgecolor] * len(palette) if edgecolor else None,
+                hatches=None,
+                **handle_kwargs,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=handles,
+                    labels=labels,
+                ),
+            )
+        if flags["hatch"] and hatch_map is not None and len(hatch_map) > 0:
+            # "gray" when hue exists, else resolved color -- matches pre-migration behavior
+            hatch_color = "gray" if hue is not None else resolve_param("color", color)
+            labels = list(hatch_map.keys())
+            handles = create_legend_handles(
+                labels=labels,
+                colors=[hatch_color] * len(hatch_map),
+                edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
+                hatches=list(hatch_map.values()),
+                **handle_kwargs,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hatch_label,
+                    kind="hatch",
+                    handles=handles,
+                    labels=labels,
+                ),
             )
 
-        # Add hatch legend second
-        if hatch_map is not None and len(hatch_map) > 0:
-            # Use gray for hatch legend if hue exists, otherwise use color
-            hatch_color = "gray" if hue is not None else resolve_param("color", color)
-            builder.add_legend(
-                handles=create_legend_handles(
-                    labels=list(hatch_map.keys()),
-                    colors=[hatch_color] * len(hatch_map),
-                    edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
-                    hatches=list(hatch_map.values()),
-                    **handle_kwargs
-                ),
-                label=hatch_label,
-            )
+    render_entries(ax, flags=flags)
