@@ -87,3 +87,24 @@ def test_scatterplot_no_group_renders_per_axis_legend():
     fig.canvas.draw()
     per_axis_legends = [c for c in ax.get_children() if isinstance(c, Legend)]
     assert len(per_axis_legends) >= 1
+
+
+# ---------------------------------------------------------------------------
+# stripplot migration
+# ---------------------------------------------------------------------------
+
+
+def test_stripplot_stashes_hue_entry():
+    df = _scatter_df()
+    fig, ax = pp.stripplot(data=df, x="g", y="y", hue="g", palette="pastel")
+    entries = get_entries(ax)
+    names_kinds = [(e.name, e.kind) for e in entries]
+    assert ("g", "hue") in names_kinds
+
+
+def test_stripplot_legend_false_stashes_nothing():
+    df = _scatter_df()
+    fig, ax = pp.stripplot(
+        data=df, x="g", y="y", hue="g", palette="pastel", legend=False,
+    )
+    assert get_entries(ax) == []

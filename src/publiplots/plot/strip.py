@@ -17,7 +17,16 @@ import pandas as pd
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils.transparency import ArtistTracker
-from publiplots.utils.legend import create_legend_handles, legend
+from publiplots.utils.legend import create_legend_handles
+from publiplots.utils.legend import legend as legend_fn
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    get_entries,
+    resolve_legend_flags,
+    entry_is_in_group,
+    is_continuous_hue,
+)
 
 
 def stripplot(
@@ -42,7 +51,7 @@ def stripplot(
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     **kwargs
 ) -> Tuple[plt.Figure, Axes]:
@@ -186,8 +195,10 @@ def stripplot(
     # Apply transparency to new collections only
     tracker.apply_transparency(on="collections", face_alpha=alpha)
 
-    # Add legend if hue is used
-    if legend and hue is not None:
+    # Stash legend entry (per-kind) and optionally render per-axis legend.
+    # legend may be bool or dict[str, bool]; False short-circuits both stash
+    # and render, True stashes/renders everything, and a dict filters per kind.
+    if hue is not None:
         _legend(
             ax=ax,
             hue=hue,
@@ -198,6 +209,7 @@ def stripplot(
             alpha=alpha,
             linewidth=linewidth,
             kwargs=legend_kws,
+            legend=legend,
         )
 
     # Set labels
@@ -221,9 +233,17 @@ def _legend(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     kwargs: Optional[Dict] = None,
+    legend: Union[bool, Dict] = True,
 ) -> None:
     """
-    Create legend handles for strip plot.
+    Stash LegendEntry objects for strip plot and optionally render per-axis legend.
+
+    Parameters
+    ----------
+    legend : bool or dict, default=True
+        - ``True``  -> stash all kinds and render per-axis (unless claimed by a group).
+        - ``False`` -> stash nothing and render nothing.
+        - ``dict``  -> per-kind flags (missing keys default to True).
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
@@ -232,38 +252,63 @@ def _legend(
     kwargs = kwargs or {}
     handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="circle")
 
-    # Store legend data in collection for later retrieval
-    legend_data = {}
+    flags = resolve_legend_flags(legend)
 
-    # Prepare hue legend data
-    if hue is not None:
+    # Stash hue entry
+    if hue is not None and flags["hue"]:
         hue_label = kwargs.pop("hue_label", hue)
-        if isinstance(palette, dict):  # categorical legend
+        if isinstance(palette, dict):  # categorical
+            hue_labels = list(palette.keys())
             hue_handles = create_legend_handles(
-                labels=list(palette.keys()),
+                labels=hue_labels,
                 colors=list(palette.values()),
                 edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 **handle_kwargs
             )
-            legend_data["hue"] = {
-                "handles": hue_handles,
-                "label": hue_label,
-            }
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=hue_handles,
+                    labels=hue_labels,
+                ),
+            )
         else:
-            # Continuous colorbar
+            # continuous -> colorbar
             mappable = ScalarMappable(norm=hue_norm, cmap=palette)
-            legend_data["hue"] = {
-                "mappable": mappable,
-                "label": hue_label,
-                "height": kwargs.pop("hue_height", 0.2),
-                "width": kwargs.pop("hue_width", 0.05),
-                "type": "colorbar",
-            }
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=[mappable],
+                    labels=[],
+                ),
+            )
 
-    # Store metadata on collection
-    if len(ax.collections) > 0:
-        ax.collections[0]._legend_data = legend_data
+    # Render per-axis legend for entries not claimed by a figure-level group.
+    # legend=False short-circuits (all flags False, nothing stashed, nothing to render).
+    if legend is False:
+        return
 
-    # Create legends using legend() API
-    from publiplots.utils.legend import legend as pp_legend
-    builder = pp_legend(ax=ax)
+    fig = ax.get_figure()
+    entries_to_render = [
+        e for e in get_entries(ax)
+        if flags[e.kind] and not entry_is_in_group(fig, e)
+    ]
+    if not entries_to_render:
+        return
+
+    builder = legend_fn(ax=ax, auto=False)
+    for entry in entries_to_render:
+        if entry.kind == "hue" and is_continuous_hue(entry.handles):
+            builder.add_colorbar(
+                mappable=entry.handles[0],
+                label=entry.name,
+            )
+        else:
+            builder.add_legend(
+                handles=list(entry.handles),
+                label=entry.name,
+            )
