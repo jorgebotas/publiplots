@@ -23,6 +23,12 @@ _MM2INCH = 1 / 25.4
 _UPDATE_THRESHOLD_MM = 0.1
 _ALL_SIDES = {"title_space", "xlabel_space", "ylabel_space", "right"}
 
+# Maximum measure/apply iterations per draw event. Convergence in 1-3 is
+# typical; the cap protects against tick-locator feedback on degenerate
+# axes (e.g., empty numeric axes whose right-tick overhang grows each
+# time the figure widens).
+_MAX_CONVERGENCE_ITERS = 5
+
 # side_name -> (axis_kind, bbox_fn)
 #   axis_kind: "row" (result length == nrows) or "col" (length == ncols)
 #   bbox_fn:   float (ax_bbox, tight_bbox) -> px
@@ -52,15 +58,55 @@ class SubplotsAutoLayout:
             self._cid = fig.canvas.mpl_connect("draw_event", self._on_draw)
 
     def _on_draw(self, event) -> None:
+        """Iterate measure/apply to convergence inside a single draw event.
+
+        Measurement depends on the figure's current size (tick locators pick
+        different numbers of ticks at different widths; wrapped tick labels
+        change height as columns narrow). A single measure/apply pair would
+        leave the canvas visibly out of sync with the logical layout — the
+        symptom is plt.show() rendering at the pre-apply size (titles /
+        legends cropped) and successive fig.canvas.draw() calls oscillating
+        between locally stable sizes.
+
+        We resolve both by iterating until _needs_update returns False, using
+        ``fig.draw_without_rendering()`` between iterations so tick locators
+        and wrapped-text artists update their positions against the latest
+        canvas size. All intermediate set_size_inches calls use
+        ``forward=False`` to avoid emitting spurious resize events; the final
+        converged size is pushed with ``forward=True`` so plt.show() and
+        savefig see the canonical dimensions.
+
+        The re-entrance guard prevents the inner draw_without_rendering from
+        recursing back into this method.
+        """
         if self._updating:
             return
         self._updating = True
         try:
-            new = self._measure()
-            if self._needs_update(new):
-                self._apply(new)
+            for _ in range(_MAX_CONVERGENCE_ITERS):
+                new = self._measure()
+                if not self._needs_update(new):
+                    self._sync_canvas_size()
+                    return
+                self._apply(new, forward=False)
+                # Let matplotlib recompute tick positions, text layout, and
+                # artist bboxes against the new figure size before we
+                # measure again. Without this the next _measure sees stale
+                # tight-bboxes and the loop would be a no-op.
+                self._fig.draw_without_rendering()
+            # Did not converge: push the current logical size to the canvas
+            # so at least the GUI / savefig sees a self-consistent state.
+            self._sync_canvas_size()
         finally:
             self._updating = False
+
+    def _sync_canvas_size(self) -> None:
+        """Ensure the canvas size matches the layout's figure_size (forward=True)."""
+        W, H = self._layout.figure_size()
+        target_w, target_h = W * _MM2INCH, H * _MM2INCH
+        cur_w, cur_h = self._fig.get_size_inches()
+        if abs(cur_w - target_w) > 1e-4 or abs(cur_h - target_h) > 1e-4:
+            self._fig.set_size_inches(target_w, target_h, forward=True)
 
     def _measure(self) -> Dict[str, Tuple[float, ...]]:
         fig = self._fig
@@ -142,18 +188,25 @@ class SubplotsAutoLayout:
                     return True
         return False
 
-    def _apply(self, measured: Dict[str, Tuple[float, ...]]) -> None:
+    def _apply(
+        self,
+        measured: Dict[str, Tuple[float, ...]],
+        *,
+        forward: bool = True,
+    ) -> None:
+        """Commit new reservations to the layout and resize the figure.
+
+        ``forward`` is False during intra-draw convergence iterations so the
+        canvas does not emit resize events between measurements; the final
+        converged size is propagated by ``_sync_canvas_size()`` with
+        ``forward=True``.
+        """
         new_layout = self._layout.with_updated_reservations(**measured)
         self._layout = new_layout
         self._fig._publiplots_layout = new_layout
 
         W, H = new_layout.figure_size()
-        # forward=True propagates the new size to the GUI canvas so plt.show()
-        # renders at the resized dimensions. Without it, the canvas keeps its
-        # initial size and decorations that grew into the extra reservation get
-        # cropped. The re-entrance guard (_updating) plus the 0.1 mm threshold
-        # in _needs_update() keep this loop-safe.
-        self._fig.set_size_inches(W * _MM2INCH, H * _MM2INCH, forward=True)
+        self._fig.set_size_inches(W * _MM2INCH, H * _MM2INCH, forward=forward)
 
         for r, row in enumerate(self._axes_matrix()):
             for c, ax in enumerate(row):
