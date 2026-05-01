@@ -625,7 +625,7 @@ def complex_heatmap(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     edgecolor: Optional[str] = None,
-    figsize: Optional[Tuple[float, float]] = None,
+    axes_size: Optional[Tuple[float, float]] = None,
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
@@ -688,8 +688,11 @@ def complex_heatmap(
         Marker edge width.
     edgecolor : str, optional
         Marker edge color.
-    figsize : tuple, optional
-        Base figure size (will be adjusted for margins).
+    axes_size : tuple of float, optional
+        Main heatmap axes dimensions in millimeters, as ``(width_mm,
+        height_mm)``. The figure grows to accommodate margin plots added
+        via ``.with_top()`` / ``.with_bottom()`` / etc. If not specified,
+        defaults to ``(80, 60)`` mm.
     title : str, default=""
         Plot title.
     xlabel, ylabel : str, default=""
@@ -752,6 +755,9 @@ def complex_heatmap(
     >>> axes['top'][0]    # First top margin plot
     >>> axes['left'][0]   # First left margin plot
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     return ComplexHeatmapBuilder(
         data=data,
         x=x,
@@ -773,7 +779,7 @@ def complex_heatmap(
         alpha=alpha,
         linewidth=linewidth,
         edgecolor=edgecolor,
-        figsize=figsize,
+        axes_size=axes_size,
         title=title,
         xlabel=xlabel,
         ylabel=ylabel,
@@ -825,7 +831,7 @@ class ComplexHeatmapBuilder:
         alpha: Optional[float] = None,
         linewidth: Optional[float] = None,
         edgecolor: Optional[str] = None,
-        figsize: Optional[Tuple[float, float]] = None,
+        axes_size: Optional[Tuple[float, float]] = None,
         title: str = "",
         xlabel: str = "",
         ylabel: str = "",
@@ -878,9 +884,11 @@ class ComplexHeatmapBuilder:
         }
         self._heatmap_params.update(kwargs)
 
-        # Layout parameters. Historical matplotlib default kept to preserve
-        # ComplexHeatmap geometry; migrating it to pp.subplots is deferred.
-        self._figsize = figsize or (4.0, 3.0)
+        # Layout: main heatmap axes dimensions in mm → convert to inches for
+        # the internal gridspec math (margins are already in mm and get
+        # converted at render time via MM2INCH).
+        axes_size_mm = axes_size or (80.0, 60.0)
+        self._figsize = (axes_size_mm[0] * MM2INCH, axes_size_mm[1] * MM2INCH)
         self._hspace = hspace
         self._wspace = wspace
 

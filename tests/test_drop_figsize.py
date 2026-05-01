@@ -109,6 +109,37 @@ def test_ax_kwarg_reuses_existing_figure(fn_name, df_fixture, kwargs, request):
     assert ax1 is ax0
 
 
+def test_venn_rejects_figsize():
+    """pp.venn no longer accepts figsize=."""
+    with pytest.raises(TypeError, match="figsize"):
+        pp.venn(sets=[{1, 2}, {2, 3}], figsize=(6, 6))
+
+
+def test_venn_default_installs_auto_layout():
+    fig, _ = pp.venn(sets=[{1, 2, 3}, {2, 3, 4}])
+    assert hasattr(fig, "_publiplots_auto_layout")
+
+
+def test_venn_ax_reuses_existing_figure():
+    fig0, ax0 = pp.subplots(axes_size=(80, 80))
+    fig1, ax1 = pp.venn(sets=[{1, 2, 3}, {2, 3, 4}], ax=ax0)
+    assert fig1 is fig0
+    assert ax1 is ax0
+
+
+def test_complex_heatmap_rejects_figsize(matrix_df):
+    """complex_heatmap no longer accepts figsize=; use axes_size= (mm)."""
+    with pytest.raises(TypeError, match="figsize"):
+        pp.complex_heatmap(matrix_df, figsize=(5, 5))
+
+
+def test_complex_heatmap_accepts_axes_size(matrix_df):
+    """complex_heatmap accepts axes_size=(w_mm, h_mm) and stores it in inches."""
+    builder = pp.complex_heatmap(matrix_df, axes_size=(90, 60))
+    # The builder stores figsize internally in inches
+    assert builder._figsize == pytest.approx((90 / 25.4, 60 / 25.4), rel=1e-6)
+
+
 def test_rcparam_figure_figsize_not_overridden_by_publiplots():
     """After PR C, publiplots must not override matplotlib's figure.figsize.
 

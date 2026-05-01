@@ -38,14 +38,17 @@ np.random.seed(777)
 set1 = set(np.random.randint(1, 100, 60))
 set2 = set(np.random.randint(40, 140, 60))
 
-# Create 2-way Venn with percentage format
-fig, ax = pp.venn(
+# Create 2-way Venn with percentage format. Venn diagrams need a
+# roughly square axes area — compose with pp.subplots(axes_size=...)
+# and pass ax=.
+fig, ax = pp.subplots(axes_size=(80, 80))
+pp.venn(
     sets=[set1, set2],
     labels=['Dataset A', 'Dataset B'],
     colors=['#75B375', '#E6B375'],
     fmt='{percentage:.1f}%',
     alpha=0.3,
-    figsize=(6, 6)
+    ax=ax,
 )
 plt.show()
 
@@ -80,11 +83,12 @@ set3 = set(np.random.randint(60, 180, 70))
 set4 = set(np.random.randint(1, 100, 65))
 
 # Create 4-way Venn
-fig, ax = pp.venn(
+fig, ax = pp.subplots(axes_size=(80, 80))
+pp.venn(
     sets=[set1, set2, set3, set4],
     labels=['Dataset A', 'Dataset B', 'Dataset C', 'Dataset D'],
     colors=pp.color_palette('pastel', n_colors=4),
-    figsize=(6, 6),
+    ax=ax,
 )
 plt.show()
 
@@ -102,11 +106,12 @@ set4 = set(np.random.randint(20, 160, 70))
 set5 = set(np.random.randint(60, 180, 80))
 
 # Create 5-way Venn
-fig, ax = pp.venn(
+fig, ax = pp.subplots(axes_size=(80, 80))
+pp.venn(
     sets=[set1, set2, set3, set4, set5],
     labels=['Group A', 'Group B', 'Group C', 'Group D', 'Group E'],
     colors=pp.color_palette('pastel', n_colors=5),
-    figsize=(6, 6),
+    ax=ax,
 )
 plt.show()
 
@@ -121,12 +126,13 @@ genes_treatment1 = set(range(60, 160))
 genes_treatment2 = set(range(120, 200))
 
 # Create custom styled Venn
-fig, ax = pp.venn(
+fig, ax = pp.subplots(axes_size=(90, 90))
+pp.venn(
     sets=[genes_control, genes_treatment1, genes_treatment2],
     labels=['Control', 'Treatment 1', 'Treatment 2'],
     colors=['#8E8EC1', '#75B375', '#E6B375'],
     alpha=0.4,
-    figsize=(7, 7),
+    ax=ax,
 )
 plt.title('Differentially Expressed Genes', fontsize=14, fontweight='bold')
 plt.show()
