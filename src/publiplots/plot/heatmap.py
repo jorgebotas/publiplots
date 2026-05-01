@@ -19,7 +19,12 @@ from typing import Optional, Tuple, Union, Dict, List
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical, is_numeric, create_legend_handles
-from publiplots.utils.legend import legend as legend_builder
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    resolve_legend_flags,
+)
+from publiplots.utils.plot_legend import render_entries
 from publiplots.utils.transparency import apply_transparency
 
 
@@ -57,7 +62,7 @@ def heatmap(
     xlabel: str = "",
     ylabel: str = "",
     # Legend
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     # Additional options
     xticklabels: Union[bool, str, List] = "auto",
@@ -128,8 +133,11 @@ def heatmap(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show colorbar/size legend.
+    legend : bool or dict, default=True
+        Whether to show colorbar/size legend. Accepts ``bool`` or
+        ``dict[kind, bool]`` for per-kind control (e.g.,
+        ``legend={"size": False}`` on a dot heatmap keeps the colorbar
+        but hides the size legend).
     legend_kws : dict, optional
         Keyword arguments for legend:
         - value_label : str - Label for colorbar (default: value column name)
@@ -297,7 +305,7 @@ def _draw_heatmap(
     xticklabels: Union[bool, str, List],
     yticklabels: Union[bool, str, List],
     mask: Optional[Union[pd.DataFrame, np.ndarray]],
-    legend: bool,
+    legend: Union[bool, Dict],
     legend_kws: Optional[Dict],
     value_col: Optional[str],
     **kwargs
@@ -336,9 +344,8 @@ def _draw_heatmap(
     # Draw heatmap
     sns.heatmap(**heatmap_kwargs)
 
-    # Add colorbar via legend system
-    if legend:
-        # Determine normalization
+    # Stash colorbar entry and render per-axis unless claimed by a group.
+    if legend is not False:
         v_min = vmin if vmin is not None else matrix.min().min()
         v_max = vmax if vmax is not None else matrix.max().max()
 
@@ -351,13 +358,18 @@ def _draw_heatmap(
 
         mappable = ScalarMappable(norm=norm, cmap=cmap)
 
-        builder = legend_builder(ax=ax, auto=False)
-        builder.add_colorbar(
-            mappable=mappable,
-            label=legend_kws.get("value_label", value_col or ""),
-            height=legend_kws.get("height", 20),
-            width=legend_kws.get("width", 5),
-        )
+        flags = resolve_legend_flags(legend)
+        if flags["hue"]:
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("value_label", value_col or ""),
+                    kind="hue",
+                    handles=[mappable],
+                    labels=[],
+                ),
+            )
+        render_entries(ax, flags=flags)
 
     return fig, ax
 
@@ -379,7 +391,7 @@ def _draw_dot_heatmap(
     edgecolor: Optional[str],
     square: bool,
     mask: Optional[Union[pd.DataFrame, np.ndarray]],
-    legend: bool,
+    legend: Union[bool, Dict],
     legend_kws: Optional[Dict],
     value_col: str,
     size_col: str,
@@ -494,31 +506,41 @@ def _draw_dot_heatmap(
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    # Add legends
-    if legend:
-        builder = legend_builder(ax=ax, auto=False)
+    # Stash colorbar + size entries and render per-axis unless claimed by a group.
+    if legend is not False:
+        flags = resolve_legend_flags(legend)
 
-        # Color legend (colorbar)
-        mappable = ScalarMappable(norm=color_norm, cmap=cmap)
-        builder.add_colorbar(
-            mappable=mappable,
-            label=legend_kws.get("value_label", value_col or ""),
-            height=legend_kws.get("colorbar_height", 20),
-            width=legend_kws.get("colorbar_width", 5),
-        )
+        if flags["hue"]:
+            mappable = ScalarMappable(norm=color_norm, cmap=cmap)
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("value_label", value_col or ""),
+                    kind="hue",
+                    handles=[mappable],
+                    labels=[],
+                ),
+            )
 
-        # Size legend
-        size_handles, size_labels = _create_size_legend(
-            marker_sizes=marker_sizes,
-            sizes=sizes,
-            size_norm=size_norm,
-            alpha=alpha,
-            linewidth=linewidth,
-        )
-        builder.add_legend(
-            handles=size_handles,
-            label=legend_kws.get("size_label", size_col or ""),
-        )
+        if flags["size"]:
+            size_handles, size_labels = _create_size_legend(
+                marker_sizes=marker_sizes,
+                sizes=sizes,
+                size_norm=size_norm,
+                alpha=alpha,
+                linewidth=linewidth,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("size_label", size_col or ""),
+                    kind="size",
+                    handles=size_handles,
+                    labels=size_labels,
+                ),
+            )
+
+        render_entries(ax, flags=flags)
 
     return fig, ax
 

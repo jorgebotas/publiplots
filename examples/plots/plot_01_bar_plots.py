@@ -181,7 +181,6 @@ fig, ax = pp.barplot(
     errorbar="se",
     palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
     hatch_map={"24h": "", "48h": "///"},
-    figsize=(8, 5)
 )
 plt.show()
 
@@ -213,4 +212,35 @@ fig, ax = pp.barplot(
     alpha=0.3,
     order=horizontal_data['gene'].tolist()
 )
+plt.show()
+
+# %%
+# Shared Legend Across Subplots
+# ------------------------------
+# When several bar subplots share the same ``hue`` and ``hatch`` variables,
+# attach ``pp.legend_group(anchor=...)`` before drawing. Each ``barplot``
+# stashes its hue + hatch entries on the corresponding axes; the group
+# collects them (deduped by name across subplots) and renders a single
+# legend on the right of the rightmost subplot — with both the hue swatches
+# and the hatch patterns.
+
+np.random.seed(99)
+shared_df = pd.DataFrame({
+    "cat": np.tile(["A", "B", "C"], 60),
+    "val": np.random.randn(180) + np.tile([0, 1, 2], 60),
+    "group": np.repeat(["low", "mid", "high"], 60),
+    "time": np.tile(np.repeat(["24h", "48h"], 30), 3),
+})
+
+fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
+pp.legend_group(anchor=axes[-1])
+for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
+    pp.barplot(
+        data=shared_df, x="cat", y="val",
+        hue="group", hatch="time",
+        palette="pastel",
+        hatch_map={"24h": "", "48h": "///"},
+        title=title, ax=ax,
+        errorbar="se",
+    )
 plt.show()

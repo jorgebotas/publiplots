@@ -1,0 +1,89 @@
+"""Tests for heatmap legend stashing via LegendEntry."""
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import pytest
+
+import publiplots as pp
+from publiplots.utils.legend_entries import get_entries
+
+
+@pytest.fixture(autouse=True)
+def _close_figures():
+    yield
+    plt.close("all")
+
+
+def _matrix_df(rows=4, cols=5, seed=0):
+    rng = np.random.default_rng(seed)
+    return pd.DataFrame(rng.normal(size=(rows, cols)),
+                        index=[f"r{i}" for i in range(rows)],
+                        columns=[f"c{i}" for i in range(cols)])
+
+
+def test_categorical_heatmap_stashes_continuous_hue_entry():
+    """Categorical heatmap stashes one continuous-hue (colorbar) entry."""
+    from publiplots.utils.legend_entries import is_continuous_hue
+    df = _matrix_df()
+    fig, ax = pp.heatmap(data=df)
+    entries = get_entries(ax)
+    assert len(entries) == 1
+    assert entries[0].kind == "hue"
+    assert is_continuous_hue(entries[0].handles)
+
+
+def test_categorical_heatmap_legend_false_stashes_nothing():
+    df = _matrix_df()
+    fig, ax = pp.heatmap(data=df, legend=False)
+    assert get_entries(ax) == []
+
+
+def _dot_df(seed=0):
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i, row in enumerate(["r0", "r1", "r2"]):
+        for j, col in enumerate(["c0", "c1", "c2", "c3"]):
+            rows.append({
+                "row": row, "col": col,
+                "value": rng.normal(),
+                "size_var": rng.uniform(1, 10),
+            })
+    return pd.DataFrame(rows)
+
+
+def test_dot_heatmap_stashes_hue_and_size_entries():
+    """Dot heatmap (value_col + size_col) stashes one continuous-hue + one size entry."""
+    from publiplots.utils.legend_entries import is_continuous_hue
+    df = _dot_df()
+    fig, ax = pp.heatmap(
+        data=df, x="col", y="row", value="value", size="size_var",
+    )
+    entries = get_entries(ax)
+    kinds = [e.kind for e in entries]
+    assert "hue" in kinds
+    assert "size" in kinds
+    hue_entry = next(e for e in entries if e.kind == "hue")
+    assert is_continuous_hue(hue_entry.handles)
+
+
+def test_dot_heatmap_legend_dict_suppresses_size():
+    df = _dot_df()
+    fig, ax = pp.heatmap(
+        data=df, x="col", y="row", value="value", size="size_var",
+        legend={"size": False},
+    )
+    entries = get_entries(ax)
+    kinds = [e.kind for e in entries]
+    assert "hue" in kinds
+    assert "size" not in kinds
+
+
+def test_dot_heatmap_legend_false_stashes_nothing():
+    df = _dot_df()
+    fig, ax = pp.heatmap(
+        data=df, x="col", y="row", value="value", size="size_var",
+        legend=False,
+    )
+    assert get_entries(ax) == []

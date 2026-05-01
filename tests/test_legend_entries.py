@@ -64,22 +64,22 @@ def test_stash_entry_appends_in_order():
 
 def test_resolve_legend_flags_true():
     flags = resolve_legend_flags(True)
-    assert flags == {"hue": True, "size": True, "style": True, "marker": True}
+    assert flags == {"hue": True, "size": True, "style": True, "marker": True, "hatch": True}
 
 
 def test_resolve_legend_flags_false():
     flags = resolve_legend_flags(False)
-    assert flags == {"hue": False, "size": False, "style": False, "marker": False}
+    assert flags == {"hue": False, "size": False, "style": False, "marker": False, "hatch": False}
 
 
 def test_resolve_legend_flags_dict_partial_missing_defaults_to_true():
     flags = resolve_legend_flags({"hue": False})
-    assert flags == {"hue": False, "size": True, "style": True, "marker": True}
+    assert flags == {"hue": False, "size": True, "style": True, "marker": True, "hatch": True}
 
 
 def test_resolve_legend_flags_dict_full():
-    flags = resolve_legend_flags({"hue": True, "size": False, "style": False, "marker": False})
-    assert flags == {"hue": True, "size": False, "style": False, "marker": False}
+    flags = resolve_legend_flags({"hue": True, "size": False, "style": False, "marker": False, "hatch": False})
+    assert flags == {"hue": True, "size": False, "style": False, "marker": False, "hatch": False}
 
 
 def test_resolve_legend_flags_rejects_bad_type():
@@ -149,3 +149,12 @@ def test_pp_legend_auto_reads_new_store():
     from matplotlib.legend import Legend
     legends = [c for c in ax.get_children() if isinstance(c, Legend)]
     assert len(legends) >= 1
+
+
+def test_legend_kinds_includes_hatch():
+    """hatch is a supported legend kind for bar's secondary split dimension."""
+    from publiplots.utils.legend_entries import _LEGEND_KINDS, resolve_legend_flags
+    assert "hatch" in _LEGEND_KINDS
+    flags = resolve_legend_flags({"hatch": False})
+    assert flags["hatch"] is False
+    assert flags["hue"] is True  # other kinds default to True
