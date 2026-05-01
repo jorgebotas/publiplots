@@ -24,9 +24,9 @@ _MM2INCH = 1 / 25.4
 _DISPLACEMENT_WARNING = (
     "A LegendBuilder element was displaced by a layout change "
     "(likely plt.tight_layout() or fig.subplots_adjust). "
-    "publiplots enables constrained_layout in set_notebook_style() and "
-    "set_publication_style() — using those avoids this issue. The element "
-    "was re-anchored automatically; rendered output is correct."
+    "For deterministic subplot geometry, use pp.subplots(axes_size=...) — "
+    "declared axes dimensions stay fixed and the figure grows around them. "
+    "The element was re-anchored automatically; rendered output is correct."
 )
 
 
@@ -38,6 +38,13 @@ class _Registration:
     mm_y_from_top: float
     mm_width: Optional[float] = None
     mm_height: Optional[float] = None
+    # External overlays (e.g., pp.legend_group anchored to an axes) should
+    # NOT count toward the axes' tightbbox in SubplotsAutoLayout. Their
+    # geometry is owned by the reactor + user's legend_column reservation,
+    # not by axis-level decoration measurement. Per-axis pp.legend(ax)
+    # keeps this False — those legends ARE part of the axes' visual
+    # footprint.
+    external_to_axis: bool = False
 
 
 class LayoutReactor:
@@ -75,12 +82,23 @@ class LayoutReactor:
         mm_y_from_top: float,
         mm_width: Optional[float] = None,
         mm_height: Optional[float] = None,
+        external_to_axis: bool = False,
     ) -> None:
         """Track this element; its bbox_to_anchor will be refreshed every draw.
 
         For legends, leave mm_width/mm_height as None. For colorbars, pass the
         colorbar's mm dimensions so the colorbar axes can be repositioned via
         set_position (colorbars do not respond to bbox_to_anchor).
+
+        Parameters
+        ----------
+        external_to_axis : bool, default False
+            When True, SubplotsAutoLayout excludes this artist from the
+            axes' tightbbox during reservation measurement. Set True for
+            legend_group-managed overlays that should be accounted for
+            via the figure's ``legend_column`` reservation, not the per-cell
+            ``right`` reservation. Leave False for per-axis ``pp.legend(ax)``
+            — those are part of the axes' visual footprint.
         """
         self._registrations.append(_Registration(
             ax=ax,
@@ -89,6 +107,7 @@ class LayoutReactor:
             mm_y_from_top=mm_y_from_top,
             mm_width=mm_width,
             mm_height=mm_height,
+            external_to_axis=external_to_axis,
         ))
 
     def _on_draw(self, event) -> None:
@@ -97,7 +116,12 @@ class LayoutReactor:
         self._updating = True
         try:
             any_displaced = self._refresh_all()
-            if any_displaced and not self._warned and not self._has_constrained_layout():
+            if (
+                any_displaced
+                and not self._warned
+                and not self._has_constrained_layout()
+                and not self._has_publiplots_auto_layout()
+            ):
                 warnings.warn(_DISPLACEMENT_WARNING, UserWarning, stacklevel=2)
                 self._warned = True
         finally:
@@ -151,6 +175,10 @@ class LayoutReactor:
         if engine is None:
             return False
         return type(engine).__name__ == "ConstrainedLayoutEngine"
+
+    def _has_publiplots_auto_layout(self) -> bool:
+        """True when pp.subplots() owns this figure — axes repositioning is expected."""
+        return getattr(self._fig, "_publiplots_auto_layout", None) is not None
 
 
 def _bboxes_equal(a, b, tol_frac: float = 3e-4) -> bool:

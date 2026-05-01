@@ -134,7 +134,7 @@ palette_data = pd.DataFrame({
 })
 
 # Using built-in palettes
-fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+fig, axes = pp.subplots(2, 2, axes_size=(85, 70))
 
 # Pastel palette
 pp.barplot(

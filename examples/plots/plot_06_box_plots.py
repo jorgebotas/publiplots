@@ -88,7 +88,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Overlay swarm plot on box plot to show both summary statistics and individual data points.
 
-fig, ax = plt.subplots(figsize=(6, 5))
+fig, ax = pp.subplots(axes_size=(80, 65))
 
 # First, create the box plot
 pp.boxplot(

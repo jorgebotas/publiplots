@@ -126,25 +126,22 @@ five_sets = {
 }
 
 # Create side-by-side comparison
-fig = plt.figure(figsize=(14, 6))
+fig, (ax1, ax2) = pp.subplots(1, 2, axes_size=(90, 80))
 
 # Venn diagram (left)
-ax1 = plt.subplot(1, 2, 1)
 pp.venn(
     sets=list(five_sets.values()),
     labels=list(five_sets.keys()),
     colors=pp.color_palette('pastel', n_colors=5),
-    ax=ax1
+    ax=ax1,
 )
 ax1.set_title('5-Way Venn Diagram', fontsize=12, fontweight='bold')
 
-# UpSet plot (right) - need to handle this differently since upsetplot returns multiple axes
-plt.subplot(1, 2, 2)
-# For this comparison, we'll create a separate figure for the UpSet plot
-plt.text(0.5, 0.5, 'UpSet plot shown separately\n(see next figure)',
+# UpSet plot (right) - shown separately in the next figure
+ax2.text(0.5, 0.5, 'UpSet plot shown separately\n(see next figure)',
          ha='center', va='center', fontsize=12)
-plt.axis('off')
-plt.title('UpSet Plot (Better for 5+ Sets)', fontsize=12, fontweight='bold')
+ax2.axis('off')
+ax2.set_title('UpSet Plot (Better for 5+ Sets)', fontsize=12, fontweight='bold')
 
 plt.show()
 

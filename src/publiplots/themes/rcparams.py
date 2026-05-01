@@ -122,6 +122,17 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     # Scatter plot sizes
     "scatter.size_min": 50,  # Minimum marker size for size mapping
     "scatter.size_max": 1000,  # Maximum marker size for size mapping
+
+    # Subplots layout (mm) — baseline is publication-grade; notebook style
+    # overrides these in themes/styles.py.
+    "subplots.axes_size": (50.0, 30.0),  # default (width, height) of each axes in pp.subplots
+    "subplots.title_space": 5,    # reserved above each row
+    "subplots.xlabel_space": 8,   # reserved below each row
+    "subplots.ylabel_space": 10,  # reserved left of each col
+    "subplots.right": 2,          # reserved right of each col
+    "subplots.hspace": 3,         # vertical gap between rows (on top of per-cell title/xlabel reservations)
+    "subplots.wspace": 3,         # horizontal gap between cols (on top of per-cell ylabel/right reservations)
+    "subplots.outer_pad": 2,      # figure outer margin (all sides)
 }
 """
 PubliPlots custom rcParams.

@@ -172,14 +172,19 @@ def heatmap(
     >>> fig, ax = pp.heatmap(matrix, annot=True, fmt=".1f")
     """
     # Read defaults from rcParams if not provided
-    figsize = resolve_param("figure.figsize", figsize)
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     edgecolor = resolve_param("edgecolor", edgecolor)
 
     # Create figure if not provided
+    # Only fall back to matplotlib's figsize when the user explicitly provides one;
+    # otherwise use pp.subplots so axes_size comes from pp.rcParams["subplots.axes_size"].
     if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+        if figsize is not None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            from publiplots.layout.subplots import subplots as _pp_subplots
+            fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 
@@ -1388,7 +1393,8 @@ def dendrogram(
 
     # Create axes if needed
     if ax is None:
-        fig, ax = plt.subplots()
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 

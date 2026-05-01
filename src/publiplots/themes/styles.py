@@ -44,6 +44,14 @@ NOTEBOOK_STYLE = {
     "lines.markersize": 6,
     "lines.markeredgewidth": 2.0,
     "patch.linewidth": 2.0,
+    # Notebook overrides for subplot layout reservations (mm)
+    "subplots.axes_size": (100.0, 65.0),
+    "subplots.title_space": 8,
+    "subplots.xlabel_space": 12,
+    "subplots.ylabel_space": 14,
+    "subplots.hspace": 4,
+    "subplots.wspace": 4,
+    "subplots.outer_pad": 3,
 }
 """
 Notebook-ready style optimized for interactive work and exploration.
