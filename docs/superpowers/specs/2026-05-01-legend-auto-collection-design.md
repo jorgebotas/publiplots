@@ -59,6 +59,13 @@ semantics are unchanged; the dict form is additive.
 - Auto-detection that would turn any figure with multiple legends into
   a `legend_group`. Explicit opt-in only — user calls
   `pp.legend_group(...)`.
+- **Migrating all 9 plot functions to the stash+render pattern.** Deferred
+  to follow-up PRs. This PR migrates the 4 plot types that already use
+  a stash-like pattern today (`scatter`, `strip`, `swarm`, `point`);
+  the 5 that render legends inline (`bar`, `box`, `violin`, `raincloud`,
+  `heatmap`) keep their current behavior and are NOT auto-collected by
+  `legend_group` until their dedicated follow-up PRs land. See the
+  "Plot migration scope" section below.
 
 ---
 
@@ -563,6 +570,52 @@ only change where they land (stash vs. direct render).
 
 ---
 
+## Plot migration scope
+
+Today's codebase has two patterns for legend handling:
+
+**Stash-then-auto-read** (4 plot functions):
+- `src/publiplots/plot/scatter.py` — stashes to `ax.collections[0]._legend_data`
+- `src/publiplots/plot/strip.py` — same
+- `src/publiplots/plot/swarm.py` — same
+- `src/publiplots/plot/point.py` — stashes to `ax.lines[0]._legend_data`
+
+These four already separate handle construction from legend rendering.
+`pp.legend(ax)` in auto mode reads the stashed dict and renders.
+Migration cost is low: replace the dict-shaped stash with
+`LegendEntry` calls to `stash_entry(ax, ...)`, and rewrite the
+auto-mode reader in `pp.legend`.
+
+**Render-inline** (5 plot functions, DEFERRED to follow-up PRs):
+- `src/publiplots/plot/bar.py` — calls `_legend(...)` helper which builds
+  handles and renders in the same step
+- `src/publiplots/plot/box.py` — calls `pp_legend(ax, handles=...)` directly
+  after building handles inline
+- `src/publiplots/plot/violin.py` — same pattern as box
+- `src/publiplots/plot/raincloud.py` — delegates to its sub-plot layers
+- `src/publiplots/plot/heatmap.py` — builds size legends inline via
+  `_create_size_legend` helper, renders immediately
+
+These require extracting handle-building from rendering, which is a
+meaningful refactor per plot. To keep PR #81 reviewable, we explicitly
+defer these to separate follow-up PRs (one per plot type or grouped as
+makes sense).
+
+**User-visible consequence during the interim:**
+
+```python
+fig, axes = pp.subplots(1, 3)
+pp.scatterplot(..., ax=axes[0])          # stashes; group auto-collects
+pp.barplot(..., ax=axes[1])              # does NOT stash; group does not see it
+pp.legend_group(anchor=axes[-1])         # picks up only the scatterplot entry
+```
+
+Documented clearly in `pp.legend_group`'s docstring. For barplot /
+boxplot / violinplot / raincloudplot / heatmap that need unified
+legends, users fall back to manual `group.add_legend(handles=...)`
+until the follow-up PRs land. This matches pre-PR-#81 behavior exactly
+for those plots — no regression, just no new auto-collect.
+
 ## rcParams
 
 No new keys. The existing `subplots.*` reservations continue to drive
@@ -641,10 +694,9 @@ internal.
   on fig + scatterplot → entries stashed but no Legend child on the
   axes.
 
-**`tests/test_bar_legend_stash.py` (new):**
-
-- `test_barplot_stashes_hue_entry` — basic stash path works.
-- `test_barplot_legend_dict_hue_false` — dict form suppresses hue.
+**`tests/test_bar_legend_stash.py`** — NOT created in this PR. `bar.py`
+is not migrated here; it keeps its current inline render behavior.
+Equivalent tests land in the follow-up PR that migrates `bar.py`.
 
 ### Existing test updates
 
@@ -736,19 +788,22 @@ Full suite target: **121 baseline + ~25 new** = ~146 passing.
   raise on use)
 - `src/publiplots/utils/legend.py` (rewrite auto-mode to read the
   standardized store)
-- `src/publiplots/plot/bar.py` (adopt stash pattern)
-- `src/publiplots/plot/box.py`
-- `src/publiplots/plot/point.py`
-- `src/publiplots/plot/scatter.py`
+- `src/publiplots/plot/scatter.py` (migrate stash pattern)
 - `src/publiplots/plot/strip.py`
 - `src/publiplots/plot/swarm.py`
+- `src/publiplots/plot/point.py`
+- `examples/plots/plot_14_edgecolor_control.py` (drop `legend_column=30`;
+  the existing raincloud section keeps explicit `group.add_legend`
+  because raincloud is not migrated in this PR)
+- `tests/test_subplots.py` (drop legend_column test; add
+  width-awareness tests)
+
+**NOT modified** (deferred to follow-up PRs):
+- `src/publiplots/plot/bar.py`
+- `src/publiplots/plot/box.py`
 - `src/publiplots/plot/violin.py`
 - `src/publiplots/plot/raincloud.py`
 - `src/publiplots/plot/heatmap.py`
-- `examples/plots/plot_14_edgecolor_control.py` (drop `legend_column=30`,
-  drop explicit `group.add_legend(handles=...)` calls)
-- `tests/test_subplots.py` (drop legend_column test; add
-  width-awareness tests)
 
 ---
 
