@@ -106,3 +106,37 @@ ax.bar([0, 1, 2], [1.0, 2.4, 0.7])
 pp.annotate(ax, kind="bar_values", fmt=".1f")
 ax.set_title("foreign ax + pp.annotate")
 plt.show()
+
+# %%
+# Pointplot: mean ± errorbar labels
+# ---------------------------------
+# pp.pointplot(..., annotate=True) labels each mean at the top of its
+# errorbar cap. Anchor vocabulary differs from barplots: point labels are
+# directional — ``top`` / ``bottom`` / ``left`` / ``right`` / ``center``.
+rows = []
+for grp in ("A", "B"):
+    for t in ("t1", "t2", "t3"):
+        base = {"t1": 1.0, "t2": 2.5, "t3": 3.2}[t] + (0 if grp == "A" else 0.5)
+        for v in rng.normal(loc=base, scale=0.3, size=10):
+            rows.append({"group": grp, "time": t, "v": float(v)})
+point_df = pd.DataFrame(rows)
+point_df["time"] = point_df["time"].astype("category")
+point_df["group"] = point_df["group"].astype("category")
+
+fig, ax = pp.pointplot(
+    data=point_df, x="time", y="v", hue="group",
+    errorbar="se", annotate={"fmt": ".2f"},
+)
+ax.set_title("pp.pointplot(annotate=True)")
+plt.show()
+
+# %%
+# Point anchor variants
+# ---------------------
+fig, axes = plt.subplots(1, 5, figsize=(15, 3))
+for ax, anchor in zip(axes, ("top", "bottom", "left", "right", "center")):
+    pp.pointplot(data=point_df, x="time", y="v", ax=ax,
+                 errorbar="se",
+                 annotate={"anchor": anchor, "fmt": ".1f"})
+    ax.set_title(f"anchor='{anchor}'")
+plt.show()

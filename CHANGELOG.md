@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `color="auto"` (with compositing for translucent fills) or palette
   colors via `color="hue"`. `pp.barplot(..., annotate=True | dict)`
   wires the primitive into the barplot API.
+- `pp.annotate(ax, kind="point_values", ...)` for pointplots. Directional
+  anchors (`top`/`bottom`/`left`/`right`/`center`), errorbar-cap aware,
+  hue-aware. `pp.pointplot(..., annotate=True | dict)` wires it in.
 
 ## [0.4.7] - 2026-04-29
 

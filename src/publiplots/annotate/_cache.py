@@ -36,6 +36,30 @@ class BarValueMeta:
     owner_is_publiplots: bool
 
 
+@dataclass
+class PointRecord:
+    """A single point's anchor + aggregated value + errorbar extents.
+
+    Unlike BarRecord, a point has no matplotlib artist for the *mark itself*
+    (seaborn merges all points of one hue into a single Line2D). We track
+    the data-coord position directly and the palette color that was used.
+    """
+    xy: Tuple[float, float]                # (x, y) in data coords; y is the value for orient="v"
+    value: float                           # aggregated estimate (mean/median)
+    err_low: Optional[float]               # lower errorbar extent on the value axis
+    err_high: Optional[float]              # upper errorbar extent on the value axis
+    hue_color: Optional[RGBA]              # palette color assigned by pointplot
+
+
+@dataclass
+class PointValueMeta:
+    orient: Literal["v", "h"]              # "v" = value on y-axis (common pointplot)
+    points: List[PointRecord]
+    errorbar_kind: Optional[str]
+    hue_active: bool
+    owner_is_publiplots: bool
+
+
 def _is_bar_rect(p) -> bool:
     if not isinstance(p, Rectangle):
         return False

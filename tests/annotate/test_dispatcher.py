@@ -48,9 +48,9 @@ def test_default_kind_is_bar_values():
     assert len(texts) == 2
 
 
-def test_registry_has_only_bar_values_in_v1():
+def test_registry_contains_known_strategies():
     from publiplots.annotate._dispatcher import _STRATEGIES
-    assert set(_STRATEGIES.keys()) == {"bar_values"}
+    assert set(_STRATEGIES.keys()) == {"bar_values", "point_values"}
 
 
 def test_text_kws_forwarded():

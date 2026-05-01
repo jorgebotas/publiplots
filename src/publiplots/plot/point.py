@@ -56,6 +56,7 @@ def pointplot(
     ylabel: str = "",
     legend: bool = True,
     legend_kws: Optional[Dict] = None,
+    annotate: Union[bool, Dict, None] = None,
     **kwargs
 ) -> Tuple[plt.Figure, Axes]:
     """
@@ -315,6 +316,24 @@ def pointplot(
             linewidth=linewidth,
             kwargs=legend_kws,
         )
+
+    if annotate:
+        from publiplots.annotate._builders import build_from_pointplot_call
+        from publiplots.annotate import annotate as _annotate_fn
+        if is_categorical(data[x]):
+            categorical_axis = x
+        elif is_categorical(data[y]):
+            categorical_axis = y
+        else:
+            categorical_axis = x
+        ax._publiplots_point_meta = build_from_pointplot_call(
+            ax=ax, data=data, x=x, y=y, hue=hue,
+            categorical_axis=categorical_axis,
+            palette=palette if isinstance(palette, dict) else None,
+            errorbar=errorbar if isinstance(errorbar, str) else None,
+        )
+        opts = annotate if isinstance(annotate, dict) else {}
+        _annotate_fn(ax, kind="point_values", **opts)
 
     return fig, ax
 

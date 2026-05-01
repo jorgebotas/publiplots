@@ -21,6 +21,10 @@ from publiplots.annotate._positioning import (
 logger = logging.getLogger(__name__)
 
 
+_VALID_ANCHORS = {"outside", "inside", "base", "center"}
+_DEFAULT_ANCHOR = "outside"
+
+
 def _get_or_introspect(ax: Axes) -> BarValueMeta:
     meta = getattr(ax, "_publiplots_bar_meta", None)
     if isinstance(meta, BarValueMeta):
@@ -47,12 +51,20 @@ def _bar_values_strategy(
     ax: Axes,
     *,
     fmt: str,
-    anchor: str,
+    anchor,
     offset: float,
     color,
     pad: float,
     **text_kws,
 ) -> List[Text]:
+    if anchor is None:
+        anchor = _DEFAULT_ANCHOR
+    if anchor not in _VALID_ANCHORS:
+        raise ValueError(
+            f"bar_values anchor must be one of {sorted(_VALID_ANCHORS)}; "
+            f"got {anchor!r}"
+        )
+
     meta = _get_or_introspect(ax)
     if not meta.bars:
         warnings.warn("pp.annotate: no bars found on axes", UserWarning, stacklevel=3)
