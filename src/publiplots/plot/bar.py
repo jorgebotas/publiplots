@@ -100,8 +100,11 @@ def barplot(
     hatch_map : dict, optional
         Mapping from hatch values to hatch patterns.
         Example: {"group1": "", "group2": "///", "group3": "\\\\\\"}
-    legend : bool, default=True
-        Whether to show the legend.
+    legend : bool or dict, default=True
+        Whether to show the legend. Accepts ``bool`` or
+        ``dict[kind, bool]`` for per-kind control (e.g.,
+        ``legend={"hatch": False}`` hides just the hatch leg in a
+        double-split bar plot).
     errorbar : str, default="se"
         Error bar type: "se" (standard error), "sd" (standard deviation),
         "ci" (confidence interval), or None for no error bars.

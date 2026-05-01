@@ -133,8 +133,11 @@ def heatmap(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show colorbar/size legend.
+    legend : bool or dict, default=True
+        Whether to show colorbar/size legend. Accepts ``bool`` or
+        ``dict[kind, bool]`` for per-kind control (e.g.,
+        ``legend={"size": False}`` on a dot heatmap keeps the colorbar
+        but hides the size legend).
     legend_kws : dict, optional
         Keyword arguments for legend:
         - value_label : str - Label for colorbar (default: value column name)
