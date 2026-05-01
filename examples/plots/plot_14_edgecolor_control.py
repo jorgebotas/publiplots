@@ -91,7 +91,7 @@ mixed_data = pd.DataFrame({
 # pp.subplots declares axes dimensions in mm and extends the figure to
 # accommodate decorations. legend_column=30 reserves a 30 mm strip on
 # the right for the unified legend; pp.legend_group lands in that strip.
-fig, axes = pp.subplots(1, 3, axes_size=(45, 30), legend_column=30)
+fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
 pp.barplot(
     data=mixed_data, x='group', y='value', hue='group',
     palette='pastel', errorbar='se', title='Bar', ax=axes[0], legend=False,
@@ -145,7 +145,7 @@ rain_data = pd.DataFrame({
     ]),
 })
 
-fig, axes = pp.subplots(1, 2, axes_size=(55, 50), sharey=True, legend_column=30)
+fig, axes = pp.subplots(1, 2, axes_size=(55, 50), sharey=True)
 
 # Left: palette-driven edges (rcParam temporarily off)
 pp.rcParams['edgecolor'] = None
