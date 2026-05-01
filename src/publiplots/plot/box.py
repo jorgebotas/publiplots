@@ -303,8 +303,7 @@ def _stash_legend(
         return
 
     flags = resolve_legend_flags(legend)
-    legend_kws = dict(legend_kws or {})
-    hue_label = legend_kws.pop("label", hue)
+    hue_label = (legend_kws or {}).get("hue_label", hue)
 
     if flags["hue"]:
         labels = list(palette.keys())
@@ -329,7 +328,7 @@ def _stash_legend(
     fig = ax.get_figure()
     to_render = [
         e for e in get_entries(ax)
-        if flags.get(e.kind, True) and not entry_is_in_group(fig, e)
+        if flags[e.kind] and not entry_is_in_group(fig, e)
     ]
     if not to_render:
         return
@@ -338,5 +337,4 @@ def _stash_legend(
         builder.add_legend(
             handles=list(entry.handles),
             label=entry.name,
-            **legend_kws,
         )
