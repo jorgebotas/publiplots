@@ -129,3 +129,24 @@ def test_swarmplot_legend_false_stashes_nothing():
         data=df, x="g", y="y", hue="g", palette="pastel", legend=False,
     )
     assert get_entries(ax) == []
+
+
+# ---------------------------------------------------------------------------
+# pointplot migration
+# ---------------------------------------------------------------------------
+
+
+def test_pointplot_stashes_hue_entry():
+    df = _scatter_df()
+    fig, ax = pp.pointplot(data=df, x="g", y="y", hue="g", palette="pastel")
+    entries = get_entries(ax)
+    names_kinds = [(e.name, e.kind) for e in entries]
+    assert ("g", "hue") in names_kinds
+
+
+def test_pointplot_legend_false_stashes_nothing():
+    df = _scatter_df()
+    fig, ax = pp.pointplot(
+        data=df, x="g", y="y", hue="g", palette="pastel", legend=False,
+    )
+    assert get_entries(ax) == []
