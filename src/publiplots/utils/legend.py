@@ -10,6 +10,10 @@ visual style of scatterplots and barplots.
 from typing import List, Dict, Optional, Tuple, Any, Union
 
 from publiplots.themes.rcparams import resolve_param
+from publiplots.utils.legend_entries import (
+    get_entries,
+    is_continuous_hue,
+)
 from matplotlib.axes import Axes
 from matplotlib.cm import ScalarMappable
 from matplotlib.colorbar import Colorbar
@@ -1450,26 +1454,44 @@ def legend(
 
     # Auto mode
     if auto:
-        legend_data = _get_legend_data(ax)
-        if legend_data:
-            # Add hue legend/colorbar
-            if 'hue' in legend_data:
-                hue_data = legend_data['hue'].copy()
-                if hue_data.get('type') == 'colorbar':
-                    hue_data.pop('type', None)
-                    builder.add_colorbar(**hue_data)
+        # Prefer the new LegendEntry store.
+        entries = get_entries(ax)
+        if entries:
+            seen = set()  # (name, kind) dedup within one axes
+            for entry in entries:
+                key = (entry.name, entry.kind)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if entry.kind == "hue" and is_continuous_hue(entry.handles):
+                    builder.add_colorbar(
+                        mappable=entry.handles[0],
+                        label=entry.name,
+                    )
                 else:
-                    builder.add_legend(**hue_data, **kwargs)
-
-            # Add size legend
-            if 'size' in legend_data:
-                size_data = legend_data['size'].copy()
-                builder.add_legend(**size_data, **kwargs)
-
-            # Add style legend
-            if 'style' in legend_data:
-                style_data = legend_data['style'].copy()
-                builder.add_legend(**style_data, **kwargs)
+                    builder.add_legend(
+                        handles=list(entry.handles),
+                        label=entry.name,
+                        **kwargs,
+                    )
+        else:
+            # Back-compat: read legacy _legend_data dict store (plot
+            # functions not migrated in PR #81 still use this path).
+            legend_data = _get_legend_data(ax)
+            if legend_data:
+                if 'hue' in legend_data:
+                    hue_data = legend_data['hue'].copy()
+                    if hue_data.get('type') == 'colorbar':
+                        hue_data.pop('type', None)
+                        builder.add_colorbar(**hue_data)
+                    else:
+                        builder.add_legend(**hue_data, **kwargs)
+                if 'size' in legend_data:
+                    size_data = legend_data['size'].copy()
+                    builder.add_legend(**size_data, **kwargs)
+                if 'style' in legend_data:
+                    style_data = legend_data['style'].copy()
+                    builder.add_legend(**style_data, **kwargs)
 
     return builder
 

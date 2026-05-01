@@ -122,3 +122,30 @@ def test_is_continuous_hue_false_for_empty():
 
 def test_is_continuous_hue_false_for_regular_handles():
     assert is_continuous_hue([_FakeHandle()]) is False
+
+
+def test_pp_legend_auto_reads_new_store():
+    """pp.legend(ax) in auto mode should render from stashed LegendEntry."""
+    import matplotlib.pyplot as plt
+    import publiplots as pp
+    from publiplots.utils.legend import create_legend_handles
+
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    ax.scatter([0, 1, 2], [0, 1, 0])
+    stash_entry(
+        ax,
+        LegendEntry.build(
+            "group", "hue",
+            handles=create_legend_handles(
+                labels=["A", "B"], colors=["#111", "#222"],
+                alpha=0.5, linewidth=1.0,
+            ),
+            labels=("A", "B"),
+        ),
+    )
+    builder = pp.legend(ax)  # auto mode
+    fig.canvas.draw()
+    # At least one legend artist should exist on the axes now.
+    from matplotlib.legend import Legend
+    legends = [c for c in ax.get_children() if isinstance(c, Legend)]
+    assert len(legends) >= 1
