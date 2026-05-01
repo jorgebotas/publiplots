@@ -623,3 +623,31 @@ def test_auto_layout_per_axis_pp_legend_is_counted():
         f"right[0] (has pp.legend) should exceed right[1] by > 5 mm, got "
         f"right[0]={layout.right[0]:.1f}, right[1]={layout.right[1]:.1f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Plot functions use pp.subplots for their ax-is-None path
+# ---------------------------------------------------------------------------
+
+
+def test_barplot_without_ax_creates_pp_subplots_figure():
+    """pp.barplot without explicit ax should produce a figure managed by pp.subplots."""
+    import pandas as pd
+    df = pd.DataFrame({'g': ['A', 'B', 'C'], 'v': [1.0, 2.0, 3.0]})
+    fig, _ = pp.barplot(data=df, x='g', y='v', hue='g', palette='pastel')
+    # pp.subplots attaches this attribute; plt.subplots does not.
+    assert hasattr(fig, "_publiplots_layout"), (
+        "barplot with ax=None should use pp.subplots (missing _publiplots_layout attribute)"
+    )
+
+
+def test_barplot_with_figsize_uses_matplotlib_fallback():
+    """Explicit figsize preserves back-compat and takes the plt.subplots path."""
+    import pandas as pd
+    df = pd.DataFrame({'g': ['A', 'B', 'C'], 'v': [1.0, 2.0, 3.0]})
+    fig, _ = pp.barplot(data=df, x='g', y='v', hue='g', palette='pastel',
+                        figsize=(5, 3))
+    # Explicit figsize → matplotlib path → no publiplots layout attached.
+    assert not hasattr(fig, "_publiplots_layout"), (
+        "explicit figsize should use plt.subplots (publiplots layout unexpectedly present)"
+    )
