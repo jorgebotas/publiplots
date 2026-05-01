@@ -6,7 +6,7 @@ register it in `_STRATEGIES` below.
 """
 from __future__ import annotations
 
-from typing import Callable, List, Union
+from typing import Callable, List, Optional, Union
 
 from matplotlib.axes import Axes
 from matplotlib.text import Text
@@ -27,9 +27,9 @@ def annotate(
     *,
     fmt: str = ".2f",
     anchor: str = "outside",
-    offset: float = 1.5,
+    offset: float = 1.0,
     color: Union[str, tuple] = "auto",
-    pad: float = 1.0,
+    pad: Optional[float] = None,
     **text_kws,
 ) -> List[Text]:
     """Add value labels to plot marks on `ax`.
@@ -45,14 +45,16 @@ def annotate(
         containing {} (e.g. "{:,.1f}%").
     anchor : {"outside", "inside", "base", "center"}, default="outside"
         Where to place the label relative to the bar.
-    offset : float, default=1.5
-        Additional offset in millimeters, applied in the outward direction
-        of the anchor.
+    offset : float, default=1.0
+        Gap in millimeters between the bar (or errorbar cap) and the label,
+        applied in the outward direction of the anchor.
     color : str or tuple, default="auto"
         "auto" = contrast-aware (compositing for translucent fills); "hue" =
         use the bar's palette color; any matplotlib color passes through.
-    pad : float, default=1.0
-        Extra padding in millimeters when auto-expanding axis limits.
+    pad : float, optional
+        Extra margin in millimeters between the label and the axis edge when
+        auto-expanding limits. Defaults to `offset` so the geometry reads
+        bar → offset → label → pad → axis edge.
     **text_kws
         Forwarded to `ax.text` (fontsize, fontweight, etc.).
 
@@ -69,8 +71,12 @@ def annotate(
         raise ValueError(
             f"anchor must be one of {sorted(_VALID_ANCHORS)}; got {anchor!r}"
         )
-    if offset < 0 or pad < 0:
-        raise ValueError("offset and pad must be >= 0")
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+    if pad is None:
+        pad = offset
+    if pad < 0:
+        raise ValueError("pad must be >= 0")
 
     return _STRATEGIES[kind](
         ax, fmt=fmt, anchor=anchor, offset=offset, color=color, pad=pad,

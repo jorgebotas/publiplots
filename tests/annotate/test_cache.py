@@ -71,3 +71,15 @@ def test_introspect_vertical_bars_with_errorbars():
         # For positive bars, err_high is the top-cap y, err_low is the bottom-cap y.
         assert bar.err_high == pytest.approx(exp_high, rel=1e-2)
         assert bar.err_low == pytest.approx(exp_low, rel=1e-2)
+
+
+def test_introspect_ignores_nan_errorbar_segments():
+    """Seaborn can emit NaN-bounded errorbar segments for single-sample groups
+    (std with ddof=1 → NaN). Those must not leak into err_low/err_high."""
+    fig, ax = plt.subplots()
+    ax.bar([0, 1], [1.0, 2.0], yerr=[float("nan"), float("nan")], width=0.8)
+    meta = _introspect(ax)
+    assert len(meta.bars) == 2
+    for bar in meta.bars:
+        assert bar.err_low is None
+        assert bar.err_high is None

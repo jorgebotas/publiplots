@@ -81,6 +81,23 @@ ax.set_title("horizontal")
 plt.show()
 
 # %%
+# Horizontal + inside with mixed bar sizes
+# ----------------------------------------
+# When ``anchor="inside"`` is requested but a bar is too short to fit the
+# label, that single label flips to ``"outside"`` automatically. Other bars
+# keep their inside anchoring.
+df_mixed = pd.DataFrame({
+    "c": pd.Categorical(["A", "B", "C", "D", "E"]),
+    "v": [0.2, 8.4, 0.5, 12.0, 3.1],
+})
+fig, ax = pp.barplot(
+    data=df_mixed, x="v", y="c",
+    annotate={"anchor": "inside", "fmt": ".1f"},
+)
+ax.set_title('horizontal + anchor="inside" (short bars flip out)')
+plt.show()
+
+# %%
 # Post-hoc on a foreign axes
 # --------------------------
 # pp.annotate works on any Axes with bars on it, not just pp.barplot output.

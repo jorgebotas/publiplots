@@ -1,4 +1,6 @@
 """Integration: pp.barplot(..., annotate=...) cache-building + end-to-end."""
+import math
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -167,3 +169,22 @@ def test_barplot_annotate_color_hue_without_hue_warns():
     with pytest.warns(UserWarning, match="plot has no hue"):
         fig, ax = pp.barplot(data=df, x="category", y="value",
                              annotate={"color": "hue"})
+
+
+def test_barplot_annotate_single_sample_groups_no_nan_positions():
+    """Single-sample groups yield NaN SE; label positions must stay finite.
+
+    Regression: seaborn emits errorbar segments with NaN endpoints for
+    single-sample groups (std(ddof=1) is NaN when n=1). Those segments must be
+    filtered in _match_errorbars, not propagated into err_high/err_low.
+    """
+    df = pd.DataFrame({
+        "c": pd.Categorical(["A", "B", "C", "D", "E"]),
+        "v": [0.2, 8.4, 0.5, 12.0, 3.1],
+    })
+    fig, ax = pp.barplot(data=df, x="v", y="c",
+                         annotate={"anchor": "inside", "fmt": ".1f"})
+    for t in ax.texts:
+        x, y = t.get_position()
+        assert not math.isnan(float(x)), f"NaN x for label {t.get_text()!r}"
+        assert not math.isnan(float(y)), f"NaN y for label {t.get_text()!r}"

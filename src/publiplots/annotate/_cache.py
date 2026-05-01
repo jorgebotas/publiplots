@@ -50,9 +50,20 @@ def _iter_error_segments(ax: Axes):
       - a LineCollection in `ax.collections` (matplotlib's `ax.bar(yerr=...)`
         since ~3.6 — segments packed as (2, 2) arrays).
     """
+    import math as _math
+
+    def _finite(values) -> bool:
+        for v in values:
+            try:
+                if _math.isnan(float(v)):
+                    return False
+            except (TypeError, ValueError):
+                return False
+        return True
+
     for ln in ax.lines:
         xs, ys = ln.get_xdata(), ln.get_ydata()
-        if len(xs) >= 2:
+        if len(xs) >= 2 and _finite(xs) and _finite(ys):
             yield xs, ys
     for col in ax.collections:
         if not isinstance(col, LineCollection):
@@ -60,7 +71,9 @@ def _iter_error_segments(ax: Axes):
         for seg in col.get_segments():
             if len(seg) < 2:
                 continue
-            yield seg[:, 0], seg[:, 1]
+            xs, ys = seg[:, 0], seg[:, 1]
+            if _finite(xs) and _finite(ys):
+                yield xs, ys
 
 
 def _match_errorbars(
