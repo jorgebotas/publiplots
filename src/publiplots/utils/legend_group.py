@@ -7,6 +7,7 @@ axes in the same figure. This is the primary tool for complex subplot
 layouts.
 """
 
+import warnings
 from typing import List, Optional, Sequence
 
 from matplotlib.axes import Axes
@@ -15,6 +16,11 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colorbar import Colorbar
 
 from publiplots.utils.legend import LegendBuilder
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    get_entries,
+    is_continuous_hue,
+)
 
 
 class MultiAxesLegendGroup:
@@ -83,6 +89,61 @@ class MultiAxesLegendGroup:
         if self._collect is None:
             return True
         return name in self._collect
+
+    def _materialize(self) -> None:
+        """Collect stashed entries from every grid axes and render them.
+
+        Called by SubplotsAutoLayout during the settle pass (Task 5).
+        Idempotent — subsequent calls after the first return immediately.
+        """
+        if self._materialized:
+            return
+        self._materialized = True
+
+        fig = self.anchor.get_figure()
+        axes_matrix = getattr(fig, "_publiplots_axes", None)
+        if axes_matrix is None:
+            return
+
+        seen = {}  # (name, kind) -> LegendEntry
+        order = []  # list of (name, kind) in collection order
+        for row in axes_matrix:
+            for ax in row:
+                for entry in get_entries(ax):
+                    if self._collect is not None and entry.name not in self._collect:
+                        continue
+                    key = (entry.name, entry.kind)
+                    if key in seen:
+                        if seen[key].signature != entry.signature and not self._warned_mismatch:
+                            warnings.warn(
+                                f"legend entry {entry.name!r} ({entry.kind}) "
+                                "differs between axes; group uses first occurrence",
+                                UserWarning,
+                                stacklevel=2,
+                            )
+                            self._warned_mismatch = True
+                        continue
+                    seen[key] = entry
+                    order.append(key)
+
+        if self._collect is not None:
+            # Stable sort by the user's collect order; ties (same name with
+            # different kinds) stay in the order they were encountered.
+            order.sort(key=lambda k: (self._collect.index(k[0]), 0))
+
+        for key in order:
+            self._render_entry(seen[key])
+
+    def _render_entry(self, entry: LegendEntry) -> None:
+        """Route to add_legend (categorical) or add_colorbar (continuous)."""
+        if entry.kind == "hue" and is_continuous_hue(entry.handles):
+            mappable = entry.handles[0]
+            self.add_colorbar(mappable=mappable, label=entry.name)
+        else:
+            self.add_legend(
+                handles=list(entry.handles),
+                label=entry.name,
+            )
 
     def add_legend(
         self,
