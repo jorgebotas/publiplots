@@ -479,3 +479,47 @@ def test_subplots_works_with_legend_builder_after_auto_resize():
     ax_h_mm = pos.height * fig_h_in / MM2INCH
     assert ax_w_mm == pytest.approx(60.0, abs=0.5)
     assert ax_h_mm == pytest.approx(40.0, abs=0.5)
+
+
+# ---------------------------------------------------------------------------
+# pp.subplots() — scalar/tuple coercion
+# ---------------------------------------------------------------------------
+
+
+def test_subplots_scalar_reservation_broadcasts_to_nrows():
+    fig, _ = pp.subplots(2, 3, axes_size=(50, 30), title_space=8)
+    assert fig._publiplots_layout.title_space == (8.0, 8.0)
+
+
+def test_subplots_scalar_reservation_broadcasts_to_ncols():
+    fig, _ = pp.subplots(2, 3, axes_size=(50, 30), right=5)
+    assert fig._publiplots_layout.right == (5.0, 5.0, 5.0)
+
+
+def test_subplots_tuple_reservation_preserved():
+    fig, _ = pp.subplots(2, 3, axes_size=(50, 30), title_space=(12, 6))
+    assert fig._publiplots_layout.title_space == (12.0, 6.0)
+
+
+def test_subplots_wrong_length_title_space_raises():
+    with pytest.raises(ValueError, match="title_space"):
+        pp.subplots(2, 3, axes_size=(50, 30), title_space=(12, 6, 3))
+
+
+def test_subplots_wrong_length_ylabel_space_raises():
+    with pytest.raises(ValueError, match="ylabel_space"):
+        pp.subplots(2, 3, axes_size=(50, 30), ylabel_space=(10, 10))
+
+
+def test_subplots_default_reservations_broadcast_to_tuple():
+    fig, _ = pp.subplots(2, 3, axes_size=(50, 30))
+    layout = fig._publiplots_layout
+    assert len(layout.title_space) == 2
+    assert len(layout.xlabel_space) == 2
+    assert len(layout.ylabel_space) == 3
+    assert len(layout.right) == 3
+
+
+def test_subplots_negative_tuple_element_raises():
+    with pytest.raises(ValueError, match="title_space"):
+        pp.subplots(2, 1, axes_size=(50, 30), title_space=(5, -1))

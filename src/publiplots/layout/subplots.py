@@ -118,18 +118,52 @@ def subplots(
             fig_kw.pop(k)
 
     # --- resolve reservation defaults & track locked sides ----------------
+    _ROW_SIDES = ("title_space", "xlabel_space")
+    _COL_SIDES = ("ylabel_space", "right")
+    _SCALAR_SIDES = ("hspace", "wspace", "outer_pad")
+
     user_values = dict(
         title_space=title_space, xlabel_space=xlabel_space,
         ylabel_space=ylabel_space, right=right,
         hspace=hspace, wspace=wspace, outer_pad=outer_pad,
     )
     locked = {k for k, v in user_values.items() if v is not None}
+
     resolved = {}
-    for k, v in user_values.items():
-        val = resolve_param(f"subplots.{k}", v)
+    for side in _ROW_SIDES + _COL_SIDES:
+        user_val = user_values[side]
+        length = nrows if side in _ROW_SIDES else ncols
+        if user_val is None:
+            default_scalar = resolve_param(f"subplots.{side}", None)
+            if default_scalar < 0:
+                raise ValueError(f"{side} default must be non-negative, got {default_scalar}")
+            resolved[side] = (float(default_scalar),) * length
+        elif isinstance(user_val, (int, float)) and not isinstance(user_val, bool):
+            if user_val < 0:
+                raise ValueError(f"{side} must be non-negative, got {user_val}")
+            resolved[side] = (float(user_val),) * length
+        else:
+            try:
+                tup = tuple(float(x) for x in user_val)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"{side} must be a scalar or sequence of numbers, got {user_val!r}"
+                )
+            if len(tup) != length:
+                raise ValueError(
+                    f"{side} must have length {length} for nrows={nrows} ncols={ncols}, "
+                    f"got length {len(tup)}"
+                )
+            for i, v in enumerate(tup):
+                if v < 0:
+                    raise ValueError(f"{side}[{i}] must be non-negative, got {v}")
+            resolved[side] = tup
+
+    for side in _SCALAR_SIDES:
+        val = resolve_param(f"subplots.{side}", user_values[side])
         if val < 0:
-            raise ValueError(f"{k} must be non-negative, got {val}")
-        resolved[k] = float(val)
+            raise ValueError(f"{side} must be non-negative, got {val}")
+        resolved[side] = float(val)
 
     if legend_column < 0:
         raise ValueError(f"legend_column must be non-negative, got {legend_column}")
