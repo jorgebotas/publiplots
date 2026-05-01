@@ -104,6 +104,11 @@ def _maybe_expand_limits(
                     else ax.get_autoscalex_on())
     should_expand = owner_is_publiplots or autoscale_on
 
+    # Force a fresh draw so the just-created Text artists have accurate
+    # window extents; without this, get_window_extent returns a stale bbox
+    # based on the pre-layout state, which undershoots `need_max` and leaves
+    # labels clipping the axis frame on already-drawn figures.
+    ax.figure.canvas.draw()
     renderer = _ensure_renderer(ax)
     inv = ax.transData.inverted()
     extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]

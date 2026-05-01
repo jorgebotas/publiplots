@@ -113,6 +113,33 @@ def test_inside_fallback_to_outside_when_text_too_big():
 # Auto limit expansion
 # -----------------------------------------------------------------------------
 
+def test_foreign_autoscale_on_expands_past_text_extent():
+    """On a pre-drawn autoscale-on axes, ylim must grow past the text top,
+    not just past the bar top.
+
+    Regression: without a fresh canvas.draw() before measuring text extents,
+    get_window_extent returns stale bboxes and the computed need_max
+    undershoots, so labels render clipping through the axis frame.
+    """
+    fig, ax = plt.subplots()
+    ax.bar([0, 1, 2], [1.0, 2.4, 0.7])
+    fig.canvas.draw()  # simulate the foreign-axes "already drawn" case
+    texts = _bar_values_strategy(
+        ax, fmt=".2f", anchor="outside", offset=1.0, color="auto", pad=1.0,
+    )
+    # Re-draw to materialise final text positions, then verify no text bbox
+    # top exceeds the axes' data limit.
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    inv = ax.transData.inverted()
+    ylim_top = ax.get_ylim()[1]
+    for t in texts:
+        bb = t.get_window_extent(renderer).transformed(inv)
+        assert bb.y1 < ylim_top, (
+            f"label {t.get_text()!r} top ({bb.y1}) clips ylim ({ylim_top})"
+        )
+
+
 def test_publiplots_owned_expands_limits_past_seaborn_default():
     """owner_is_publiplots=True always expands regardless of autoscale state."""
     fig, ax = plt.subplots()
