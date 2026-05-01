@@ -16,9 +16,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Set style
-pp.set_notebook_style()
-
 # Use a higher alpha for this example so face colors are vivid — it makes
 # edge colors easier to spot by contrast.
 pp.rcParams['alpha'] = 0.8

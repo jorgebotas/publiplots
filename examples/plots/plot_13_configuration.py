@@ -33,11 +33,10 @@ print(f"  Font size: {pp.rcParams['font.size']}")
 print(f"  DPI: {pp.rcParams['savefig.dpi']}")
 
 # %%
-# Global Style Settings
-# ---------------------
-# PubliPlots provides two pre-configured styles:
-# - notebook_style: For interactive work (larger figures, bigger fonts)
-# - publication_style: For final manuscripts (compact, print-ready)
+# Publication-Grade Defaults
+# ---------------------------
+# PubliPlots applies publication-grade styling automatically on import.
+# No style function calls are needed — you get print-ready figures by default.
 
 # Create sample data for demonstration
 np.random.seed(100)
@@ -50,9 +49,7 @@ sample_data = pd.DataFrame({
     ])
 })
 
-# Notebook style
-pp.set_notebook_style()
-print("\nNotebook Style Settings:")
+print("\nDefault PubliPlots Style (applied on import):")
 print(f"  Figure size: {pp.rcParams['figure.figsize']}")
 print(f"  Font size: {pp.rcParams['font.size']}")
 print(f"  DPI: {pp.rcParams['savefig.dpi']}")
@@ -61,31 +58,11 @@ fig, ax = pp.barplot(
     data=sample_data,
     x='category',
     y='value',
-    title='Notebook Style (Interactive Work)',
+    title='Default Publication-Grade Style',
     errorbar='se',
     palette='pastel'
 )
 plt.show()
-
-# Publication style
-pp.set_publication_style()
-print("\nPublication Style Settings:")
-print(f"  Figure size: {pp.rcParams['figure.figsize']}")
-print(f"  Font size: {pp.rcParams['font.size']}")
-print(f"  DPI: {pp.rcParams['savefig.dpi']}")
-
-fig, ax = pp.barplot(
-    data=sample_data,
-    x='category',
-    y='value',
-    title='Publication Style (Print-Ready)',
-    errorbar='se',
-    palette='pastel'
-)
-plt.show()
-
-# Reset to default
-pp.reset_style()
 
 # %%
 # Customizing Individual Parameters
@@ -113,9 +90,8 @@ fig, ax = pp.barplot(
 )
 plt.show()
 
-# Reset to default
+# Reset to default (reverts to matplotlib defaults)
 pp.reset_style()
-pp.set_notebook_style()
 
 # %%
 # Using Color Palettes
@@ -263,10 +239,10 @@ plt.show()
 # %%
 # Best Practices Summary
 # ----------------------
-# 1. Use notebook_style() for interactive work and exploration
-# 2. Switch to publication_style() when preparing final figures
-# 3. Set global defaults with pp.rcParams for consistency
-# 4. Override parameters per-plot when needed using function arguments
+# 1. Publication-grade defaults are applied automatically on import
+# 2. Customize global defaults with pp.rcParams for consistency
+# 3. Override parameters per-plot when needed using function arguments
+# 4. Use pp.reset_style() to revert to matplotlib defaults if needed
 # 5. Use color palettes for consistent coloring across figures
 # 6. Save in vector formats (PDF/SVG) for publications
 # 7. Use hatch patterns for black-and-white publications
