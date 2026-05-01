@@ -17,7 +17,6 @@ from publiplots.annotate._cache import BarRecord
 
 
 MM_TO_INCH = 1.0 / 25.4
-INNER_PAD_MM = 0.75
 
 
 def mm_to_data(mm: float, ax: Axes, axis: Literal["x", "y"]) -> float:
@@ -32,12 +31,12 @@ def mm_to_data(mm: float, ax: Axes, axis: Literal["x", "y"]) -> float:
     px = mm * fig.dpi * MM_TO_INCH
     inv = ax.transData.inverted()
     if axis == "y":
-        (x0, y0) = inv.transform((0, 0))
-        (x1, y1) = inv.transform((0, px))
+        y0 = inv.transform((0, 0))[1]
+        y1 = inv.transform((0, px))[1]
         return y1 - y0
     else:
-        (x0, y0) = inv.transform((0, 0))
-        (x1, y1) = inv.transform((px, 0))
+        x0 = inv.transform((0, 0))[0]
+        x1 = inv.transform((px, 0))[0]
         return x1 - x0
 
 

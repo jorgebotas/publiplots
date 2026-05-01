@@ -153,13 +153,13 @@ Logic composition (vertical bars shown; horizontal swaps axes and ha/va):
 | anchor    | positive value                                       | negative value                                      |
 | --------- | ---------------------------------------------------- | --------------------------------------------------- |
 | `outside` | y = top + (err_high or 0) + mm→data(offset); va=bottom | y = bottom - (err_low or 0) - mm→data(offset); va=top |
-| `inside`  | y = top - mm→data(inner_pad); va=top                 | y = bottom + mm→data(inner_pad); va=bottom          |
+| `inside`  | y = top - mm→data(offset); va=top                    | y = bottom + mm→data(offset); va=bottom             |
 | `base`    | y = ylim[0]_if_log_else_0 + mm→data(offset); va=bottom | y = 0 - mm→data(offset); va=top                     |
 | `center`  | y = (top + bottom) / 2; va=center                    | y = (top + bottom) / 2; va=center                   |
 
 `ha="center"` in all cases. `x = (left + right) / 2`.
 
-`inner_pad` is a fixed 0.75 mm. `offset_mm` defaults to 1.5 mm, user-configurable. Both convert to data coordinates via `ax.transData.inverted()` applied to a display-coord displacement of `mm * ax.figure.dpi / 25.4`.
+`offset_mm` defaults to 1.5 mm, user-configurable, and applies to `outside`, `inside`, and `base` anchors alike. It converts to data coordinates via `ax.transData.inverted()` applied to a display-coord displacement of `mm * ax.figure.dpi / 25.4`.
 
 **Log-scale on the value axis + `anchor="base"`:** zero doesn't exist in log space. Detect via `ax.get_yscale() == "log"` (or xscale for horizontal); use `ax.get_ylim()[0]` as the "base" reference instead of zero. One-line branch.
 
