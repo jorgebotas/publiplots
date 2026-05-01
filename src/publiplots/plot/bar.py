@@ -10,8 +10,6 @@ from typing import Optional, List, Dict, Tuple, Union
 from publiplots.themes.rcparams import resolve_param
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.patches import Rectangle
-from matplotlib.colors import to_rgba
 import seaborn as sns
 import pandas as pd
 
@@ -19,7 +17,7 @@ from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.hatches import resolve_hatch_map
 from publiplots.utils import is_categorical, as_categorical, create_legend_handles, legend
 from publiplots.utils.transparency import ArtistTracker
-from publiplots.annotate._cache import BarRecord, BarValueMeta, _match_errorbars
+from publiplots.annotate._builders import build_from_barplot_call
 
 _SPLIT_SEPARATOR = "---"
 
@@ -327,12 +325,11 @@ def barplot(
     if title is not None: ax.set_title(title)
 
     if annotate:
-        meta = _build_bar_value_meta(
+        ax._publiplots_bar_meta = build_from_barplot_call(
             ax=ax, data=data, x=x, y=y, hue=hue,
             categorical_axis=categorical_axis,
             palette=palette, errorbar=errorbar,
         )
-        ax._publiplots_bar_meta = meta
         from publiplots.annotate import annotate as _annotate_fn
         opts = annotate if isinstance(annotate, dict) else {}
         _annotate_fn(ax, kind="bar_values", **opts)
@@ -567,99 +564,3 @@ def _legend(
                 ),
                 label=hatch_label,
             )
-
-
-def _build_bar_value_meta(
-    ax: Axes,
-    data: pd.DataFrame,
-    x: str,
-    y: str,
-    hue: Optional[str],
-    categorical_axis: str,
-    palette: Optional[Dict],
-    errorbar: Optional[str],
-) -> BarValueMeta:
-    """Compute aggregated means aligned with the drawn bars.
-
-    Means come from a groupby of the raw data; errorbar extents are pulled
-    from the drawn errorbar artists via `_match_errorbars`, so they match
-    seaborn exactly for every errorbar spec (including ``"ci"``, ``"pi"``,
-    tuples, and callables). Records are paired with Rectangles in draw
-    order. Hue colors come from the resolved palette map.
-    """
-    orient: str = "v" if categorical_axis == x else "h"
-
-    # Compute means in the same order seaborn draws (hue-outer, cat-inner).
-    agg = _aggregate_for_annotate(data, x=x, y=y, hue=hue,
-                                  categorical_axis=categorical_axis)
-
-    rects = [p for p in ax.patches
-             if isinstance(p, Rectangle) and p.get_width() > 0 and p.get_height() > 0]
-
-    # Pull errorbar extents from what seaborn actually drew — this is correct
-    # for every errorbar= spec, including bootstrap ci/pi, tuples, callables,
-    # and (critically) errorbar=None (returns (None, None)).
-    err_by_bar = _match_errorbars(ax, rects, orient)
-
-    bars: List[BarRecord] = []
-    for rect, row, (err_low, err_high) in zip(rects, agg, err_by_bar):
-        value = float(row["mean"])
-        hue_color = None
-        if hue is not None and palette is not None:
-            key = row.get("hue_value")
-            if key is not None and key in palette:
-                hue_color = to_rgba(palette[key])
-        if hue_color is None:
-            hue_color = tuple(rect.get_facecolor())
-        bars.append(BarRecord(
-            patch=rect,
-            value=value,
-            err_low=err_low,
-            err_high=err_high,
-            hue_color=hue_color,
-        ))
-    return BarValueMeta(
-        orient=orient,
-        bars=bars,
-        errorbar_kind=errorbar,
-        hue_active=hue is not None,
-        owner_is_publiplots=True,
-    )
-
-
-def _aggregate_for_annotate(
-    data: pd.DataFrame,
-    x: str,
-    y: str,
-    hue: Optional[str],
-    categorical_axis: str,
-) -> List[Dict]:
-    """Group by (categorical_axis [, hue]) and return per-bar mean values.
-
-    Row ordering: hue outer, categorical_axis inner — this matches seaborn's
-    dodge draw order (all bars of one hue across all categories, then the
-    next hue). Errorbar extents are NOT computed here; they are read from
-    the drawn artists in `_build_bar_value_meta`.
-    """
-    import numpy as _np
-
-    value_col = y if categorical_axis == x else x
-    cat_categories = list(data[categorical_axis].cat.categories)
-
-    rows: List[Dict] = []
-    if hue is None:
-        for cat in cat_categories:
-            mask = data[categorical_axis] == cat
-            vals = data.loc[mask, value_col].to_numpy()
-            rows.append({"mean": float(_np.mean(vals))})
-        return rows
-
-    hue_categories = list(data[hue].cat.categories)
-    for h in hue_categories:
-        for cat in cat_categories:
-            mask = (data[categorical_axis] == cat) & (data[hue] == h)
-            vals = data.loc[mask, value_col].to_numpy()
-            if len(vals) == 0:
-                continue
-            rows.append({"mean": float(_np.mean(vals)), "hue_value": h})
-    return rows
