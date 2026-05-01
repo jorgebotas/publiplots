@@ -89,8 +89,8 @@ mixed_data = pd.DataFrame({
 })
 
 # pp.subplots declares axes dimensions in mm and extends the figure to
-# accommodate decorations. legend_column=30 reserves a 30 mm strip on
-# the right for the unified legend; pp.legend_group lands in that strip.
+# accommodate decorations. pp.legend_group's width is auto-measured —
+# the figure grows to fit the unified legend on the right automatically.
 fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
 pp.barplot(
     data=mixed_data, x='group', y='value', hue='group',
