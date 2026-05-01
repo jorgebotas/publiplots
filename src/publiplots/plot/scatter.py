@@ -19,7 +19,16 @@ from publiplots.themes.rcparams import resolve_param
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.markers import resolve_marker_map
-from publiplots.utils import is_categorical, is_numeric, create_legend_handles, legend
+from publiplots.utils import is_categorical, is_numeric, create_legend_handles
+from publiplots.utils import legend as legend_fn
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    get_entries,
+    resolve_legend_flags,
+    entry_is_in_group,
+    is_continuous_hue,
+)
 
 
 def scatterplot(
@@ -43,7 +52,7 @@ def scatterplot(
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     margins: Union[float, Tuple[float, float]] = 0.1,
     **kwargs
@@ -300,7 +309,9 @@ def scatterplot(
     if ylabel is not None: ax.set_ylabel(ylabel)
     if title is not None: ax.set_title(title)
 
-    # Always store legend metadata, but only create legend if legend=True
+    # Stash legend entries (per-kind) and optionally render per-axis legends.
+    # legend may be bool or dict[str, bool]; False short-circuits both stash
+    # and render, True stashes/renders everything, and a dict filters per kind.
     _legend(
         ax=ax,
         data=data,
@@ -317,7 +328,7 @@ def scatterplot(
         size_norm=size_norm,
         sizes=sizes,
         kwargs=legend_kws,
-        create_legend=legend,  # Only create if legend=True
+        legend=legend,
     )
 
     # Set margins for categorical axes automatically
@@ -479,15 +490,17 @@ def _legend(
         linewidth: Optional[float] = None,
         edgecolor: Optional[str] = None,
         kwargs: Optional[Dict] = None,
-        create_legend: bool = True,
+        legend: Union[bool, Dict] = True,
     ) -> None:
     """
-    Create legend handles for scatter plot.
+    Stash LegendEntry objects for scatter plot and optionally render per-axis legends.
 
     Parameters
     ----------
-    create_legend : bool, default=True
-        If True, creates the legend immediately. If False, only stores metadata.
+    legend : bool or dict, default=True
+        - ``True``  -> stash all kinds and render per-axis (unless claimed by a group).
+        - ``False`` -> stash nothing and render nothing.
+        - ``dict``  -> per-kind flags (missing keys default to True).
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
@@ -496,35 +509,43 @@ def _legend(
     kwargs = kwargs or {}
     handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="circle")
 
-    # Store legend data in collection for later retrieval
-    legend_data = {}
+    flags = resolve_legend_flags(legend)
 
-    # Prepare hue legend data
-    if hue is not None:
+    # Stash hue entry
+    if hue is not None and flags["hue"]:
         hue_label = kwargs.pop("hue_label", hue)
-        if isinstance(palette, dict):  # categorical legend
+        if isinstance(palette, dict):  # categorical
+            hue_labels = list(palette.keys())
             hue_handles = create_legend_handles(
-                labels=list(palette.keys()),
+                labels=hue_labels,
                 colors=list(palette.values()),
                 edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 **handle_kwargs
             )
-            legend_data["hue"] = {
-                "handles": hue_handles,
-                "label": hue_label,
-            }
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=hue_handles,
+                    labels=hue_labels,
+                ),
+            )
         else:
+            # continuous -> colorbar
             mappable = ScalarMappable(norm=hue_norm, cmap=palette)
-            legend_data["hue"] = {
-                "mappable": mappable,
-                "label": hue_label,
-                "height": kwargs.pop("hue_height", 20),  # millimeters (was 0.2 axes coords)
-                "width": kwargs.pop("hue_width", 5),    # millimeters (was 0.05 axes coords)
-                "type": "colorbar",
-            }
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=[mappable],
+                    labels=[],
+                ),
+            )
 
-    # Prepare size legend data
-    if size is not None:
+    # Stash size entry
+    if size is not None and flags["size"]:
         tick_color = color if hue is None else "gray"
         size_handle_kwargs = handle_kwargs.copy()
         size_handle_kwargs["color"] = tick_color
@@ -541,14 +562,19 @@ def _legend(
             sizes=tick_sizes,
             **size_handle_kwargs
         )
-        legend_data["size"] = {
-            "handles": size_handles,
-            "label": kwargs.pop("size_label", size),
-            "labelspacing": kwargs.pop("labelspacing", 1/3 * max(1, sizes[1] / 200)),
-        }
+        size_label = kwargs.pop("size_label", size)
+        stash_entry(
+            ax,
+            LegendEntry.build(
+                name=size_label,
+                kind="size",
+                handles=size_handles,
+                labels=tick_labels,
+            ),
+        )
 
-    # Prepare style legend data
-    if style is not None:
+    # Stash style entry
+    if style is not None and flags["style"]:
         style_values = data[style].unique()
         style_label = kwargs.pop("style_label", style)
 
@@ -564,24 +590,48 @@ def _legend(
         style_color = color if hue is None else "gray"
         style_handle_kwargs = handle_kwargs.copy()
         style_handle_kwargs["color"] = style_color
-        style_handle_kwargs.pop("style")  # Remove style key from handle_kwargs
+        style_handle_kwargs.pop("style", None)  # Remove style key from handle_kwargs
 
         # Create legend handles with different markers
+        style_labels = [str(val) for val in style_values]
         style_handles = create_legend_handles(
-            labels=[str(val) for val in style_values],
+            labels=style_labels,
             markers=[marker_map[val] for val in style_values],
             edgecolors=[edgecolor] * len(style_values) if edgecolor else None,
             **style_handle_kwargs
         )
-        legend_data["style"] = {
-            "handles": style_handles,
-            "label": style_label,
-        }
+        stash_entry(
+            ax,
+            LegendEntry.build(
+                name=style_label,
+                kind="style",
+                handles=style_handles,
+                labels=style_labels,
+            ),
+        )
 
-    # Store metadata on collection (always, regardless of create_legend)
-    if len(ax.collections) > 0:
-        ax.collections[0]._legend_data = legend_data
+    # Render per-axis legends for entries not claimed by a figure-level group.
+    # legend=False short-circuits (all flags False, nothing stashed, nothing to render).
+    if legend is False:
+        return
 
-    # Create legends using new legend() API (only if create_legend=True)
-    if create_legend:
-        builder = legend(ax=ax)
+    fig = ax.get_figure()
+    entries_to_render = [
+        e for e in get_entries(ax)
+        if flags[e.kind] and not entry_is_in_group(fig, e)
+    ]
+    if not entries_to_render:
+        return
+
+    builder = legend_fn(ax=ax, auto=False)
+    for entry in entries_to_render:
+        if entry.kind == "hue" and is_continuous_hue(entry.handles):
+            builder.add_colorbar(
+                mappable=entry.handles[0],
+                label=entry.name,
+            )
+        else:
+            builder.add_legend(
+                handles=list(entry.handles),
+                label=entry.name,
+            )
