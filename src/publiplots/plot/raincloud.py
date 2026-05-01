@@ -59,7 +59,7 @@ def raincloudplot(
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
 ) -> Tuple[plt.Figure, Axes]:
     """
@@ -134,8 +134,10 @@ def raincloudplot(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show the legend.
+    legend : bool or dict, default=True
+        Whether to show the legend. Accepts the same ``bool | dict[kind, bool]``
+        form as the underlying violin plot; the value is forwarded to the
+        inner ``violinplot`` call, which owns the legend for the raincloud.
     legend_kws : dict, optional
         Additional keyword arguments for legend.
 
