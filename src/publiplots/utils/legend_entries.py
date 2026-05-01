@@ -6,9 +6,8 @@ pp.legend(ax) reads from this store to render per-axis legends.
 pp.legend_group(anchor=ax) aggregates entries across a grid of axes.
 """
 
-from dataclasses import dataclass
-from typing import Tuple
 import hashlib
+from dataclasses import dataclass
 
 
 _LEGEND_KINDS = ("hue", "size", "style", "marker")
