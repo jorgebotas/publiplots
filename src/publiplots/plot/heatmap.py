@@ -20,6 +20,12 @@ from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical, is_numeric, create_legend_handles
 from publiplots.utils.legend import legend as legend_builder
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    resolve_legend_flags,
+)
+from publiplots.utils.plot_legend import render_entries
 from publiplots.utils.transparency import apply_transparency
 
 
@@ -57,7 +63,7 @@ def heatmap(
     xlabel: str = "",
     ylabel: str = "",
     # Legend
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     # Additional options
     xticklabels: Union[bool, str, List] = "auto",
@@ -297,7 +303,7 @@ def _draw_heatmap(
     xticklabels: Union[bool, str, List],
     yticklabels: Union[bool, str, List],
     mask: Optional[Union[pd.DataFrame, np.ndarray]],
-    legend: bool,
+    legend: Union[bool, Dict],
     legend_kws: Optional[Dict],
     value_col: Optional[str],
     **kwargs
@@ -336,9 +342,8 @@ def _draw_heatmap(
     # Draw heatmap
     sns.heatmap(**heatmap_kwargs)
 
-    # Add colorbar via legend system
-    if legend:
-        # Determine normalization
+    # Stash colorbar entry and render per-axis unless claimed by a group.
+    if legend is not False:
         v_min = vmin if vmin is not None else matrix.min().min()
         v_max = vmax if vmax is not None else matrix.max().max()
 
@@ -351,13 +356,18 @@ def _draw_heatmap(
 
         mappable = ScalarMappable(norm=norm, cmap=cmap)
 
-        builder = legend_builder(ax=ax, auto=False)
-        builder.add_colorbar(
-            mappable=mappable,
-            label=legend_kws.get("value_label", value_col or ""),
-            height=legend_kws.get("height", 20),
-            width=legend_kws.get("width", 5),
-        )
+        flags = resolve_legend_flags(legend)
+        if flags["hue"]:
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("value_label", value_col or ""),
+                    kind="hue",
+                    handles=[mappable],
+                    labels=[],
+                ),
+            )
+        render_entries(ax, flags=flags)
 
     return fig, ax
 
