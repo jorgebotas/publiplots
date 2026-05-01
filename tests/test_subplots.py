@@ -76,6 +76,15 @@ def _make_layout(nrows=1, ncols=1, **overrides):
         hspace=8.0, wspace=10.0, outer_pad=2.0, legend_column=0.0,
     )
     defaults.update(overrides)
+    # Broadcast scalar reservations to tuples for FigureLayout
+    for side in ("title_space", "xlabel_space"):
+        v = defaults[side]
+        if not isinstance(v, tuple):
+            defaults[side] = (float(v),) * defaults["nrows"]
+    for side in ("ylabel_space", "right"):
+        v = defaults[side]
+        if not isinstance(v, tuple):
+            defaults[side] = (float(v),) * defaults["ncols"]
     return FigureLayout(**defaults)
 
 
@@ -129,10 +138,10 @@ def test_figure_layout_axes_positions_dont_overlap():
 
 def test_figure_layout_with_updated_reservations_preserves_axes_size():
     layout = _make_layout()
-    updated = layout.with_updated_reservations(title_space=20.0, xlabel_space=15.0)
+    updated = layout.with_updated_reservations(title_space=(20.0,), xlabel_space=(15.0,))
     assert updated.axes_size == layout.axes_size
-    assert updated.title_space == 20.0
-    assert updated.xlabel_space == 15.0
+    assert updated.title_space == (20.0,)
+    assert updated.xlabel_space == (15.0,)
     # Untouched fields unchanged
     assert updated.ylabel_space == layout.ylabel_space
 
@@ -144,6 +153,85 @@ def test_figure_layout_row_zero_is_top():
     y0_mid = layout.axes_position(1, 0)[1]
     y0_bot = layout.axes_position(2, 0)[1]
     assert y0_top > y0_mid > y0_bot
+
+
+def _make_tuple_layout(nrows=1, ncols=1, **overrides):
+    """Like _make_layout but accepts tuple reservations directly."""
+    defaults = dict(
+        nrows=nrows, ncols=ncols,
+        axes_size=(50.0, 30.0),
+        title_space=tuple([5.0] * nrows),
+        xlabel_space=tuple([8.0] * nrows),
+        ylabel_space=tuple([10.0] * ncols),
+        right=tuple([2.0] * ncols),
+        hspace=4.0, wspace=4.0, outer_pad=2.0, legend_column=0.0,
+    )
+    defaults.update(overrides)
+    return FigureLayout(**defaults)
+
+
+def test_figure_layout_per_row_title_space_changes_position():
+    small = _make_tuple_layout(nrows=2, ncols=1,
+                                title_space=(5.0, 5.0),
+                                xlabel_space=(8.0, 8.0))
+    big = _make_tuple_layout(nrows=2, ncols=1,
+                              title_space=(20.0, 5.0),
+                              xlabel_space=(8.0, 8.0))
+    y0_top_small = small.axes_position(0, 0)[1]
+    y0_top_big = big.axes_position(0, 0)[1]
+    assert y0_top_big < y0_top_small
+
+
+def test_figure_layout_per_col_right_is_cumulative():
+    uniform = _make_tuple_layout(nrows=1, ncols=3, right=(2.0, 2.0, 2.0))
+    asymmetric = _make_tuple_layout(nrows=1, ncols=3, right=(2.0, 2.0, 30.0))
+    w_uniform, _ = uniform.figure_size()
+    w_asym, _ = asymmetric.figure_size()
+    assert w_asym == pytest.approx(w_uniform + 28.0)
+
+
+def test_figure_layout_with_updated_reservations_accepts_tuples():
+    layout = _make_tuple_layout(nrows=2, ncols=1)
+    updated = layout.with_updated_reservations(title_space=(12.0, 6.0))
+    assert updated.title_space == (12.0, 6.0)
+    assert updated.xlabel_space == layout.xlabel_space
+    assert updated.axes_size == layout.axes_size
+
+
+def test_figure_layout_wrong_length_title_space_rejected():
+    with pytest.raises(ValueError, match="title_space"):
+        FigureLayout(
+            nrows=2, ncols=1,
+            axes_size=(50.0, 30.0),
+            title_space=(5.0, 5.0, 5.0),
+            xlabel_space=(8.0, 8.0),
+            ylabel_space=(10.0,), right=(2.0,),
+            hspace=4.0, wspace=4.0, outer_pad=2.0, legend_column=0.0,
+        )
+
+
+def test_figure_layout_wrong_length_ylabel_space_rejected():
+    with pytest.raises(ValueError, match="ylabel_space"):
+        FigureLayout(
+            nrows=1, ncols=2,
+            axes_size=(50.0, 30.0),
+            title_space=(5.0,), xlabel_space=(8.0,),
+            ylabel_space=(10.0, 10.0, 10.0),
+            right=(2.0, 2.0),
+            hspace=4.0, wspace=4.0, outer_pad=2.0, legend_column=0.0,
+        )
+
+
+def test_figure_layout_rejects_scalar_reservations():
+    with pytest.raises((ValueError, TypeError)):
+        FigureLayout(
+            nrows=2, ncols=1,
+            axes_size=(50.0, 30.0),
+            title_space=5.0,
+            xlabel_space=(8.0, 8.0),
+            ylabel_space=(10.0,), right=(2.0,),
+            hspace=4.0, wspace=4.0, outer_pad=2.0, legend_column=0.0,
+        )
 
 
 # ---------------------------------------------------------------------------
