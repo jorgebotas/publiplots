@@ -59,7 +59,7 @@ def raincloudplot(
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
 ) -> Tuple[plt.Figure, Axes]:
     """
@@ -134,8 +134,10 @@ def raincloudplot(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show the legend.
+    legend : bool or dict, default=True
+        Whether to show the legend. Accepts the same ``bool | dict[kind, bool]``
+        form as the underlying violin plot; the value is forwarded to the
+        inner ``violinplot`` call, which owns the legend for the raincloud.
     legend_kws : dict, optional
         Additional keyword arguments for legend.
 
@@ -159,8 +161,12 @@ def raincloudplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
-    # Read defaults from rcParams if not provided
-    figsize = resolve_param("figure.figsize", figsize)
+    # Read defaults from rcParams if not provided.
+    # Deliberately do NOT fall back on rcParams["figure.figsize"] for the
+    # figsize argument: when figsize is None, the inner violinplot call takes
+    # the pp.subplots() path and SubplotsAutoLayout grows the figure to fit
+    # the legend. Forcing a default figsize here would route us through
+    # plt.subplots(figsize=...), skipping auto-layout and cropping the legend.
     linewidth = resolve_param("lines.linewidth", linewidth)
     cloud_alpha = resolve_param("alpha", cloud_alpha)
     color = resolve_param("color", color)
