@@ -373,6 +373,24 @@ def test_subplots_scalar_axes_size_coerced_to_tuple():
     assert fig._publiplots_layout.axes_size == (30.0, 30.0)
 
 
+def test_subplots_axes_size_none_uses_rcparams_default():
+    pp.set_publication_style()
+    try:
+        fig, _ = pp.subplots()
+        assert fig._publiplots_layout.axes_size == (50.0, 30.0)
+    finally:
+        pp.reset_style()
+
+
+def test_subplots_axes_size_none_picks_up_notebook_default():
+    pp.set_notebook_style()
+    try:
+        fig, _ = pp.subplots()
+        assert fig._publiplots_layout.axes_size == (100.0, 65.0)
+    finally:
+        pp.reset_style()
+
+
 def test_subplots_rejects_figsize_kwarg():
     with pytest.raises(TypeError, match="axes_size"):
         pp.subplots(axes_size=(50, 30), figsize=(5, 3))

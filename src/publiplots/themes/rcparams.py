@@ -125,6 +125,7 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
 
     # Subplots layout (mm) — baseline is publication-grade; notebook style
     # overrides these in themes/styles.py.
+    "subplots.axes_size": (50.0, 30.0),  # default (width, height) of each axes in pp.subplots
     "subplots.title_space": 5,    # reserved above each row
     "subplots.xlabel_space": 8,   # reserved below each row
     "subplots.ylabel_space": 10,  # reserved left of each col

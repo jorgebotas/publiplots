@@ -29,7 +29,7 @@ def subplots(
     nrows: int = 1,
     ncols: int = 1,
     *,
-    axes_size: Union[Tuple[float, float], float],
+    axes_size: Union[Tuple[float, float], float, None] = None,
     sharex: Union[bool, str] = False,
     sharey: Union[bool, str] = False,
     title_space: Optional[float] = None,
@@ -55,8 +55,10 @@ def subplots(
     ----------
     nrows, ncols : int, default 1
         Grid shape (must be >= 1).
-    axes_size : (float, float) or float, in mm
-        Declared axes bbox. Scalar is coerced to ``(s, s)``.
+    axes_size : (float, float) or float, in mm, optional
+        Declared axes bbox. Scalar is coerced to ``(s, s)``. If ``None``,
+        falls back to ``pp.rcParams["subplots.axes_size"]`` (50×30 mm
+        under publication style, 100×65 mm under notebook style).
     sharex, sharey : bool or {"all", "row", "col", "none"}
         Axis-sharing semantics, matching ``plt.subplots``.
     title_space, xlabel_space, ylabel_space, right : float, optional
@@ -88,6 +90,8 @@ def subplots(
     if ncols < 1:
         raise ValueError(f"ncols must be >= 1, got {ncols}")
 
+    if axes_size is None:
+        axes_size = resolve_param("subplots.axes_size", None)
     if isinstance(axes_size, (int, float)):
         if axes_size <= 0:
             raise ValueError(f"axes_size must be positive, got {axes_size}")

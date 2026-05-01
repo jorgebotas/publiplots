@@ -45,6 +45,7 @@ NOTEBOOK_STYLE = {
     "lines.markeredgewidth": 2.0,
     "patch.linewidth": 2.0,
     # Notebook overrides for subplot layout reservations (mm)
+    "subplots.axes_size": (100.0, 65.0),
     "subplots.title_space": 8,
     "subplots.xlabel_space": 12,
     "subplots.ylabel_space": 14,
