@@ -220,10 +220,7 @@ class SubplotsAutoLayout:
     def _artist_window_extent(self, obj):
         """Duck-typed window-extent accessor (Legend/Colorbar/Text)."""
         if hasattr(obj, "get_window_extent"):
-            try:
-                return obj.get_window_extent()
-            except Exception:
-                pass
+            return obj.get_window_extent()
         if hasattr(obj, "ax"):  # Colorbar stores geometry on .ax
             return obj.ax.get_window_extent()
         return None
