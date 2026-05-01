@@ -88,10 +88,22 @@ mixed_data = pd.DataFrame({
     ]),
 })
 
-# pp.subplots declares axes dimensions in mm and extends the figure to
-# accommodate decorations. legend_column=30 reserves a 30 mm strip on
-# the right for the unified legend; pp.legend_group lands in that strip.
-fig, axes = pp.subplots(1, 3, axes_size=(45, 30), legend_column=30)
+# `pp.subplots` declares axes dimensions in mm and extends the figure to
+# accommodate decorations. `pp.legend_group` reserves a shared legend
+# column on the right whose width is auto-measured from the rendered
+# entries — no manual `legend_column=...` guess.
+#
+# `pp.legend_group(anchor=...)` attaches BEFORE the plot calls. Plotting
+# functions that stash entries (scatterplot, stripplot, swarmplot,
+# pointplot in this release) see the group and skip their own per-axis
+# legend — the group claims and renders their entries instead.
+#
+# For plots that don't yet stash (bar, box), we pass `legend=False`; the
+# scatterplot on the right anchors the shared "group" entry for the whole
+# row since all three panels share the same hue variable.
+fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
+pp.legend_group(anchor=axes[-1])
+
 pp.barplot(
     data=mixed_data, x='group', y='value', hue='group',
     palette='pastel', errorbar='se', title='Bar', ax=axes[0], legend=False,
@@ -102,22 +114,7 @@ pp.boxplot(
 )
 pp.scatterplot(
     data=mixed_data, x='group', y='value', hue='group',
-    palette='pastel', title='Scatter', ax=axes[2], legend=False,
-)
-
-# One unified legend to the right of the last axes. `pp.legend_group` keeps
-# every entry in a single mm-aligned column anchored to the chosen axes —
-# the right tool when per-axes legends would overlap neighboring subplots.
-group = pp.legend_group(anchor=axes[-1])
-group.add_legend(
-    handles=pp.create_legend_handles(
-        labels=['A', 'B', 'C'],
-        colors=list(pp.color_palette('pastel', 3)),
-        alpha=pp.rcParams['alpha'],
-        linewidth=pp.rcParams['lines.linewidth'],
-        edgecolors=pp.rcParams['edgecolor'],
-    ),
-    label='group',
+    palette='pastel', title='Scatter', ax=axes[2],
 )
 plt.show()
 
@@ -145,7 +142,7 @@ rain_data = pd.DataFrame({
     ]),
 })
 
-fig, axes = pp.subplots(1, 2, axes_size=(55, 50), sharey=True, legend_column=30)
+fig, axes = pp.subplots(1, 2, axes_size=(55, 50), sharey=True)
 
 # Left: palette-driven edges (rcParam temporarily off)
 pp.rcParams['edgecolor'] = None

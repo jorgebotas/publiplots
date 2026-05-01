@@ -206,3 +206,30 @@ fig, ax = pp.scatterplot(
     ylabel='Tissue',
 )
 plt.show()
+
+# %%
+# Shared Legend Across Subplots
+# ------------------------------
+# When several subplots share the same ``hue`` variable, attach
+# ``pp.legend_group(anchor=...)`` to the figure BEFORE drawing. Every
+# plot function that stashes legend entries (scatter / strip / swarm /
+# point) sees the group, skips its own per-axis legend, and lets the
+# group render one unified legend on the right. The figure's
+# ``legend_column`` is auto-sized from the measured group width — no
+# ``legend_column=N`` guess, no ``handles=...`` construction.
+
+np.random.seed(99)
+shared_df = pd.DataFrame({
+    'x': np.random.randn(60),
+    'y': np.random.randn(60),
+    'g': np.random.choice(['low', 'mid', 'high'], 60),
+})
+
+fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
+pp.legend_group(anchor=axes[-1])   # attach BEFORE plotting
+for ax, title in zip(axes, ['Sample A', 'Sample B', 'Sample C']):
+    pp.scatterplot(
+        data=shared_df, x='x', y='y', hue='g',
+        palette='pastel', title=title, ax=ax,
+    )
+plt.show()

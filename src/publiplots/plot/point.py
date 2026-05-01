@@ -19,7 +19,16 @@ from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.markers import resolve_marker_map
 from publiplots.themes.linestyles import resolve_linestyle_map
-from publiplots.utils import create_legend_handles, legend
+from publiplots.utils import create_legend_handles
+from publiplots.utils.legend import legend as legend_fn
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    get_entries,
+    resolve_legend_flags,
+    entry_is_in_group,
+    is_continuous_hue,
+)
 
 
 def pointplot(
@@ -54,7 +63,7 @@ def pointplot(
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     **kwargs
 ) -> Tuple[plt.Figure, Axes]:
@@ -300,8 +309,10 @@ def pointplot(
     if title is not None:
         ax.set_title(title)
 
-    # Add legend if hue is used
-    if legend and hue is not None:
+    # Stash legend entry (per-kind) and optionally render per-axis legend.
+    # legend may be bool or dict[str, bool]; False short-circuits both stash
+    # and render, True stashes/renders everything, and a dict filters per kind.
+    if hue is not None:
         _legend(
             ax=ax,
             hue=hue,
@@ -314,6 +325,7 @@ def pointplot(
             alpha=alpha,
             linewidth=linewidth,
             kwargs=legend_kws,
+            legend=legend,
         )
 
     return fig, ax
@@ -438,30 +450,17 @@ def _legend(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     kwargs: Optional[Dict] = None,
+    legend: Union[bool, Dict] = True,
 ) -> None:
     """
-    Create legend handles for point plot.
+    Stash LegendEntry objects for point plot and optionally render per-axis legend.
 
     Parameters
     ----------
-    ax : Axes
-        Axes to create legend for.
-    hue : str
-        Hue column name.
-    palette : dict or str
-        Color palette mapping.
-    markers : list or dict
-        Marker symbols for each hue level.
-    markersize : float, optional
-        Marker size for legend markers.
-    markeredgewidth : float, optional
-        Marker edge width for legend markers.
-    alpha : float, optional
-        Transparency for legend markers.
-    linewidth : float, optional
-        Line width for legend markers.
-    kwargs : dict, optional
-        Additional legend customization.
+    legend : bool or dict, default=True
+        - ``True``  -> stash all kinds and render per-axis (unless claimed by a group).
+        - ``False`` -> stash nothing and render nothing.
+        - ``dict``  -> per-kind flags (missing keys default to True).
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
@@ -471,11 +470,10 @@ def _legend(
 
     kwargs = kwargs or {}
 
-    # Store legend data
-    legend_data = {}
+    flags = resolve_legend_flags(legend)
 
-    # Extract unique hue values from marker_info
-    if isinstance(palette, dict):
+    # Stash hue entry
+    if flags["hue"] and isinstance(palette, dict):
         # Use palette keys as the source of truth for labels
         labels = list(palette.keys())
         colors = list(palette.values())
@@ -493,14 +491,39 @@ def _legend(
             markeredgewidth=markeredgewidth,
         )
 
-        legend_data["hue"] = {
-            "handles": hue_handles,
-            "label": kwargs.pop("hue_label", hue),
-        }
+        hue_label = kwargs.pop("hue_label", hue)
+        stash_entry(
+            ax,
+            LegendEntry.build(
+                name=hue_label,
+                kind="hue",
+                handles=hue_handles,
+                labels=[str(label) for label in labels],
+            ),
+        )
 
-    # Store metadata on first line for retrieval
-    if len(ax.lines) > 0:
-        ax.lines[0]._legend_data = legend_data
+    # Render per-axis legend for entries not claimed by a figure-level group.
+    # legend=False short-circuits (all flags False, nothing stashed, nothing to render).
+    if legend is False:
+        return
 
-    # Create legend using legend() API
-    return legend(ax=ax)
+    fig = ax.get_figure()
+    entries_to_render = [
+        e for e in get_entries(ax)
+        if flags[e.kind] and not entry_is_in_group(fig, e)
+    ]
+    if not entries_to_render:
+        return
+
+    builder = legend_fn(ax=ax, auto=False)
+    for entry in entries_to_render:
+        if entry.kind == "hue" and is_continuous_hue(entry.handles):
+            builder.add_colorbar(
+                mappable=entry.handles[0],
+                label=entry.name,
+            )
+        else:
+            builder.add_legend(
+                handles=list(entry.handles),
+                label=entry.name,
+            )
