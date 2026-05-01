@@ -21,7 +21,7 @@ from publiplots.layout.figure_layout import FigureLayout
 
 _MM2INCH = 1 / 25.4
 _UPDATE_THRESHOLD_MM = 0.1
-_ALL_SIDES = {"title_space", "xlabel_space", "ylabel_space", "right"}
+_ALL_SIDES = {"title_space", "xlabel_space", "ylabel_space", "right", "legend_column"}
 # Cap on settle() draws; 1-3 is typical.
 _MAX_CONVERGENCE_ITERS = 5
 
@@ -135,6 +135,9 @@ class SubplotsAutoLayout:
                         max_px = max(max_px, self._side_extent(ax, calc, managed))
                     per.append(max(max_px / dpi * 25.4, 0.0))
                 measured[side] = tuple(per)
+
+        if "legend_column" not in self._locked:
+            measured["legend_column"] = self._measure_legend_column()
         return measured
 
     def _side_extent(self, ax, calc, managed_artist_ids) -> float:
@@ -173,14 +176,57 @@ class SubplotsAutoLayout:
         }
 
     def _needs_update(self, measured: Dict[str, Tuple[float, ...]]) -> bool:
-        for side, new_tuple in measured.items():
+        for side, new_val in measured.items():
             current = getattr(self._layout, side)
-            if len(new_tuple) != len(current):
-                return True
-            for new_v, cur_v in zip(new_tuple, current):
-                if abs(new_v - cur_v) >= _UPDATE_THRESHOLD_MM:
+            if side == "legend_column":
+                if abs(new_val - current) >= _UPDATE_THRESHOLD_MM:
                     return True
+            else:
+                # tuple comparison (per-row / per-col reservations)
+                if len(new_val) != len(current):
+                    return True
+                for nv, cv in zip(new_val, current):
+                    if abs(nv - cv) >= _UPDATE_THRESHOLD_MM:
+                        return True
         return False
+
+    def _measure_legend_column(self) -> float:
+        """mm width past the anchor axes' right edge, plus 1 mm padding."""
+        group = getattr(self._fig, "_publiplots_legend_group", None)
+        if group is None:
+            return 0.0
+
+        # Force collection so artists exist to measure.
+        group._materialize()
+        if not group._builder.elements:
+            return 0.0
+
+        dpi = self._fig.dpi
+        if dpi <= 0:
+            return 0.0
+
+        anchor_bb = group.anchor.get_window_extent()
+        max_x1 = anchor_bb.x1
+        for _, obj in group._builder.elements:
+            extent = self._artist_window_extent(obj)
+            if extent is None:
+                continue
+            max_x1 = max(max_x1, extent.x1)
+        overhang_px = max_x1 - anchor_bb.x1
+        if overhang_px <= 0:
+            return 0.0
+        return overhang_px / dpi * 25.4 + 1.0
+
+    def _artist_window_extent(self, obj):
+        """Duck-typed window-extent accessor (Legend/Colorbar/Text)."""
+        if hasattr(obj, "get_window_extent"):
+            try:
+                return obj.get_window_extent()
+            except Exception:
+                pass
+        if hasattr(obj, "ax"):  # Colorbar stores geometry on .ax
+            return obj.ax.get_window_extent()
+        return None
 
     def _apply(self, measured: Dict[str, Tuple[float, ...]]) -> None:
         new_layout = self._layout.with_updated_reservations(**measured)

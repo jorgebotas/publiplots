@@ -289,7 +289,7 @@ def test_auto_layout_locked_side_not_remeasured():
 def test_auto_layout_no_hook_when_all_sides_locked():
     layout = _make_layout()
     fig, _ = _make_fig_with_layout(layout)
-    all_sides = {"title_space", "xlabel_space", "ylabel_space", "right"}
+    all_sides = {"title_space", "xlabel_space", "ylabel_space", "right", "legend_column"}
     reactor = SubplotsAutoLayout(fig, layout, locked=all_sides)
     # No draw-event callback should be connected
     assert reactor._cid is None
@@ -455,11 +455,15 @@ def test_subplots_sharex_row_shares_within_row_only():
 
 
 def test_subplots_all_locked_skips_hook():
+    # Even with all four per-side reservations locked via kwargs,
+    # legend_column is still auto-measured (width-awareness, Task 5),
+    # so the draw-event hook must remain attached. Users cannot lock
+    # legend_column from pp.subplots(); it is always auto.
     fig, ax = pp.subplots(
         axes_size=(50, 30),
         title_space=5, xlabel_space=8, ylabel_space=10, right=2,
     )
-    assert fig._publiplots_auto_layout._cid is None
+    assert fig._publiplots_auto_layout._cid is not None
 
 
 def test_subplots_any_auto_side_attaches_hook():
@@ -612,4 +616,61 @@ def test_barplot_with_figsize_uses_matplotlib_fallback():
     # Explicit figsize → matplotlib path → no publiplots layout attached.
     assert not hasattr(fig, "_publiplots_layout"), (
         "explicit figsize should use plt.subplots (publiplots layout unexpectedly present)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Width-awareness: legend_column auto-sizing
+# ---------------------------------------------------------------------------
+
+from publiplots.utils.legend_entries import LegendEntry, stash_entry
+
+
+def _stub_handle(color="red"):
+    class H:
+        def __init__(self, c):
+            self._c = c
+        def get_facecolor(self):
+            return self._c
+    return H(color)
+
+
+def test_legend_column_is_zero_without_group():
+    fig, ax = pp.subplots(axes_size=(50, 30))
+    # No pp.legend_group call.
+    fig.canvas.draw()
+    assert fig._publiplots_layout.legend_column == 0.0
+
+
+def test_legend_column_auto_grows_with_group():
+    from publiplots.utils.legend import create_legend_handles
+    fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
+    # Stash so auto-collect picks something up
+    stash_entry(
+        axes[0],
+        LegendEntry.build(
+            "g", "hue",
+            handles=create_legend_handles(labels=["A", "B"], colors=["#000", "#fff"],
+                                          alpha=0.5, linewidth=1.0),
+            labels=("A", "B"),
+        ),
+    )
+    pp.legend_group(anchor=axes[-1])
+    fig.savefig("/tmp/test_legend_column_auto.png")
+    layout = fig._publiplots_layout
+    assert layout.legend_column > 5.0, (
+        f"legend_column should have grown; got {layout.legend_column}"
+    )
+
+
+def test_legend_column_stays_small_with_empty_group():
+    """No stashed entries and no manual adds -> group has no artists ->
+    legend_column stays near zero."""
+    fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
+    pp.legend_group(anchor=axes[-1])
+    # No stashing, no manual add_legend calls.
+    fig.savefig("/tmp/test_legend_column_empty.png")
+    layout = fig._publiplots_layout
+    assert layout.legend_column < 2.0, (
+        f"legend_column should stay near 0; got {layout.legend_column}"
     )
