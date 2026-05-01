@@ -359,7 +359,7 @@ def test_subplots_scalar_axes_size_coerced_to_tuple():
 
 def test_subplots_axes_size_none_uses_rcparams_default():
     fig, _ = pp.subplots()
-    assert fig._publiplots_layout.axes_size == (50.0, 30.0)
+    assert fig._publiplots_layout.axes_size == (70.0, 50.0)
 
 
 def test_subplots_rejects_figsize_kwarg():

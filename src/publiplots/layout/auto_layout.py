@@ -148,7 +148,12 @@ class SubplotsAutoLayout:
         self._fig._publiplots_layout = new_layout
 
         W, H = new_layout.figure_size()
-        self._fig.set_size_inches(W * _MM2INCH, H * _MM2INCH, forward=False)
+        # forward=True propagates the new size to the GUI canvas so plt.show()
+        # renders at the resized dimensions. Without it, the canvas keeps its
+        # initial size and decorations that grew into the extra reservation get
+        # cropped. The re-entrance guard (_updating) plus the 0.1 mm threshold
+        # in _needs_update() keep this loop-safe.
+        self._fig.set_size_inches(W * _MM2INCH, H * _MM2INCH, forward=True)
 
         for r, row in enumerate(self._axes_matrix()):
             for c, ax in enumerate(row):
