@@ -214,3 +214,28 @@ fig, ax = pp.barplot(
     order=horizontal_data['gene'].tolist()
 )
 plt.show()
+
+# %%
+# Shared Legend Across Subplots
+# ------------------------------
+# When several bar subplots share the same ``hue`` variable, attach
+# ``pp.legend_group(anchor=...)`` before drawing. Each ``barplot`` stashes
+# its hue entry on the corresponding axes; the group collects them and
+# renders one legend on the right of the rightmost subplot.
+
+np.random.seed(99)
+shared_df = pd.DataFrame({
+    "cat": np.tile(["A", "B", "C"], 60),
+    "val": np.random.randn(180) + np.tile([0, 1, 2], 60),
+    "g": np.repeat(["low", "mid", "high"], 60),
+})
+
+fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
+pp.legend_group(anchor=axes[-1])
+for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
+    pp.barplot(
+        data=shared_df, x="cat", y="val", hue="g",
+        palette="pastel", title=title, ax=ax,
+        errorbar="se",
+    )
+plt.show()
