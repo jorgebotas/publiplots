@@ -19,7 +19,6 @@ from typing import Optional, Tuple, Union, Dict, List
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical, is_numeric, create_legend_handles
-from publiplots.utils.legend import legend as legend_builder
 from publiplots.utils.legend_entries import (
     LegendEntry,
     stash_entry,
@@ -389,7 +388,7 @@ def _draw_dot_heatmap(
     edgecolor: Optional[str],
     square: bool,
     mask: Optional[Union[pd.DataFrame, np.ndarray]],
-    legend: bool,
+    legend: Union[bool, Dict],
     legend_kws: Optional[Dict],
     value_col: str,
     size_col: str,
@@ -504,31 +503,41 @@ def _draw_dot_heatmap(
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    # Add legends
-    if legend:
-        builder = legend_builder(ax=ax, auto=False)
+    # Stash colorbar + size entries and render per-axis unless claimed by a group.
+    if legend is not False:
+        flags = resolve_legend_flags(legend)
 
-        # Color legend (colorbar)
-        mappable = ScalarMappable(norm=color_norm, cmap=cmap)
-        builder.add_colorbar(
-            mappable=mappable,
-            label=legend_kws.get("value_label", value_col or ""),
-            height=legend_kws.get("colorbar_height", 20),
-            width=legend_kws.get("colorbar_width", 5),
-        )
+        if flags["hue"]:
+            mappable = ScalarMappable(norm=color_norm, cmap=cmap)
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("value_label", value_col or ""),
+                    kind="hue",
+                    handles=[mappable],
+                    labels=[],
+                ),
+            )
 
-        # Size legend
-        size_handles, size_labels = _create_size_legend(
-            marker_sizes=marker_sizes,
-            sizes=sizes,
-            size_norm=size_norm,
-            alpha=alpha,
-            linewidth=linewidth,
-        )
-        builder.add_legend(
-            handles=size_handles,
-            label=legend_kws.get("size_label", size_col or ""),
-        )
+        if flags["size"]:
+            size_handles, size_labels = _create_size_legend(
+                marker_sizes=marker_sizes,
+                sizes=sizes,
+                size_norm=size_norm,
+                alpha=alpha,
+                linewidth=linewidth,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("size_label", size_col or ""),
+                    kind="size",
+                    handles=size_handles,
+                    labels=size_labels,
+                ),
+            )
+
+        render_entries(ax, flags=flags)
 
     return fig, ax
 
