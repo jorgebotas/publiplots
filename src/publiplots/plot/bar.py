@@ -19,7 +19,7 @@ from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.hatches import resolve_hatch_map
 from publiplots.utils import is_categorical, as_categorical, create_legend_handles, legend
 from publiplots.utils.transparency import ArtistTracker
-from publiplots.annotate._cache import BarRecord, BarValueMeta
+from publiplots.annotate._cache import BarRecord, BarValueMeta, _match_errorbars
 
 _SPLIT_SEPARATOR = "---"
 
@@ -578,30 +578,31 @@ def _build_bar_value_meta(
     palette: Optional[Dict],
     errorbar: Optional[str],
 ) -> BarValueMeta:
-    """Compute aggregated values + errorbar extents aligned with the drawn bars.
+    """Compute aggregated means aligned with the drawn bars.
 
-    We re-run the same aggregation seaborn uses. The resulting records are
-    paired with the Rectangles on the axes in draw order. Hue colors come
-    from the resolved palette map.
+    Means come from a groupby of the raw data; errorbar extents are pulled
+    from the drawn errorbar artists via `_match_errorbars`, so they match
+    seaborn exactly for every errorbar spec (including ``"ci"``, ``"pi"``,
+    tuples, and callables). Records are paired with Rectangles in draw
+    order. Hue colors come from the resolved palette map.
     """
     orient: str = "v" if categorical_axis == x else "h"
 
-    # Aggregate and compute errorbar half-widths with the same spec seaborn used.
+    # Compute means in the same order seaborn draws (hue-outer, cat-inner).
     agg = _aggregate_for_annotate(data, x=x, y=y, hue=hue,
-                                  categorical_axis=categorical_axis,
-                                  errorbar=errorbar)
+                                  categorical_axis=categorical_axis)
 
     rects = [p for p in ax.patches
              if isinstance(p, Rectangle) and p.get_width() > 0 and p.get_height() > 0]
 
-    # Pair each rectangle with an aggregation row, in draw order. Seaborn draws
-    # bars in the same order it iterates the hue × categorical axis groupby,
-    # which matches the order we produce from _aggregate_for_annotate.
+    # Pull errorbar extents from what seaborn actually drew — this is correct
+    # for every errorbar= spec, including bootstrap ci/pi, tuples, callables,
+    # and (critically) errorbar=None (returns (None, None)).
+    err_by_bar = _match_errorbars(ax, rects, orient)
+
     bars: List[BarRecord] = []
-    for rect, row in zip(rects, agg):
+    for rect, row, (err_low, err_high) in zip(rects, agg, err_by_bar):
         value = float(row["mean"])
-        err_low = row.get("err_low")
-        err_high = row.get("err_high")
         hue_color = None
         if hue is not None and palette is not None:
             key = row.get("hue_value")
@@ -631,50 +632,33 @@ def _aggregate_for_annotate(
     y: str,
     hue: Optional[str],
     categorical_axis: str,
-    errorbar: Optional[str],
 ) -> List[Dict]:
-    """Group by (categorical_axis [, hue]) and return mean plus err_low/err_high.
+    """Group by (categorical_axis [, hue]) and return per-bar mean values.
 
-    Returned row ordering: categorical_axis outer, hue inner — matches
-    seaborn's draw order (dodge-grouped bars within each x category).
+    Row ordering: hue outer, categorical_axis inner — this matches seaborn's
+    dodge draw order (all bars of one hue across all categories, then the
+    next hue). Errorbar extents are NOT computed here; they are read from
+    the drawn artists in `_build_bar_value_meta`.
     """
     import numpy as _np
 
     value_col = y if categorical_axis == x else x
     cat_categories = list(data[categorical_axis].cat.categories)
 
-    def _aggregate_group(values: _np.ndarray) -> Dict:
-        mean = float(_np.mean(values))
-        n = len(values)
-        if errorbar is None or n < 2:
-            return {"mean": mean, "err_low": None, "err_high": None}
-        if errorbar == "se":
-            half = float(_np.std(values, ddof=1) / _np.sqrt(n))
-        elif errorbar == "sd":
-            half = float(_np.std(values, ddof=1))
-        elif errorbar == "ci":
-            # 95% CI using normal approx — consistent with seaborn's default
-            half = float(1.96 * _np.std(values, ddof=1) / _np.sqrt(n))
-        else:
-            half = 0.0
-        return {"mean": mean, "err_low": mean - half, "err_high": mean + half}
-
     rows: List[Dict] = []
     if hue is None:
         for cat in cat_categories:
             mask = data[categorical_axis] == cat
-            agg = _aggregate_group(data.loc[mask, value_col].to_numpy())
-            rows.append(agg)
+            vals = data.loc[mask, value_col].to_numpy()
+            rows.append({"mean": float(_np.mean(vals))})
         return rows
 
     hue_categories = list(data[hue].cat.categories)
-    for cat in cat_categories:
-        for h in hue_categories:
+    for h in hue_categories:
+        for cat in cat_categories:
             mask = (data[categorical_axis] == cat) & (data[hue] == h)
             vals = data.loc[mask, value_col].to_numpy()
             if len(vals) == 0:
                 continue
-            agg = _aggregate_group(vals)
-            agg["hue_value"] = h
-            rows.append(agg)
+            rows.append({"mean": float(_np.mean(vals)), "hue_value": h})
     return rows

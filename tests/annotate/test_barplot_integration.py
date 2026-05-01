@@ -39,7 +39,7 @@ def _grouped_df():
 
 def test_barplot_annotate_false_attaches_no_meta():
     fig, ax = pp.barplot(data=_simple_df(), x="category", y="value")
-    assert not hasattr(ax, "_publiplots_bar_meta") or ax._publiplots_bar_meta is None
+    assert not hasattr(ax, "_publiplots_bar_meta")
 
 
 def test_barplot_annotate_true_attaches_meta_and_draws_labels():
@@ -102,3 +102,57 @@ def test_barplot_annotate_with_errorbars_anchors_past_cap():
     for bar, text in zip(meta.bars, ax.texts):
         _, y = text.get_position()
         assert y >= bar.err_high
+
+
+def test_barplot_annotate_hue_labels_pair_to_correct_bars():
+    """Labels must match bar heights, not swap across dodge groups.
+
+    With asymmetric heights, a wrong loop order swaps labels silently.
+    """
+    import numpy as np
+    df = pd.DataFrame({
+        "g": pd.Categorical(["A", "B", "A", "B"]),
+        "c": pd.Categorical(["ctrl", "ctrl", "trt", "trt"]),
+        "y": [1.0, 2.0, 10.0, 20.0],
+    })
+    fig, ax = pp.barplot(data=df, x="g", y="y", hue="c",
+                         errorbar=None, annotate={"fmt": ".1f"})
+    # Sort texts left-to-right by x position; seaborn draws hue-outer, cat-inner
+    # so order is: ctrl-A=1, ctrl-B=2, trt-A=10, trt-B=20.
+    by_x = sorted(ax.texts, key=lambda t: t.get_position()[0])
+    labels = [t.get_text() for t in by_x]
+    assert labels == ["1.0", "10.0", "2.0", "20.0"], (
+        f"Got {labels}; bar-label pairing is broken."
+    )
+
+
+def test_barplot_annotate_errorbar_ci_pulls_from_drawn_artists():
+    """For errorbar='ci' (bootstrap percentile), err_high should come
+    from the drawn cap, not from a re-aggregated normal approx."""
+    import numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({
+        "g": pd.Categorical(np.repeat(["A", "B"], 50)),
+        "y": np.concatenate([
+            rng.normal(1.0, 0.5, 50),
+            rng.normal(2.0, 0.5, 50),
+        ]),
+    })
+    fig, ax = pp.barplot(data=df, x="g", y="y", errorbar="ci", annotate=True)
+    meta = ax._publiplots_bar_meta
+    for bar in meta.bars:
+        assert bar.err_high is not None
+        # err_high must come from the drawn cap (not silent 0.0 fallback nor wrong math)
+        assert bar.err_high > bar.value
+
+
+def test_barplot_annotate_errorbar_none_all_none():
+    df = pd.DataFrame({
+        "g": pd.Categorical(["A", "B"]),
+        "y": [1.0, 2.0],
+    })
+    fig, ax = pp.barplot(data=df, x="g", y="y", errorbar=None, annotate=True)
+    meta = ax._publiplots_bar_meta
+    for bar in meta.bars:
+        assert bar.err_low is None
+        assert bar.err_high is None
