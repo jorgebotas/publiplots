@@ -112,8 +112,9 @@ def boxplot(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show the legend.
+    legend : bool or dict, default=True
+        Whether to show the legend. Accepts ``bool`` or ``dict[kind, bool]``
+        for per-kind control (e.g., ``legend={"hue": False}``).
     legend_kws : dict, optional
         Additional keyword arguments for legend.
     **kwargs
@@ -303,7 +304,8 @@ def _stash_legend(
         return
 
     flags = resolve_legend_flags(legend)
-    hue_label = (legend_kws or {}).get("hue_label", hue)
+    legend_kws = dict(legend_kws or {})
+    hue_label = legend_kws.pop("hue_label", hue)
 
     if flags["hue"]:
         labels = list(palette.keys())
