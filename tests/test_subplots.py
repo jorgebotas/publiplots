@@ -554,3 +554,54 @@ def test_subplots_default_reservations_broadcast_to_tuple():
 def test_subplots_negative_tuple_element_raises():
     with pytest.raises(ValueError, match="title_space"):
         pp.subplots(2, 1, axes_size=(50, 30), title_space=(5, -1))
+
+
+def test_auto_layout_excludes_legend_group_from_tightbbox():
+    """pp.legend_group anchors a legend external to the axes — its width
+    is handled by legend_column, not the column's `right` reservation."""
+    from publiplots.utils.legend import create_legend_handles
+    fig, axes = pp.subplots(1, 3, axes_size=(45, 30), legend_column=30)
+    for ax in axes:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(anchor=axes[-1])
+    group.add_legend(
+        handles=create_legend_handles(
+            labels=["A", "B", "C"],
+            colors=list(pp.color_palette("pastel", 3)),
+            alpha=0.2, linewidth=1.0,
+        ),
+        label="group",
+    )
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    # The rightmost column's `right` should be close to baseline (< 5 mm),
+    # NOT inflated to the legend's width.
+    assert layout.right[-1] < 5.0, (
+        f"right[-1] should be ~ baseline (legend excluded from tightbbox); "
+        f"got {layout.right[-1]:.1f} mm"
+    )
+
+
+def test_auto_layout_per_axis_pp_legend_is_counted():
+    """Per-axis pp.legend() is part of the axes' visual footprint —
+    should inflate that column's `right`, unlike legend_group."""
+    from publiplots.utils.legend import create_legend_handles
+    fig, axes = pp.subplots(1, 2, axes_size=(45, 30))
+    for ax in axes:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    builder = pp.legend(axes[0], auto=False)
+    builder.add_legend(
+        handles=create_legend_handles(
+            labels=["A", "B"],
+            colors=["#5d83c3", "#c0392b"],
+            alpha=0.2, linewidth=1.0,
+        ),
+        label="group",
+    )
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    # Column 0 has the per-axis legend → its `right` should exceed column 1's.
+    assert layout.right[0] > layout.right[1] + 5.0, (
+        f"right[0] (has pp.legend) should exceed right[1] by > 5 mm, got "
+        f"right[0]={layout.right[0]:.1f}, right[1]={layout.right[1]:.1f}"
+    )

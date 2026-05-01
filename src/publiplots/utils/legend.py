@@ -693,6 +693,7 @@ class LegendBuilder:
         vpad: float = 5,
         max_width: Optional[float] = None,
         anchor_ax: Optional[Axes] = None,
+        external_to_axis: bool = False,
     ):
         """Initialize legend builder. All dimensions in millimeters.
 
@@ -723,6 +724,7 @@ class LegendBuilder:
         )
         self._layout.reset_to(axes_height_mm=self._get_axes_height())
         self._reactor = LayoutReactor.get(self.fig)
+        self._external_to_axis = external_to_axis
         # Element storage: list of (type, object) tuples
         self.elements = []
 
@@ -1038,6 +1040,7 @@ class LegendBuilder:
             artist=legend,
             mm_x_from_right=placement_x_mm,
             mm_y_from_top=mm_y_from_top,
+            external_to_axis=self._external_to_axis,
         )
 
         # Store element
@@ -1166,6 +1169,7 @@ class LegendBuilder:
                 artist=title_obj,
                 mm_x_from_right=title_x_mm,
                 mm_y_from_top=title_mm_y_from_top,
+                external_to_axis=self._external_to_axis,
             )
 
             # Position colorbar below measured title
@@ -1245,6 +1249,7 @@ class LegendBuilder:
             mm_y_from_top=mm_y_from_top,
             mm_width=width,        # the mm width parameter of add_colorbar
             mm_height=cbar_height, # measured mm height (from _measure_object_dimensions)
+            external_to_axis=self._external_to_axis,
         )
 
         # Store elements

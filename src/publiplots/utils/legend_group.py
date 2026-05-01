@@ -64,6 +64,10 @@ class MultiAxesLegendGroup:
             column_spacing=column_spacing,
             vpad=vpad,
             max_width=max_width,
+            # Legend_group overlays are external to any single axes' footprint.
+            # SubplotsAutoLayout excludes them from tightbbox so the figure's
+            # `legend_column` is the only reservation counting this legend's width.
+            external_to_axis=True,
         )
 
     def add_legend(

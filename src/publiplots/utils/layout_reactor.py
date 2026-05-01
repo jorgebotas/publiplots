@@ -38,6 +38,13 @@ class _Registration:
     mm_y_from_top: float
     mm_width: Optional[float] = None
     mm_height: Optional[float] = None
+    # External overlays (e.g., pp.legend_group anchored to an axes) should
+    # NOT count toward the axes' tightbbox in SubplotsAutoLayout. Their
+    # geometry is owned by the reactor + user's legend_column reservation,
+    # not by axis-level decoration measurement. Per-axis pp.legend(ax)
+    # keeps this False — those legends ARE part of the axes' visual
+    # footprint.
+    external_to_axis: bool = False
 
 
 class LayoutReactor:
@@ -75,12 +82,23 @@ class LayoutReactor:
         mm_y_from_top: float,
         mm_width: Optional[float] = None,
         mm_height: Optional[float] = None,
+        external_to_axis: bool = False,
     ) -> None:
         """Track this element; its bbox_to_anchor will be refreshed every draw.
 
         For legends, leave mm_width/mm_height as None. For colorbars, pass the
         colorbar's mm dimensions so the colorbar axes can be repositioned via
         set_position (colorbars do not respond to bbox_to_anchor).
+
+        Parameters
+        ----------
+        external_to_axis : bool, default False
+            When True, SubplotsAutoLayout excludes this artist from the
+            axes' tightbbox during reservation measurement. Set True for
+            legend_group-managed overlays that should be accounted for
+            via the figure's ``legend_column`` reservation, not the per-cell
+            ``right`` reservation. Leave False for per-axis ``pp.legend(ax)``
+            — those are part of the axes' visual footprint.
         """
         self._registrations.append(_Registration(
             ax=ax,
@@ -89,6 +107,7 @@ class LayoutReactor:
             mm_y_from_top=mm_y_from_top,
             mm_width=mm_width,
             mm_height=mm_height,
+            external_to_axis=external_to_axis,
         ))
 
     def _on_draw(self, event) -> None:
