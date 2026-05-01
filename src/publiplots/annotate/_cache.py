@@ -6,7 +6,7 @@ reconstructs an equivalent meta by walking `ax.patches` and `ax.lines`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Literal, Optional, Tuple
 
 from matplotlib.axes import Axes
@@ -39,14 +39,7 @@ class BarValueMeta:
 def _is_bar_rect(p) -> bool:
     if not isinstance(p, Rectangle):
         return False
-    w, h = p.get_width(), p.get_height()
-    if w <= 0 or h <= 0:
-        return False
-    # Matplotlib's axes frame and legend patches are Rectangles too; filter by
-    # checking the patch is attached to ax.patches (caller iterates that list)
-    # and that the bar is anchored on the data axis. Frame rectangles live in
-    # ax.spines, not ax.patches, so iterating ax.patches already excludes them.
-    return True
+    return p.get_width() > 0 and p.get_height() > 0
 
 
 def _iter_error_segments(ax: Axes):
