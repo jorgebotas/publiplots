@@ -94,7 +94,18 @@ composer.save('figure_1.pdf')
 
 Each added figure is positioned such that its declared **axes rectangle** aligns to a shared grid. Panel labels ("A", "B", "C") placed at the top-left of each axes rectangle. Composer assumes every `fig` was made with `pp.subplots()` so it knows the axes offsets within the figure. For legacy figures, the composer could optionally take explicit panel positions.
 
-Scope notes for the composer (when it comes): SVG/PDF output, read axes rectangles from the figure's saved metadata, respect the letter-size coordinate system, support multi-panel layouts with span support.
+**Snap mode (IMPORTANT, added 2026-05-01):** the composer must align panels by **axes rectangle**, not by figure edges. `FigureLayout.axes_position(row, col)` already returns each axes' figure-fraction coordinates; multiply by figure mm size and you have absolute axes rectangles. The composer reads those for every figure it places and snaps the axes rectangles to the shared page grid. Decorations extend past the snap point without affecting the snap — so a left panel with a one-line title aligns cleanly with a right panel carrying a two-line title, which is the common publication case.
+
+Proposed API:
+```python
+composer.add(fig, row=0, col=0, snap="axes_top_left")   # default
+composer.add(fig, row=0, col=1, snap="axes_center")      # alternative
+composer.add(fig, row=0, col=2, snap="axes_right")       # for mirrored panels
+```
+
+Snapping anchor options should cover top-left, top-right, center, and a bbox mode (legacy — snap figure edges). Default to `axes_top_left` because it matches the conventional upper-left panel grid in papers.
+
+Scope notes for the composer (when it comes): SVG/PDF output, read axes rectangles from the figure's saved metadata, respect the letter-size coordinate system, support multi-panel layouts with span support, **snap by axes rectangle by default**.
 
 ## Concrete plan for PR #79
 
