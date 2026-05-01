@@ -18,15 +18,8 @@ import numpy as np
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils.transparency import ArtistTracker
-from publiplots.utils import is_categorical, create_legend_handles
-from publiplots.utils.legend import legend as legend_fn
-from publiplots.utils.legend_entries import (
-    LegendEntry,
-    stash_entry,
-    get_entries,
-    resolve_legend_flags,
-    entry_is_in_group,
-)
+from publiplots.utils import is_categorical
+from publiplots.utils.plot_legend import stash_hue_legend
 
 
 def boxplot(
@@ -299,44 +292,14 @@ def _stash_legend(
         legend: Union[bool, Dict],
         legend_kws: Optional[Dict],
     ) -> None:
-    """Stash one hue LegendEntry and optionally render it per-axis."""
-    if legend is False or hue is None or not isinstance(palette, dict):
-        return
-
-    flags = resolve_legend_flags(legend)
-    legend_kws = dict(legend_kws or {})
-    hue_label = legend_kws.pop("hue_label", hue)
-
-    if flags["hue"]:
-        labels = list(palette.keys())
-        handles = create_legend_handles(
-            labels=labels,
-            colors=list(palette.values()),
-            edgecolors=[edgecolor] * len(palette) if edgecolor else None,
-            alpha=alpha,
-            linewidth=linewidth,
-        )
-        stash_entry(
-            ax,
-            LegendEntry.build(
-                name=hue_label,
-                kind="hue",
-                handles=handles,
-                labels=labels,
-            ),
-        )
-
-    # Render per-axis only for entries not claimed by a figure-level group.
-    fig = ax.get_figure()
-    to_render = [
-        e for e in get_entries(ax)
-        if flags[e.kind] and not entry_is_in_group(fig, e)
-    ]
-    if not to_render:
-        return
-    builder = legend_fn(ax=ax, auto=False)
-    for entry in to_render:
-        builder.add_legend(
-            handles=list(entry.handles),
-            label=entry.name,
-        )
+    """Delegate to the shared hue-legend helper."""
+    stash_hue_legend(
+        ax,
+        hue=hue,
+        palette=palette,
+        edgecolor=edgecolor,
+        alpha=alpha,
+        linewidth=linewidth,
+        legend=legend,
+        legend_kws=legend_kws,
+    )
