@@ -56,21 +56,25 @@ Five files, each with one responsibility:
 
 ```
 src/publiplots/annotate/
-  ├─ __init__.py        # re-exports: annotate, BarValueMeta
+  ├─ __init__.py        # re-exports: annotate
   ├─ _dispatcher.py     # annotate(ax, kind=..., **kws); strategy registry
   ├─ _positioning.py    # resolve_anchor(...), fit_check(...)     — pure math
   ├─ _color.py          # resolve_color(...)                       — pure math
-  ├─ _cache.py          # BarValueMeta, BarRecord dataclasses
+  ├─ _cache.py          # BarValueMeta, BarRecord dataclasses (private contract)
   └─ bar_values.py      # v1 strategy: orchestrates the above
 ```
 
 Why five files rather than one: positioning and color are shared infrastructure that the future `point_values` / `box_medians` strategies will reuse. Co-locating them with `bar_values` in a single file would suggest ownership they don't have. The cache is a contract between plot functions and the dispatcher. The dispatcher is trivial but deserves its own file so the `kind=` registry is the single place you look when adding a strategy.
+
+**Import direction (no cycles):** `bar_values.py` depends on `_positioning`, `_color`, `_cache` only — never on `_dispatcher`. `_dispatcher.py` imports `_bar_values_strategy` from `bar_values.py` at module load, populating `_STRATEGIES`. `__init__.py` imports from `_dispatcher` only.
 
 Public API surface, exported from `publiplots/__init__.py`:
 
 ```python
 from publiplots.annotate import annotate
 ```
+
+`BarValueMeta` and `BarRecord` are private implementation details of the plot↔annotator contract; they are not re-exported at package top level.
 
 ---
 
@@ -93,6 +97,7 @@ class BarValueMeta:
     orient: Literal["v", "h"]                     # "v" = vertical bars
     bars: list[BarRecord]                         # in draw order
     errorbar_kind: str | None                     # "se" | "sd" | "ci" | None (informational)
+    hue_active: bool                              # True iff plot was drawn with an explicit hue
     owner_is_publiplots: bool                     # True iff built by pp.barplot, not introspection
 ```
 
@@ -121,7 +126,7 @@ def _introspect(ax) -> BarValueMeta:
         )
         for i, r in enumerate(rects)
     ]
-    return BarValueMeta(orient=orient, bars=bars, errorbar_kind=None, owner_is_publiplots=False)
+    return BarValueMeta(orient=orient, bars=bars, errorbar_kind=None, hue_active=False, owner_is_publiplots=False)
 ```
 
 Errorbar matching tolerance is `0.5 * min_bar_width` (vertical) or `0.5 * min_bar_height` (horizontal). A line whose midpoint falls within this distance of a bar's center is that bar's errorbar. Caps show up as short horizontal/vertical segments; the endpoints of the vertical (or horizontal) line give err_low/err_high. No errorbar found for a bar → `err_low=err_high=None`.
@@ -201,7 +206,7 @@ Branches:
 
 - **`color="auto"` + `anchor="outside"`:** return `to_rgba(rcParams["text.color"])`. The bar isn't underneath the text; there's nothing to contrast against.
 
-- **`color="hue"`:** return `bar.hue_color` if present and non-transparent. Else fall back to `bar.patch.get_edgecolor()` (bars with no hue still have an edge color). Else `rcParams["text.color"]`, and warn once per `annotate()` call: `"pp.annotate: color='hue' requested but no hue colors found; using 'auto'"`.
+- **`color="hue"`:** return `bar.hue_color` if set *and* the bar was drawn with an explicit hue (the cache records this via a separate `hue_active: bool` on `BarValueMeta`). If the plot had no hue — all bars share the default color — warn once per `annotate()` call (`"pp.annotate: color='hue' requested but plot has no hue; falling back to color='auto'"`) and re-run `resolve_color` with `color="auto"` semantics (including the anchor-dependent contrast logic). For introspection-built meta where hue activity can't be detected, treat any bar with an alpha-matched face color as having an implicit hue and return `bar.hue_color` directly.
 
 - **Literal color** (string name, hex, RGB/RGBA tuple): pass through `matplotlib.colors.to_rgba(color)`.
 
@@ -368,7 +373,7 @@ Return value: list of 4 `Text` artists from the strategy; user-facing return of 
 | `kind` not in registry | `ValueError("unknown kind='foo'; known: ['bar_values']")` |
 | `anchor` not in valid set | `ValueError(...)` listing valid choices |
 | `offset < 0` or `pad < 0` | `ValueError("offset and pad must be >= 0")` |
-| `color="hue"` but no hue colors present | Warn once, fall back to `color="auto"` |
+| `color="hue"` but `hue_active=False` on cache | Warn once, recurse with `color="auto"` |
 | Empty axes (no bars) | `UserWarning("pp.annotate: no bars found on axes")`; return `[]` |
 | NaN value bars | Skip silently (don't count as errors); non-NaN bars still labelled |
 | Cache attribute exists but wrong type (stale) | `isinstance` check fails → ignore, fall through to introspection |
