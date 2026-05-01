@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `pp.annotate(ax, kind="bar_values", ...)` for in-plot value labels on
+  barplots. Orientation-aware, errorbar-aware, sign-aware; anchors
+  `outside`/`inside`/`base`/`center`; contrast-aware coloring via
+  `color="auto"` (with compositing for translucent fills) or palette
+  colors via `color="hue"`. `pp.barplot(..., annotate=True | dict)`
+  wires the primitive into the barplot API.
+
 ## [0.4.7] - 2026-04-29
 
 ### Added
