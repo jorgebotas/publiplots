@@ -10,7 +10,7 @@ import hashlib
 from dataclasses import dataclass
 
 
-_LEGEND_KINDS = ("hue", "size", "style", "marker")
+_LEGEND_KINDS = ("hue", "size", "style", "marker", "hatch")
 
 
 @dataclass(frozen=True)
