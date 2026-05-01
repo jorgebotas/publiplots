@@ -8,8 +8,6 @@ Style Functions
    :toctree: generated/
    :nosignatures:
 
-   publiplots.set_notebook_style
-   publiplots.set_publication_style
    publiplots.reset_style
 
 Color Functions

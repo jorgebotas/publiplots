@@ -16,8 +16,6 @@ from publiplots.themes.rcparams import (
 )
 
 from publiplots.themes.styles import (
-    set_notebook_style,
-    set_publication_style,
     reset_style,
     get_current_style,
     apply_custom_style,
@@ -56,8 +54,6 @@ __all__ = [
     # Color palettes
     "PALETTES",
     # Style functions
-    "set_notebook_style",
-    "set_publication_style",
     "reset_style",
     "get_current_style",
     "apply_custom_style",

@@ -15,10 +15,6 @@ First, import the necessary libraries:
    import numpy as np
    import matplotlib.pyplot as plt
 
-   # Set the style for your workflow
-   pp.set_notebook_style()  # For interactive work
-   # pp.set_publication_style()  # For final figures
-
 Creating Your First Plot
 -------------------------
 

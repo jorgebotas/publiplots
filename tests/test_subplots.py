@@ -34,32 +34,16 @@ def test_subplots_rcparams_keys_exist():
         assert key in pp.rcParams, f"missing rcParam: {key}"
 
 
-def test_subplots_rcparams_publication_defaults():
-    pp.set_publication_style()
-    try:
-        assert pp.rcParams["subplots.title_space"] == 5
-        assert pp.rcParams["subplots.xlabel_space"] == 8
-        assert pp.rcParams["subplots.ylabel_space"] == 10
-        assert pp.rcParams["subplots.right"] == 2
-        assert pp.rcParams["subplots.hspace"] == 3
-        assert pp.rcParams["subplots.wspace"] == 3
-        assert pp.rcParams["subplots.outer_pad"] == 2
-    finally:
-        pp.reset_style()
-
-
-def test_subplots_rcparams_notebook_defaults():
-    pp.set_notebook_style()
-    try:
-        assert pp.rcParams["subplots.title_space"] == 8
-        assert pp.rcParams["subplots.xlabel_space"] == 12
-        assert pp.rcParams["subplots.ylabel_space"] == 14
-        assert pp.rcParams["subplots.right"] == 2
-        assert pp.rcParams["subplots.hspace"] == 4
-        assert pp.rcParams["subplots.wspace"] == 4
-        assert pp.rcParams["subplots.outer_pad"] == 3
-    finally:
-        pp.reset_style()
+def test_subplots_rcparams_defaults():
+    """publiplots is publication-first; subplots defaults are baked into
+    PUBLIPLOTS_RCPARAMS with no separate style mode."""
+    assert pp.rcParams["subplots.title_space"] == 5
+    assert pp.rcParams["subplots.xlabel_space"] == 8
+    assert pp.rcParams["subplots.ylabel_space"] == 10
+    assert pp.rcParams["subplots.right"] == 2
+    assert pp.rcParams["subplots.hspace"] == 3
+    assert pp.rcParams["subplots.wspace"] == 3
+    assert pp.rcParams["subplots.outer_pad"] == 2
 
 
 # ---------------------------------------------------------------------------
@@ -374,21 +358,8 @@ def test_subplots_scalar_axes_size_coerced_to_tuple():
 
 
 def test_subplots_axes_size_none_uses_rcparams_default():
-    pp.set_publication_style()
-    try:
-        fig, _ = pp.subplots()
-        assert fig._publiplots_layout.axes_size == (50.0, 30.0)
-    finally:
-        pp.reset_style()
-
-
-def test_subplots_axes_size_none_picks_up_notebook_default():
-    pp.set_notebook_style()
-    try:
-        fig, _ = pp.subplots()
-        assert fig._publiplots_layout.axes_size == (100.0, 65.0)
-    finally:
-        pp.reset_style()
+    fig, _ = pp.subplots()
+    assert fig._publiplots_layout.axes_size == (70.0, 50.0)
 
 
 def test_subplots_rejects_figsize_kwarg():

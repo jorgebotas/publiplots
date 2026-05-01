@@ -11,9 +11,6 @@ import publiplots as pp
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Set style
-pp.set_notebook_style()
-
 # %%
 # 2-Way Venn Diagram
 # ------------------

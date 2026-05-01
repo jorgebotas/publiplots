@@ -23,7 +23,7 @@ TEXT_COLOR = "black"
 MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     # Figure settings - compact by default (publication-ready)
     "figure.figsize": [3, 1.8],
-    "figure.dpi": 600,
+    "figure.dpi": 150,      # screen rendering; savefig uses savefig.dpi below for print-quality
     "figure.edgecolor": "none",
     "figure.subplot.hspace": 0.05,
     "figure.subplot.wspace": 0.05,
@@ -44,7 +44,7 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     "legend.labelcolor": TEXT_COLOR,
 
     # Axes settings
-    "axes.linewidth": 1.0,
+    "axes.linewidth": 0.75,
     "axes.edgecolor": "0.3",
     "axes.facecolor": "white",
     "axes.labelsize": 9,
@@ -67,8 +67,8 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     # Tick settings
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
-    "xtick.major.width": 1.0,
-    "ytick.major.width": 1.0,
+    "xtick.major.width": 0.75,
+    "ytick.major.width": 0.75,
     "xtick.major.size": 0,
     "ytick.major.size": 0,
 
@@ -125,7 +125,7 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
 
     # Subplots layout (mm) — baseline is publication-grade; notebook style
     # overrides these in themes/styles.py.
-    "subplots.axes_size": (50.0, 30.0),  # default (width, height) of each axes in pp.subplots
+    "subplots.axes_size": (70.0, 50.0),  # default (width, height) of each axes in pp.subplots
     "subplots.title_space": 5,    # reserved above each row
     "subplots.xlabel_space": 8,   # reserved below each row
     "subplots.ylabel_space": 10,  # reserved left of each col
@@ -316,11 +316,12 @@ def init_rcparams() -> None:
     >>> import publiplots as pp
     >>> pp.themes.rcparams.init_rcparams()
     """
-    for key, value in MATPLOTLIB_RCPARAMS.items():
-        # Only set if key doesn't exist or is at matplotlib default
-        # This preserves user customizations made before import
-        if key not in plt.rcParams or plt.rcParams[key] == plt.rcParamsDefault.get(key):
-            plt.rcParams[key] = value
+    # publiplots is opinionated about its publication-grade defaults — always
+    # overwrite, so users get consistent styling (Arial fonts, 0.75pt strokes,
+    # 8pt labels, etc.) regardless of their matplotlibrc. Per-parameter
+    # overrides are still easy: assign to pp.rcParams after import, or call
+    # pp.reset_style() to revert to matplotlib's own defaults entirely.
+    plt.rcParams.update(MATPLOTLIB_RCPARAMS)
 
 
 # Initialize on import

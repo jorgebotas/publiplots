@@ -50,9 +50,6 @@ Basic Usage
    import pandas as pd
    import numpy as np
 
-   # Set notebook style for interactive work
-   pp.set_notebook_style()
-
    # Create sample data
    data = pd.DataFrame({
        'category': ['A', 'B', 'C', 'D'],

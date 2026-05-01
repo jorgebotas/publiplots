@@ -12,9 +12,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Set style
-pp.set_notebook_style()
-
 # %%
 # Simple Heatmap (Wide Format)
 # ----------------------------
