@@ -878,8 +878,9 @@ class ComplexHeatmapBuilder:
         }
         self._heatmap_params.update(kwargs)
 
-        # Layout parameters
-        self._figsize = figsize or resolve_param("figure.figsize")
+        # Layout parameters. Historical matplotlib default kept to preserve
+        # ComplexHeatmap geometry; migrating it to pp.subplots is deferred.
+        self._figsize = figsize or (4.0, 3.0)
         self._hspace = hspace
         self._wspace = wspace
 

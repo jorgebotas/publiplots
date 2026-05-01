@@ -109,6 +109,13 @@ def test_ax_kwarg_reuses_existing_figure(fn_name, df_fixture, kwargs, request):
     assert ax1 is ax0
 
 
-def test_rcparam_figure_figsize_removed():
-    """After PR C, 'figure.figsize' must not appear in pp.rcParams."""
-    assert "figure.figsize" not in pp.rcParams
+def test_rcparam_figure_figsize_not_overridden_by_publiplots():
+    """After PR C, publiplots must not override matplotlib's figure.figsize.
+
+    `figure.figsize` remains a matplotlib-native rcParam (pp.rcParams proxies
+    matplotlib.rcParams), but publiplots no longer sets it to a publication
+    default — figure dimensions are computed by pp.subplots(axes_size=...)
+    instead.
+    """
+    from publiplots.themes.rcparams import MATPLOTLIB_RCPARAMS
+    assert "figure.figsize" not in MATPLOTLIB_RCPARAMS

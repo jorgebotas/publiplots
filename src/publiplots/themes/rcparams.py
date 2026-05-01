@@ -22,7 +22,9 @@ import matplotlib.pyplot as plt
 TEXT_COLOR = "black"
 MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     # Figure settings - compact by default (publication-ready)
-    "figure.figsize": [3, 1.8],
+    # NB: figure.figsize is intentionally not set. publiplots sizes figures
+    # via pp.subplots(axes_size=...), which computes the canvas from axes
+    # dimensions (mm) + reservations. See `subplots.axes_size` below.
     "figure.dpi": 150,      # screen rendering; savefig uses savefig.dpi below for print-quality
     "figure.edgecolor": "none",
     "figure.subplot.hspace": 0.05,
@@ -239,11 +241,11 @@ class PubliplotsRcParams:
     --------
     Access parameters:
     >>> from publiplots.themes import rcParams
-    >>> figsize = rcParams['figure.figsize']
+    >>> axes_size = rcParams['subplots.axes_size']
     >>> color = rcParams['color']  # Custom publiplots param
 
     Set parameters:
-    >>> rcParams['figure.figsize'] = (8, 6)
+    >>> rcParams['subplots.axes_size'] = (80, 50)  # mm
     >>> rcParams['color'] = '#ff0000'
 
     Use in functions with resolve_param:
@@ -292,9 +294,9 @@ This provides unified access to both matplotlib and publiplots parameters.
 Use it just like matplotlib's rcParams:
 
 >>> import publiplots as pp
->>> pp.rcParams['figure.figsize'] = [8, 6]  # matplotlib param
->>> pp.rcParams['alpha'] = 0.2              # publiplots param
->>> pp.rcParams['color']                    # Get default color
+>>> pp.rcParams['subplots.axes_size'] = (80, 50)  # mm
+>>> pp.rcParams['alpha'] = 0.2                     # publiplots param
+>>> pp.rcParams['color']                           # Get default color
 '#5d83c3'
 """
 

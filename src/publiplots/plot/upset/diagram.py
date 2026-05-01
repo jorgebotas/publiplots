@@ -266,9 +266,10 @@ def upsetplot(
     n_sets = processed["n_sets"]
     n_intersections = processed["n_intersections"]
 
-    # Create figure with initial size (will be adjusted by setup_upset_axes)
-    # Initial size is just a starting point - setup_upset_axes will resize based on elementsize
-    default_width, default_height = resolve_param("figure.figsize")
+    # Create figure with initial size (will be adjusted by setup_upset_axes).
+    # Historical matplotlib default kept to preserve UpSet geometry.
+    # Migrating UpSet to pp.subplots is deferred.
+    default_width, default_height = 4.0, 3.0
     width = max(default_width, n_intersections * 0.4)
     height = max(default_height, n_sets * 0.8 + 3)
     fig = plt.figure(figsize=(width, height))
