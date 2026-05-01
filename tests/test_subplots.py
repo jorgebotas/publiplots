@@ -431,18 +431,9 @@ def test_subplots_validates_negative_reservation():
         pp.subplots(axes_size=(50, 30), title_space=-1.0)
 
 
-def test_subplots_legend_column_reserves_extra_width():
-    fig_no_col, _ = pp.subplots(axes_size=(50, 30), legend_column=0,
-                                title_space=5, xlabel_space=8,
-                                ylabel_space=10, right=2,
-                                hspace=8, wspace=10, outer_pad=2)
-    fig_with_col, _ = pp.subplots(axes_size=(50, 30), legend_column=30,
-                                  title_space=5, xlabel_space=8,
-                                  ylabel_space=10, right=2,
-                                  hspace=8, wspace=10, outer_pad=2)
-    w_no = fig_no_col.get_figwidth()
-    w_with = fig_with_col.get_figwidth()
-    assert w_with == pytest.approx(w_no + 30 * MM2INCH, abs=1e-3)
+def test_subplots_rejects_legend_column_kwarg():
+    with pytest.raises(TypeError, match="legend_column"):
+        pp.subplots(axes_size=(50, 30), legend_column=30)
 
 
 def test_subplots_sharex_true_shares_all():
@@ -549,7 +540,7 @@ def test_auto_layout_excludes_legend_group_from_tightbbox():
     """pp.legend_group anchors a legend external to the axes — its width
     is handled by legend_column, not the column's `right` reservation."""
     from publiplots.utils.legend import create_legend_handles
-    fig, axes = pp.subplots(1, 3, axes_size=(45, 30), legend_column=30)
+    fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
     for ax in axes:
         ax.plot([0, 1, 2], [0, 1, 0])
     group = pp.legend_group(anchor=axes[-1])
