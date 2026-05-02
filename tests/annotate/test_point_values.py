@@ -158,6 +158,28 @@ def test_pointplot_annotate_anchor_center_overlays_marker():
         assert text.get_va() == "center"
 
 
+def test_pointplot_annotate_text_zorder_above_markers():
+    """pp.pointplot draws its double-layer markers at zorder ~99-100;
+    label text must sit above them (especially relevant for anchor='center').
+    """
+    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+                           annotate={"anchor": "center"})
+    marker_zorders = [
+        ln.get_zorder() for ln in ax.lines if ln.get_marker() not in (None, "None")
+    ]
+    max_marker_zorder = max(marker_zorders) if marker_zorders else 0
+    for text in ax.texts:
+        assert text.get_zorder() > max_marker_zorder
+
+
+def test_pointplot_annotate_respects_user_zorder():
+    """User-supplied zorder in annotate dict wins over the default bump."""
+    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+                           annotate={"anchor": "center", "zorder": 5})
+    for text in ax.texts:
+        assert text.get_zorder() == 5
+
+
 def test_pointplot_annotate_invalid_anchor_raises():
     with pytest.raises(ValueError, match="point_values anchor"):
         pp.pointplot(data=_multi_sample_df(), x="time", y="v",

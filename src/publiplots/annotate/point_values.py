@@ -111,6 +111,12 @@ def _point_values_strategy(
         return []
 
     _ensure_renderer(ax)
+
+    # pp.pointplot draws markers at zorder ~99-100 (double-layer style);
+    # labels must sit above the markers to be visible when anchor="center".
+    # Allow caller to override via text_kws.
+    default_zorder = text_kws.pop("zorder", 101)
+
     texts: List[Text] = []
     for point in meta.points:
         if math.isnan(point.value):
@@ -123,7 +129,8 @@ def _point_values_strategy(
             hue_active=meta.hue_active,
         )
         label = _format_value(point.value, fmt)
-        t = ax.text(x, y, label, ha=ha, va=va, color=rgba, **text_kws)
+        t = ax.text(x, y, label, ha=ha, va=va, color=rgba,
+                    zorder=default_zorder, **text_kws)
         texts.append(t)
 
     _maybe_expand_point_limits(ax, texts, anchor, pad_mm=pad,
