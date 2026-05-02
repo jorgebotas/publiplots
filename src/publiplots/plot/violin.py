@@ -150,21 +150,19 @@ def violinplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple violin plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.violinplot(data=df, x="category", y="value")
+    >>> ax = pp.violinplot(data=df, x="category", y="value")
 
     Violin plot with hue grouping:
 
-    >>> fig, ax = pp.violinplot(
+    >>> ax = pp.violinplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """

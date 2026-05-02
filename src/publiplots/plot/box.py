@@ -112,21 +112,19 @@ def boxplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple box plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.boxplot(data=df, x="category", y="value")
+    >>> ax = pp.boxplot(data=df, x="category", y="value")
 
     Box plot with hue grouping:
 
-    >>> fig, ax = pp.boxplot(
+    >>> ax = pp.boxplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """

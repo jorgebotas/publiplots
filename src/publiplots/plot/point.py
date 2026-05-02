@@ -163,24 +163,22 @@ def pointplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple point plot:
-    >>> fig, ax = pp.pointplot(data=df, x="time", y="value")
+    >>> ax = pp.pointplot(data=df, x="time", y="value")
 
     Point plot with grouping:
-    >>> fig, ax = pp.pointplot(
+    >>> ax = pp.pointplot(
     ...     data=df, x="time", y="value", hue="group",
     ...     palette={'Control': '#8E8EC1', 'Treated': '#75B375'}
     ... )
 
     Point plot with custom markers:
-    >>> fig, ax = pp.pointplot(
+    >>> ax = pp.pointplot(
     ...     data=df, x="time", y="value", hue="group",
     ...     markers=["o", "D"], errorbar="se"
     ... )

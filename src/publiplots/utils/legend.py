@@ -672,7 +672,7 @@ class LegendBuilder:
 
     Examples
     --------
-    >>> fig, ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
+    >>> ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
     >>> builder = pp.legend(ax, auto=False, x_offset=2, gap=2)
     >>> builder.add_legend(handles, label="Treatment")
     >>> builder.add_colorbar(mappable, label="Expression", height=15)
@@ -1398,7 +1398,7 @@ def legend(
     Examples
     --------
     Auto mode (no axes needed, uses current axes):
-    >>> fig, ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
+    >>> ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
     >>> builder = pp.legend()  # Auto-creates legends on current axes
 
     Auto mode with explicit axes:

@@ -111,21 +111,19 @@ def stripplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple strip plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.stripplot(data=df, x="category", y="value")
+    >>> ax = pp.stripplot(data=df, x="category", y="value")
 
     Strip plot with hue grouping:
 
-    >>> fig, ax = pp.stripplot(
+    >>> ax = pp.stripplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """

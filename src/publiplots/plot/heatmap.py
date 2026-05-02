@@ -151,30 +151,28 @@ def heatmap(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Wide-format heatmap:
 
     >>> matrix = pd.DataFrame(np.random.randn(10, 10))
-    >>> fig, ax = pp.heatmap(matrix, cmap="coolwarm", center=0)
+    >>> ax = pp.heatmap(matrix, cmap="coolwarm", center=0)
 
     Long-format heatmap:
 
-    >>> fig, ax = pp.heatmap(df, x="sample", y="gene", value="expression")
+    >>> ax = pp.heatmap(df, x="sample", y="gene", value="expression")
 
     Dot heatmap with size encoding:
 
-    >>> fig, ax = pp.heatmap(df, x="sample", y="gene",
-    ...                       value="expression", size="pvalue")
+    >>> ax = pp.heatmap(df, x="sample", y="gene",
+    ...                  value="expression", size="pvalue")
 
     Annotated heatmap:
 
-    >>> fig, ax = pp.heatmap(matrix, annot=True, fmt=".1f")
+    >>> ax = pp.heatmap(matrix, annot=True, fmt=".1f")
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
@@ -735,7 +733,7 @@ def complex_heatmap(
     --------
     Basic complex heatmap with margins:
 
-    >>> fig, axes = (
+    >>> axes = (
     ...     pp.complex_heatmap(data, x="sample", y="gene", value="expr")
     ...     .add_top(pp.barplot, data=totals, x="sample", y="count", height=15)
     ...     .add_left(pp.barplot, data=means, x="mean", y="gene", width=15)
@@ -744,7 +742,7 @@ def complex_heatmap(
 
     With clustering and dendrograms:
 
-    >>> fig, axes = (
+    >>> axes = (
     ...     pp.complex_heatmap(matrix, row_cluster=True, col_cluster=True)
     ...     .build()
     ... )
@@ -1146,11 +1144,10 @@ class ComplexHeatmapBuilder:
 
         Returns
         -------
-        fig : Figure
-            Matplotlib figure.
-        axes : dict
-            Dictionary with keys 'main', 'top', 'bottom', 'left', 'right'.
-            Each margin key contains a list of axes.
+        dict
+            Dict of axes. Always contains key ``"main"``; may contain
+            ``"top"``, ``"bottom"``, ``"left"``, ``"right"`` as lists of Axes
+            if margin plots were added.
         """
         from matplotlib import gridspec
 
@@ -1406,10 +1403,8 @@ def dendrogram(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure.
-    ax : Axes
-        Matplotlib axes.
+    Axes
+        The axes where the dendrogram was drawn.
     """
     from scipy.cluster.hierarchy import dendrogram as scipy_dendrogram
     from scipy.cluster.hierarchy import linkage as compute_linkage

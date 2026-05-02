@@ -108,21 +108,19 @@ def swarmplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple swarm plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.swarmplot(data=df, x="category", y="value")
+    >>> ax = pp.swarmplot(data=df, x="category", y="value")
 
     Swarm plot with hue grouping:
 
-    >>> fig, ax = pp.swarmplot(
+    >>> ax = pp.swarmplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """

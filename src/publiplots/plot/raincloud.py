@@ -140,21 +140,19 @@ def raincloudplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple raincloud plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.raincloudplot(data=df, x="category", y="value")
+    >>> ax = pp.raincloudplot(data=df, x="category", y="value")
 
     Raincloud plot with hue grouping:
 
-    >>> fig, ax = pp.raincloudplot(
+    >>> ax = pp.raincloudplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
