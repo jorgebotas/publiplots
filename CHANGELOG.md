@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-02
+
+### Breaking changes
+- Plot functions return only the axes they drew into, not `(fig, ax)`. The `fig` handle is accessible via `ax.get_figure()` when needed. `pp.subplots` is unchanged and still returns `(fig, ax)` — it creates the figure, so the user needs the handle.
+- `upsetplot` returns a dict `{"intersections": Axes, "matrix": Axes, "sets": Axes}` instead of `(fig, (ax_i, ax_m, ax_s))`. Switch from positional unpacking to named-key access.
+- `complex_heatmap().build()` returns the axes dict directly instead of `(fig, axes_dict)`.
+
+### Migration
+```python
+# before
+fig, ax = pp.barplot(data=df, x="x", y="y")
+fig.savefig("out.png")
+
+# after
+ax = pp.barplot(data=df, x="x", y="y")
+ax.get_figure().savefig("out.png")   # or plt.savefig("out.png") / pp.savefig("out.png")
+```
+
+For `upsetplot`:
+```python
+# before
+fig, (ax_i, ax_m, ax_s) = pp.upsetplot(sets)
+
+# after
+axes = pp.upsetplot(sets)
+axes["intersections"]; axes["matrix"]; axes["sets"]
+```
+
+### Why
+Every gallery example did `fig, ax = pp.<plot>(...)` and then ignored `fig`. `pp.savefig` already operated on the current figure (the old `pp.savefig(fig, ...)` examples were stale and would have errored). Removing `fig` from the return aligns with seaborn's convention and removes a dead variable.
+
+### Fixed
+- Stale docstring examples across the codebase that showed `pp.savefig(fig, 'output.png')` (an invalid call — `pp.savefig` takes only a filepath) are now correct.
+
+### Internal
+- Removed `docs/COMPLEX_HEATMAP_PLAN.md` (stale pre-implementation design doc for a feature that shipped long ago).
+- Untracked `docs/superpowers/` from the repo — it's a local planning workspace (specs / plans / handoff notes) used by the brainstorming + writing-plans workflow. Added to `.gitignore`; previously-tracked files preserved on disk.
+
+[0.7.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.7.0
+
 ## [0.6.0] - 2026-05-02
 
 ### Breaking changes
