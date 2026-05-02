@@ -286,9 +286,26 @@ fig, ax = pp.pointplot(
 
 # Add vertical line at placebo mean for reference
 placebo_mean = long_format_data[long_format_data['treatment'] == 'Placebo']['response'].mean()
-ax.axvline(x=placebo_mean, color='red', linestyle=':', linewidth=1.5, 
+ax.axvline(x=placebo_mean, color='red', linestyle=':', linewidth=1.5,
            alpha=0.7, label=f'Placebo mean ({placebo_mean:.2f})')
 ax.grid(axis='x', alpha=0.3)
 ax.legend(loc='lower right')
 
+plt.show()
+
+# %%
+# Annotated points
+# ----------------
+# ``annotate=True`` labels each mean with its value, above the errorbar
+# cap by default. Point-plot anchors are directional (``top``, ``bottom``,
+# ``left``, ``right``, ``center``). See the dedicated
+# :doc:`annotations gallery <plot_15_annotate>` for more.
+
+fig, ax = pp.pointplot(
+    data=simple_data,
+    x='time', y='measurement',
+    errorbar='se',
+    annotate={"fmt": ".1f"},
+)
+ax.set_title("annotate=True")
 plt.show()

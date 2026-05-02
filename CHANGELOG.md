@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pp.annotate(ax, kind="point_values", ...)` for pointplots. Directional
   anchors (`top`/`bottom`/`left`/`right`/`center`), errorbar-cap aware,
   hue-aware. `pp.pointplot(..., annotate=True | dict)` wires it in.
+- `pp.annotate(ax, kind="box_stats", ...)` for boxplots and violinplots.
+  Labels the median by default; pass `stats=["median", "q1", "q3", ...]`
+  to label multiple stats per box. Shared strategy across `pp.boxplot(..., annotate=...)`
+  and `pp.violinplot(..., annotate=...)`.
+- `pp.annotate` anchor validation is now strategy-owned: each strategy
+  defines its own anchor vocabulary and default. `bar_values` accepts
+  `{outside, inside, base, center}`; `point_values` and `box_stats` accept
+  `{top, bottom, left, right, center}`.
 
 ## [0.4.7] - 2026-04-29
 

@@ -11,21 +11,42 @@ inputs (data, column names, palette map, errorbar spec) and returns a
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 from matplotlib.patches import Rectangle
 
+from matplotlib.patches import PathPatch
+
 from publiplots.annotate._cache import (
     BarRecord,
     BarValueMeta,
+    BoxStatsMeta,
+    BoxStatsRecord,
     PointRecord,
     PointValueMeta,
     _iter_error_segments,
     _match_errorbars,
 )
+
+
+def _categories_in_draw_order(series) -> list:
+    """Return the ordered category labels used by seaborn for a series.
+
+    Accepts either a pandas Categorical (honors its explicit order) or an
+    object/str Series (uses first-occurrence order, matching seaborn's
+    default behavior).
+    """
+    if hasattr(series, "cat"):
+        return list(series.cat.categories)
+    # Preserve first-occurrence order without an extra import.
+    seen = []
+    for v in series:
+        if v not in seen:
+            seen.append(v)
+    return seen
 
 
 def _aggregate_means(
@@ -42,7 +63,7 @@ def _aggregate_means(
     them from the drawn errorbar artists via `_match_errorbars`.
     """
     value_col = y if categorical_axis == x else x
-    cat_categories = list(data[categorical_axis].cat.categories)
+    cat_categories = _categories_in_draw_order(data[categorical_axis])
 
     rows: List[Dict] = []
     if hue is None:
@@ -52,7 +73,7 @@ def _aggregate_means(
             rows.append({"mean": float(np.mean(vals))})
         return rows
 
-    hue_categories = list(data[hue].cat.categories)
+    hue_categories = _categories_in_draw_order(data[hue])
     for h in hue_categories:
         for cat in cat_categories:
             mask = (data[categorical_axis] == cat) & (data[hue] == h)
@@ -121,7 +142,7 @@ def build_from_pointplot_call(
     from the resolved palette map.
     """
     orient = "v" if categorical_axis == x else "h"
-    cat_categories = list(data[categorical_axis].cat.categories)
+    cat_categories = _categories_in_draw_order(data[categorical_axis])
 
     agg = _aggregate_means(data, x=x, y=y, hue=hue,
                            categorical_axis=categorical_axis)
@@ -135,7 +156,7 @@ def build_from_pointplot_call(
             points_xy.append((pos, val) if orient == "v" else (val, pos))
         hue_values_for_points: List = [None] * len(points_xy)
     else:
-        hue_categories = list(data[hue].cat.categories)
+        hue_categories = _categories_in_draw_order(data[hue])
         points_xy = []
         hue_values_for_points = []
         idx = 0
@@ -229,4 +250,183 @@ def build_from_barplot_call(
         errorbar_kind=errorbar,
         hue_active=hue is not None,
         owner_is_publiplots=True,
+    )
+
+
+VALID_BOX_STATS = {"median", "q1", "q3", "whisker_low", "whisker_high", "mean"}
+
+
+def _compute_box_stats(values: np.ndarray, whis: float) -> Dict[str, float]:
+    """Compute box-plot statistics from raw samples.
+
+    Matches seaborn's convention: Q1 = 25th percentile, Q3 = 75th, whiskers
+    extend to the most extreme sample within `whis * IQR` of Q1/Q3.
+    """
+    q1 = float(np.percentile(values, 25))
+    q3 = float(np.percentile(values, 75))
+    iqr = q3 - q1
+    low_cut = q1 - whis * iqr
+    high_cut = q3 + whis * iqr
+    inside = values[(values >= low_cut) & (values <= high_cut)]
+    whisker_low = float(inside.min()) if len(inside) else q1
+    whisker_high = float(inside.max()) if len(inside) else q3
+    return {
+        "median": float(np.median(values)),
+        "q1": q1,
+        "q3": q3,
+        "whisker_low": whisker_low,
+        "whisker_high": whisker_high,
+        "mean": float(np.mean(values)),
+    }
+
+
+def _aggregate_box_stats(
+    data,
+    x: str,
+    y: str,
+    hue: Optional[str],
+    categorical_axis: str,
+    whis: float,
+) -> List[Dict]:
+    """Group by (categorical_axis [, hue]) and compute box stats per group.
+
+    Row ordering matches seaborn's dodge draw order: hue-outer, cat-inner.
+    """
+    value_col = y if categorical_axis == x else x
+    cat_categories = _categories_in_draw_order(data[categorical_axis])
+
+    rows: List[Dict] = []
+    if hue is None:
+        for cat in cat_categories:
+            mask = data[categorical_axis] == cat
+            vals = data.loc[mask, value_col].to_numpy()
+            if len(vals) == 0:
+                continue
+            stats = _compute_box_stats(vals, whis)
+            stats["cat"] = cat
+            rows.append(stats)
+        return rows
+
+    hue_categories = _categories_in_draw_order(data[hue])
+    for h in hue_categories:
+        for cat in cat_categories:
+            mask = (data[categorical_axis] == cat) & (data[hue] == h)
+            vals = data.loc[mask, value_col].to_numpy()
+            if len(vals) == 0:
+                continue
+            stats = _compute_box_stats(vals, whis)
+            stats["cat"] = cat
+            stats["hue_value"] = h
+            rows.append(stats)
+    return rows
+
+
+def _center_pos_from_artist(artist, ax: Axes, orient: str) -> float:
+    """Get the categorical-axis center of a drawn artist (PathPatch or
+    PolyCollection)."""
+    tr = artist.get_transform() if hasattr(artist, "get_transform") else ax.transData
+    # Works for both Patch (get_path) and Collection (get_paths()[0])
+    if hasattr(artist, "get_path"):
+        extents = artist.get_path().get_extents(tr)
+    else:
+        extents = artist.get_paths()[0].get_extents(tr)
+    extents_data = extents.transformed(ax.transData.inverted())
+    if orient == "v":
+        return float((extents_data.x0 + extents_data.x1) / 2.0)
+    return float((extents_data.y0 + extents_data.y1) / 2.0)
+
+
+def _facecolor_of(artist) -> Tuple[float, float, float, float]:
+    fc = artist.get_facecolor()
+    # Collection.get_facecolor returns an array of shape (N, 4); patches return (4,)
+    fc = np.asarray(fc)
+    if fc.ndim == 2:
+        fc = fc[0]
+    return tuple(float(c) for c in fc[:4])
+
+
+def _build_box_stats_meta(
+    ax: Axes,
+    data,
+    x: str,
+    y: str,
+    hue: Optional[str],
+    categorical_axis: str,
+    palette: Optional[Dict],
+    whis: float,
+    artists: List,
+) -> BoxStatsMeta:
+    """Shared builder for pp.boxplot / pp.violinplot.
+
+    Stats are computed from raw data (exact, matching seaborn's whis rule
+    for boxplot; violinplot shows the same underlying stats). Categorical
+    positions come from the drawn artists so dodge groupings are honored.
+    """
+    orient = "v" if categorical_axis == x else "h"
+    agg = _aggregate_box_stats(data, x=x, y=y, hue=hue,
+                               categorical_axis=categorical_axis, whis=whis)
+    if len(artists) != len(agg):
+        n = min(len(artists), len(agg))
+        artists = artists[:n]
+        agg = agg[:n]
+
+    boxes: List[BoxStatsRecord] = []
+    for artist, row in zip(artists, agg):
+        center_pos = _center_pos_from_artist(artist, ax, orient)
+        hue_color = None
+        if hue is not None and palette is not None:
+            key = row.get("hue_value")
+            if key is not None and key in palette:
+                hue_color = to_rgba(palette[key])
+        if hue_color is None:
+            hue_color = _facecolor_of(artist)
+        boxes.append(BoxStatsRecord(
+            center_pos=center_pos,
+            stats={k: v for k, v in row.items() if k in VALID_BOX_STATS},
+            hue_color=hue_color,
+        ))
+    return BoxStatsMeta(
+        orient=orient,
+        boxes=boxes,
+        hue_active=hue is not None,
+        owner_is_publiplots=True,
+    )
+
+
+def build_from_boxplot_call(
+    ax: Axes,
+    data,
+    x: str,
+    y: str,
+    hue: Optional[str],
+    categorical_axis: str,
+    palette: Optional[Dict],
+    whis: float,
+) -> BoxStatsMeta:
+    """Build a BoxStatsMeta paired with the boxplot's PathPatches."""
+    patches = [p for p in ax.patches if isinstance(p, PathPatch)]
+    return _build_box_stats_meta(
+        ax, data, x, y, hue, categorical_axis, palette, whis, patches,
+    )
+
+
+def build_from_violinplot_call(
+    ax: Axes,
+    data,
+    x: str,
+    y: str,
+    hue: Optional[str],
+    categorical_axis: str,
+    palette: Optional[Dict],
+    whis: float = 1.5,
+) -> BoxStatsMeta:
+    """Build a BoxStatsMeta paired with the violinplot's fill collections.
+
+    Violin draws one FillBetweenPolyCollection per violin; stats are the
+    same as for boxplot (computed from raw data with matching whis rule).
+    """
+    from matplotlib.collections import PolyCollection
+    artists = [c for c in ax.collections if isinstance(c, PolyCollection)]
+    return _build_box_stats_meta(
+        ax, data, x, y, hue, categorical_axis, palette, whis, artists,
     )

@@ -12,11 +12,13 @@ from matplotlib.axes import Axes
 from matplotlib.text import Text
 
 from publiplots.annotate.bar_values import _bar_values_strategy
+from publiplots.annotate.box_stats import _box_stats_strategy
 from publiplots.annotate.point_values import _point_values_strategy
 
 
 _STRATEGIES: dict[str, Callable] = {
     "bar_values": _bar_values_strategy,
+    "box_stats": _box_stats_strategy,
     "point_values": _point_values_strategy,
 }
 

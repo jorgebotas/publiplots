@@ -50,7 +50,7 @@ def test_default_kind_is_bar_values():
 
 def test_registry_contains_known_strategies():
     from publiplots.annotate._dispatcher import _STRATEGIES
-    assert set(_STRATEGIES.keys()) == {"bar_values", "point_values"}
+    assert set(_STRATEGIES.keys()) == {"bar_values", "box_stats", "point_values"}
 
 
 def test_text_kws_forwarded():

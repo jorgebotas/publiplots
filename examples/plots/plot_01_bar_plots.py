@@ -214,3 +214,20 @@ fig, ax = pp.barplot(
     order=horizontal_data['gene'].tolist()
 )
 plt.show()
+
+# %%
+# Annotated bars
+# --------------
+# Label each bar with its aggregated value by passing ``annotate=True``.
+# Pass a dict to control format, anchor, color, and text kwargs. See the
+# dedicated :doc:`annotations gallery <plot_15_annotate>` for the full
+# option set shared across barplot, pointplot, boxplot, and violinplot.
+
+fig, ax = pp.barplot(
+    data=simple_data,
+    x='category', y='value',
+    palette='pastel',
+    annotate={"fmt": ".0f"},
+)
+ax.set_title("annotate={'fmt': '.0f'}")
+plt.show()

@@ -60,6 +60,28 @@ class PointValueMeta:
     owner_is_publiplots: bool
 
 
+@dataclass
+class BoxStatsRecord:
+    """Statistics computed for a single box.
+
+    `center_pos` is the categorical-axis coordinate of the box's center
+    (e.g. x for orient="v"). `stats` is a dict mapping stat name to its
+    value-axis coordinate, populated only for the stats the caller asked to
+    label.
+    """
+    center_pos: float                           # x for orient="v", y for "h"
+    stats: dict                                 # {"median": y, "q1": y, ...}
+    hue_color: Optional[RGBA]
+
+
+@dataclass
+class BoxStatsMeta:
+    orient: Literal["v", "h"]
+    boxes: List[BoxStatsRecord]
+    hue_active: bool
+    owner_is_publiplots: bool
+
+
 def _is_bar_rect(p) -> bool:
     if not isinstance(p, Rectangle):
         return False

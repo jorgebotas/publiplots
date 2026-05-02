@@ -147,3 +147,19 @@ fig, ax = pp.boxplot(
     ylabel='Value',
 )
 plt.show()
+
+# %%
+# Annotated box stats
+# ~~~~~~~~~~~~~~~~~~~
+# ``annotate=True`` labels the median by default. Pass
+# ``stats=["median", "q1", "q3", ...]`` to label multiple statistics per
+# box. See the dedicated :doc:`annotations gallery <plot_15_annotate>`
+# for the full option set.
+
+fig, ax = pp.boxplot(
+    data=box_data,
+    x='category', y='value',
+    annotate={"stats": ["median", "q1", "q3"], "fmt": ".1f"},
+)
+ax.set_title("annotate={'stats': ['median', 'q1', 'q3']}")
+plt.show()

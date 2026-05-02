@@ -140,3 +140,32 @@ for ax, anchor in zip(axes, ("top", "bottom", "left", "right", "center")):
                  annotate={"anchor": anchor, "fmt": ".1f"})
     ax.set_title(f"anchor='{anchor}'")
 plt.show()
+
+# %%
+# Boxplot: stats labels
+# ---------------------
+# pp.boxplot(..., annotate=True) labels the median by default. Pass a
+# `stats=[...]` list to label multiple stats per box: any of
+# ``median``, ``q1``, ``q3``, ``whisker_low``, ``whisker_high``, ``mean``.
+box_rows = []
+for g, base in zip(("A", "B", "C"), (1.0, 2.0, 3.0)):
+    for v in rng.normal(base, 0.5, 40):
+        box_rows.append({"g": g, "y": float(v)})
+box_df = pd.DataFrame(box_rows)
+box_df["g"] = box_df["g"].astype("category")
+
+fig, ax = pp.boxplot(data=box_df, x="g", y="y",
+                     annotate={"stats": ["median", "q1", "q3"],
+                               "fmt": ".2f"})
+ax.set_title("pp.boxplot(annotate={'stats': [...]})")
+plt.show()
+
+# %%
+# Violinplot: same stats API
+# --------------------------
+# pp.violinplot shares the box_stats strategy — violins are a different
+# visual but the same stats (median, quartiles) apply.
+fig, ax = pp.violinplot(data=box_df, x="g", y="y",
+                        annotate={"stats": ["median"], "fmt": ".2f"})
+ax.set_title("pp.violinplot(annotate=True)")
+plt.show()
