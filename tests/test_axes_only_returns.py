@@ -131,8 +131,9 @@ def test_upsetplot_figure_accessible():
 
 
 def test_upsetplot_tuple_unpack_raises():
+    """dict return: 2-unpack raises ValueError (too many values)."""
     sets = {"A": {1, 2}, "B": {2, 3}, "C": {3, 4}}
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         fig, axes = pp.upsetplot(sets)  # noqa: F841
 
 
@@ -149,7 +150,8 @@ def test_complex_heatmap_build_figure_accessible(matrix_df):
 
 
 def test_complex_heatmap_build_tuple_unpack_raises(matrix_df):
-    with pytest.raises(TypeError):
+    """dict return: 2-unpack raises ValueError (too many values)."""
+    with pytest.raises(ValueError):
         fig, axes = pp.complex_heatmap(matrix_df).build()  # noqa: F841
 
 
