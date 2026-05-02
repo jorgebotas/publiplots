@@ -31,7 +31,7 @@ simple_data = pd.DataFrame({
 })
 
 # Create simple point plot
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=simple_data,
     x='time',
     y='measurement',
@@ -62,7 +62,7 @@ hue_data = pd.DataFrame({
 })
 
 # Create point plot with hue
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -81,7 +81,7 @@ plt.show()
 # -------------------------------
 # Use different marker shapes for each group.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -100,7 +100,7 @@ plt.show()
 # -----------------------------------
 # Use different line styles to distinguish groups.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -119,7 +119,7 @@ plt.show()
 # ----------------------
 # Combine custom markers, line styles, and palette with error bars.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -140,7 +140,7 @@ plt.show()
 # -------------------------------
 # Use standard error instead of confidence intervals.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -159,7 +159,7 @@ plt.show()
 # -----------------------------------
 # Show standard deviation as error bars.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -224,7 +224,7 @@ def get_significance(row):
         return 'Non-significant'  # Non-significant (CI crosses 1)
 
 genetic_data['Significance'] = genetic_data.apply(get_significance, axis=1)
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=genetic_data.sort_values("log2_or", ascending=False),
     x='log2_or',
     y='gene',
@@ -271,7 +271,7 @@ long_format_data = pd.DataFrame({
 })
 
 # Create forest plot with automatic CI calculation
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=long_format_data,
     x='response',
     y='treatment',

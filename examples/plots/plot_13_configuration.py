@@ -54,7 +54,7 @@ print(f"  Axes size (mm): {pp.rcParams['subplots.axes_size']}")
 print(f"  Font size: {pp.rcParams['font.size']}")
 print(f"  DPI: {pp.rcParams['savefig.dpi']}")
 
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=sample_data,
     x='category',
     y='value',
@@ -81,7 +81,7 @@ pp.rcParams['lines.linewidth'] = 2.5           # Thicker lines
 pp.rcParams['font.size'] = 11                  # Slightly larger font
 
 # Create plot with custom defaults
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=sample_data,
     x='category',
     y='value',
@@ -184,7 +184,7 @@ scatter_data = pd.DataFrame({
 })
 
 # Plot 1: Default settings
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -196,7 +196,7 @@ fig, ax = pp.scatterplot(
 plt.show()
 
 # Plot 2: Override alpha and color for this plot only
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -213,7 +213,7 @@ plt.show()
 # Control output quality and format when saving figures.
 
 # Create a sample figure
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=sample_data,
     x='category',
     y='value',
@@ -223,10 +223,10 @@ fig, ax = pp.barplot(
 )
 
 # Save with different settings (uncomment to actually save)
-# pp.savefig(fig, 'figure_low_res.png', dpi=150)      # Lower resolution
-# pp.savefig(fig, 'figure_high_res.png', dpi=300)     # High resolution
-# pp.savefig(fig, 'figure_vector.pdf')                # Vector format (PDF)
-# pp.savefig(fig, 'figure_vector.svg')                # Vector format (SVG)
+# pp.savefig('figure_low_res.png', dpi=150)      # Lower resolution
+# pp.savefig('figure_high_res.png', dpi=300)     # High resolution
+# pp.savefig('figure_vector.pdf')                # Vector format (PDF)
+# pp.savefig('figure_vector.svg')                # Vector format (SVG)
 
 print("Figure saving examples (commented out to prevent file creation)")
 print("  - PNG at 150 DPI (web/presentations)")

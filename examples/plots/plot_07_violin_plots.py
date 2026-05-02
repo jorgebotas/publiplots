@@ -33,7 +33,7 @@ violin_data = pd.DataFrame({
 })
 
 # Create simple violin plot
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category',
     y='value',
@@ -52,7 +52,7 @@ plt.show()
 violin_data['group'] = np.tile(['Group 1', 'Group 2'], n // 2)
 
 # Create grouped violin plot
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category',
     y='value',
@@ -70,7 +70,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~
 # Split violins to compare two groups side by side.
 
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category',
     y='value',
@@ -89,7 +89,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~
 # Create horizontal violin plots by swapping x and y.
 
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data[violin_data['group'] == 'Group 1'],
     x='value',
     y='category',
@@ -139,7 +139,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Adjust transparency of violin fill.
 
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category',
     y='value',

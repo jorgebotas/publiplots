@@ -23,7 +23,7 @@ simple_data = pd.DataFrame({
 })
 
 # Create simple bar plot
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=simple_data,
     x='category',
     y='value',
@@ -52,7 +52,7 @@ error_data = pd.DataFrame({
 })
 
 # Create bar plot with error bars
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=error_data,
     x='treatment',
     y='response',
@@ -92,7 +92,7 @@ hue_data = pd.DataFrame({
 })
 
 # Create grouped bar plot
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -122,7 +122,7 @@ hatch_only_data = pd.DataFrame({
 })
 
 # Create bar plot with hatch patterns (no hue)
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=hatch_only_data,
     x='condition',
     y='intensity',
@@ -169,7 +169,7 @@ double_split_data = pd.DataFrame({
 })
 
 # Create bar plot with both hue and hatch
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=double_split_data,
     x="cell_type",
     y="viability",
@@ -199,7 +199,7 @@ horizontal_data = pd.DataFrame({
 })
 
 # Create horizontal bar plot
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=horizontal_data,
     x='expression',
     y='gene',

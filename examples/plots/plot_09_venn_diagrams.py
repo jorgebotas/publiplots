@@ -21,7 +21,7 @@ set1 = set(range(1, 51))    # 1-50
 set2 = set(range(30, 81))   # 30-80
 
 # Create 2-way Venn
-fig, ax = pp.venn(
+ax = pp.venn(
     sets=[set1, set2],
     labels=['Set A', 'Set B'],
     colors=pp.color_palette('pastel', n_colors=2),
@@ -63,7 +63,7 @@ setB = set(range(40, 101))   # 40-100
 setC = set(range(51, 131))   # 51-130
 
 # Create 3-way Venn
-fig, ax = pp.venn(
+ax = pp.venn(
     sets=[setA, setB, setC],
     labels=['Set A', 'Set B', 'Set C'],
     colors=pp.color_palette('pastel', n_colors=3),

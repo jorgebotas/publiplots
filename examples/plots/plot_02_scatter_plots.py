@@ -26,7 +26,7 @@ scatter_data = pd.DataFrame({
 })
 
 # Create basic scatter plot
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -46,7 +46,7 @@ plt.show()
 scatter_data['magnitude'] = np.abs(scatter_data['x'] - 50) + np.abs(scatter_data['y'] - 100)
 
 # Create scatter with size encoding
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -68,7 +68,7 @@ plt.show()
 scatter_data['group'] = pd.cut(scatter_data['y'], bins=3, labels=['Low', 'Medium', 'High'])
 
 # Create scatter with categorical hue
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -90,7 +90,7 @@ plt.show()
 scatter_data['score'] = scatter_data['x'] * 0.5 + scatter_data['y'] * 0.3 + np.random.randn(n) * 10
 
 # Create scatter with continuous hue
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -130,7 +130,7 @@ for condition in conditions:
 heatmap_df = pd.DataFrame(heatmap_data)
 
 # Create bubble plot
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=heatmap_df,
     x='condition',
     y='cell_type',
@@ -153,7 +153,7 @@ plt.show()
 heatmap_df['log2fc'] = np.random.uniform(-3, 3, len(heatmap_df))
 
 # Create bubble plot with continuous colors
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=heatmap_df,
     x='condition',
     y='cell_type',
@@ -192,7 +192,7 @@ for tissue in tissues:
 large_df = pd.DataFrame(large_heatmap_data)
 
 # Create large bubble plot
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=large_df,
     x='time',
     y='tissue',

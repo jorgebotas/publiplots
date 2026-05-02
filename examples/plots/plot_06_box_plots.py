@@ -33,7 +33,7 @@ box_data = pd.DataFrame({
 })
 
 # Create simple box plot
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category',
     y='value',
@@ -52,7 +52,7 @@ plt.show()
 box_data['group'] = np.tile(['Group 1', 'Group 2'], n // 2)
 
 # Create grouped box plot
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category',
     y='value',
@@ -70,7 +70,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~
 # Create horizontal box plots by swapping x and y.
 
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data[box_data['group'] == 'Group 1'],
     x='value',
     y='category',
@@ -119,7 +119,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Adjust transparency of box fill.
 
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category',
     y='value',
@@ -137,7 +137,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
 # Hide outliers when you plan to overlay with swarm plot.
 
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category',
     y='value',
