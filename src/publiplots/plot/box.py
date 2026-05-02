@@ -47,6 +47,7 @@ def boxplot(
     ylabel: str = "",
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
+    annotate: Union[bool, Dict, None] = None,
     **kwargs
 ) -> Axes:
     """
@@ -273,6 +274,24 @@ def boxplot(
         ax.set_ylabel(ylabel)
     if title is not None:
         ax.set_title(title)
+
+    if annotate:
+        from publiplots.annotate._builders import build_from_boxplot_call
+        from publiplots.annotate import annotate as _annotate_fn
+        if is_categorical(data[x]):
+            categorical_axis = x
+        elif is_categorical(data[y]):
+            categorical_axis = y
+        else:
+            categorical_axis = x
+        ax._publiplots_box_meta = build_from_boxplot_call(
+            ax=ax, data=data, x=x, y=y, hue=hue,
+            categorical_axis=categorical_axis,
+            palette=palette if isinstance(palette, dict) else None,
+            whis=whis,
+        )
+        opts = annotate if isinstance(annotate, dict) else {}
+        _annotate_fn(ax, kind="box_stats", **opts)
 
     return ax
 

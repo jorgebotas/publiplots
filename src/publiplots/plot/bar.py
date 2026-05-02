@@ -23,6 +23,7 @@ from publiplots.utils.legend_entries import (
 )
 from publiplots.utils.plot_legend import render_entries
 from publiplots.utils.transparency import ArtistTracker
+from publiplots.annotate._builders import build_from_barplot_call
 
 _SPLIT_SEPARATOR = "---"
 
@@ -45,6 +46,7 @@ def barplot(
     hatch_map: Optional[Dict[str, str]] = None,
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
+    annotate: Union[bool, Dict, None] = None,
     errorbar: str = "se",
     gap: float = 0.1,
     order: Optional[List[str]] = None,
@@ -102,6 +104,10 @@ def barplot(
         ``dict[kind, bool]`` for per-kind control (e.g.,
         ``legend={"hatch": False}`` hides just the hatch leg in a
         double-split bar plot).
+    annotate : bool or dict, optional
+        If True, label each bar with its aggregated value. Pass a dict to
+        forward options to pp.annotate (e.g. {"fmt": ".3f", "anchor": "inside"}).
+        See :func:`publiplots.annotate` for all supported options.
     errorbar : str, default="se"
         Error bar type: "se" (standard error), "sd" (standard deviation),
         "ci" (confidence interval), or None for no error bars.
@@ -200,31 +206,31 @@ def barplot(
         order_categorical_axis=order,
     )
 
-    # Determine the strategy for handling hatch and hue
-    # Key insight: use hue=hatch for splitting when needed, then override colors
+    # Resolve which dimensions actually dodge via the shared spec (single
+    # source of truth — annotate builders use the same rules).
+    from publiplots.annotate._splits import BarSplitSpec
+    _split = BarSplitSpec.resolve(
+        x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
+    )
+    split_by_hatch = _split.split_hatch is not None
+    double_split = _split.split_hue is not None and _split.split_hatch is not None
+
     sns_hue = hue
     sns_palette = palette
 
-    # When hue == categorical axis, seaborn doesn't need hue for splitting —
-    # it would only cause unwanted dodge/grouping. Color by palette via x instead.
-    if hue is not None and hue == categorical_axis:
+    if _split.split_hue is None:
+        # hue omitted or equals categorical axis — don't pass it to seaborn.
         sns_hue = None
         sns_palette = None
 
-    # hatch split only needed if hatch is not the same as the categorical axis
-    split_by_hatch = hatch is not None and hatch != categorical_axis
-    double_split = split_by_hatch and hue is not None and hue != categorical_axis and hatch != hue
     if split_by_hatch:
         if double_split:
-            # Need to create double split by creating a new column with the combined value of hue and hatch
             sns_hue = f"{hue}_{hatch}"
-            # Color bars by 
             sns_palette = {
-                x: palette[x.split(_SPLIT_SEPARATOR)[0]] for x in data[f"{hue}_{hatch}"].cat.categories
+                x: palette[x.split(_SPLIT_SEPARATOR)[0]]
+                for x in data[f"{hue}_{hatch}"].cat.categories
             }
         else:
-            # Only need to split by hatch
-            # We will recolor the bars to color argument if hue is None
             sns_hue = hatch
             sns_palette = None
 
@@ -321,6 +327,16 @@ def barplot(
     if xlabel is not None: ax.set_xlabel(xlabel)
     if ylabel is not None: ax.set_ylabel(ylabel)
     if title is not None: ax.set_title(title)
+
+    if annotate:
+        ax._publiplots_bar_meta = build_from_barplot_call(
+            ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
+            categorical_axis=categorical_axis,
+            palette=palette, errorbar=errorbar,
+        )
+        from publiplots.annotate import annotate as _annotate_fn
+        opts = annotate if isinstance(annotate, dict) else {}
+        _annotate_fn(ax, kind="bar_values", **opts)
 
     return ax
 
@@ -514,12 +530,16 @@ def _legend(
                 ),
             )
     elif hue == categorical_axis:
-        # Hatch-only legend
+        # Hatch-only legend. Bars are colored by category (via hue=cat) but
+        # the hatch swatches represent a different dimension — render them
+        # in gray so they read as "this is about the hatch pattern, not the
+        # bar color", matching the double-split case where hue and hatch
+        # are distinct columns.
         if flags["hatch"]:
             labels = list(hatch_map.keys())
             handles = create_legend_handles(
                 labels=labels,
-                colors=[resolve_param("color", color)] * len(hatch_map),
+                colors=["gray"] * len(hatch_map),
                 edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
                 hatches=list(hatch_map.values()),
                 **handle_kwargs,

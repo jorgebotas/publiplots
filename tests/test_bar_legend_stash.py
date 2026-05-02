@@ -68,6 +68,28 @@ def test_bar_hatch_only_stashes_one_hatch_entry():
     assert not any(k == "hue" for _, k in names_kinds)
 
 
+def test_bar_hatch_legend_is_gray_when_hue_equals_cat_axis():
+    """hue == categorical_axis with a separate hatch column: the hatch
+    legend swatches must be gray (the hatch represents a different
+    dimension than the bar color, matching the double-split convention).
+    """
+    from matplotlib.colors import to_rgba
+    df = _bar_df()
+    ax = pp.barplot(
+        data=df, x="cond", y="value",
+        hue="cond", hatch="treat",
+        palette={"A": "#ff0000", "B": "#00ff00"},
+    )
+    [entry] = [e for e in get_entries(ax) if e.kind == "hatch"]
+    expected_rgb = to_rgba("gray")[:3]
+    for handle in entry.handles:
+        fc = handle.get_facecolor()
+        # Alpha may be dimmed by the rcParams alpha; compare RGB only.
+        assert fc[:3] == expected_rgb, (
+            f"hatch swatch should be gray, got {fc}"
+        )
+
+
 def test_bar_combined_stashes_one_hue_entry():
     """hue == hatch -> one combined entry under kind=hue."""
     df = _bar_df()

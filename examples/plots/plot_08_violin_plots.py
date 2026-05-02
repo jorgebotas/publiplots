@@ -212,3 +212,19 @@ pp.violinplot(
 
 pp.show()
 
+# %%
+# Annotated violin stats
+# ~~~~~~~~~~~~~~~~~~~~~~
+# Violinplots share the ``box_stats`` annotation strategy with boxplots:
+# ``annotate=True`` labels the median by default; pass
+# ``stats=[...]`` to label multiple statistics per violin. See the
+# dedicated :doc:`annotations gallery <plot_16_annotate>` for more.
+
+ax = pp.violinplot(
+    data=violin_data,
+    x='category', y='value',
+    annotate={"stats": ["median", "q1", "q3"], "fmt": ".1f"},
+    title="annotate={'stats': ['median', 'q1', 'q3']}",
+)
+pp.show()
+

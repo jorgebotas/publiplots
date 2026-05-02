@@ -184,6 +184,90 @@ ax = pp.barplot(
 pp.show()
 
 # %%
+# Annotated hue + hatch bars
+# ---------------------------
+# ``annotate=True`` pairs each bar with its aggregated value correctly
+# even when bars are dodged across both a hue and a hatch dimension —
+# 12 bars here (3 cell types × 2 treatments × 2 time points), 12 labels.
+
+ax = pp.barplot(
+    data=double_split_data,
+    x="cell_type",
+    y="viability",
+    hue="treatment",
+    hatch="time",
+    errorbar="se",
+    palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
+    hatch_map={"24h": "", "48h": "///"},
+    annotate={"fmt": ".0f"},
+    title="annotate=True with hue × hatch",
+)
+pp.show()
+
+# %%
+# Annotated bars when hue or hatch matches the categorical axis
+# -------------------------------------------------------------
+# Setting ``hue`` (or ``hatch``) to the categorical axis doesn't cause
+# dodging — each category just gets its own color (or pattern). If the
+# *other* split is a separate column, it still causes dodging as usual.
+# ``annotate`` follows suit: one label per drawn bar, correctly paired.
+
+# Shared dataset: response per treatment at two time points.
+np.random.seed(101)
+time_data = pd.DataFrame({
+    "treatment": np.tile(np.repeat(["Control", "Drug A", "Drug B"], 10), 2),
+    "time": np.repeat(["24h", "48h"], 30),
+    "response": np.concatenate([
+        np.random.normal(50, 3, 10), np.random.normal(70, 4, 10),
+        np.random.normal(80, 4, 10), np.random.normal(55, 3, 10),
+        np.random.normal(75, 4, 10), np.random.normal(85, 4, 10),
+    ]),
+})
+hue_palette = {"Control": "#cccccc", "Drug A": "#8E8EC1", "Drug B": "#60a8a8"}
+
+# hue == categorical axis (vs. hue == cat + hatch on a separate column)
+fig, axes = pp.subplots(1, 2, axes_size=(60, 50))
+pp.barplot(
+    data=simple_data, x="category", y="value", hue="category", ax=axes[0],
+    palette="pastel", errorbar=None,
+    annotate={"fmt": ".0f"},
+    title="hue == categorical axis",
+)
+pp.barplot(
+    data=time_data, x="treatment", y="response",
+    hue="treatment", hatch="time", ax=axes[1],
+    palette=hue_palette,
+    hatch_map={"24h": "", "48h": "///"},
+    errorbar="se",
+    annotate={"fmt": ".0f"},
+    title="hue == categorical axis + hatch",
+)
+pp.show()
+
+# hatch == categorical axis (vs. hatch == cat + hue on a separate column)
+hatch_by_cat = {"Control": "", "Drug A": "///", "Drug B": "xxx"}
+fig, axes = pp.subplots(1, 2, axes_size=(60, 50))
+pp.barplot(
+    data=time_data[time_data["time"] == "24h"],
+    x="treatment", y="response", hatch="treatment", ax=axes[0],
+    palette="pastel",
+    hatch_map=hatch_by_cat,
+    errorbar="se",
+    annotate={"fmt": ".0f"},
+    title="hatch == categorical axis",
+)
+pp.barplot(
+    data=time_data, x="treatment", y="response",
+    hue="time", hatch="treatment", ax=axes[1],
+    palette={"24h": "#8E8EC1", "48h": "#60a8a8"},
+    hatch_map=hatch_by_cat,
+    errorbar="se",
+    annotate={"fmt": ".0f"},
+    title="hatch == categorical axis + hue",
+)
+pp.show()
+
+# %%
 # Horizontal Bar Plot
 # -------------------
 # Create horizontal bars by swapping x and y axes.
@@ -242,4 +326,21 @@ for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
         title=title, ax=ax,
         errorbar="se",
     )
+pp.show()
+
+# %%
+# Annotated bars
+# --------------
+# Label each bar with its aggregated value by passing ``annotate=True``.
+# Pass a dict to control format, anchor, color, and text kwargs. See the
+# dedicated :doc:`annotations gallery <plot_16_annotate>` for the full
+# option set shared across barplot, pointplot, boxplot, and violinplot.
+
+ax = pp.barplot(
+    data=simple_data,
+    x='category', y='value',
+    palette='pastel',
+    annotate={"fmt": ".0f"},
+    title="annotate={'fmt': '.0f'}",
+)
 pp.show()

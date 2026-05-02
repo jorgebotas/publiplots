@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-05-02
+
+### Added
+- `pp.annotate(ax, kind="bar_values", ...)` for in-plot value labels on
+  barplots. Orientation-aware, errorbar-aware, sign-aware; anchors
+  `outside`/`inside`/`base`/`center`; contrast-aware coloring via
+  `color="auto"` (with compositing for translucent fills) or palette
+  colors via `color="hue"`. `pp.barplot(..., annotate=True | dict)`
+  wires the primitive into the barplot API.
+- `pp.annotate(ax, kind="point_values", ...)` for pointplots. Directional
+  anchors (`top`/`bottom`/`left`/`right`/`center`), errorbar-cap aware,
+  hue-aware. `pp.pointplot(..., annotate=True | dict)` wires it in.
+- `pp.annotate(ax, kind="box_stats", ...)` for boxplots and violinplots.
+  Labels the median by default; pass `stats=["median", "q1", "q3", ...]`
+  to label multiple stats per box. Shared strategy across
+  `pp.boxplot(..., annotate=...)` and `pp.violinplot(..., annotate=...)`.
+- New gallery example `plot_16_annotate.py` demonstrates `pp.annotate`
+  across bar, point, box, and violin plots. Each of `plot_01`, `plot_03`,
+  `plot_07`, `plot_08` gains a short annotated section that
+  cross-references the dedicated gallery page.
+- `BarSplitSpec` (`publiplots.annotate._splits`): single source of truth
+  for barplot dodge semantics (which of `hue` / `hatch` cause splitting
+  given collapse rules for matching-column cases). Shared between
+  `barplot` and the `bar_values` annotation builder so they can't drift.
+
+### Fixed
+- `barplot` hatch-legend color for the `hue == categorical_axis` + separate
+  `hatch` column case. The hatch swatches now render in gray (matching
+  the double-split convention where hue and hatch are distinct columns);
+  previously they took the publication color, which visually suggested
+  the swatch color was meaningful even though the bar coloring came from
+  the hue legend.
+
+### Internal
+- Anchor validation moved from the dispatcher to each strategy — each
+  one defines its own anchor vocabulary and default. `bar_values` keeps
+  `{outside, inside, base, center}`; `point_values` and `box_stats`
+  take directional `{top, bottom, left, right, center}`.
+
+[0.7.1]: https://github.com/jorgebotas/publiplots/releases/tag/v0.7.1
+
 ## [0.7.0] - 2026-05-02
 
 ### Breaking changes
