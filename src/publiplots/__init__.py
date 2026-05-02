@@ -26,6 +26,7 @@ __description__ = "Publication-ready plotting with a clean, modular API"
 from publiplots.plot.bar import barplot
 from publiplots.plot.scatter import scatterplot
 from publiplots.plot.point import pointplot
+from publiplots.plot.line import lineplot
 from publiplots.plot.box import boxplot
 from publiplots.plot.swarm import swarmplot
 from publiplots.plot.strip import stripplot
@@ -92,6 +93,7 @@ __all__ = [
     "barplot",
     "scatterplot",
     "pointplot",
+    "lineplot",
     "boxplot",
     "swarmplot",
     "stripplot",
