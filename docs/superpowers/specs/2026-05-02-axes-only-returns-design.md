@@ -26,7 +26,7 @@ This is a **breaking API change**. 0.x semver is loose, but we'll bump to 0.7.0 
 
 ## Scope
 
-### In scope — 12 functions
+### In scope — 13 functions
 
 | Function | Before | After |
 |---|---|---|
@@ -39,6 +39,7 @@ This is a **breaking API change**. 0.x semver is loose, but we'll bump to 0.7.0 
 | `swarmplot` | `(fig, ax)` | `ax` |
 | `pointplot` | `(fig, ax)` | `ax` |
 | `heatmap` (categorical + dot) | `(fig, ax)` | `ax` |
+| `dendrogram` | `(fig, ax)` | `ax` |
 | `venn` | `(fig, ax)` | `ax` |
 | `upsetplot` | `(fig, (ax_i, ax_m, ax_s))` | `{'intersections', 'matrix', 'sets'}` dict |
 | `complex_heatmap().build()` | `(fig, axes_dict)` | `axes_dict` |
