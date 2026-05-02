@@ -73,6 +73,9 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Local planning docs (spec/plan/handoff workflow — not shipped)
+docs/superpowers/
+
 # PyBuilder
 .pybuilder/
 target/
