@@ -110,20 +110,32 @@ ax = pp.lineplot(
 pp.show()
 
 # %%
-# Hue + Style: Dashed Lines per Group
-# ------------------------------------
-# Use ``style=`` together with a custom ``dashes=`` list to distinguish
-# groups via line pattern in addition to color.
+# Hue + Style on Different Variables
+# -----------------------------------
+# ``hue=`` and ``style=`` become especially useful when they map to
+# *different* columns — e.g., color encodes the treatment group, dash
+# pattern encodes the measurement modality. Two legends rendered
+# side-by-side: one for color, one for pattern.
+
+np.random.seed(13)
+rows = []
+for group, offset in [("Control", 0.0), ("Treated", 1.2)]:
+    for method, jitter in [("raw", 0.0), ("smoothed", 0.3)]:
+        for tt in t:
+            rows.append({"time": tt, "value": np.sin(tt) + offset + jitter +
+                         np.random.normal(0, 0.1), "group": group,
+                         "method": method})
+two_vars = pd.DataFrame(rows)
 
 ax = pp.lineplot(
-    data=multi,
+    data=two_vars,
     x="time",
     y="value",
     hue="group",
-    style="group",
+    style="method",
     palette="pastel",
-    dashes={"Control": (1, 0), "Treated": (4, 2), "Recovery": (1, 1)},
-    title="Hue + Style (dashed lines)",
+    dashes={"raw": (1, 0), "smoothed": (4, 2)},
+    title="Hue (group) + Style (method)",
     xlabel="Time",
     ylabel="Response",
 )
