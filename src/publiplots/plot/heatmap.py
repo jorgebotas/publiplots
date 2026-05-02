@@ -68,7 +68,7 @@ def heatmap(
     yticklabels: Union[bool, str, List] = "auto",
     mask: Optional[Union[pd.DataFrame, np.ndarray]] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a heatmap with publiplots styling.
 
@@ -228,7 +228,7 @@ def heatmap(
     # Determine mode: dot heatmap vs standard heatmap
     if size is not None and size_matrix is not None:
         # DOT HEATMAP MODE
-        fig, ax = _draw_dot_heatmap(
+        ax = _draw_dot_heatmap(
             ax=ax,
             matrix=matrix,
             size_matrix=size_matrix,
@@ -253,7 +253,7 @@ def heatmap(
         )
     else:
         # STANDARD HEATMAP MODE
-        fig, ax = _draw_heatmap(
+        ax = _draw_heatmap(
             ax=ax,
             matrix=matrix,
             cmap=cmap,
@@ -283,7 +283,7 @@ def heatmap(
     if title:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _draw_heatmap(
@@ -306,7 +306,7 @@ def _draw_heatmap(
     legend_kws: Optional[Dict],
     value_col: Optional[str],
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw standard color-encoded heatmap using seaborn.
     """
@@ -368,7 +368,7 @@ def _draw_heatmap(
             )
         render_entries(ax, flags=flags)
 
-    return fig, ax
+    return ax
 
 
 def _draw_dot_heatmap(
@@ -393,7 +393,7 @@ def _draw_dot_heatmap(
     value_col: str,
     size_col: str,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw dot/bubble heatmap where marker size encodes one variable
     and color encodes another.
@@ -539,7 +539,7 @@ def _draw_dot_heatmap(
 
         render_entries(ax, flags=flags)
 
-    return fig, ax
+    return ax
 
 
 def _create_size_legend(
@@ -1140,7 +1140,7 @@ class ComplexHeatmapBuilder:
                 },
             })
 
-    def build(self) -> Tuple[plt.Figure, Dict[str, Union[Axes, List[Axes]]]]:
+    def build(self) -> Dict[str, Union[Axes, List[Axes]]]:
         """
         Build the complex heatmap with all margin plots.
 
@@ -1284,7 +1284,7 @@ class ComplexHeatmapBuilder:
         if any(m['align'] for m in self._margins['left']):
             ax_main.tick_params(labelleft=False)
 
-        return fig, axes
+        return axes
 
     def _draw_margin_plot(self, ax: Axes, margin: Dict, position: str):
         """Draw a single margin plot."""
@@ -1379,7 +1379,7 @@ def dendrogram(
     linewidth: Optional[float] = None,
     ax: Optional[Axes] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw a dendrogram.
 
@@ -1463,4 +1463,4 @@ def dendrogram(
     else:
         ax.set_ylim(ax.get_ylim())
 
-    return fig, ax
+    return ax

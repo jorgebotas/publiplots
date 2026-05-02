@@ -94,7 +94,8 @@ def test_figsize_kwarg_is_rejected(fn_name, df_fixture, kwargs, request):
 def test_default_call_installs_auto_layout(fn_name, df_fixture, kwargs, request):
     df = request.getfixturevalue(df_fixture)
     fn = getattr(pp, fn_name)
-    fig, _ = fn(data=df, **kwargs)
+    ax = fn(data=df, **kwargs)
+    fig = ax.get_figure()
     assert hasattr(fig, "_publiplots_auto_layout"), \
         f"{fn_name}: figure has no SubplotsAutoLayout — did it take a non-pp.subplots path?"
 
@@ -104,8 +105,8 @@ def test_ax_kwarg_reuses_existing_figure(fn_name, df_fixture, kwargs, request):
     df = request.getfixturevalue(df_fixture)
     fn = getattr(pp, fn_name)
     fig0, ax0 = pp.subplots(axes_size=(50, 30))
-    fig1, ax1 = fn(data=df, **kwargs, ax=ax0)
-    assert fig1 is fig0
+    ax1 = fn(data=df, **kwargs, ax=ax0)
+    assert ax1.get_figure() is fig0
     assert ax1 is ax0
 
 
@@ -116,14 +117,14 @@ def test_venn_rejects_figsize():
 
 
 def test_venn_default_installs_auto_layout():
-    fig, _ = pp.venn(sets=[{1, 2, 3}, {2, 3, 4}])
-    assert hasattr(fig, "_publiplots_auto_layout")
+    ax = pp.venn(sets=[{1, 2, 3}, {2, 3, 4}])
+    assert hasattr(ax.get_figure(), "_publiplots_auto_layout")
 
 
 def test_venn_ax_reuses_existing_figure():
     fig0, ax0 = pp.subplots(axes_size=(80, 80))
-    fig1, ax1 = pp.venn(sets=[{1, 2, 3}, {2, 3, 4}], ax=ax0)
-    assert fig1 is fig0
+    ax1 = pp.venn(sets=[{1, 2, 3}, {2, 3, 4}], ax=ax0)
+    assert ax1.get_figure() is fig0
     assert ax1 is ax0
 
 
