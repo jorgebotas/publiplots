@@ -60,7 +60,7 @@ def raincloudplot(
     ylabel: str = "",
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready raincloud plot.
 
@@ -175,7 +175,7 @@ def raincloudplot(
     orientation = "vertical" if is_categorical(data[x]) else "horizontal"
 
     # 1. Draw the half-violin (cloud) using pp.violinplot with side parameter
-    fig, ax = violinplot(
+    ax = violinplot(
         data=data,
         x=x,
         y=y,
@@ -280,4 +280,4 @@ def raincloudplot(
     if title is not None:
         ax.set_title(title)
 
-    return fig, ax
+    return ax

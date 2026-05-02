@@ -60,7 +60,7 @@ def violinplot(
     legend_kws: Optional[Dict] = None,
     side: str = "both",
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready violin plot.
 
@@ -298,7 +298,7 @@ def violinplot(
     if title is not None:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _side_clip_violin(

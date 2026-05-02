@@ -29,7 +29,7 @@ def _scatter_df(seed=0):
 
 def test_scatterplot_stashes_hue_entry():
     df = _scatter_df()
-    fig, ax = pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel")
+    ax = pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel")
     entries = get_entries(ax)
     names_kinds = [(e.name, e.kind) for e in entries]
     assert ("g", "hue") in names_kinds
@@ -37,7 +37,7 @@ def test_scatterplot_stashes_hue_entry():
 
 def test_scatterplot_stashes_size_entry():
     df = _scatter_df()
-    fig, ax = pp.scatterplot(data=df, x="x", y="y", size="m")
+    ax = pp.scatterplot(data=df, x="x", y="y", size="m")
     entries = get_entries(ax)
     names_kinds = [(e.name, e.kind) for e in entries]
     assert ("m", "size") in names_kinds
@@ -45,7 +45,7 @@ def test_scatterplot_stashes_size_entry():
 
 def test_scatterplot_legend_dict_suppresses_hue():
     df = _scatter_df()
-    fig, ax = pp.scatterplot(
+    ax = pp.scatterplot(
         data=df, x="x", y="y", hue="g", size="m",
         palette="pastel",
         legend={"hue": False},
@@ -59,7 +59,7 @@ def test_scatterplot_legend_dict_suppresses_hue():
 
 def test_scatterplot_legend_false_stashes_nothing():
     df = _scatter_df()
-    fig, ax = pp.scatterplot(
+    ax = pp.scatterplot(
         data=df, x="x", y="y", hue="g", size="m",
         palette="pastel",
         legend=False,
@@ -83,8 +83,8 @@ def test_scatterplot_in_group_suppresses_per_axis_render():
 def test_scatterplot_no_group_renders_per_axis_legend():
     from matplotlib.legend import Legend
     df = _scatter_df()
-    fig, ax = pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel")
-    fig.canvas.draw()
+    ax = pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel")
+    ax.get_figure().canvas.draw()
     per_axis_legends = [c for c in ax.get_children() if isinstance(c, Legend)]
     assert len(per_axis_legends) >= 1
 
@@ -96,7 +96,7 @@ def test_scatterplot_no_group_renders_per_axis_legend():
 
 def test_stripplot_stashes_hue_entry():
     df = _scatter_df()
-    fig, ax = pp.stripplot(data=df, x="g", y="y", hue="g", palette="pastel")
+    ax = pp.stripplot(data=df, x="g", y="y", hue="g", palette="pastel")
     entries = get_entries(ax)
     names_kinds = [(e.name, e.kind) for e in entries]
     assert ("g", "hue") in names_kinds
@@ -104,7 +104,7 @@ def test_stripplot_stashes_hue_entry():
 
 def test_stripplot_legend_false_stashes_nothing():
     df = _scatter_df()
-    fig, ax = pp.stripplot(
+    ax = pp.stripplot(
         data=df, x="g", y="y", hue="g", palette="pastel", legend=False,
     )
     assert get_entries(ax) == []
@@ -117,7 +117,7 @@ def test_stripplot_legend_false_stashes_nothing():
 
 def test_swarmplot_stashes_hue_entry():
     df = _scatter_df()
-    fig, ax = pp.swarmplot(data=df, x="g", y="y", hue="g", palette="pastel")
+    ax = pp.swarmplot(data=df, x="g", y="y", hue="g", palette="pastel")
     entries = get_entries(ax)
     names_kinds = [(e.name, e.kind) for e in entries]
     assert ("g", "hue") in names_kinds
@@ -125,7 +125,7 @@ def test_swarmplot_stashes_hue_entry():
 
 def test_swarmplot_legend_false_stashes_nothing():
     df = _scatter_df()
-    fig, ax = pp.swarmplot(
+    ax = pp.swarmplot(
         data=df, x="g", y="y", hue="g", palette="pastel", legend=False,
     )
     assert get_entries(ax) == []
@@ -138,7 +138,7 @@ def test_swarmplot_legend_false_stashes_nothing():
 
 def test_pointplot_stashes_hue_entry():
     df = _scatter_df()
-    fig, ax = pp.pointplot(data=df, x="g", y="y", hue="g", palette="pastel")
+    ax = pp.pointplot(data=df, x="g", y="y", hue="g", palette="pastel")
     entries = get_entries(ax)
     names_kinds = [(e.name, e.kind) for e in entries]
     assert ("g", "hue") in names_kinds
@@ -146,7 +146,7 @@ def test_pointplot_stashes_hue_entry():
 
 def test_pointplot_legend_false_stashes_nothing():
     df = _scatter_df()
-    fig, ax = pp.pointplot(
+    ax = pp.pointplot(
         data=df, x="g", y="y", hue="g", palette="pastel", legend=False,
     )
     assert get_entries(ax) == []

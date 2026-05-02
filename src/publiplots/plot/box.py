@@ -48,7 +48,7 @@ def boxplot(
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready box plot.
 
@@ -276,7 +276,7 @@ def boxplot(
     if title is not None:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _stash_legend(

@@ -52,7 +52,7 @@ def swarmplot(
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready swarm plot.
 
@@ -213,7 +213,7 @@ def swarmplot(
     if title:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _legend(

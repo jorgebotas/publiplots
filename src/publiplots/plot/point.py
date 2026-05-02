@@ -65,7 +65,7 @@ def pointplot(
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a point plot with publiplots styling.
 
@@ -325,7 +325,7 @@ def pointplot(
             legend=legend,
         )
 
-    return fig, ax
+    return ax
 
 def _format_for_custom_errorbar(
     data: pd.DataFrame,

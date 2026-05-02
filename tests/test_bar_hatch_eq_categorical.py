@@ -35,7 +35,7 @@ def _mismatched_df(seed=0):
 def test_bar_hatch_equals_categorical_with_fewer_hue_levels_does_not_raise():
     """Regression: hue=treat (2), hatch=cond=x (3) must not raise IndexError."""
     df = _mismatched_df()
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="cond", y="value",
         hue="treat", hatch="cond",
         palette={"ctrl": "#ff0000", "trt": "#00ff00"},
@@ -49,7 +49,7 @@ def test_bar_hatch_equals_categorical_with_fewer_hue_levels_does_not_raise():
 def test_bar_hatch_equals_categorical_applies_distinct_hatch_per_column():
     """The hatch patterns must still match the categorical axis column."""
     df = _mismatched_df()
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="cond", y="value",
         hue="treat", hatch="cond",
         palette={"ctrl": "#ff0000", "trt": "#00ff00"},

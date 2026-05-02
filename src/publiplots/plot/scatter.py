@@ -55,7 +55,7 @@ def scatterplot(
     legend_kws: Optional[Dict] = None,
     margins: Union[float, Tuple[float, float]] = 0.1,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a scatterplot with publiplots styling.
 
@@ -337,7 +337,7 @@ def scatterplot(
             y=margins[1] if y_is_categorical else None
         )
 
-    return fig, ax
+    return ax
 
 def _handle_categorical_axes(
     data: pd.DataFrame,

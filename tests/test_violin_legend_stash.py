@@ -28,7 +28,7 @@ def _violin_df(seed=0):
 
 def test_violinplot_stashes_hue_entry():
     df = _violin_df()
-    fig, ax = pp.violinplot(data=df, x="x", y="y", hue="g", palette="pastel")
+    ax = pp.violinplot(data=df, x="x", y="y", hue="g", palette="pastel")
     entries = get_entries(ax)
     names_kinds = [(e.name, e.kind) for e in entries]
     assert ("g", "hue") in names_kinds
@@ -36,13 +36,13 @@ def test_violinplot_stashes_hue_entry():
 
 def test_violinplot_no_hue_stashes_nothing():
     df = _violin_df()
-    fig, ax = pp.violinplot(data=df, x="x", y="y")
+    ax = pp.violinplot(data=df, x="x", y="y")
     assert get_entries(ax) == []
 
 
 def test_violinplot_legend_false_stashes_nothing():
     df = _violin_df()
-    fig, ax = pp.violinplot(
+    ax = pp.violinplot(
         data=df, x="x", y="y", hue="g", palette="pastel",
         legend=False,
     )
@@ -62,7 +62,7 @@ def test_violinplot_in_group_suppresses_per_axis_render():
 
 def test_violinplot_legend_dict_suppresses_hue():
     df = _violin_df()
-    fig, ax = pp.violinplot(
+    ax = pp.violinplot(
         data=df, x="x", y="y", hue="g", palette="pastel",
         legend={"hue": False},
     )

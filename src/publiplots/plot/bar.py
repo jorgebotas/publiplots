@@ -51,7 +51,7 @@ def barplot(
     hue_order: Optional[List[str]] = None,
     hatch_order: Optional[List[str]] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready bar plot.
 
@@ -324,7 +324,7 @@ def barplot(
     if ylabel is not None: ax.set_ylabel(ylabel)
     if title is not None: ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 # =============================================================================

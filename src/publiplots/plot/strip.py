@@ -53,7 +53,7 @@ def stripplot(
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready strip plot.
 
@@ -217,7 +217,7 @@ def stripplot(
     if title:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _legend(
