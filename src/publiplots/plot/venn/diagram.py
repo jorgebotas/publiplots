@@ -204,7 +204,7 @@ def venn(
     ax: Optional[Axes] = None,
     fmt: str = "{size}",
     color_labels: bool = True,
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a Venn diagram for 2-5 sets.
 
@@ -323,4 +323,4 @@ def venn(
         color_labels=color_labels,
     )
 
-    return fig, ax
+    return ax

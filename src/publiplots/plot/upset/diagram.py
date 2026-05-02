@@ -46,7 +46,7 @@ def upsetplot(
     title: str = "",
     intersection_label: str = "",
     set_label: str = ""
-) -> Tuple[Figure, Tuple[Axes, Axes, Axes]]:
+) -> Dict[str, Axes]:
     """
     Create an UpSet plot for visualizing set intersections.
 
@@ -330,4 +330,8 @@ def upsetplot(
         set_label=set_label,
     )
 
-    return fig, (ax_intersections, ax_matrix, ax_sets)
+    return {
+        "intersections": ax_intersections,
+        "matrix": ax_matrix,
+        "sets": ax_sets,
+    }
