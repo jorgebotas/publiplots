@@ -54,14 +54,13 @@ def raincloudplot(
     # General styling
     edgecolor: Optional[str] = None,
     linewidth: Optional[float] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready raincloud plot.
 
@@ -124,8 +123,6 @@ def raincloudplot(
         points to the left (for vertical) or down (for horizontal).
     linewidth : float, optional
         Width of edges.
-    figsize : tuple, optional
-        Figure size (width, height) if creating new figure.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -134,33 +131,32 @@ def raincloudplot(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show the legend.
+    legend : bool or dict, default=True
+        Whether to show the legend. Accepts the same ``bool | dict[kind, bool]``
+        form as the underlying violin plot; the value is forwarded to the
+        inner ``violinplot`` call, which owns the legend for the raincloud.
     legend_kws : dict, optional
         Additional keyword arguments for legend.
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple raincloud plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.raincloudplot(data=df, x="category", y="value")
+    >>> ax = pp.raincloudplot(data=df, x="category", y="value")
 
     Raincloud plot with hue grouping:
 
-    >>> fig, ax = pp.raincloudplot(
+    >>> ax = pp.raincloudplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
-    # Read defaults from rcParams if not provided
-    figsize = resolve_param("figure.figsize", figsize)
+    # Read defaults from rcParams if not provided.
     linewidth = resolve_param("lines.linewidth", linewidth)
     cloud_alpha = resolve_param("alpha", cloud_alpha)
     color = resolve_param("color", color)
@@ -177,7 +173,7 @@ def raincloudplot(
     orientation = "vertical" if is_categorical(data[x]) else "horizontal"
 
     # 1. Draw the half-violin (cloud) using pp.violinplot with side parameter
-    fig, ax = violinplot(
+    ax = violinplot(
         data=data,
         x=x,
         y=y,
@@ -201,7 +197,6 @@ def raincloudplot(
         legend=legend,
         legend_kws=legend_kws,
         side=cloud_side,
-        figsize=figsize,
         ax=ax,
     )
 
@@ -283,4 +278,4 @@ def raincloudplot(
     if title is not None:
         ax.set_title(title)
 
-    return fig, ax
+    return ax

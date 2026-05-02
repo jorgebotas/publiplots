@@ -25,6 +25,21 @@ _RESERVATION_KEYS = (
 _LAYOUT_ENGINE_KWARGS = ("layout", "constrained_layout", "tight_layout")
 
 
+def reject_figsize(kwargs: dict) -> None:
+    """Raise TypeError if ``figsize`` appears in ``kwargs``.
+
+    publiplots plot functions no longer accept ``figsize=``. To customize
+    axes dimensions, compose with ``pp.subplots(axes_size=(w_mm, h_mm))``
+    and pass ``ax=``.
+    """
+    if "figsize" in kwargs:
+        raise TypeError(
+            "publiplots plot functions no longer accept figsize=. "
+            "Use pp.subplots(axes_size=(w_mm, h_mm)) to customize axes "
+            "dimensions, then pass ax= to the plot function."
+        )
+
+
 def subplots(
     nrows: int = 1,
     ncols: int = 1,
@@ -39,7 +54,6 @@ def subplots(
     hspace: Optional[float] = None,
     wspace: Optional[float] = None,
     outer_pad: Optional[float] = None,
-    legend_column: float = 0.0,
     **fig_kw,
 ):
     """
@@ -68,15 +82,15 @@ def subplots(
     hspace, wspace, outer_pad : float, optional
         Gaps and outer margin in mm. ``None`` falls back to rcParams.
         Never auto-measured.
-    legend_column : float, default 0
-        Extra width reserved on the far right of the figure (outside the
-        grid, applied once — not per-cell). Intended for a single unified
-        ``pp.legend_group`` anchored to the rightmost axes. Never
-        auto-measured — opt-in only. Future: legend-width awareness will
-        compute this automatically from registered legend content.
     **fig_kw
         Forwarded to ``plt.figure``. ``figsize`` is rejected; layout-
         engine kwargs are ignored with a warning.
+
+    Notes
+    -----
+    Extra width for a ``pp.legend_group`` anchored to the rightmost axes
+    is auto-computed on first draw from the rendered group width; there
+    is no ``legend_column`` kwarg to set by hand.
 
     Returns
     -------
@@ -111,6 +125,12 @@ def subplots(
         raise TypeError(
             "pp.subplots() does not accept figsize; use axes_size (mm). "
             "Figure size is computed from axes_size + reservations."
+        )
+    if "legend_column" in fig_kw:
+        raise TypeError(
+            "pp.subplots() no longer accepts legend_column. Attach a "
+            "pp.legend_group(anchor=...) to the figure; the column is "
+            "auto-sized based on the rendered group width."
         )
     for k in _LAYOUT_ENGINE_KWARGS:
         if k in fig_kw:
@@ -169,14 +189,11 @@ def subplots(
             raise ValueError(f"{side} must be non-negative, got {val}")
         resolved[side] = float(val)
 
-    if legend_column < 0:
-        raise ValueError(f"legend_column must be non-negative, got {legend_column}")
-
     # --- build layout & figure --------------------------------------------
     layout = FigureLayout(
         nrows=nrows, ncols=ncols,
         axes_size=axes_size_t,
-        legend_column=float(legend_column),
+        legend_column=0.0,
         **resolved,
     )
     W, H = layout.figure_size()

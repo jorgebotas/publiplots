@@ -11,7 +11,6 @@ set intersections, especially useful when dealing with many sets
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Basic UpSet Plot
@@ -28,12 +27,12 @@ upset_sets = {
 }
 
 # Create basic UpSet plot
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=upset_sets,
     title='Gene Set Intersection Analysis',
     show_counts=15,
 )
-plt.show()
+pp.show()
 
 # %%
 # UpSet Plot with Custom Colors
@@ -41,7 +40,7 @@ plt.show()
 # Customize the color and transparency of bars.
 
 # Create UpSet plot with custom styling
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=upset_sets,
     sort_by='size',  # Sort by intersection size
     title='Customized UpSet Plot',
@@ -50,7 +49,7 @@ fig, axes = pp.upsetplot(
     bar_linewidth=1.5,
     show_counts=12,
 )
-plt.show()
+pp.show()
 
 # %%
 # UpSet Plot with Many Sets
@@ -70,14 +69,14 @@ many_sets = {
 }
 
 # Create UpSet plot with many sets
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=many_sets,
     sort_by='size',
     title='Pathway Overlap Analysis (6 Pathways)',
     color='#75B375',
     show_counts=20,
 )
-plt.show()
+pp.show()
 
 # %%
 # UpSet Plot from DataFrame
@@ -97,7 +96,7 @@ upset_df = pd.DataFrame({
 })
 
 # Create UpSet plot from DataFrame
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=upset_df,
     sort_by='size',
     title='Cluster and Marker Overlaps',
@@ -105,7 +104,7 @@ fig, axes = pp.upsetplot(
     alpha=0.4,
     show_counts=15,
 )
-plt.show()
+pp.show()
 
 # %%
 # Comparing UpSet vs Venn for 4+ Sets
@@ -140,10 +139,10 @@ ax2.text(0.5, 0.5, 'UpSet plot shown separately\n(see next figure)',
 ax2.axis('off')
 ax2.set_title('UpSet Plot (Better for 5+ Sets)', fontsize=12, fontweight='bold')
 
-plt.show()
+pp.show()
 
 # Show the UpSet plot
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=five_sets,
     sort_by='size',
     title='Same Data as UpSet Plot (Clearer Visualization)',
@@ -151,4 +150,4 @@ fig, axes = pp.upsetplot(
     alpha=0.3,
     show_counts=20,
 )
-plt.show()
+pp.show()

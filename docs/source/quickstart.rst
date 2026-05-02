@@ -13,7 +13,6 @@ First, import the necessary libraries:
    import publiplots as pp
    import pandas as pd
    import numpy as np
-   import matplotlib.pyplot as plt
 
 Creating Your First Plot
 -------------------------
@@ -32,7 +31,7 @@ Create a simple bar plot from a DataFrame:
    })
 
    # Create bar plot
-   fig, ax = pp.barplot(
+   ax = pp.barplot(
        data=data,
        x='category',
        y='value',
@@ -42,7 +41,7 @@ Create a simple bar plot from a DataFrame:
        palette='pastel'
    )
 
-   plt.show()
+   pp.show()
 
 Scatter Plot
 ~~~~~~~~~~~~
@@ -60,7 +59,7 @@ Create a scatter plot with color and size encoding:
    })
 
    # Create scatter plot
-   fig, ax = pp.scatterplot(
+   ax = pp.scatterplot(
        data=data,
        x='x',
        y='y',
@@ -71,7 +70,7 @@ Create a scatter plot with color and size encoding:
        title='Scatter Plot Example'
    )
 
-   plt.show()
+   pp.show()
 
 Customizing Your Plots
 -----------------------
@@ -94,7 +93,7 @@ Add error bars to show variability:
    })
 
    # Create bar plot with error bars
-   fig, ax = pp.barplot(
+   ax = pp.barplot(
        data=data,
        x='treatment',
        y='response',
@@ -110,7 +109,7 @@ Add hatch patterns for black-and-white publications:
 
 .. code-block:: python
 
-   fig, ax = pp.barplot(
+   ax = pp.barplot(
        data=data,
        x='treatment',
        y='response',
@@ -136,7 +135,7 @@ Create Venn diagrams for set intersections:
    set_c = set(range(60, 100))
 
    # Create 3-way Venn diagram
-   fig, ax = pp.venn(
+   ax = pp.venn(
        sets=[set_a, set_b, set_c],
        labels=['Set A', 'Set B', 'Set C'],
        colors=pp.color_palette('pastel', n_colors=3)
@@ -158,7 +157,7 @@ Create UpSet plots for many-set intersections:
    }
 
    # Create UpSet plot
-   fig, axes = pp.upsetplot(
+   axes = pp.upsetplot(
        data=sets,
        sort_by='size',
        title='Set Intersections',
@@ -173,13 +172,13 @@ Save figures in various formats:
 .. code-block:: python
 
    # Save as PNG (high resolution)
-   pp.savefig(fig, 'my_plot.png', dpi=300)
+   pp.savefig('my_plot.png', dpi=300)
 
    # Save as PDF (vector format)
-   pp.savefig(fig, 'my_plot.pdf')
+   pp.savefig('my_plot.pdf')
 
    # Save as SVG (editable vector format)
-   pp.savefig(fig, 'my_plot.svg')
+   pp.savefig('my_plot.svg')
 
    # Save multiple figures at once
    pp.save_multiple([fig1, fig2, fig3], 'output_dir')

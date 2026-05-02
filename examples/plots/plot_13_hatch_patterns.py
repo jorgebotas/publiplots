@@ -10,7 +10,6 @@ figures that are distinguishable without relying on color.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Understanding Hatch Modes
@@ -77,7 +76,7 @@ pp.barplot(
     ax=axes[1, 1]
 )
 
-plt.show()
+pp.show()
 
 # Reset to default
 pp.set_hatch_mode()
@@ -115,7 +114,7 @@ method_data = pd.DataFrame({
 pp.set_hatch_mode(2)
 
 # Create plot with custom hatch mapping
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=method_data,
     x='method',
     y='performance',
@@ -133,7 +132,7 @@ fig, ax = pp.barplot(
     color='#5D83C3',
     alpha=0.0,
 )
-plt.show()
+pp.show()
 
 # Reset mode
 pp.set_hatch_mode()
@@ -168,7 +167,7 @@ timeseries_data = pd.DataFrame({
 pp.set_hatch_mode(2)
 
 # Create grouped bar plot with hatches
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=timeseries_data,
     x='time',
     y='value',
@@ -180,7 +179,7 @@ fig, ax = pp.barplot(
     hatch_map={'Group A': '', 'Group B': '..'},
     color='#5D83C3',
 )
-plt.show()
+pp.show()
 
 # Reset mode
 pp.set_hatch_mode()
@@ -213,7 +212,7 @@ treatment_data = pd.DataFrame({
 pp.set_hatch_mode(3)
 
 # Create bar plot with both color and hatch
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=treatment_data,
     x='tissue',
     y='response',
@@ -227,7 +226,7 @@ fig, ax = pp.barplot(
     hatch_map={'Control': '', 'Treatment': '//'},
     alpha=0.3,
 )
-plt.show()
+pp.show()
 
 # Reset mode
 pp.set_hatch_mode()

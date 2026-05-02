@@ -40,12 +40,12 @@ def _grouped_df():
 
 
 def test_barplot_annotate_false_attaches_no_meta():
-    fig, ax = pp.barplot(data=_simple_df(), x="category", y="value")
+    ax = pp.barplot(data=_simple_df(), x="category", y="value")
     assert not hasattr(ax, "_publiplots_bar_meta")
 
 
 def test_barplot_annotate_true_attaches_meta_and_draws_labels():
-    fig, ax = pp.barplot(data=_simple_df(), x="category", y="value", annotate=True)
+    ax = pp.barplot(data=_simple_df(), x="category", y="value", annotate=True)
     assert isinstance(ax._publiplots_bar_meta, BarValueMeta)
     assert ax._publiplots_bar_meta.owner_is_publiplots is True
     texts = [t for t in ax.texts]
@@ -53,14 +53,14 @@ def test_barplot_annotate_true_attaches_meta_and_draws_labels():
 
 
 def test_barplot_annotate_dict_forwarded():
-    fig, ax = pp.barplot(data=_simple_df(), x="category", y="value",
+    ax = pp.barplot(data=_simple_df(), x="category", y="value",
                          annotate={"fmt": ".3f"})
     labels = [t.get_text() for t in ax.texts]
     assert labels == ["1.000", "2.000", "3.000"]
 
 
 def test_barplot_annotate_with_hue_has_hue_active():
-    fig, ax = pp.barplot(data=_grouped_df(), x="group", y="y", hue="cond",
+    ax = pp.barplot(data=_grouped_df(), x="group", y="y", hue="cond",
                          annotate=True)
     meta = ax._publiplots_bar_meta
     assert meta.hue_active is True
@@ -68,7 +68,7 @@ def test_barplot_annotate_with_hue_has_hue_active():
 
 
 def test_barplot_annotate_no_hue_hue_active_false():
-    fig, ax = pp.barplot(data=_simple_df(), x="category", y="value", annotate=True)
+    ax = pp.barplot(data=_simple_df(), x="category", y="value", annotate=True)
     assert ax._publiplots_bar_meta.hue_active is False
 
 
@@ -77,7 +77,7 @@ def test_barplot_annotate_expands_ylim():
         "category": pd.Categorical(["A", "B"]),
         "value": [10.0, 10.0],
     })
-    fig, ax = pp.barplot(data=df, x="category", y="value", annotate=True)
+    ax = pp.barplot(data=df, x="category", y="value", annotate=True)
     top = ax.get_ylim()[1]
     # seaborn's default would stop at ~10 + a small pad; with annotate the
     # label must fit above that, so top should be noticeably above 10.
@@ -94,7 +94,7 @@ def test_barplot_annotate_with_errorbars_anchors_past_cap():
             rng.normal(2.0, 0.5, 20),
         ]),
     })
-    fig, ax = pp.barplot(data=df, x="group", y="y", errorbar="se", annotate=True)
+    ax = pp.barplot(data=df, x="group", y="y", errorbar="se", annotate=True)
     meta = ax._publiplots_bar_meta
     # Each bar has an err_high > value (standard error extends above mean).
     for bar in meta.bars:
@@ -117,7 +117,7 @@ def test_barplot_annotate_hue_labels_pair_to_correct_bars():
         "c": pd.Categorical(["ctrl", "ctrl", "trt", "trt"]),
         "y": [1.0, 2.0, 10.0, 20.0],
     })
-    fig, ax = pp.barplot(data=df, x="g", y="y", hue="c",
+    ax = pp.barplot(data=df, x="g", y="y", hue="c",
                          errorbar=None, annotate={"fmt": ".1f"})
     # Sort texts left-to-right by x position; seaborn draws hue-outer, cat-inner
     # so order is: ctrl-A=1, ctrl-B=2, trt-A=10, trt-B=20.
@@ -140,7 +140,7 @@ def test_barplot_annotate_errorbar_ci_pulls_from_drawn_artists():
             rng.normal(2.0, 0.5, 50),
         ]),
     })
-    fig, ax = pp.barplot(data=df, x="g", y="y", errorbar="ci", annotate=True)
+    ax = pp.barplot(data=df, x="g", y="y", errorbar="ci", annotate=True)
     meta = ax._publiplots_bar_meta
     for bar in meta.bars:
         assert bar.err_high is not None
@@ -153,7 +153,7 @@ def test_barplot_annotate_errorbar_none_all_none():
         "g": pd.Categorical(["A", "B"]),
         "y": [1.0, 2.0],
     })
-    fig, ax = pp.barplot(data=df, x="g", y="y", errorbar=None, annotate=True)
+    ax = pp.barplot(data=df, x="g", y="y", errorbar=None, annotate=True)
     meta = ax._publiplots_bar_meta
     for bar in meta.bars:
         assert bar.err_low is None
@@ -184,7 +184,7 @@ def test_barplot_annotate_hue_and_hatch_pair_correctly():
     for c in ("cell", "treat", "time"):
         df[c] = df[c].astype("category")
 
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="cell", y="y",
         hue="treat", hatch="time", errorbar="se",
         hatch_map={"24h": "", "48h": "///"},
@@ -207,7 +207,7 @@ def test_barplot_annotate_hue_equals_cat_axis_pairs_correctly():
         "c": pd.Categorical(["A", "B", "C"]),
         "v": [1.0, 2.0, 3.0],
     })
-    fig, ax = pp.barplot(data=df, x="c", y="v", hue="c",
+    ax = pp.barplot(data=df, x="c", y="v", hue="c",
                          errorbar=None, annotate=True)
     rects = [p for p in ax.patches if p.get_width() > 0 and p.get_height() > 0]
     assert len(rects) == 3
@@ -225,7 +225,7 @@ def test_barplot_annotate_hatch_equals_cat_axis_pairs_correctly():
             rows.append({"c": g, "v": float(v)})
     df = pd.DataFrame(rows)
     df["c"] = df["c"].astype("category")
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="c", y="v", hatch="c",
         hatch_map={"A": "", "B": "///", "C": "xx"},
         errorbar=None, annotate=True,
@@ -250,7 +250,7 @@ def test_barplot_annotate_hue_equals_cat_plus_hatch_pairs_correctly():
     df = pd.DataFrame(rows)
     df["c"] = df["c"].astype("category")
     df["t"] = df["t"].astype("category")
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="c", y="v", hue="c", hatch="t",
         hatch_map={"t1": "", "t2": "///"},
         errorbar=None, annotate=True,
@@ -269,7 +269,7 @@ def test_barplot_annotate_color_hue_without_hue_warns():
         "value": [1.0, 2.0, 3.0],
     })
     with pytest.warns(UserWarning, match="plot has no hue"):
-        fig, ax = pp.barplot(data=df, x="category", y="value",
+        ax = pp.barplot(data=df, x="category", y="value",
                              annotate={"color": "hue"})
 
 
@@ -284,7 +284,7 @@ def test_barplot_annotate_single_sample_groups_no_nan_positions():
         "c": pd.Categorical(["A", "B", "C", "D", "E"]),
         "v": [0.2, 8.4, 0.5, 12.0, 3.1],
     })
-    fig, ax = pp.barplot(data=df, x="v", y="c",
+    ax = pp.barplot(data=df, x="v", y="c",
                          annotate={"anchor": "inside", "fmt": ".1f"})
     for t in ax.texts:
         x, y = t.get_position()

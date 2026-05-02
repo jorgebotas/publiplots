@@ -19,6 +19,7 @@ import numpy as np
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils.transparency import ArtistTracker
 from publiplots.utils import is_categorical
+from publiplots.utils.plot_legend import stash_hue_legend
 
 
 def boxplot(
@@ -40,16 +41,15 @@ def boxplot(
     fliersize: Optional[float] = None,
     linewidth: Optional[float] = None,
     alpha: Optional[float] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     annotate: Union[bool, Dict, None] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready box plot.
 
@@ -95,8 +95,6 @@ def boxplot(
         Width of box edges.
     alpha : float, optional
         Transparency of box fill (0-1).
-    figsize : tuple, optional
-        Figure size (width, height) if creating new figure.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -105,8 +103,9 @@ def boxplot(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show the legend.
+    legend : bool or dict, default=True
+        Whether to show the legend. Accepts ``bool`` or ``dict[kind, bool]``
+        for per-kind control (e.g., ``legend={"hue": False}``).
     legend_kws : dict, optional
         Additional keyword arguments for legend.
     **kwargs
@@ -114,24 +113,25 @@ def boxplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple box plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.boxplot(data=df, x="category", y="value")
+    >>> ax = pp.boxplot(data=df, x="category", y="value")
 
     Box plot with hue grouping:
 
-    >>> fig, ax = pp.boxplot(
+    >>> ax = pp.boxplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
@@ -148,15 +148,12 @@ def boxplot(
         )
     resolved_edgecolor = edgecolor if edgecolor is not None else linecolor
 
-    # Create figure if not provided
-    # Only fall back to matplotlib's figsize when the user explicitly provides one;
-    # otherwise use pp.subplots so axes_size comes from pp.rcParams["subplots.axes_size"].
+    # Create figure via pp.subplots to install SubplotsAutoLayout; users who
+    # want custom dimensions should compose with pp.subplots(axes_size=...)
+    # before calling and pass ax=.
     if ax is None:
-        if figsize is not None:
-            fig, ax = plt.subplots(figsize=figsize)
-        else:
-            from publiplots.layout.subplots import subplots as _pp_subplots
-            fig, ax = _pp_subplots()
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 
@@ -257,22 +254,18 @@ def boxplot(
             fc = line.get_markerfacecolor()
             line.set_markerfacecolor(to_rgba(fc, alpha))
 
-    # Add legend if hue is used
-    if legend and hue is not None:
-        from publiplots.utils.legend import legend as pp_legend
-        from publiplots.utils.legend import create_legend_handles
-
-        palette_colors = list(palette.values()) if isinstance(palette, dict) else None
-        handles = create_legend_handles(
-            labels=list(palette.keys()) if isinstance(palette, dict) else None,
-            colors=palette_colors,
-            edgecolors=[resolved_edgecolor] * len(palette) if resolved_edgecolor and isinstance(palette, dict) else None,
-            alpha=alpha,
-            linewidth=linewidth,
-        )
-
-        legend_kwargs = legend_kws or dict(label=hue)
-        pp_legend(ax, handles=handles, **legend_kwargs)
+    # Stash legend entries and optionally render per-axis legend.
+    # legend may be bool or dict[str, bool]; False short-circuits both.
+    _stash_legend(
+        ax=ax,
+        hue=hue,
+        palette=palette,
+        edgecolor=resolved_edgecolor,
+        alpha=alpha,
+        linewidth=linewidth,
+        legend=legend,
+        legend_kws=legend_kws,
+    )
 
     # Set labels
     if xlabel is not None:
@@ -300,4 +293,27 @@ def boxplot(
         opts = annotate if isinstance(annotate, dict) else {}
         _annotate_fn(ax, kind="box_stats", **opts)
 
-    return fig, ax
+    return ax
+
+
+def _stash_legend(
+        ax: Axes,
+        hue: Optional[str],
+        palette: Optional[Union[str, Dict, List]],
+        edgecolor: Optional[str],
+        alpha: Optional[float],
+        linewidth: Optional[float],
+        legend: Union[bool, Dict],
+        legend_kws: Optional[Dict],
+    ) -> None:
+    """Delegate to the shared hue-legend helper."""
+    stash_hue_legend(
+        ax,
+        hue=hue,
+        palette=palette,
+        edgecolor=edgecolor,
+        alpha=alpha,
+        linewidth=linewidth,
+        legend=legend,
+        legend_kws=legend_kws,
+    )

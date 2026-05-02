@@ -19,7 +19,12 @@ from typing import Optional, Tuple, Union, Dict, List
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical, is_numeric, create_legend_handles
-from publiplots.utils.legend import legend as legend_builder
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    resolve_legend_flags,
+)
+from publiplots.utils.plot_legend import render_entries
 from publiplots.utils.transparency import apply_transparency
 
 
@@ -51,20 +56,19 @@ def heatmap(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     edgecolor: Optional[str] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
     # Legend
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     # Additional options
     xticklabels: Union[bool, str, List] = "auto",
     yticklabels: Union[bool, str, List] = "auto",
     mask: Optional[Union[pd.DataFrame, np.ndarray]] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a heatmap with publiplots styling.
 
@@ -118,8 +122,6 @@ def heatmap(
         Edge linewidth for markers in dot mode. Uses rcParams default.
     edgecolor : str, optional
         Edge color for markers in dot mode. If None, uses marker color.
-    figsize : tuple, optional
-        Figure size (width, height). Uses rcParams default.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -128,8 +130,11 @@ def heatmap(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show colorbar/size legend.
+    legend : bool or dict, default=True
+        Whether to show colorbar/size legend. Accepts ``bool`` or
+        ``dict[kind, bool]`` for per-kind control (e.g.,
+        ``legend={"size": False}`` on a dot heatmap keeps the colorbar
+        but hides the size legend).
     legend_kws : dict, optional
         Keyword arguments for legend:
         - value_label : str - Label for colorbar (default: value column name)
@@ -146,45 +151,43 @@ def heatmap(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Wide-format heatmap:
 
     >>> matrix = pd.DataFrame(np.random.randn(10, 10))
-    >>> fig, ax = pp.heatmap(matrix, cmap="coolwarm", center=0)
+    >>> ax = pp.heatmap(matrix, cmap="coolwarm", center=0)
 
     Long-format heatmap:
 
-    >>> fig, ax = pp.heatmap(df, x="sample", y="gene", value="expression")
+    >>> ax = pp.heatmap(df, x="sample", y="gene", value="expression")
 
     Dot heatmap with size encoding:
 
-    >>> fig, ax = pp.heatmap(df, x="sample", y="gene",
-    ...                       value="expression", size="pvalue")
+    >>> ax = pp.heatmap(df, x="sample", y="gene",
+    ...                  value="expression", size="pvalue")
 
     Annotated heatmap:
 
-    >>> fig, ax = pp.heatmap(matrix, annot=True, fmt=".1f")
+    >>> ax = pp.heatmap(matrix, annot=True, fmt=".1f")
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     edgecolor = resolve_param("edgecolor", edgecolor)
 
-    # Create figure if not provided
-    # Only fall back to matplotlib's figsize when the user explicitly provides one;
-    # otherwise use pp.subplots so axes_size comes from pp.rcParams["subplots.axes_size"].
+    # Create figure via pp.subplots to install SubplotsAutoLayout; users who
+    # want custom dimensions should compose with pp.subplots(axes_size=...)
+    # before calling and pass ax=.
     if ax is None:
-        if figsize is not None:
-            fig, ax = plt.subplots(figsize=figsize)
-        else:
-            from publiplots.layout.subplots import subplots as _pp_subplots
-            fig, ax = _pp_subplots()
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 
@@ -223,7 +226,7 @@ def heatmap(
     # Determine mode: dot heatmap vs standard heatmap
     if size is not None and size_matrix is not None:
         # DOT HEATMAP MODE
-        fig, ax = _draw_dot_heatmap(
+        ax = _draw_dot_heatmap(
             ax=ax,
             matrix=matrix,
             size_matrix=size_matrix,
@@ -248,7 +251,7 @@ def heatmap(
         )
     else:
         # STANDARD HEATMAP MODE
-        fig, ax = _draw_heatmap(
+        ax = _draw_heatmap(
             ax=ax,
             matrix=matrix,
             cmap=cmap,
@@ -278,7 +281,7 @@ def heatmap(
     if title:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _draw_heatmap(
@@ -297,11 +300,11 @@ def _draw_heatmap(
     xticklabels: Union[bool, str, List],
     yticklabels: Union[bool, str, List],
     mask: Optional[Union[pd.DataFrame, np.ndarray]],
-    legend: bool,
+    legend: Union[bool, Dict],
     legend_kws: Optional[Dict],
     value_col: Optional[str],
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw standard color-encoded heatmap using seaborn.
     """
@@ -336,9 +339,8 @@ def _draw_heatmap(
     # Draw heatmap
     sns.heatmap(**heatmap_kwargs)
 
-    # Add colorbar via legend system
-    if legend:
-        # Determine normalization
+    # Stash colorbar entry and render per-axis unless claimed by a group.
+    if legend is not False:
         v_min = vmin if vmin is not None else matrix.min().min()
         v_max = vmax if vmax is not None else matrix.max().max()
 
@@ -351,15 +353,20 @@ def _draw_heatmap(
 
         mappable = ScalarMappable(norm=norm, cmap=cmap)
 
-        builder = legend_builder(ax=ax, auto=False)
-        builder.add_colorbar(
-            mappable=mappable,
-            label=legend_kws.get("value_label", value_col or ""),
-            height=legend_kws.get("height", 20),
-            width=legend_kws.get("width", 5),
-        )
+        flags = resolve_legend_flags(legend)
+        if flags["hue"]:
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("value_label", value_col or ""),
+                    kind="hue",
+                    handles=[mappable],
+                    labels=[],
+                ),
+            )
+        render_entries(ax, flags=flags)
 
-    return fig, ax
+    return ax
 
 
 def _draw_dot_heatmap(
@@ -379,12 +386,12 @@ def _draw_dot_heatmap(
     edgecolor: Optional[str],
     square: bool,
     mask: Optional[Union[pd.DataFrame, np.ndarray]],
-    legend: bool,
+    legend: Union[bool, Dict],
     legend_kws: Optional[Dict],
     value_col: str,
     size_col: str,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw dot/bubble heatmap where marker size encodes one variable
     and color encodes another.
@@ -494,33 +501,43 @@ def _draw_dot_heatmap(
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    # Add legends
-    if legend:
-        builder = legend_builder(ax=ax, auto=False)
+    # Stash colorbar + size entries and render per-axis unless claimed by a group.
+    if legend is not False:
+        flags = resolve_legend_flags(legend)
 
-        # Color legend (colorbar)
-        mappable = ScalarMappable(norm=color_norm, cmap=cmap)
-        builder.add_colorbar(
-            mappable=mappable,
-            label=legend_kws.get("value_label", value_col or ""),
-            height=legend_kws.get("colorbar_height", 20),
-            width=legend_kws.get("colorbar_width", 5),
-        )
+        if flags["hue"]:
+            mappable = ScalarMappable(norm=color_norm, cmap=cmap)
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("value_label", value_col or ""),
+                    kind="hue",
+                    handles=[mappable],
+                    labels=[],
+                ),
+            )
 
-        # Size legend
-        size_handles, size_labels = _create_size_legend(
-            marker_sizes=marker_sizes,
-            sizes=sizes,
-            size_norm=size_norm,
-            alpha=alpha,
-            linewidth=linewidth,
-        )
-        builder.add_legend(
-            handles=size_handles,
-            label=legend_kws.get("size_label", size_col or ""),
-        )
+        if flags["size"]:
+            size_handles, size_labels = _create_size_legend(
+                marker_sizes=marker_sizes,
+                sizes=sizes,
+                size_norm=size_norm,
+                alpha=alpha,
+                linewidth=linewidth,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=legend_kws.get("size_label", size_col or ""),
+                    kind="size",
+                    handles=size_handles,
+                    labels=size_labels,
+                ),
+            )
 
-    return fig, ax
+        render_entries(ax, flags=flags)
+
+    return ax
 
 
 def _create_size_legend(
@@ -606,7 +623,7 @@ def complex_heatmap(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     edgecolor: Optional[str] = None,
-    figsize: Optional[Tuple[float, float]] = None,
+    axes_size: Optional[Tuple[float, float]] = None,
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
@@ -669,8 +686,11 @@ def complex_heatmap(
         Marker edge width.
     edgecolor : str, optional
         Marker edge color.
-    figsize : tuple, optional
-        Base figure size (will be adjusted for margins).
+    axes_size : tuple of float, optional
+        Main heatmap axes dimensions in millimeters, as ``(width_mm,
+        height_mm)``. The figure grows to accommodate margin plots added
+        via ``.with_top()`` / ``.with_bottom()`` / etc. If not specified,
+        defaults to ``(80, 60)`` mm.
     title : str, default=""
         Plot title.
     xlabel, ylabel : str, default=""
@@ -713,7 +733,7 @@ def complex_heatmap(
     --------
     Basic complex heatmap with margins:
 
-    >>> fig, axes = (
+    >>> axes = (
     ...     pp.complex_heatmap(data, x="sample", y="gene", value="expr")
     ...     .add_top(pp.barplot, data=totals, x="sample", y="count", height=15)
     ...     .add_left(pp.barplot, data=means, x="mean", y="gene", width=15)
@@ -722,7 +742,7 @@ def complex_heatmap(
 
     With clustering and dendrograms:
 
-    >>> fig, axes = (
+    >>> axes = (
     ...     pp.complex_heatmap(matrix, row_cluster=True, col_cluster=True)
     ...     .build()
     ... )
@@ -733,6 +753,9 @@ def complex_heatmap(
     >>> axes['top'][0]    # First top margin plot
     >>> axes['left'][0]   # First left margin plot
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     return ComplexHeatmapBuilder(
         data=data,
         x=x,
@@ -754,7 +777,7 @@ def complex_heatmap(
         alpha=alpha,
         linewidth=linewidth,
         edgecolor=edgecolor,
-        figsize=figsize,
+        axes_size=axes_size,
         title=title,
         xlabel=xlabel,
         ylabel=ylabel,
@@ -806,7 +829,7 @@ class ComplexHeatmapBuilder:
         alpha: Optional[float] = None,
         linewidth: Optional[float] = None,
         edgecolor: Optional[str] = None,
-        figsize: Optional[Tuple[float, float]] = None,
+        axes_size: Optional[Tuple[float, float]] = None,
         title: str = "",
         xlabel: str = "",
         ylabel: str = "",
@@ -859,8 +882,11 @@ class ComplexHeatmapBuilder:
         }
         self._heatmap_params.update(kwargs)
 
-        # Layout parameters
-        self._figsize = figsize or resolve_param("figure.figsize")
+        # Layout: main heatmap axes dimensions in mm → convert to inches for
+        # the internal gridspec math (margins are already in mm and get
+        # converted at render time via MM2INCH).
+        axes_size_mm = axes_size or (80.0, 60.0)
+        self._figsize = (axes_size_mm[0] * MM2INCH, axes_size_mm[1] * MM2INCH)
         self._hspace = hspace
         self._wspace = wspace
 
@@ -1112,17 +1138,16 @@ class ComplexHeatmapBuilder:
                 },
             })
 
-    def build(self) -> Tuple[plt.Figure, Dict[str, Union[Axes, List[Axes]]]]:
+    def build(self) -> Dict[str, Union[Axes, List[Axes]]]:
         """
         Build the complex heatmap with all margin plots.
 
         Returns
         -------
-        fig : Figure
-            Matplotlib figure.
-        axes : dict
-            Dictionary with keys 'main', 'top', 'bottom', 'left', 'right'.
-            Each margin key contains a list of axes.
+        dict
+            Dict of axes. Always contains key ``"main"``; may contain
+            ``"top"``, ``"bottom"``, ``"left"``, ``"right"`` as lists of Axes
+            if margin plots were added.
         """
         from matplotlib import gridspec
 
@@ -1256,7 +1281,7 @@ class ComplexHeatmapBuilder:
         if any(m['align'] for m in self._margins['left']):
             ax_main.tick_params(labelleft=False)
 
-        return fig, axes
+        return axes
 
     def _draw_margin_plot(self, ax: Axes, margin: Dict, position: str):
         """Draw a single margin plot."""
@@ -1351,7 +1376,7 @@ def dendrogram(
     linewidth: Optional[float] = None,
     ax: Optional[Axes] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw a dendrogram.
 
@@ -1378,10 +1403,8 @@ def dendrogram(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure.
-    ax : Axes
-        Matplotlib axes.
+    Axes
+        The axes where the dendrogram was drawn.
     """
     from scipy.cluster.hierarchy import dendrogram as scipy_dendrogram
     from scipy.cluster.hierarchy import linkage as compute_linkage
@@ -1435,4 +1458,4 @@ def dendrogram(
     else:
         ax.set_ylim(ax.get_ylim())
 
-    return fig, ax
+    return ax

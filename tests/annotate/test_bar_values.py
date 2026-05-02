@@ -95,7 +95,9 @@ def test_fmt_bare_spec():
 def test_inside_fallback_to_outside_when_text_too_big():
     fig, ax = plt.subplots()
     ax.bar([0], [0.001])  # extremely short bar
-    ax.set_ylim(0, 0.01)
+    # Use a ylim range that makes the 0.001-tall bar only a few pixels in
+    # display space, forcing fit_check to reject "inside" for a 20pt label.
+    ax.set_ylim(0, 1.0)
     fig.canvas.draw()
     texts = _bar_values_strategy(
         ax, fmt=".3f", anchor="inside", offset=0.0, color="auto", pad=0.0,

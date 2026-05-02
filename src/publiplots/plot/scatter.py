@@ -9,8 +9,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.colors import Normalize
-from matplotlib.cm import ScalarMappable
-from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 from typing import Optional, Tuple, Union, Dict, List
@@ -18,8 +16,21 @@ from typing import Optional, Tuple, Union, Dict, List
 from publiplots.themes.rcparams import resolve_param
 
 from publiplots.themes.colors import resolve_palette_map
-from publiplots.themes.markers import resolve_marker_map
-from publiplots.utils import is_categorical, is_numeric, create_legend_handles, legend
+from publiplots.utils import is_categorical, is_numeric, create_legend_handles
+from publiplots.utils import legend as legend_fn
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    get_entries,
+    resolve_legend_flags,
+    entry_is_in_group,
+    is_continuous_hue,
+)
+from publiplots.utils.plot_legend import (
+    get_size_ticks,
+    stash_continuous_hue,
+    resolve_style_maps,
+)
 
 
 def scatterplot(
@@ -38,16 +49,15 @@ def scatterplot(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     edgecolor: Optional[str] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     margins: Union[float, Tuple[float, float]] = 0.1,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a scatterplot with publiplots styling.
 
@@ -100,8 +110,6 @@ def scatterplot(
         Width of marker edges.
     edgecolor : str, optional
         Color for marker edges. If None, uses same color as fill.
-    figsize : tuple, default=(6, 4)
-        Figure size (width, height) if creating new figure.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -128,42 +136,43 @@ def scatterplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple scatterplot with continuous data:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value")
+    >>> ax = pp.scatterplot(data=df, x="time", y="value")
 
     Scatterplot with size encoding:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           size="magnitude", sizes=(50, 500))
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      size="magnitude", sizes=(50, 500))
 
     Scatterplot with categorical color encoding:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           hue="group", palette="pastel")
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      hue="group", palette="pastel")
 
     Scatterplot with continuous color encoding:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           hue="score", palette="viridis",
-    ...                           hue_norm=(0, 100))
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      hue="score", palette="viridis",
+    ...                      hue_norm=(0, 100))
 
     Scatterplot with custom single color:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           color="#e67e7e")
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      color="#e67e7e")
 
     Scatterplot with different marker styles:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           hue="group", style="condition",
-    ...                           markers=["o", "^", "s"])
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      hue="group", style="condition",
+    ...                      markers=["o", "^", "s"])
 
     Categorical scatterplot (positions on grid):
-    >>> fig, ax = pp.scatterplot(data=df, x="category", y="condition",
-    ...                           size="pvalue", hue="log2fc")
+    >>> ax = pp.scatterplot(data=df, x="category", y="condition",
+    ...                      size="pvalue", hue="log2fc")
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
@@ -186,15 +195,12 @@ def scatterplot(
     # Copy data to avoid modifying original
     data = data.copy()
 
-    # Create figure if not provided
-    # Only fall back to matplotlib's figsize when the user explicitly provides one;
-    # otherwise use pp.subplots so axes_size comes from pp.rcParams["subplots.axes_size"].
+    # Create figure via pp.subplots to install SubplotsAutoLayout; users who
+    # want custom dimensions should compose with pp.subplots(axes_size=...)
+    # before calling and pass ax=.
     if ax is None:
-        if figsize is not None:
-            fig, ax = plt.subplots(figsize=figsize)
-        else:
-            from publiplots.layout.subplots import subplots as _pp_subplots
-            fig, ax = _pp_subplots()
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 
@@ -300,7 +306,9 @@ def scatterplot(
     if ylabel is not None: ax.set_ylabel(ylabel)
     if title is not None: ax.set_title(title)
 
-    # Always store legend metadata, but only create legend if legend=True
+    # Stash legend entries (per-kind) and optionally render per-axis legends.
+    # legend may be bool or dict[str, bool]; False short-circuits both stash
+    # and render, True stashes/renders everything, and a dict filters per kind.
     _legend(
         ax=ax,
         data=data,
@@ -317,7 +325,7 @@ def scatterplot(
         size_norm=size_norm,
         sizes=sizes,
         kwargs=legend_kws,
-        create_legend=legend,  # Only create if legend=True
+        legend=legend,
     )
 
     # Set margins for categorical axes automatically
@@ -329,7 +337,7 @@ def scatterplot(
             y=margins[1] if y_is_categorical else None
         )
 
-    return fig, ax
+    return ax
 
 def _handle_categorical_axes(
     data: pd.DataFrame,
@@ -391,78 +399,6 @@ def _handle_categorical_axes(
 
     return data, x_col, y_col, x_labels, y_labels
 
-def _get_size_ticks(
-        values: np.ndarray,
-        sizes: Tuple[float, float],
-        size_norm: Normalize,
-        nbins: int = 4,
-        min_n_ticks: int = 3,
-        include_min_max: bool = False,
-    ) -> Tuple[List[str], List[float]]:
-    """
-    Get size ticks for size legend.
-    Uses MaxNLocator to generate ticks.
-    Includes actual min and max from data.
-    Rounds to reasonable precision.
-    Falls back to min and max if no ticks are generated.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Values to get size ticks for.
-    sizes : Tuple[float, float]
-        (min_size, max_size) in points^2.
-    size_norm : Normalize
-        Size normalization object.
-    nbins : int, default=4
-        Number of bins used by MaxNLocator.
-    min_n_ticks : int, default=3
-        Minimum number of ticks to generate.
-    include_min_max : bool, default=False
-        Whether to include actual min and max from data.
-        If True, the first and last tick will be the actual min and max.
-        This is useful if the data is very small and the min and max are not representive.
-    Returns
-    -------
-    tick_labels : List[str]
-        Tick labels.
-    tick_sizes : List[float]
-        Tick sizes.
-    """
-    unique_vals = np.unique(values[~np.isnan(values)])
-    v_min, v_max = size_norm.vmin, size_norm.vmax
-    
-    if len(unique_vals) <= 4:
-        # If few unique values, show them all
-        ticks = unique_vals
-    else:
-        # Use MaxNLocator but ensure we capture extremes
-        locator = MaxNLocator(nbins=nbins, min_n_ticks=min_n_ticks)
-        ticks = locator.tick_values(v_min, v_max)
-        ticks = ticks[(ticks >= v_min) & (ticks <= v_max)]
-        
-        # Include actual min and max from data
-        if include_min_max:
-            ticks = np.unique(np.concatenate([[v_min], ticks, [v_max]]))
-    
-    # Round to reasonable precision
-    if v_max - v_min > 10:
-        ticks = np.array([int(np.round(t)) for t in ticks])
-        ticks = np.unique(ticks)
-    else:
-        ticks = np.unique(np.round(ticks, 1))
-    
-    if ticks.size == 0:  # Fallback
-        ticks = np.array([v_min, v_max])
-    
-    def _get_markersize(size: float) -> float:
-        normalized_size = size_norm(size)
-        actual_size = min(sizes[0] + normalized_size * (sizes[1] - sizes[0]), sizes[1]) 
-        # Convert to markersize for legend
-        return np.sqrt(actual_size / np.pi) * 2
-
-    return [str(t) for t in ticks], [_get_markersize(t) for t in ticks]
-    
 def _legend(
         ax: Axes,
         data: pd.DataFrame, # for size legend
@@ -479,15 +415,17 @@ def _legend(
         linewidth: Optional[float] = None,
         edgecolor: Optional[str] = None,
         kwargs: Optional[Dict] = None,
-        create_legend: bool = True,
+        legend: Union[bool, Dict] = True,
     ) -> None:
     """
-    Create legend handles for scatter plot.
+    Stash LegendEntry objects for scatter plot and optionally render per-axis legends.
 
     Parameters
     ----------
-    create_legend : bool, default=True
-        If True, creates the legend immediately. If False, only stores metadata.
+    legend : bool or dict, default=True
+        - ``True``  -> stash all kinds and render per-axis (unless claimed by a group).
+        - ``False`` -> stash nothing and render nothing.
+        - ``dict``  -> per-kind flags (missing keys default to True).
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
@@ -496,39 +434,40 @@ def _legend(
     kwargs = kwargs or {}
     handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="circle")
 
-    # Store legend data in collection for later retrieval
-    legend_data = {}
+    flags = resolve_legend_flags(legend)
 
-    # Prepare hue legend data
-    if hue is not None:
+    # Stash hue entry
+    if hue is not None and flags["hue"]:
         hue_label = kwargs.pop("hue_label", hue)
-        if isinstance(palette, dict):  # categorical legend
+        if isinstance(palette, dict):  # categorical
+            hue_labels = list(palette.keys())
             hue_handles = create_legend_handles(
-                labels=list(palette.keys()),
+                labels=hue_labels,
                 colors=list(palette.values()),
                 edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 **handle_kwargs
             )
-            legend_data["hue"] = {
-                "handles": hue_handles,
-                "label": hue_label,
-            }
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=hue_handles,
+                    labels=hue_labels,
+                ),
+            )
         else:
-            mappable = ScalarMappable(norm=hue_norm, cmap=palette)
-            legend_data["hue"] = {
-                "mappable": mappable,
-                "label": hue_label,
-                "height": kwargs.pop("hue_height", 20),  # millimeters (was 0.2 axes coords)
-                "width": kwargs.pop("hue_width", 5),    # millimeters (was 0.05 axes coords)
-                "type": "colorbar",
-            }
+            # continuous -> colorbar
+            stash_continuous_hue(
+                ax, name=hue_label, palette=palette, hue_norm=hue_norm
+            )
 
-    # Prepare size legend data
-    if size is not None:
+    # Stash size entry
+    if size is not None and flags["size"]:
         tick_color = color if hue is None else "gray"
         size_handle_kwargs = handle_kwargs.copy()
         size_handle_kwargs["color"] = tick_color
-        tick_labels, tick_sizes = _get_size_ticks(
+        tick_labels, tick_sizes = get_size_ticks(
             values=data[size].dropna().values,
             sizes=sizes,
             size_norm=size_norm,
@@ -541,47 +480,77 @@ def _legend(
             sizes=tick_sizes,
             **size_handle_kwargs
         )
-        legend_data["size"] = {
-            "handles": size_handles,
-            "label": kwargs.pop("size_label", size),
-            "labelspacing": kwargs.pop("labelspacing", 1/3 * max(1, sizes[1] / 200)),
-        }
+        size_label = kwargs.pop("size_label", size)
+        stash_entry(
+            ax,
+            LegendEntry.build(
+                name=size_label,
+                kind="size",
+                handles=size_handles,
+                labels=tick_labels,
+            ),
+        )
 
-    # Prepare style legend data
-    if style is not None:
+    # Stash style entry
+    if style is not None and flags["style"]:
         style_values = data[style].unique()
         style_label = kwargs.pop("style_label", style)
 
-        # Use resolve_marker_map to get marker mapping
-        # If markers is True (from seaborn default), treat as None for our mapping
-        marker_param = markers if isinstance(markers, (list, dict)) else None
-        marker_map = resolve_marker_map(
-            values=list(style_values),
-            marker_map=marker_param
+        # Resolve marker mapping via shared helper (linestyle map unused here).
+        marker_map, _ = resolve_style_maps(
+            style=style,
+            data=data,
+            style_order=list(style_values),
+            markers=markers,
+            dashes=None,
         )
 
         # Determine color for style legend
         style_color = color if hue is None else "gray"
         style_handle_kwargs = handle_kwargs.copy()
         style_handle_kwargs["color"] = style_color
-        style_handle_kwargs.pop("style")  # Remove style key from handle_kwargs
+        style_handle_kwargs.pop("style", None)  # Remove style key from handle_kwargs
 
         # Create legend handles with different markers
+        style_labels = [str(val) for val in style_values]
         style_handles = create_legend_handles(
-            labels=[str(val) for val in style_values],
+            labels=style_labels,
             markers=[marker_map[val] for val in style_values],
             edgecolors=[edgecolor] * len(style_values) if edgecolor else None,
             **style_handle_kwargs
         )
-        legend_data["style"] = {
-            "handles": style_handles,
-            "label": style_label,
-        }
+        stash_entry(
+            ax,
+            LegendEntry.build(
+                name=style_label,
+                kind="style",
+                handles=style_handles,
+                labels=style_labels,
+            ),
+        )
 
-    # Store metadata on collection (always, regardless of create_legend)
-    if len(ax.collections) > 0:
-        ax.collections[0]._legend_data = legend_data
+    # Render per-axis legends for entries not claimed by a figure-level group.
+    # legend=False short-circuits (all flags False, nothing stashed, nothing to render).
+    if legend is False:
+        return
 
-    # Create legends using new legend() API (only if create_legend=True)
-    if create_legend:
-        builder = legend(ax=ax)
+    fig = ax.get_figure()
+    entries_to_render = [
+        e for e in get_entries(ax)
+        if flags[e.kind] and not entry_is_in_group(fig, e)
+    ]
+    if not entries_to_render:
+        return
+
+    builder = legend_fn(ax=ax, auto=False)
+    for entry in entries_to_render:
+        if entry.kind == "hue" and is_continuous_hue(entry.handles):
+            builder.add_colorbar(
+                mappable=entry.handles[0],
+                label=entry.name,
+            )
+        else:
+            builder.add_legend(
+                handles=list(entry.handles),
+                label=entry.name,
+            )

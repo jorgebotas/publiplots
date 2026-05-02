@@ -10,6 +10,10 @@ visual style of scatterplots and barplots.
 from typing import List, Dict, Optional, Tuple, Any, Union
 
 from publiplots.themes.rcparams import resolve_param
+from publiplots.utils.legend_entries import (
+    get_entries,
+    is_continuous_hue,
+)
 from matplotlib.axes import Axes
 from matplotlib.cm import ScalarMappable
 from matplotlib.colorbar import Colorbar
@@ -64,6 +68,28 @@ class MarkerPatch(Patch):
         if markeredgewidth is None or markeredgewidth == 0:
             markeredgewidth = resolve_param("lines.markeredgewidth")
         self.markeredgewidth = markeredgewidth
+
+
+class LinePatch(Patch):
+    """
+    Custom patch for line-only legend handles (lineplot with hue/style).
+
+    Draws a horizontal colored line with optional dash pattern. Used when the
+    legend entry represents a line series with no distinguishing marker —
+    typically hue (color) or style (dash) on a lineplot.
+    """
+    def __init__(self, linestyle="-", **kwargs):
+        # Remove kwargs that Patch doesn't understand
+        for _k in ("markersize", "markeredgewidth"):
+            kwargs.pop(_k, None)
+        super().__init__(**kwargs)
+        self.linestyle = linestyle
+
+    def get_linestyle(self) -> str:
+        return self.linestyle
+
+    def set_linestyle(self, linestyle: str):
+        self.linestyle = linestyle
 
 
 class LineMarkerPatch(Patch):
@@ -458,6 +484,57 @@ class HandlerLineMarker(HandlerBase):
         return marker, color, size, alpha, linewidth, markeredgewidth, edgecolor, linestyle
 
 
+class HandlerLine(HandlerBase):
+    """Legend handler for line-only swatches (lineplot hue/style entries).
+
+    Draws a single horizontal line with the handle's color, alpha,
+    linewidth, and linestyle.
+    """
+
+    def create_artists(
+        self,
+        legend: Legend,
+        orig_handle: Any,
+        xdescent: float,
+        ydescent: float,
+        width: float,
+        height: float,
+        fontsize: float,
+        trans: Any,
+    ) -> List:
+        from matplotlib.lines import Line2D
+        from matplotlib.colors import to_rgba
+
+        color = orig_handle.get_facecolor()
+        linewidth = orig_handle.get_linewidth()
+        linestyle = orig_handle.get_linestyle() if hasattr(orig_handle, "get_linestyle") else "-"
+        if not linewidth:
+            linewidth = resolve_param("lines.linewidth")
+
+        # Normalize seaborn-style dash tuples (on, off) → matplotlib's
+        # (offset, (on, off)) form. A plain (on, off) tuple is how seaborn
+        # accepts ``dashes={label: (4, 2)}``; matplotlib's Line2D needs the
+        # (offset, dash_seq) form.
+        if isinstance(linestyle, tuple) and len(linestyle) == 2 and all(
+            isinstance(v, (int, float)) for v in linestyle
+        ):
+            linestyle = (0, linestyle)
+
+        # Legend line is always fully opaque for readability, matching
+        # HandlerLineMarker's behavior. The stored alpha on the handle
+        # reflects the plot's fill transparency, not the legend swatch.
+        line_y = 0.5 * height - 0.5 * ydescent
+        line = Line2D(
+            [-xdescent, width - xdescent],
+            [line_y, line_y],
+            color=to_rgba(color, 1.0),
+            linewidth=linewidth,
+            linestyle=linestyle,
+            transform=trans,
+        )
+        return [line]
+
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -475,11 +552,13 @@ def get_legend_handler_map() -> Dict[type, HandlerBase]:
     handler_rectangle = HandlerRectangle()
     handler_marker = HandlerMarker()
     handler_line_marker = HandlerLineMarker()
+    handler_line = HandlerLine()
 
     return {
         Rectangle: handler_rectangle,
         MarkerPatch: handler_marker,
         LineMarkerPatch: handler_line_marker,
+        LinePatch: handler_line,
         Patch: handler_rectangle,
     }
 
@@ -600,6 +679,22 @@ def create_legend_handles(
                 markeredgewidth=markeredgewidth,
             )
             handles.append(handle)
+    elif linestyles is not None or style == "line":
+        # Line-only swatch: one horizontal colored line per entry. Used by
+        # lineplot for hue (solid line, distinguish by color) and style
+        # (distinguish by dash pattern).
+        if linestyles is None:
+            linestyles = ["-"] * len(labels)
+        for label, col, edge_col, linestyle in zip(labels, colors, edgecolors, linestyles):
+            handle = LinePatch(
+                linestyle=linestyle,
+                facecolor=col,
+                edgecolor=edge_col,
+                alpha=alpha,
+                linewidth=linewidth,
+                label=label,
+            )
+            handles.append(handle)
     else:
         # Use MarkerPatch for circles, RectanglePatch for rectangles
         if style == "circle":
@@ -668,7 +763,7 @@ class LegendBuilder:
 
     Examples
     --------
-    >>> fig, ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
+    >>> ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
     >>> builder = pp.legend(ax, auto=False, x_offset=2, gap=2)
     >>> builder.add_legend(handles, label="Treatment")
     >>> builder.add_colorbar(mappable, label="Expression", height=15)
@@ -1394,7 +1489,7 @@ def legend(
     Examples
     --------
     Auto mode (no axes needed, uses current axes):
-    >>> fig, ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
+    >>> ax = pp.scatterplot(df, x='x', y='y', hue='group', legend=False)
     >>> builder = pp.legend()  # Auto-creates legends on current axes
 
     Auto mode with explicit axes:
@@ -1450,26 +1545,44 @@ def legend(
 
     # Auto mode
     if auto:
-        legend_data = _get_legend_data(ax)
-        if legend_data:
-            # Add hue legend/colorbar
-            if 'hue' in legend_data:
-                hue_data = legend_data['hue'].copy()
-                if hue_data.get('type') == 'colorbar':
-                    hue_data.pop('type', None)
-                    builder.add_colorbar(**hue_data)
+        # Prefer the new LegendEntry store.
+        entries = get_entries(ax)
+        if entries:
+            seen = set()  # (name, kind) dedup within one axes
+            for entry in entries:
+                key = (entry.name, entry.kind)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if entry.kind == "hue" and is_continuous_hue(entry.handles):
+                    builder.add_colorbar(
+                        mappable=entry.handles[0],
+                        label=entry.name,
+                    )
                 else:
-                    builder.add_legend(**hue_data, **kwargs)
-
-            # Add size legend
-            if 'size' in legend_data:
-                size_data = legend_data['size'].copy()
-                builder.add_legend(**size_data, **kwargs)
-
-            # Add style legend
-            if 'style' in legend_data:
-                style_data = legend_data['style'].copy()
-                builder.add_legend(**style_data, **kwargs)
+                    builder.add_legend(
+                        handles=list(entry.handles),
+                        label=entry.name,
+                        **kwargs,
+                    )
+        else:
+            # Back-compat: read legacy _legend_data dict store (plot
+            # functions not migrated in PR #81 still use this path).
+            legend_data = _get_legend_data(ax)
+            if legend_data:
+                if 'hue' in legend_data:
+                    hue_data = legend_data['hue'].copy()
+                    if hue_data.get('type') == 'colorbar':
+                        hue_data.pop('type', None)
+                        builder.add_colorbar(**hue_data)
+                    else:
+                        builder.add_legend(**hue_data, **kwargs)
+                if 'size' in legend_data:
+                    size_data = legend_data['size'].copy()
+                    builder.add_legend(**size_data, **kwargs)
+                if 'style' in legend_data:
+                    style_data = legend_data['style'].copy()
+                    builder.add_legend(**style_data, **kwargs)
 
     return builder
 
@@ -1477,9 +1590,11 @@ __all__ = [
     "HandlerRectangle",
     "HandlerMarker",
     "HandlerLineMarker",
+    "HandlerLine",
     "RectanglePatch",
     "MarkerPatch",
     "LineMarkerPatch",
+    "LinePatch",
     "get_legend_handler_map",
     "create_legend_handles",
     "LegendBuilder",

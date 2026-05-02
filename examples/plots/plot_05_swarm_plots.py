@@ -9,7 +9,6 @@ which shows individual data points with minimal overlap.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Swarm Plot
@@ -29,7 +28,7 @@ swarm_data = pd.DataFrame({
 })
 
 # Create simple swarm plot
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='category',
     y='value',
@@ -37,7 +36,7 @@ fig, ax = pp.swarmplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Swarm Plot with Hue Grouping
@@ -48,7 +47,7 @@ plt.show()
 swarm_data['group'] = np.tile(['Group 1', 'Group 2'], n // 2)
 
 # Create swarm plot with hue
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='category',
     y='value',
@@ -58,7 +57,7 @@ fig, ax = pp.swarmplot(
     ylabel='Value',
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Dodged Swarm Plot
@@ -66,7 +65,7 @@ plt.show()
 # Separate points by hue along the categorical axis.
 
 # Create dodged swarm plot
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='category',
     y='value',
@@ -76,7 +75,7 @@ fig, ax = pp.swarmplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Swarm Plot with Custom Size
@@ -84,7 +83,7 @@ plt.show()
 # Adjust marker size for different data densities.
 
 # Create swarm plot with custom size
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='category',
     y='value',
@@ -93,7 +92,7 @@ fig, ax = pp.swarmplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Swarm Plot
@@ -101,7 +100,7 @@ plt.show()
 # Create horizontal swarm plot by swapping x and y.
 
 # Create horizontal swarm plot
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='value',
     y='category',
@@ -109,4 +108,4 @@ fig, ax = pp.swarmplot(
     xlabel='Value',
     ylabel='Category',
 )
-plt.show()
+pp.show()

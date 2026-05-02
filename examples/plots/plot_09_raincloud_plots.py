@@ -13,7 +13,6 @@ Examples
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Raincloud Plot
@@ -34,7 +33,7 @@ raincloud_data = pd.DataFrame({
 
 
 # Create simple raincloud plot
-fig, ax = pp.raincloudplot(
+ax = pp.raincloudplot(
     data=raincloud_data,
     x='time',
     y='measurement',
@@ -43,7 +42,7 @@ fig, ax = pp.raincloudplot(
     ylabel='Measurement',
     cloud_alpha=0.6,
 )
-plt.show()
+pp.show()
 
 # %%
 # Raincloud Plot with Hue Grouping (Vertical)
@@ -51,7 +50,7 @@ plt.show()
 # Use the hue parameter to create grouped raincloud plots.
 
 # Create grouped raincloud plot
-fig, ax = pp.raincloudplot(
+ax = pp.raincloudplot(
     data=raincloud_data,
     x='time',
     y='measurement',
@@ -64,14 +63,17 @@ fig, ax = pp.raincloudplot(
     box_offset=0.1,
     rain_offset=0.1,
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Raincloud Plot with Hue
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create horizontal raincloud plots by swapping x and y.
 
-fig, ax = pp.raincloudplot(
+# Horizontal raincloud needs a tall axes area; compose with pp.subplots
+# instead of passing figsize=.
+fig, ax = pp.subplots(axes_size=(60, 80))
+pp.raincloudplot(
     data=raincloud_data,
     x='measurement',
     y='time',
@@ -82,7 +84,6 @@ fig, ax = pp.raincloudplot(
     ylabel='Time',
     cloud_alpha=0.6,
     palette="RdGyBu_r",
-    figsize=(4, 7),
     box_offset=0.1,
     rain_offset=0.2,
     rain_kws=dict(
@@ -90,9 +91,10 @@ fig, ax = pp.raincloudplot(
         alpha=0.5,
         jitter=False,
         marker="x"
-    )
+    ),
+    ax=ax,
 )
-plt.show()
+pp.show()
 
 # %%
 # Customization
@@ -102,7 +104,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create raincloud plot with only cloud and rain elements.
 
-fig, ax = pp.raincloudplot(
+ax = pp.raincloudplot(
     data=raincloud_data[raincloud_data['group'] == 'Control'],
     x='time',
     y='measurement',
@@ -112,7 +114,7 @@ fig, ax = pp.raincloudplot(
     ylabel='Measurement',
     cloud_alpha=0.6,
 )
-plt.show()
+pp.show()
 
 # %%
 # Raincloud Plot with Custom Cloud Side
@@ -147,14 +149,14 @@ pp.raincloudplot(
     cloud_alpha=0.6,
 )
 
-plt.show()
+pp.show()
 
 # %%
 # Raincloud Plot with Custom Alpha Values
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Adjust transparency of different components.
 
-fig, ax = pp.raincloudplot(
+ax = pp.raincloudplot(
     data=raincloud_data,
     x='time',
     y='measurement',
@@ -169,4 +171,4 @@ fig, ax = pp.raincloudplot(
     box_offset=0.1,
     rain_offset=0.1,
 )
-plt.show()
+pp.show()

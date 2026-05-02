@@ -10,7 +10,6 @@ color scales, and bubble plots (categorical scatter heatmaps).
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Basic Scatter Plot
@@ -26,7 +25,7 @@ scatter_data = pd.DataFrame({
 })
 
 # Create basic scatter plot
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -35,7 +34,7 @@ fig, ax = pp.scatterplot(
     ylabel='Y Variable',
 )
 ax.margins(x=0.1, y=0.1)
-plt.show()
+pp.show()
 
 # %%
 # Scatter with Size Encoding
@@ -46,7 +45,7 @@ plt.show()
 scatter_data['magnitude'] = np.abs(scatter_data['x'] - 50) + np.abs(scatter_data['y'] - 100)
 
 # Create scatter with size encoding
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -57,7 +56,7 @@ fig, ax = pp.scatterplot(
     ylabel='Y Variable',
 )
 ax.margins(x=0.1, y=0.1)
-plt.show()
+pp.show()
 
 # %%
 # Scatter with Categorical Hue
@@ -68,7 +67,7 @@ plt.show()
 scatter_data['group'] = pd.cut(scatter_data['y'], bins=3, labels=['Low', 'Medium', 'High'])
 
 # Create scatter with categorical hue
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -79,7 +78,7 @@ fig, ax = pp.scatterplot(
     ylabel='Y Variable',
     alpha=0.2,
 )
-plt.show()
+pp.show()
 
 # %%
 # Scatter with Continuous Color Scale
@@ -90,7 +89,7 @@ plt.show()
 scatter_data['score'] = scatter_data['x'] * 0.5 + scatter_data['y'] * 0.3 + np.random.randn(n) * 10
 
 # Create scatter with continuous hue
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -105,7 +104,7 @@ fig, ax = pp.scatterplot(
     legend_kws=dict(hue_label="Continuous Score"),
 )
 ax.margins(0.1)
-plt.show()
+pp.show()
 
 # %%
 # Bubble Plot (Categorical Scatter Heatmap)
@@ -130,7 +129,7 @@ for condition in conditions:
 heatmap_df = pd.DataFrame(heatmap_data)
 
 # Create bubble plot
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=heatmap_df,
     x='condition',
     y='cell_type',
@@ -142,7 +141,7 @@ fig, ax = pp.scatterplot(
     xlabel='Condition',
     ylabel='Cell Type',
 )
-plt.show()
+pp.show()
 
 # %%
 # Bubble Plot with Continuous Colors
@@ -153,7 +152,7 @@ plt.show()
 heatmap_df['log2fc'] = np.random.uniform(-3, 3, len(heatmap_df))
 
 # Create bubble plot with continuous colors
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=heatmap_df,
     x='condition',
     y='cell_type',
@@ -167,7 +166,7 @@ fig, ax = pp.scatterplot(
     ylabel='Cell Type',
     alpha=0.2,
 )
-plt.show()
+pp.show()
 
 # %%
 # Large Bubble Plot
@@ -192,7 +191,7 @@ for tissue in tissues:
 large_df = pd.DataFrame(large_heatmap_data)
 
 # Create large bubble plot
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=large_df,
     x='time',
     y='tissue',
@@ -205,4 +204,31 @@ fig, ax = pp.scatterplot(
     xlabel='Time Point',
     ylabel='Tissue',
 )
-plt.show()
+pp.show()
+
+# %%
+# Shared Legend Across Subplots
+# ------------------------------
+# When several subplots share the same ``hue`` variable, attach
+# ``pp.legend_group(anchor=...)`` to the figure BEFORE drawing. Every
+# plot function that stashes legend entries (scatter / strip / swarm /
+# point) sees the group, skips its own per-axis legend, and lets the
+# group render one unified legend on the right. The figure's
+# ``legend_column`` is auto-sized from the measured group width — no
+# ``legend_column=N`` guess, no ``handles=...`` construction.
+
+np.random.seed(99)
+shared_df = pd.DataFrame({
+    'x': np.random.randn(60),
+    'y': np.random.randn(60),
+    'g': np.random.choice(['low', 'mid', 'high'], 60),
+})
+
+fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
+pp.legend_group(anchor=axes[-1])   # attach BEFORE plotting
+for ax, title in zip(axes, ['Sample A', 'Sample B', 'Sample C']):
+    pp.scatterplot(
+        data=shared_df, x='x', y='y', hue='g',
+        palette='pastel', title=title, ax=ax,
+    )
+pp.show()

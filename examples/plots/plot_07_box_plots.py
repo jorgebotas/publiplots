@@ -12,7 +12,6 @@ Examples
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Box Plot
@@ -33,7 +32,7 @@ box_data = pd.DataFrame({
 })
 
 # Create simple box plot
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category',
     y='value',
@@ -41,7 +40,7 @@ fig, ax = pp.boxplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Box Plot with Hue Grouping
@@ -52,7 +51,7 @@ plt.show()
 box_data['group'] = np.tile(['Group 1', 'Group 2'], n // 2)
 
 # Create grouped box plot
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category',
     y='value',
@@ -63,14 +62,14 @@ fig, ax = pp.boxplot(
     ylabel='Value',
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Box Plot
 # ~~~~~~~~~~~~~~~~~~~
 # Create horizontal box plots by swapping x and y.
 
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data[box_data['group'] == 'Group 1'],
     x='value',
     y='category',
@@ -78,7 +77,7 @@ fig, ax = pp.boxplot(
     xlabel='Value',
     ylabel='Category',
 )
-plt.show()
+pp.show()
 
 # %%
 # Combined Box and Swarm Plot
@@ -109,7 +108,7 @@ pp.swarmplot(
 ax.set_title('Combined Box and Swarm Plot')
 ax.set_xlabel('Category')
 ax.set_ylabel('Value')
-plt.show()
+pp.show()
 
 # %%
 # Customization
@@ -119,7 +118,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Adjust transparency of box fill.
 
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category',
     y='value',
@@ -130,14 +129,14 @@ fig, ax = pp.boxplot(
     ylabel='Value',
     alpha=0.3,
 )
-plt.show()
+pp.show()
 
 # %%
 # Box Plot Without Outliers
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
 # Hide outliers when you plan to overlay with swarm plot.
 
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category',
     y='value',
@@ -146,20 +145,20 @@ fig, ax = pp.boxplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Annotated box stats
 # ~~~~~~~~~~~~~~~~~~~
 # ``annotate=True`` labels the median by default. Pass
 # ``stats=["median", "q1", "q3", ...]`` to label multiple statistics per
-# box. See the dedicated :doc:`annotations gallery <plot_15_annotate>`
+# box. See the dedicated :doc:`annotations gallery <plot_16_annotate>`
 # for the full option set.
 
-fig, ax = pp.boxplot(
+ax = pp.boxplot(
     data=box_data,
     x='category', y='value',
     annotate={"stats": ["median", "q1", "q3"], "fmt": ".1f"},
     title="annotate={'stats': ['median', 'q1', 'q3']}",
 )
-plt.show()
+pp.show()

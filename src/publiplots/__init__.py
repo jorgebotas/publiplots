@@ -7,14 +7,14 @@ customization options.
 
 Basic usage:
     >>> import publiplots as pp
-    >>> fig, ax = pp.barplot(data=df, x='category', y='value')
-    >>> pp.savefig(fig, 'output.png')
+    >>> ax = pp.barplot(data=df, x='category', y='value')
+    >>> pp.savefig('output.png')
 
 publiplots applies its publication-grade rcParams on import. Use
 :func:`publiplots.reset_style` to revert to matplotlib defaults.
 """
 
-__version__ = "0.4.7"
+__version__ = "0.7.0"
 __author__ = "Jorge Botas"
 __license__ = "MIT"
 __copyright__ = "Copyright 2025, Jorge Botas"
@@ -26,6 +26,7 @@ __description__ = "Publication-ready plotting with a clean, modular API"
 from publiplots.plot.bar import barplot
 from publiplots.plot.scatter import scatterplot
 from publiplots.plot.point import pointplot
+from publiplots.plot.line import lineplot
 from publiplots.plot.box import boxplot
 from publiplots.plot.swarm import swarmplot
 from publiplots.plot.strip import stripplot
@@ -37,6 +38,7 @@ from publiplots.plot.heatmap import heatmap, complex_heatmap, dendrogram
 
 # Utilities
 from publiplots.utils.io import savefig, save_multiple, close_all
+from publiplots.utils.display import show, suptitle
 
 # Annotations
 from publiplots.annotate import annotate
@@ -94,6 +96,7 @@ __all__ = [
     "barplot",
     "scatterplot",
     "pointplot",
+    "lineplot",
     "boxplot",
     "swarmplot",
     "stripplot",
@@ -108,6 +111,9 @@ __all__ = [
     "savefig",
     "save_multiple",
     "close_all",
+    # Display utilities
+    "show",
+    "suptitle",
     # Axes utilities
     "adjust_spines",
     "add_grid",

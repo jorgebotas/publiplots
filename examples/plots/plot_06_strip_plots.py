@@ -9,7 +9,6 @@ which shows individual data points with optional jitter.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Strip Plot
@@ -29,7 +28,7 @@ strip_data = pd.DataFrame({
 })
 
 # Create simple strip plot
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='category',
     y='value',
@@ -37,7 +36,7 @@ fig, ax = pp.stripplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Strip Plot with Jitter
@@ -45,7 +44,7 @@ plt.show()
 # Use jitter to spread points horizontally.
 
 # Create strip plot with jitter
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='category',
     y='value',
@@ -54,7 +53,7 @@ fig, ax = pp.stripplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Strip Plot with Hue Grouping
@@ -65,7 +64,7 @@ plt.show()
 strip_data['group'] = np.tile(['Group 1', 'Group 2'], n // 2)
 
 # Create strip plot with hue
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='category',
     y='value',
@@ -75,7 +74,7 @@ fig, ax = pp.stripplot(
     ylabel='Value',
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Dodged Strip Plot
@@ -83,7 +82,7 @@ plt.show()
 # Separate points by hue along the categorical axis.
 
 # Create dodged strip plot
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='category',
     y='value',
@@ -93,7 +92,7 @@ fig, ax = pp.stripplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Strip Plot
@@ -101,7 +100,7 @@ plt.show()
 # Create horizontal strip plot by swapping x and y.
 
 # Create horizontal strip plot
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='value',
     y='category',
@@ -109,4 +108,4 @@ fig, ax = pp.stripplot(
     xlabel='Value',
     ylabel='Category',
 )
-plt.show()
+pp.show()

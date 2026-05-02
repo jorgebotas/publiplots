@@ -49,20 +49,20 @@ def _hue_df():
 # ----------------------------------------------------------------------------
 
 def test_pointplot_annotate_true_attaches_meta():
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            errorbar="se", annotate=True)
     assert isinstance(ax._publiplots_point_meta, PointValueMeta)
     assert ax._publiplots_point_meta.owner_is_publiplots is True
 
 
 def test_pointplot_annotate_draws_one_label_per_point():
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            errorbar="se", annotate=True)
     assert len(ax.texts) == 3
 
 
 def test_pointplot_annotate_with_hue_produces_two_series():
-    fig, ax = pp.pointplot(data=_hue_df(), x="time", y="v", hue="group",
+    ax = pp.pointplot(data=_hue_df(), x="time", y="v", hue="group",
                            errorbar="se", annotate=True)
     meta = ax._publiplots_point_meta
     assert meta.hue_active is True
@@ -72,7 +72,7 @@ def test_pointplot_annotate_with_hue_produces_two_series():
 
 
 def test_pointplot_annotate_errorbars_from_drawn_artists():
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            errorbar="se", annotate=True)
     meta = ax._publiplots_point_meta
     for p in meta.points:
@@ -88,7 +88,7 @@ def test_pointplot_annotate_errorbars_pair_per_hue():
     Regression: a naive x-only matcher gives both hue series the same
     err_high, which causes labels to stack at identical y-coords.
     """
-    fig, ax = pp.pointplot(data=_hue_df(), x="time", y="v", hue="group",
+    ax = pp.pointplot(data=_hue_df(), x="time", y="v", hue="group",
                            errorbar="se", annotate=True)
     meta = ax._publiplots_point_meta
     # Group by x-position; within each x, err_high values must differ
@@ -104,7 +104,7 @@ def test_pointplot_annotate_errorbars_pair_per_hue():
 
 
 def test_pointplot_annotate_errorbar_none_all_none():
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            errorbar=None, annotate=True)
     meta = ax._publiplots_point_meta
     for p in meta.points:
@@ -118,7 +118,7 @@ def test_pointplot_annotate_errorbar_none_all_none():
 
 def test_pointplot_annotate_default_anchor_is_top():
     """Labels by default sit above the point (past errorbar cap)."""
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            errorbar="se", annotate=True)
     meta = ax._publiplots_point_meta
     for text, point in zip(ax.texts, meta.points):
@@ -128,7 +128,7 @@ def test_pointplot_annotate_default_anchor_is_top():
 
 
 def test_pointplot_annotate_anchor_bottom_flips_below():
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            errorbar="se",
                            annotate={"anchor": "bottom"})
     meta = ax._publiplots_point_meta
@@ -139,7 +139,7 @@ def test_pointplot_annotate_anchor_bottom_flips_below():
 
 
 def test_pointplot_annotate_anchor_right_places_beside_marker():
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            annotate={"anchor": "right"})
     for text in ax.texts:
         assert text.get_ha() == "left"
@@ -147,7 +147,7 @@ def test_pointplot_annotate_anchor_right_places_beside_marker():
 
 
 def test_pointplot_annotate_anchor_center_overlays_marker():
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            annotate={"anchor": "center"})
     meta = ax._publiplots_point_meta
     for text, point in zip(ax.texts, meta.points):
@@ -162,7 +162,7 @@ def test_pointplot_annotate_text_zorder_above_markers():
     """pp.pointplot draws its double-layer markers at zorder ~99-100;
     label text must sit above them (especially relevant for anchor='center').
     """
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            annotate={"anchor": "center"})
     marker_zorders = [
         ln.get_zorder() for ln in ax.lines if ln.get_marker() not in (None, "None")
@@ -174,7 +174,7 @@ def test_pointplot_annotate_text_zorder_above_markers():
 
 def test_pointplot_annotate_respects_user_zorder():
     """User-supplied zorder in annotate dict wins over the default bump."""
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            annotate={"anchor": "center", "zorder": 5})
     for text in ax.texts:
         assert text.get_zorder() == 5
@@ -193,7 +193,7 @@ def test_pointplot_annotate_label_positions_finite():
         "t": pd.Categorical(["t1", "t2", "t3"]),
         "v": [1.0, 2.0, 3.0],
     })
-    fig, ax = pp.pointplot(data=df, x="t", y="v", errorbar="se", annotate=True)
+    ax = pp.pointplot(data=df, x="t", y="v", errorbar="se", annotate=True)
     for text in ax.texts:
         x, y = text.get_position()
         assert not math.isnan(float(x))
@@ -219,7 +219,7 @@ def test_pointplot_annotate_foreign_axes_warns():
 # ----------------------------------------------------------------------------
 
 def test_pointplot_annotate_fmt_forwarded():
-    fig, ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
+    ax = pp.pointplot(data=_multi_sample_df(), x="time", y="v",
                            errorbar="se", annotate={"fmt": ".1f"})
     for text in ax.texts:
         # one decimal place

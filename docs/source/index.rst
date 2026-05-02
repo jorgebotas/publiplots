@@ -57,7 +57,7 @@ Basic Usage
    })
 
    # Create a simple bar plot
-   fig, ax = pp.barplot(
+   ax = pp.barplot(
        data=data,
        x='category',
        y='value',
@@ -67,7 +67,7 @@ Basic Usage
    )
 
    # Save the figure
-   pp.savefig(fig, 'output.png')
+   pp.savefig('output.png')
 
 Table of Contents
 -----------------

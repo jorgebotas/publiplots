@@ -46,25 +46,25 @@ def _hue_box_df(seed: int = 0):
 # ----------------------------------------------------------------------------
 
 def test_boxplot_annotate_attaches_meta():
-    fig, ax = pp.boxplot(data=_box_df(), x="g", y="y", annotate=True)
+    ax = pp.boxplot(data=_box_df(), x="g", y="y", annotate=True)
     assert isinstance(ax._publiplots_box_meta, BoxStatsMeta)
     assert ax._publiplots_box_meta.owner_is_publiplots is True
 
 
 def test_boxplot_annotate_default_labels_median():
-    fig, ax = pp.boxplot(data=_box_df(), x="g", y="y", annotate=True)
+    ax = pp.boxplot(data=_box_df(), x="g", y="y", annotate=True)
     # 3 boxes × 1 stat (median) = 3 labels
     assert len(ax.texts) == 3
 
 
 def test_boxplot_annotate_multi_stats():
-    fig, ax = pp.boxplot(data=_box_df(), x="g", y="y",
+    ax = pp.boxplot(data=_box_df(), x="g", y="y",
                          annotate={"stats": ["median", "q1", "q3"]})
     assert len(ax.texts) == 9
 
 
 def test_boxplot_annotate_stats_compute_correctly():
-    fig, ax = pp.boxplot(data=_box_df(seed=42), x="g", y="y",
+    ax = pp.boxplot(data=_box_df(seed=42), x="g", y="y",
                          annotate={"stats": ["median", "q1", "q3"]})
     meta = ax._publiplots_box_meta
     for box in meta.boxes:
@@ -74,7 +74,7 @@ def test_boxplot_annotate_stats_compute_correctly():
 
 
 def test_boxplot_annotate_with_hue_has_hue_active():
-    fig, ax = pp.boxplot(data=_hue_box_df(), x="g", y="y", hue="grp",
+    ax = pp.boxplot(data=_hue_box_df(), x="g", y="y", hue="grp",
                          annotate=True)
     meta = ax._publiplots_box_meta
     assert meta.hue_active is True
@@ -87,14 +87,14 @@ def test_boxplot_annotate_with_hue_has_hue_active():
 # ----------------------------------------------------------------------------
 
 def test_boxplot_annotate_anchor_right_default():
-    fig, ax = pp.boxplot(data=_box_df(), x="g", y="y", annotate=True)
+    ax = pp.boxplot(data=_box_df(), x="g", y="y", annotate=True)
     for t in ax.texts:
         assert t.get_ha() == "left"
         assert t.get_va() == "center"
 
 
 def test_boxplot_annotate_anchor_top():
-    fig, ax = pp.boxplot(data=_box_df(), x="g", y="y",
+    ax = pp.boxplot(data=_box_df(), x="g", y="y",
                          annotate={"anchor": "top"})
     meta = ax._publiplots_box_meta
     for t, box in zip(ax.texts, meta.boxes):
@@ -104,7 +104,7 @@ def test_boxplot_annotate_anchor_top():
 
 
 def test_boxplot_annotate_anchor_center_on_median():
-    fig, ax = pp.boxplot(data=_box_df(), x="g", y="y",
+    ax = pp.boxplot(data=_box_df(), x="g", y="y",
                          annotate={"anchor": "center"})
     meta = ax._publiplots_box_meta
     for t, box in zip(ax.texts, meta.boxes):
@@ -130,7 +130,7 @@ def test_boxplot_annotate_invalid_stat_raises():
 # ----------------------------------------------------------------------------
 
 def test_boxplot_annotate_fmt_forwarded():
-    fig, ax = pp.boxplot(data=_box_df(), x="g", y="y",
+    ax = pp.boxplot(data=_box_df(), x="g", y="y",
                          annotate={"fmt": ".1f"})
     for t in ax.texts:
         parts = t.get_text().split(".")
@@ -139,7 +139,7 @@ def test_boxplot_annotate_fmt_forwarded():
 
 
 def test_boxplot_annotate_text_kws_forwarded():
-    fig, ax = pp.boxplot(data=_box_df(), x="g", y="y",
+    ax = pp.boxplot(data=_box_df(), x="g", y="y",
                          annotate={"fontsize": 14, "fontweight": "bold"})
     for t in ax.texts:
         assert t.get_fontsize() == 14
@@ -163,13 +163,13 @@ def test_box_stats_foreign_axes_warns():
 # ----------------------------------------------------------------------------
 
 def test_violinplot_annotate_attaches_meta():
-    fig, ax = pp.violinplot(data=_box_df(), x="g", y="y", annotate=True)
+    ax = pp.violinplot(data=_box_df(), x="g", y="y", annotate=True)
     assert isinstance(ax._publiplots_box_meta, BoxStatsMeta)
     assert len(ax.texts) == 3
 
 
 def test_violinplot_annotate_multi_stats():
-    fig, ax = pp.violinplot(data=_box_df(), x="g", y="y",
+    ax = pp.violinplot(data=_box_df(), x="g", y="y",
                             annotate={"stats": ["median", "q1", "q3"]})
     assert len(ax.texts) == 9
 
@@ -177,7 +177,7 @@ def test_violinplot_annotate_multi_stats():
 def test_violinplot_annotate_stats_match_data():
     """Violin stats must agree with raw-data medians."""
     df = _box_df(seed=42)
-    fig, ax = pp.violinplot(data=df, x="g", y="y", annotate=True)
+    ax = pp.violinplot(data=df, x="g", y="y", annotate=True)
     meta = ax._publiplots_box_meta
     expected_medians = [
         float(df.loc[df["g"] == g, "y"].median()) for g in ("A", "B", "C")

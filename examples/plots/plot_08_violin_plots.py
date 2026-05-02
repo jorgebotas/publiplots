@@ -12,7 +12,6 @@ Examples
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Violin Plot
@@ -33,7 +32,7 @@ violin_data = pd.DataFrame({
 })
 
 # Create simple violin plot
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category',
     y='value',
@@ -41,7 +40,7 @@ fig, ax = pp.violinplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Violin Plot with Hue Grouping
@@ -52,7 +51,7 @@ plt.show()
 violin_data['group'] = np.tile(['Group 1', 'Group 2'], n // 2)
 
 # Create grouped violin plot
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category',
     y='value',
@@ -63,14 +62,14 @@ fig, ax = pp.violinplot(
     ylabel='Value',
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Split Violin Plot
 # ~~~~~~~~~~~~~~~~~
 # Split violins to compare two groups side by side.
 
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category',
     y='value',
@@ -82,14 +81,14 @@ fig, ax = pp.violinplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Violin Plot
 # ~~~~~~~~~~~~~~~~~~~~~~
 # Create horizontal violin plots by swapping x and y.
 
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data[violin_data['group'] == 'Group 1'],
     x='value',
     y='category',
@@ -97,7 +96,7 @@ fig, ax = pp.violinplot(
     xlabel='Value',
     ylabel='Category',
 )
-plt.show()
+pp.show()
 
 # %%
 # Combined Violin and Swarm Plot
@@ -129,7 +128,7 @@ pp.swarmplot(
 ax.set_title('Combined Violin and Swarm Plot')
 ax.set_xlabel('Category')
 ax.set_ylabel('Value')
-plt.show()
+pp.show()
 
 # %%
 # Customization
@@ -139,7 +138,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Adjust transparency of violin fill.
 
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category',
     y='value',
@@ -150,7 +149,7 @@ fig, ax = pp.violinplot(
     ylabel='Value',
     alpha=0.3,
 )
-plt.show()
+pp.show()
 
 # %%
 # Violin Plot with Different Inner Representations
@@ -172,7 +171,7 @@ for ax, inner in zip(axes.flat, inner_types):
         ylabel='Value',
     )
 
-plt.show()
+pp.show()
 
 # %%
 # One-Sided Violin Plots
@@ -211,7 +210,7 @@ pp.violinplot(
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
 
-plt.show()
+pp.show()
 
 # %%
 # Annotated violin stats
@@ -219,13 +218,13 @@ plt.show()
 # Violinplots share the ``box_stats`` annotation strategy with boxplots:
 # ``annotate=True`` labels the median by default; pass
 # ``stats=[...]`` to label multiple statistics per violin. See the
-# dedicated :doc:`annotations gallery <plot_15_annotate>` for more.
+# dedicated :doc:`annotations gallery <plot_16_annotate>` for more.
 
-fig, ax = pp.violinplot(
+ax = pp.violinplot(
     data=violin_data,
     x='category', y='value',
     annotate={"stats": ["median", "q1", "q3"], "fmt": ".1f"},
     title="annotate={'stats': ['median', 'q1', 'q3']}",
 )
-plt.show()
+pp.show()
 

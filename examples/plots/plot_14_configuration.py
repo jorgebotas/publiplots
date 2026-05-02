@@ -9,7 +9,6 @@ set global styles, and customize various plotting parameters.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Understanding rcParams
@@ -27,7 +26,7 @@ print(f"  Default capsize: {pp.rcParams['capsize']}")
 print(f"  Hatch mode: {pp.rcParams['hatch_mode']}")
 
 print("\nMatplotlib Parameters (via pp.rcParams):")
-print(f"  Figure size: {pp.rcParams['figure.figsize']}")
+print(f"  Axes size (mm): {pp.rcParams['subplots.axes_size']}")
 print(f"  Line width: {pp.rcParams['lines.linewidth']}")
 print(f"  Font size: {pp.rcParams['font.size']}")
 print(f"  DPI: {pp.rcParams['savefig.dpi']}")
@@ -50,11 +49,11 @@ sample_data = pd.DataFrame({
 })
 
 print("\nDefault PubliPlots Style (applied on import):")
-print(f"  Figure size: {pp.rcParams['figure.figsize']}")
+print(f"  Axes size (mm): {pp.rcParams['subplots.axes_size']}")
 print(f"  Font size: {pp.rcParams['font.size']}")
 print(f"  DPI: {pp.rcParams['savefig.dpi']}")
 
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=sample_data,
     x='category',
     y='value',
@@ -62,7 +61,7 @@ fig, ax = pp.barplot(
     errorbar='se',
     palette='pastel'
 )
-plt.show()
+pp.show()
 
 # %%
 # Customizing Individual Parameters
@@ -76,19 +75,19 @@ pp.rcParams['capsize'] = 0.15     # Larger error bar caps
 pp.rcParams['hatch_mode'] = 2     # Medium density hatch patterns
 
 # Also customize matplotlib parameters
-pp.rcParams['figure.figsize'] = (8, 5)  # Wider figures
-pp.rcParams['lines.linewidth'] = 2.5    # Thicker lines
-pp.rcParams['font.size'] = 11           # Slightly larger font
+pp.rcParams['subplots.axes_size'] = (80, 50)  # Wider axes (mm)
+pp.rcParams['lines.linewidth'] = 2.5           # Thicker lines
+pp.rcParams['font.size'] = 11                  # Slightly larger font
 
 # Create plot with custom defaults
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=sample_data,
     x='category',
     y='value',
     title='Plot with Custom rcParams',
     errorbar='se',
 )
-plt.show()
+pp.show()
 
 # Reset to default (reverts to matplotlib defaults)
 pp.reset_style()
@@ -167,7 +166,7 @@ pp.barplot(
     ax=axes[1, 1]
 )
 
-plt.show()
+pp.show()
 
 # %%
 # Context-Based Styling
@@ -184,7 +183,7 @@ scatter_data = pd.DataFrame({
 })
 
 # Plot 1: Default settings
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -193,10 +192,10 @@ fig, ax = pp.scatterplot(
     palette='pastel',
     alpha=0.2,
 )
-plt.show()
+pp.show()
 
 # Plot 2: Override alpha and color for this plot only
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=scatter_data,
     x='x',
     y='y',
@@ -205,7 +204,7 @@ fig, ax = pp.scatterplot(
     palette='pastel',
     alpha=0.5,  # Override default alpha just for this plot
 )
-plt.show()
+pp.show()
 
 # %%
 # Saving Figures with Custom Settings
@@ -213,7 +212,7 @@ plt.show()
 # Control output quality and format when saving figures.
 
 # Create a sample figure
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=sample_data,
     x='category',
     y='value',
@@ -223,10 +222,10 @@ fig, ax = pp.barplot(
 )
 
 # Save with different settings (uncomment to actually save)
-# pp.savefig(fig, 'figure_low_res.png', dpi=150)      # Lower resolution
-# pp.savefig(fig, 'figure_high_res.png', dpi=300)     # High resolution
-# pp.savefig(fig, 'figure_vector.pdf')                # Vector format (PDF)
-# pp.savefig(fig, 'figure_vector.svg')                # Vector format (SVG)
+# pp.savefig('figure_low_res.png', dpi=150)      # Lower resolution
+# pp.savefig('figure_high_res.png', dpi=300)     # High resolution
+# pp.savefig('figure_vector.pdf')                # Vector format (PDF)
+# pp.savefig('figure_vector.svg')                # Vector format (SVG)
 
 print("Figure saving examples (commented out to prevent file creation)")
 print("  - PNG at 150 DPI (web/presentations)")
@@ -234,7 +233,7 @@ print("  - PNG at 300 DPI (publications)")
 print("  - PDF (vector, editable)")
 print("  - SVG (vector, web-friendly)")
 
-plt.show()
+pp.show()
 
 # %%
 # Best Practices Summary

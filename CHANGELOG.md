@@ -26,6 +26,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{outside, inside, base, center}`; `point_values` and `box_stats` accept
   `{top, bottom, left, right, center}`.
 
+## [0.7.0] - 2026-05-02
+
+### Breaking changes
+- Plot functions return only the axes they drew into, not `(fig, ax)`. The `fig` handle is accessible via `ax.get_figure()` when needed. `pp.subplots` is unchanged and still returns `(fig, ax)` — it creates the figure, so the user needs the handle.
+- `upsetplot` returns a dict `{"intersections": Axes, "matrix": Axes, "sets": Axes}` instead of `(fig, (ax_i, ax_m, ax_s))`. Switch from positional unpacking to named-key access.
+- `complex_heatmap().build()` returns the axes dict directly instead of `(fig, axes_dict)`.
+
+### Migration
+```python
+# before
+fig, ax = pp.barplot(data=df, x="x", y="y")
+fig.savefig("out.png")
+
+# after
+ax = pp.barplot(data=df, x="x", y="y")
+ax.get_figure().savefig("out.png")   # or plt.savefig("out.png") / pp.savefig("out.png")
+```
+
+For `upsetplot`:
+```python
+# before
+fig, (ax_i, ax_m, ax_s) = pp.upsetplot(sets)
+
+# after
+axes = pp.upsetplot(sets)
+axes["intersections"]; axes["matrix"]; axes["sets"]
+```
+
+### Why
+Every gallery example did `fig, ax = pp.<plot>(...)` and then ignored `fig`. `pp.savefig` already operated on the current figure (the old `pp.savefig(fig, ...)` examples were stale and would have errored). Removing `fig` from the return aligns with seaborn's convention and removes a dead variable.
+
+### Fixed
+- Stale docstring examples across the codebase that showed `pp.savefig(fig, 'output.png')` (an invalid call — `pp.savefig` takes only a filepath) are now correct.
+
+### Internal
+- Removed `docs/COMPLEX_HEATMAP_PLAN.md` (stale pre-implementation design doc for a feature that shipped long ago).
+- Untracked `docs/superpowers/` from the repo — it's a local planning workspace (specs / plans / handoff notes) used by the brainstorming + writing-plans workflow. Added to `.gitignore`; previously-tracked files preserved on disk.
+
+[0.7.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.7.0
+
+## [0.6.0] - 2026-05-02
+
+### Breaking changes
+- `figsize=` is no longer accepted by `barplot`, `boxplot`, `violinplot`, `raincloudplot`, `scatterplot`, `stripplot`, `swarmplot`, `pointplot`, `heatmap` (both categorical and dot paths), `complex_heatmap`, `venn`, or `upsetplot`. Passing `figsize=` raises `TypeError` with a clear migration message. To customize axes dimensions, compose with `pp.subplots(axes_size=(w_mm, h_mm))` and pass `ax=` into the plot function.
+- `complex_heatmap` replaces `figsize=(w_in, h_in)` with `axes_size=(w_mm, h_mm)` (millimeters, matching the rest of the publiplots API). Internally converts to inches for the existing gridspec math. Default is `(80, 60)` mm.
+- `publiplots` no longer overrides matplotlib's `figure.figsize` rcParam. Figure dimensions come from `subplots.axes_size` via `pp.subplots`. Users reading `pp.rcParams['figure.figsize']` now see matplotlib's own default.
+
+### Migration
+Before:
+```python
+pp.barplot(data=df, x="x", y="y", figsize=(4, 3))
+pp.complex_heatmap(data=df, figsize=(5, 5))
+```
+After:
+```python
+fig, ax = pp.subplots(axes_size=(80, 50))  # mm, not inches
+pp.barplot(data=df, x="x", y="y", ax=ax)
+
+pp.complex_heatmap(data=df, axes_size=(90, 90))  # mm, not inches
+```
+Or omit for auto-layout defaults.
+
+### Why
+When a plot function received `figsize=`, it took a `plt.subplots(figsize=...)` branch that did not install `SubplotsAutoLayout`. Legends, titles, and colorbar overflow were not reserved for — figures cropped on save (see the 0.5.0 horizontal raincloud known issue). `pp.subplots` is now the single source of truth for figure + axes dimensions.
+
+### Fixed
+- `barplot` `IndexError` in the `hue-only` legend path (when `hatch == categorical_axis` and `len(hue) < len(categorical_axis)`). The crashing `bar_color` computation is now gated behind the `if not (double_split or hatch == categorical_axis)` check that already guards its only consumer.
+- `venn` internally used `plt.subplots` when `ax is None`, bypassing `SubplotsAutoLayout`. Now routes through `pp.subplots` consistently.
+
+### Known issues
+- `upsetplot` decorations (bar-top annotations, xlabel, title) can clip against the canvas on `plt.show()` and non-tight `savefig`. The bug is pre-existing (present since 0.5.0 and earlier). Tracked in `docs/superpowers/handoff/2026-05-02-upset-layout-followup.md`; a dedicated layout PR will address it.
+- `complex_heatmap` has minor decoration overflow (~0.08 in bottom) in some configurations; part of the same composite-layout rework.
+
+[0.6.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.6.0
+
+## [0.5.0] - 2026-05-01
+
+### Added
+- `pp.subplots(nrows, ncols, axes_size=(w_mm, h_mm), ...)` — fixed-axes-size helper that grows the figure to fit auto-measured decorations (titles, labels, legends).
+- `pp.legend_group(anchor=ax)` auto-collects `LegendEntry` objects stashed by plotting functions; renders one unified legend on the right of the anchor axes with auto-measured column width. Works across scatter, strip, swarm, point, box, violin, raincloud, bar, and heatmap.
+- `"hatch"` as a new `_LEGEND_KINDS` entry — enables `legend={"hatch": False}` for per-kind suppression on bar plots' secondary split dimension.
+- `legend: bool | dict[kind, bool]` accepted on every plot function for per-kind legend control (e.g. `legend={"size": False}` on a dot heatmap keeps the colorbar, hides the size legend).
+- `LayoutReactor` — mm-based draw-event anchoring for colorbars and legend groups; recalibrates on figure resize without per-plot manual positioning.
+- `rcParams["edgecolor"]` as a global default for plot edges (was per-call only).
+- `external_to_axis` flag on reactor registrations so `legend_group` artists don't inflate per-axis tight-bbox measurements.
+- New gallery example `plot_14_edgecolor_control.py` and shared-legend demo panels in `plot_01_bar_plots.py`, `plot_02_scatter_plots.py`.
+
+### Changed
+- Plot functions now use `pp.subplots()` when `figsize` is not provided, installing `SubplotsAutoLayout` for auto-sizing. Users who pass `figsize=` still get the legacy `plt.subplots` path (see [Known issues]).
+- Legend auto-mode reads the new `LegendEntry` store on each axes first, falling back to the legacy per-artist `_legend_data` attribute for backward compatibility.
+- Publication-first defaults unified — dropped the separate "notebook" style; all plots render at paper-ready dimensions by default.
+- Bulletproof legend builder: mm-based positioning with automatic column overflow and a per-axes singleton pattern.
+
+### Fixed
+- Legend auto-layout measurement now unions reactor-pinned figure-level text artists (e.g. colorbar titles) into the side-reservation calculation, so titles no longer crop on `savefig`.
+- `savefig` now settles layout before rendering — legend/title overflow is sized into the saved figure, not cropped post-hoc.
+- `raincloudplot` no longer injects `rcParams["figure.figsize"]` as a default, letting the inner `violinplot` take the `pp.subplots` path and auto-reserve legend space.
+- `violinplot` applies `edgecolor` to cloud `PolyCollection`s (previously seaborn's `linecolor` only touched inner stat lines).
+- Colorbar title now sits above the colorbar, not overlapping.
+- Gallery build preserves publiplots styling across sphinx-gallery runs.
+
+### Known issues
+- Plots called with explicit `figsize=(w_in, h_in)` still route through `plt.subplots(figsize=...)` and bypass `SubplotsAutoLayout`, which can crop legends and titles (e.g. the horizontal raincloud example in `plot_08`). Tracked for a dedicated cleanup PR that replaces `figsize=` with `axes_size=` across all plot functions.
+- `barplot` raises `IndexError` in the `hue-only` legend path (`hatch == categorical_axis`) when `len(hue) < len(categorical_axis)`. Workaround: match cardinalities in that specific layout. Tracked for a dedicated fix PR.
+
+[0.5.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.5.0
+
 ## [0.4.7] - 2026-04-29
 
 ### Added

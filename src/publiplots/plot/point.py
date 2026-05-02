@@ -17,9 +17,17 @@ from typing import Optional, Tuple, Union, Dict, List
 
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
-from publiplots.themes.markers import resolve_marker_map
-from publiplots.themes.linestyles import resolve_linestyle_map
-from publiplots.utils import create_legend_handles, legend
+from publiplots.utils import create_legend_handles
+from publiplots.utils.legend import legend as legend_fn
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    get_entries,
+    resolve_legend_flags,
+    entry_is_in_group,
+    is_continuous_hue,
+)
+from publiplots.utils.plot_legend import resolve_style_maps
 
 
 def pointplot(
@@ -49,16 +57,15 @@ def pointplot(
     linewidth: Optional[float] = None,
     markersize: Optional[float] = None,
     markeredgewidth: Optional[float] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     annotate: Union[bool, Dict, None] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a point plot with publiplots styling.
 
@@ -138,8 +145,6 @@ def pointplot(
         Size of markers.
     markeredgewidth : float, default=1.0
         Width of marker edges.
-    figsize : tuple, default=(6, 4)
-        Figure size (width, height) if creating new figure.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -158,28 +163,29 @@ def pointplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple point plot:
-    >>> fig, ax = pp.pointplot(data=df, x="time", y="value")
+    >>> ax = pp.pointplot(data=df, x="time", y="value")
 
     Point plot with grouping:
-    >>> fig, ax = pp.pointplot(
+    >>> ax = pp.pointplot(
     ...     data=df, x="time", y="value", hue="group",
     ...     palette={'Control': '#8E8EC1', 'Treated': '#75B375'}
     ... )
 
     Point plot with custom markers:
-    >>> fig, ax = pp.pointplot(
+    >>> ax = pp.pointplot(
     ...     data=df, x="time", y="value", hue="group",
     ...     markers=["o", "D"], errorbar="se"
     ... )
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     markersize = resolve_param("lines.markersize", markersize)
@@ -194,15 +200,12 @@ def pointplot(
             "join parameter is deprecated. Use linestyle='none' instead for no connecting lines."
         )
 
-    # Create figure if not provided
-    # Only fall back to matplotlib's figsize when the user explicitly provides one;
-    # otherwise use pp.subplots so axes_size comes from pp.rcParams["subplots.axes_size"].
+    # Create figure via pp.subplots to install SubplotsAutoLayout; users who
+    # want custom dimensions should compose with pp.subplots(axes_size=...)
+    # before calling and pass ax=.
     if ax is None:
-        if figsize is not None:
-            fig, ax = plt.subplots(figsize=figsize)
-        else:
-            from publiplots.layout.subplots import subplots as _pp_subplots
-            fig, ax = _pp_subplots()
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 
@@ -221,21 +224,33 @@ def pointplot(
         )
         # hue_order = list(palette.keys())
 
+        # Normalize sentinel inputs before delegating to shared resolver.
         if markers is not False:
             if markers is True:
                 markers = None
             elif isinstance(markers, str):
                 markers = [markers]
-            # Get marker mapping
-            marker_map = resolve_marker_map(values=list(hue_values), marker_map=markers)
-            # Convert to list for seaborn
-            markers = [marker_map[val] for val in data[hue].unique()]
-        
+
         if linestyles is None:
             linestyles = [linestyle]
         elif isinstance(linestyles, str):
             linestyles = [linestyles]
-        linestyle_map = resolve_linestyle_map(values=list(hue_values), linestyle_map=linestyles)
+
+        # Resolve marker + linestyle maps via shared helper. Pass True to
+        # request defaults when no explicit list/dict is provided; pass False
+        # to skip marker resolution entirely.
+        marker_arg = False if markers is False else (markers if markers is not None else True)
+        marker_map, linestyle_map = resolve_style_maps(
+            style=hue,
+            data=data,
+            style_order=list(hue_values),
+            markers=marker_arg,
+            dashes=linestyles,
+        )
+
+        # Convert back to lists for seaborn (one entry per unique hue value).
+        if markers is not False:
+            markers = [marker_map[val] for val in data[hue].unique()]
         linestyles = [linestyle_map[val] for val in data[hue].unique()]
 
     # Prepare err_kws with linewidth
@@ -301,8 +316,10 @@ def pointplot(
     if title is not None:
         ax.set_title(title)
 
-    # Add legend if hue is used
-    if legend and hue is not None:
+    # Stash legend entry (per-kind) and optionally render per-axis legend.
+    # legend may be bool or dict[str, bool]; False short-circuits both stash
+    # and render, True stashes/renders everything, and a dict filters per kind.
+    if hue is not None:
         _legend(
             ax=ax,
             hue=hue,
@@ -315,6 +332,7 @@ def pointplot(
             alpha=alpha,
             linewidth=linewidth,
             kwargs=legend_kws,
+            legend=legend,
         )
 
     if annotate:
@@ -335,7 +353,7 @@ def pointplot(
         opts = annotate if isinstance(annotate, dict) else {}
         _annotate_fn(ax, kind="point_values", **opts)
 
-    return fig, ax
+    return ax
 
 def _format_for_custom_errorbar(
     data: pd.DataFrame,
@@ -457,30 +475,17 @@ def _legend(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     kwargs: Optional[Dict] = None,
+    legend: Union[bool, Dict] = True,
 ) -> None:
     """
-    Create legend handles for point plot.
+    Stash LegendEntry objects for point plot and optionally render per-axis legend.
 
     Parameters
     ----------
-    ax : Axes
-        Axes to create legend for.
-    hue : str
-        Hue column name.
-    palette : dict or str
-        Color palette mapping.
-    markers : list or dict
-        Marker symbols for each hue level.
-    markersize : float, optional
-        Marker size for legend markers.
-    markeredgewidth : float, optional
-        Marker edge width for legend markers.
-    alpha : float, optional
-        Transparency for legend markers.
-    linewidth : float, optional
-        Line width for legend markers.
-    kwargs : dict, optional
-        Additional legend customization.
+    legend : bool or dict, default=True
+        - ``True``  -> stash all kinds and render per-axis (unless claimed by a group).
+        - ``False`` -> stash nothing and render nothing.
+        - ``dict``  -> per-kind flags (missing keys default to True).
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
@@ -490,11 +495,10 @@ def _legend(
 
     kwargs = kwargs or {}
 
-    # Store legend data
-    legend_data = {}
+    flags = resolve_legend_flags(legend)
 
-    # Extract unique hue values from marker_info
-    if isinstance(palette, dict):
+    # Stash hue entry
+    if flags["hue"] and isinstance(palette, dict):
         # Use palette keys as the source of truth for labels
         labels = list(palette.keys())
         colors = list(palette.values())
@@ -512,14 +516,39 @@ def _legend(
             markeredgewidth=markeredgewidth,
         )
 
-        legend_data["hue"] = {
-            "handles": hue_handles,
-            "label": kwargs.pop("hue_label", hue),
-        }
+        hue_label = kwargs.pop("hue_label", hue)
+        stash_entry(
+            ax,
+            LegendEntry.build(
+                name=hue_label,
+                kind="hue",
+                handles=hue_handles,
+                labels=[str(label) for label in labels],
+            ),
+        )
 
-    # Store metadata on first line for retrieval
-    if len(ax.lines) > 0:
-        ax.lines[0]._legend_data = legend_data
+    # Render per-axis legend for entries not claimed by a figure-level group.
+    # legend=False short-circuits (all flags False, nothing stashed, nothing to render).
+    if legend is False:
+        return
 
-    # Create legend using legend() API
-    return legend(ax=ax)
+    fig = ax.get_figure()
+    entries_to_render = [
+        e for e in get_entries(ax)
+        if flags[e.kind] and not entry_is_in_group(fig, e)
+    ]
+    if not entries_to_render:
+        return
+
+    builder = legend_fn(ax=ax, auto=False)
+    for entry in entries_to_render:
+        if entry.kind == "hue" and is_continuous_hue(entry.handles):
+            builder.add_colorbar(
+                mappable=entry.handles[0],
+                label=entry.name,
+            )
+        else:
+            builder.add_legend(
+                handles=list(entry.handles),
+                label=entry.name,
+            )

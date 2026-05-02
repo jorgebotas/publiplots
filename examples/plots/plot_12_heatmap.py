@@ -10,7 +10,6 @@ and complex heatmaps with margin plots.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Heatmap (Wide Format)
@@ -29,7 +28,7 @@ expression_matrix = pd.DataFrame(
 )
 
 # Create heatmap with diverging colormap centered at 0
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     expression_matrix,
     cmap='RdBu_r',
     center=0,
@@ -37,14 +36,14 @@ fig, ax = pp.heatmap(
     xlabel='Samples',
     ylabel='Genes',
 )
-plt.show()
+pp.show()
 
 # %%
 # Annotated Heatmap
 # -----------------
 # Display values inside each cell.
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     expression_matrix,
     cmap='viridis',
     annot=True,
@@ -53,7 +52,7 @@ fig, ax = pp.heatmap(
     linecolor='white',
     title='Annotated Expression Matrix',
 )
-plt.show()
+pp.show()
 
 # %%
 # Heatmap from Long-Format Data
@@ -71,7 +70,7 @@ for gene in genes:
         })
 long_df = pd.DataFrame(long_data)
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     long_df,
     x='sample',
     y='gene',
@@ -81,7 +80,7 @@ fig, ax = pp.heatmap(
     title='Heatmap from Long-Format Data',
     legend_kws={'value_label': 'Expression (Z-score)'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Dot Heatmap (Bubble Plot)
@@ -105,7 +104,7 @@ for pathway in pathways:
         })
 enrichment_df = pd.DataFrame(enrichment_data)
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     enrichment_df,
     x='condition',
     y='pathway',
@@ -120,7 +119,7 @@ fig, ax = pp.heatmap(
         'size_label': 'P-value',
     },
 )
-plt.show()
+pp.show()
 
 # %%
 # Clustered Heatmap
@@ -143,19 +142,19 @@ cluster_matrix = pd.DataFrame(
 cluster_matrix.iloc[:10, :5] += 1.5
 cluster_matrix.iloc[10:, 5:] += 1.5
 
-fig, axes = (
+axes = (
     pp.complex_heatmap(
         cluster_matrix,
         cmap='RdBu_r',
         center=0,
         row_cluster=True,
         col_cluster=True,
-        figsize=(5, 5),
+        axes_size=(90, 90),
     )
     .build()
 )
-plt.suptitle('Clustered Heatmap with Dendrograms', y=1.02)
-plt.show()
+pp.suptitle('Clustered Heatmap with Dendrograms', y=1.02)
+pp.show()
 
 # %%
 # Complex Heatmap with Margin Plots
@@ -186,11 +185,11 @@ row_summary = pd.DataFrame({
     'mean': expr_matrix.mean(axis=1).values,
 })
 
-fig, axes = (
+axes = (
     pp.complex_heatmap(
         expr_matrix,
         cmap='viridis',
-        figsize=(4, 4),
+        axes_size=(80, 80),
         row_cluster=True,
         col_cluster=True,
     )
@@ -204,8 +203,8 @@ fig, axes = (
     )
     .build()
 )
-plt.suptitle('Complex Heatmap with Summary Bar Plot', y=1.02)
-plt.show()
+pp.suptitle('Complex Heatmap with Summary Bar Plot', y=1.02)
+pp.show()
 
 # %%
 # Dot Heatmap for GO Enrichment
@@ -233,7 +232,7 @@ for term in go_terms:
         })
 go_df = pd.DataFrame(go_data)
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     go_df,
     x='comparison',
     y='GO_term',
@@ -247,7 +246,7 @@ fig, ax = pp.heatmap(
         'size_label': '-log10(p-value)',
     },
 )
-plt.show()
+pp.show()
 
 # %%
 # Square Heatmap
@@ -261,7 +260,7 @@ corr_data = pd.DataFrame(
 corr_data.index = ['Var_' + str(i) for i in range(10)]
 corr_data.columns = corr_data.index
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     corr_data,
     cmap='coolwarm',
     center=0,
@@ -271,14 +270,14 @@ fig, ax = pp.heatmap(
     linewidths=0.5,
     title='Correlation Matrix',
 )
-plt.show()
+pp.show()
 
 # %%
 # Complex Heatmap Without Dendrograms
 # -----------------------------------
 # Cluster the data but hide the dendrograms.
 
-fig, axes = (
+axes = (
     pp.complex_heatmap(
         cluster_matrix,
         cmap='viridis',
@@ -286,9 +285,9 @@ fig, axes = (
         col_cluster=True,
         row_dendrogram=False,  # Hide row dendrogram
         col_dendrogram=False,  # Hide column dendrogram
-        figsize=(5, 5),
+        axes_size=(90, 90),
     )
     .build()
 )
-plt.suptitle('Clustered Heatmap (Dendrograms Hidden)', y=1.02)
-plt.show()
+pp.suptitle('Clustered Heatmap (Dendrograms Hidden)', y=1.02)
+pp.show()

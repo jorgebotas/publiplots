@@ -11,7 +11,6 @@ comparing groups over time or conditions.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Point Plot
@@ -31,7 +30,7 @@ simple_data = pd.DataFrame({
 })
 
 # Create simple point plot
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=simple_data,
     x='time',
     y='measurement',
@@ -40,7 +39,7 @@ fig, ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 
 # %%
@@ -62,7 +61,7 @@ hue_data = pd.DataFrame({
 })
 
 # Create point plot with hue
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -73,7 +72,7 @@ fig, ax = pp.pointplot(
     palette="RdGyBu_r"
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 
 # %%
@@ -81,7 +80,7 @@ plt.show()
 # -------------------------------
 # Use different marker shapes for each group.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -93,14 +92,14 @@ fig, ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 # %%
 # Point Plot with Custom Line Styles
 # -----------------------------------
 # Use different line styles to distinguish groups.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -112,14 +111,14 @@ fig, ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 # %%
 # Complete Customization
 # ----------------------
 # Combine custom markers, line styles, and palette with error bars.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -133,14 +132,14 @@ fig, ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 # %%
 # Point Plot with Standard Error
 # -------------------------------
 # Use standard error instead of confidence intervals.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -152,14 +151,14 @@ fig, ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 # %%
 # Point Plot with Standard Deviation
 # -----------------------------------
 # Show standard deviation as error bars.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -171,7 +170,7 @@ fig, ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y", alpha=0.3)
-plt.show()
+pp.show()
 
 # %%
 # Forest Plot: Log2 Odds Ratios with Significance Coloring
@@ -224,7 +223,7 @@ def get_significance(row):
         return 'Non-significant'  # Non-significant (CI crosses 1)
 
 genetic_data['Significance'] = genetic_data.apply(get_significance, axis=1)
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=genetic_data.sort_values("log2_or", ascending=False),
     x='log2_or',
     y='gene',
@@ -271,7 +270,7 @@ long_format_data = pd.DataFrame({
 })
 
 # Create forest plot with automatic CI calculation
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=long_format_data,
     x='response',
     y='treatment',
@@ -291,7 +290,7 @@ ax.axvline(x=placebo_mean, color='red', linestyle=':', linewidth=1.5,
 ax.grid(axis='x', alpha=0.3)
 ax.legend(loc='lower right')
 
-plt.show()
+pp.show()
 
 # %%
 # Annotated points
@@ -299,13 +298,13 @@ plt.show()
 # ``annotate=True`` labels each mean with its value, above the errorbar
 # cap by default. Point-plot anchors are directional (``top``, ``bottom``,
 # ``left``, ``right``, ``center``). See the dedicated
-# :doc:`annotations gallery <plot_15_annotate>` for more.
+# :doc:`annotations gallery <plot_16_annotate>` for more.
 
-fig, ax = pp.pointplot(
+ax = pp.pointplot(
     data=simple_data,
     x='time', y='measurement',
     errorbar='se',
     annotate={"fmt": ".1f"},
     title="annotate=True",
 )
-plt.show()
+pp.show()

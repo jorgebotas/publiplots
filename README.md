@@ -94,7 +94,7 @@ import pandas as pd
 pp.set_publication_style()
 
 # Create a scatter plot
-fig, ax = pp.scatterplot(
+ax = pp.scatterplot(
     data=df,
     x='measurement_a',
     y='measurement_b',
@@ -103,7 +103,7 @@ fig, ax = pp.scatterplot(
 )
 
 # Save with publication-ready settings
-pp.savefig(fig, 'figure.pdf')
+pp.savefig('figure.pdf')
 ```
 
 ## Contributing

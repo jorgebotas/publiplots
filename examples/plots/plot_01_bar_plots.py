@@ -9,7 +9,6 @@ including simple bars, grouped bars, error bars, and hatch patterns.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Bar Plot
@@ -23,7 +22,7 @@ simple_data = pd.DataFrame({
 })
 
 # Create simple bar plot
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=simple_data,
     x='category',
     y='value',
@@ -32,7 +31,7 @@ fig, ax = pp.barplot(
     ylabel='Value',
     palette='pastel',
 )
-plt.show()
+pp.show()
 
 # %%
 # Bar Plot with Error Bars
@@ -52,7 +51,7 @@ error_data = pd.DataFrame({
 })
 
 # Create bar plot with error bars
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=error_data,
     x='treatment',
     y='response',
@@ -63,7 +62,7 @@ fig, ax = pp.barplot(
     capsize=0.1,
     palette='pastel',
 )
-plt.show()
+pp.show()
 
 # %%
 # Grouped Bar Plot with Hue
@@ -92,7 +91,7 @@ hue_data = pd.DataFrame({
 })
 
 # Create grouped bar plot
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=hue_data,
     x='time',
     y='measurement',
@@ -103,7 +102,7 @@ fig, ax = pp.barplot(
     errorbar='se',
     palette="RdGyBu_r",
 )
-plt.show()
+pp.show()
 
 # %%
 # Bar Plot with Hatch Patterns Only
@@ -122,7 +121,7 @@ hatch_only_data = pd.DataFrame({
 })
 
 # Create bar plot with hatch patterns (no hue)
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=hatch_only_data,
     x='condition',
     y='intensity',
@@ -135,7 +134,7 @@ fig, ax = pp.barplot(
     hatch_map={'Low': '', 'Medium': '//', 'High': 'xx'},
     alpha=0.0,
 )
-plt.show()
+pp.show()
 
 # %%
 # Bar Plot with Hue and Hatch (Double Split)
@@ -169,7 +168,7 @@ double_split_data = pd.DataFrame({
 })
 
 # Create bar plot with both hue and hatch
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=double_split_data,
     x="cell_type",
     y="viability",
@@ -181,9 +180,8 @@ fig, ax = pp.barplot(
     errorbar="se",
     palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
     hatch_map={"24h": "", "48h": "///"},
-    figsize=(8, 5)
 )
-plt.show()
+pp.show()
 
 # %%
 # Annotated hue + hatch bars
@@ -192,7 +190,7 @@ plt.show()
 # even when bars are dodged across both a hue and a hatch dimension —
 # 12 bars here (3 cell types × 2 treatments × 2 time points), 12 labels.
 
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=double_split_data,
     x="cell_type",
     y="viability",
@@ -201,11 +199,10 @@ fig, ax = pp.barplot(
     errorbar="se",
     palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
     hatch_map={"24h": "", "48h": "///"},
-    figsize=(8, 5),
     annotate={"fmt": ".0f"},
     title="annotate=True with hue × hatch",
 )
-plt.show()
+pp.show()
 
 # %%
 # Annotated bars when hue or hatch matches the categorical axis
@@ -229,7 +226,7 @@ time_data = pd.DataFrame({
 hue_palette = {"Control": "#cccccc", "Drug A": "#8E8EC1", "Drug B": "#60a8a8"}
 
 # hue == categorical axis (vs. hue == cat + hatch on a separate column)
-fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+fig, axes = pp.subplots(1, 2, axes_size=(60, 50))
 pp.barplot(
     data=simple_data, x="category", y="value", hue="category", ax=axes[0],
     palette="pastel", errorbar=None,
@@ -245,11 +242,11 @@ pp.barplot(
     annotate={"fmt": ".0f"},
     title="hue == categorical axis + hatch",
 )
-plt.show()
+pp.show()
 
 # hatch == categorical axis (vs. hatch == cat + hue on a separate column)
 hatch_by_cat = {"Control": "", "Drug A": "///", "Drug B": "xxx"}
-fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+fig, axes = pp.subplots(1, 2, axes_size=(60, 50))
 pp.barplot(
     data=time_data[time_data["time"] == "24h"],
     x="treatment", y="response", hatch="treatment", ax=axes[0],
@@ -268,7 +265,7 @@ pp.barplot(
     annotate={"fmt": ".0f"},
     title="hatch == categorical axis + hue",
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Bar Plot
@@ -285,7 +282,7 @@ horizontal_data = pd.DataFrame({
 })
 
 # Create horizontal bar plot
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=horizontal_data,
     x='expression',
     y='gene',
@@ -298,21 +295,52 @@ fig, ax = pp.barplot(
     alpha=0.3,
     order=horizontal_data['gene'].tolist()
 )
-plt.show()
+pp.show()
+
+# %%
+# Shared Legend Across Subplots
+# ------------------------------
+# When several bar subplots share the same ``hue`` and ``hatch`` variables,
+# attach ``pp.legend_group(anchor=...)`` before drawing. Each ``barplot``
+# stashes its hue + hatch entries on the corresponding axes; the group
+# collects them (deduped by name across subplots) and renders a single
+# legend on the right of the rightmost subplot — with both the hue swatches
+# and the hatch patterns.
+
+np.random.seed(99)
+shared_df = pd.DataFrame({
+    "cat": np.tile(["A", "B", "C"], 60),
+    "val": np.random.randn(180) + np.tile([0, 1, 2], 60),
+    "group": np.repeat(["low", "mid", "high"], 60),
+    "time": np.tile(np.repeat(["24h", "48h"], 30), 3),
+})
+
+fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
+pp.legend_group(anchor=axes[-1])
+for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
+    pp.barplot(
+        data=shared_df, x="cat", y="val",
+        hue="group", hatch="time",
+        palette="pastel",
+        hatch_map={"24h": "", "48h": "///"},
+        title=title, ax=ax,
+        errorbar="se",
+    )
+pp.show()
 
 # %%
 # Annotated bars
 # --------------
 # Label each bar with its aggregated value by passing ``annotate=True``.
 # Pass a dict to control format, anchor, color, and text kwargs. See the
-# dedicated :doc:`annotations gallery <plot_15_annotate>` for the full
+# dedicated :doc:`annotations gallery <plot_16_annotate>` for the full
 # option set shared across barplot, pointplot, boxplot, and violinplot.
 
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=simple_data,
     x='category', y='value',
     palette='pastel',
     annotate={"fmt": ".0f"},
     title="annotate={'fmt': '.0f'}",
 )
-plt.show()
+pp.show()

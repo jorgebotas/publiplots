@@ -46,7 +46,7 @@ def upsetplot(
     title: str = "",
     intersection_label: str = "",
     set_label: str = ""
-) -> Tuple[Figure, Tuple[Axes, Axes, Axes]]:
+) -> Dict[str, Axes]:
     """
     Create an UpSet plot for visualizing set intersections.
 
@@ -136,14 +136,12 @@ def upsetplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib Figure object.
-
-    axes : tuple of (Axes, Axes, Axes)
-        Tuple containing three axes:
-        - ax_intersections: Intersection size bar plot (top)
-        - ax_matrix: Set membership matrix (middle)
-        - ax_sets: Set size bar plot (left)
+    dict
+        Dict with keys ``"intersections"``, ``"matrix"``, ``"sets"``, each
+        mapping to an Axes:
+        - ``"intersections"``: Intersection size bar plot (top)
+        - ``"matrix"``: Set membership matrix (middle)
+        - ``"sets"``: Set size bar plot (left)
 
     Notes
     -----
@@ -172,7 +170,7 @@ def upsetplot(
     ...     'Set B': {3, 4, 5, 6, 7},
     ...     'Set C': {5, 6, 7, 8, 9}
     ... }
-    >>> fig, axes = upsetplot(data, title='Set Intersections')
+    >>> axes = upsetplot(data, title='Set Intersections')
 
     Create from a DataFrame with binary membership:
 
@@ -181,15 +179,15 @@ def upsetplot(
     ...     'Set B': [0, 1, 1, 1, 0],
     ...     'Set C': [0, 0, 1, 1, 1]
     ... })
-    >>> fig, axes = upsetplot(df, sort_by='degree', min_degree=2)
+    >>> axes = upsetplot(df, sort_by='degree', min_degree=2)
 
     Filter to show only intersections with at least 10 elements:
 
-    >>> fig, axes = upsetplot(data, min_subset_size=10, show_counts=15)
+    >>> axes = upsetplot(data, min_subset_size=10, show_counts=15)
 
     Customize colors and styling:
 
-    >>> fig, axes = upsetplot(
+    >>> axes = upsetplot(
     ...     data,
     ...     color='#ff6b6b',
     ...     elementsize=64  # Larger, more spacious plot
@@ -197,11 +195,11 @@ def upsetplot(
 
     Control plot size via elementsize:
 
-    >>> fig, axes = upsetplot(
+    >>> axes = upsetplot(
     ...     data,
     ...     elementsize=32  # Compact plot
     ... )
-    >>> fig, axes = upsetplot(
+    >>> axes = upsetplot(
     ...     data,
     ...     elementsize=64  # Spacious plot
     ... )
@@ -266,12 +264,11 @@ def upsetplot(
     n_sets = processed["n_sets"]
     n_intersections = processed["n_intersections"]
 
-    # Create figure with initial size (will be adjusted by setup_upset_axes)
-    # Initial size is just a starting point - setup_upset_axes will resize based on elementsize
-    default_width, default_height = resolve_param("figure.figsize")
-    width = max(default_width, n_intersections * 0.4)
-    height = max(default_height, n_sets * 0.8 + 3)
-    fig = plt.figure(figsize=(width, height))
+    # Create a bare figure; setup_upset_axes() immediately resizes it (via
+    # fig.set_figwidth/set_figheight) based on elementsize, so we don't
+    # reserve space or install SubplotsAutoLayout here — UpSet manages its
+    # own gridspec and figure dimensions.
+    fig = plt.figure()
 
     # Setup axes with proper sizing that maintains proportions
     # Figure size is automatically calculated based on elementsize
@@ -331,4 +328,58 @@ def upsetplot(
         set_label=set_label,
     )
 
-    return fig, (ax_intersections, ax_matrix, ax_sets)
+    # Reserve vertical space for decorations (bar-top annotations, xlabel,
+    # title, ticklabels) that would otherwise clip because the gridspec spans
+    # the full figure (top=1/bottom=0). Draw once, measure overflow, grow the
+    # figure by the measured amount, and shift the gridspec inward so panel
+    # dimensions stay unchanged.
+    _reserve_upset_decoration_space(fig, ax_intersections, ax_sets, ax_matrix)
+
+    return {
+        "intersections": ax_intersections,
+        "matrix": ax_matrix,
+        "sets": ax_sets,
+    }
+
+
+def _reserve_upset_decoration_space(fig, ax_intersections, ax_sets, ax_matrix):
+    """Grow the figure and shift the gridspec so decorations don't clip.
+
+    UpSet's gridspec uses ``top=1, bottom=0`` (zero margin). Bar-top
+    annotations, xlabels, titles, and ticklabels therefore extend outside
+    the figure canvas and clip on ``plt.show()`` or non-tight ``savefig``.
+
+    Measurement-driven fix: draw once, compute overflow in inches at the
+    top and bottom of the figure, grow ``figheight`` by that amount, then
+    shift the gridspec ``top``/``bottom`` inward by the same fractional
+    amount so the plotted panels keep their original dimensions.
+    """
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    tight = fig.get_tightbbox(renderer)
+    fig_bb = fig.bbox_inches
+
+    # Overflow in inches; negative means safely inside the canvas.
+    top_overflow = max(0.0, tight.y1 - fig_bb.y1)
+    bottom_overflow = max(0.0, -tight.y0)
+
+    if top_overflow == 0.0 and bottom_overflow == 0.0:
+        return  # Nothing to reserve.
+
+    # Small padding beyond the measured overflow so borders don't kiss the
+    # canvas edge.
+    pad_in = 4.0 / 72.0  # ~4 pt
+    top_pad_in = top_overflow + pad_in if top_overflow > 0 else 0.0
+    bottom_pad_in = bottom_overflow + pad_in if bottom_overflow > 0 else 0.0
+
+    current_h_in = fig.get_figheight()
+    new_h_in = current_h_in + top_pad_in + bottom_pad_in
+    fig.set_figheight(new_h_in)
+
+    # Recover the gridspec from any of its subplots and shift top/bottom
+    # inward by the padding we just added.
+    gs = ax_intersections.get_gridspec()
+    gs.update(
+        top=1.0 - top_pad_in / new_h_in,
+        bottom=bottom_pad_in / new_h_in,
+    )

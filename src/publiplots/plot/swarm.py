@@ -10,14 +10,23 @@ from typing import Optional, List, Dict, Tuple, Union
 from publiplots.themes.rcparams import resolve_param
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 import seaborn as sns
 import pandas as pd
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils.transparency import ArtistTracker
-from publiplots.utils.legend import create_legend_handles, legend
+from publiplots.utils.legend import create_legend_handles
+from publiplots.utils.legend import legend as legend_fn
+from publiplots.utils.legend_entries import (
+    LegendEntry,
+    stash_entry,
+    get_entries,
+    resolve_legend_flags,
+    entry_is_in_group,
+    is_continuous_hue,
+)
+from publiplots.utils.plot_legend import stash_continuous_hue
 
 
 def swarmplot(
@@ -36,15 +45,14 @@ def swarmplot(
     linewidth: Optional[float] = None,
     hue_norm: Optional[Union[Tuple[float, float], Normalize]] = None,
     alpha: Optional[float] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
     ylabel: str = "",
-    legend: bool = True,
+    legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready swarm plot.
 
@@ -83,8 +91,6 @@ def swarmplot(
         Normalization for continuous hue variable.
     alpha : float, optional
         Transparency of marker fill (0-1).
-    figsize : tuple, optional
-        Figure size (width, height) if creating new figure.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -102,39 +108,37 @@ def swarmplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple swarm plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.swarmplot(data=df, x="category", y="value")
+    >>> ax = pp.swarmplot(data=df, x="category", y="value")
 
     Swarm plot with hue grouping:
 
-    >>> fig, ax = pp.swarmplot(
+    >>> ax = pp.swarmplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
+    from publiplots.layout.subplots import reject_figsize
+    reject_figsize(kwargs)
+
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)
 
-    # Create figure if not provided
-    # Only fall back to matplotlib's figsize when the user explicitly provides one;
-    # otherwise use pp.subplots so axes_size comes from pp.rcParams["subplots.axes_size"].
+    # Create figure via pp.subplots to install SubplotsAutoLayout; users who
+    # want custom dimensions should compose with pp.subplots(axes_size=...)
+    # before calling and pass ax=.
     if ax is None:
-        if figsize is not None:
-            fig, ax = plt.subplots(figsize=figsize)
-        else:
-            from publiplots.layout.subplots import subplots as _pp_subplots
-            fig, ax = _pp_subplots()
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 
@@ -182,8 +186,10 @@ def swarmplot(
     # Apply transparency to new collections only
     tracker.apply_transparency(on="collections", face_alpha=alpha)
 
-    # Add legend if hue is used
-    if legend and hue is not None:
+    # Stash legend entry (per-kind) and optionally render per-axis legend.
+    # legend may be bool or dict[str, bool]; False short-circuits both stash
+    # and render, True stashes/renders everything, and a dict filters per kind.
+    if hue is not None:
         _legend(
             ax=ax,
             hue=hue,
@@ -194,6 +200,7 @@ def swarmplot(
             alpha=alpha,
             linewidth=linewidth,
             kwargs=legend_kws,
+            legend=legend,
         )
 
     # Set labels
@@ -204,7 +211,7 @@ def swarmplot(
     if title:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _legend(
@@ -217,9 +224,17 @@ def _legend(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     kwargs: Optional[Dict] = None,
+    legend: Union[bool, Dict] = True,
 ) -> None:
     """
-    Create legend handles for swarm plot.
+    Stash LegendEntry objects for swarm plot and optionally render per-axis legend.
+
+    Parameters
+    ----------
+    legend : bool or dict, default=True
+        - ``True``  -> stash all kinds and render per-axis (unless claimed by a group).
+        - ``False`` -> stash nothing and render nothing.
+        - ``dict``  -> per-kind flags (missing keys default to True).
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
@@ -228,38 +243,56 @@ def _legend(
     kwargs = kwargs or {}
     handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="circle")
 
-    # Store legend data in collection for later retrieval
-    legend_data = {}
+    flags = resolve_legend_flags(legend)
 
-    # Prepare hue legend data
-    if hue is not None:
+    # Stash hue entry
+    if hue is not None and flags["hue"]:
         hue_label = kwargs.pop("hue_label", hue)
-        if isinstance(palette, dict):  # categorical legend
+        if isinstance(palette, dict):  # categorical
+            hue_labels = list(palette.keys())
             hue_handles = create_legend_handles(
-                labels=list(palette.keys()),
+                labels=hue_labels,
                 colors=list(palette.values()),
                 edgecolors=[edgecolor] * len(palette) if edgecolor else None,
                 **handle_kwargs
             )
-            legend_data["hue"] = {
-                "handles": hue_handles,
-                "label": hue_label,
-            }
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=hue_label,
+                    kind="hue",
+                    handles=hue_handles,
+                    labels=hue_labels,
+                ),
+            )
         else:
-            # Continuous colorbar
-            mappable = ScalarMappable(norm=hue_norm, cmap=palette)
-            legend_data["hue"] = {
-                "mappable": mappable,
-                "label": hue_label,
-                "height": kwargs.pop("hue_height", 0.2),
-                "width": kwargs.pop("hue_width", 0.05),
-                "type": "colorbar",
-            }
+            # continuous -> colorbar
+            stash_continuous_hue(
+                ax, name=hue_label, palette=palette, hue_norm=hue_norm
+            )
 
-    # Store metadata on collection
-    if len(ax.collections) > 0:
-        ax.collections[0]._legend_data = legend_data
+    # Render per-axis legend for entries not claimed by a figure-level group.
+    # legend=False short-circuits (all flags False, nothing stashed, nothing to render).
+    if legend is False:
+        return
 
-    # Create legends using legend() API
-    from publiplots.utils.legend import legend as pp_legend
-    builder = pp_legend(ax=ax)
+    fig = ax.get_figure()
+    entries_to_render = [
+        e for e in get_entries(ax)
+        if flags[e.kind] and not entry_is_in_group(fig, e)
+    ]
+    if not entries_to_render:
+        return
+
+    builder = legend_fn(ax=ax, auto=False)
+    for entry in entries_to_render:
+        if entry.kind == "hue" and is_continuous_hue(entry.handles):
+            builder.add_colorbar(
+                mappable=entry.handles[0],
+                label=entry.name,
+            )
+        else:
+            builder.add_legend(
+                handles=list(entry.handles),
+                label=entry.name,
+            )
