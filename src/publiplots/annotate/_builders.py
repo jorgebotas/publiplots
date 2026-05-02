@@ -30,23 +30,7 @@ from publiplots.annotate._cache import (
     _iter_error_segments,
     _match_errorbars,
 )
-
-
-def _categories_in_draw_order(series) -> list:
-    """Return the ordered category labels used by seaborn for a series.
-
-    Accepts either a pandas Categorical (honors its explicit order) or an
-    object/str Series (uses first-occurrence order, matching seaborn's
-    default behavior).
-    """
-    if hasattr(series, "cat"):
-        return list(series.cat.categories)
-    # Preserve first-occurrence order without an extra import.
-    seen = []
-    for v in series:
-        if v not in seen:
-            seen.append(v)
-    return seen
+from publiplots.annotate._splits import BarSplitSpec, _categories_in_draw_order
 
 
 def _aggregate_means(
@@ -59,69 +43,31 @@ def _aggregate_means(
 ) -> List[Dict]:
     """Group by (categorical_axis [, hue [, hatch]]) and return means.
 
-    Row ordering matches seaborn's dodge draw order:
-    - no hue, no hatch: cat only
-    - hue only: hue outer, cat inner
-    - hue + hatch: hue outer, hatch middle, cat inner
-    - hatch only (no hue): hatch outer, cat inner
-
+    Uses the shared `BarSplitSpec` to decide which dimensions actually
+    dodge, so the row order here matches whatever bar.py draws.
     Errorbar extents are not computed here; callers pull them from drawn
     artists via `_match_errorbars`.
     """
     value_col = y if categorical_axis == x else x
-    cat_categories = _categories_in_draw_order(data[categorical_axis])
-
-    # A hue or hatch equal to the categorical axis doesn't cause dodging —
-    # seaborn styles each category bar but doesn't split. Collapse those
-    # dimensions from iteration. Also drop hatch if it duplicates hue.
-    split_hue = hue if (hue is not None and hue != categorical_axis) else None
-    split_hatch = hatch if (
-        hatch is not None
-        and hatch != categorical_axis
-        and hatch != hue
-    ) else None
+    spec = BarSplitSpec.resolve(
+        x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
+    )
 
     rows: List[Dict] = []
-    if split_hue is None and split_hatch is None:
-        for cat in cat_categories:
-            mask = data[categorical_axis] == cat
-            vals = data.loc[mask, value_col].to_numpy()
-            rows.append({"mean": float(np.mean(vals))})
-        return rows
-
-    if split_hue is not None and split_hatch is None:
-        for h in _categories_in_draw_order(data[split_hue]):
-            for cat in cat_categories:
-                mask = (data[categorical_axis] == cat) & (data[split_hue] == h)
-                vals = data.loc[mask, value_col].to_numpy()
-                if len(vals) == 0:
-                    continue
-                rows.append({"mean": float(np.mean(vals)), "hue_value": h})
-        return rows
-
-    if split_hue is None and split_hatch is not None:
-        for ht in _categories_in_draw_order(data[split_hatch]):
-            for cat in cat_categories:
-                mask = (data[categorical_axis] == cat) & (data[split_hatch] == ht)
-                vals = data.loc[mask, value_col].to_numpy()
-                if len(vals) == 0:
-                    continue
-                rows.append({"mean": float(np.mean(vals))})
-        return rows
-
-    # Both hue and hatch present and distinct.
-    for h in _categories_in_draw_order(data[split_hue]):
-        for ht in _categories_in_draw_order(data[split_hatch]):
-            for cat in cat_categories:
-                mask = (
-                    (data[categorical_axis] == cat)
-                    & (data[split_hue] == h)
-                    & (data[split_hatch] == ht)
-                )
-                vals = data.loc[mask, value_col].to_numpy()
-                if len(vals) == 0:
-                    continue
-                rows.append({"mean": float(np.mean(vals)), "hue_value": h})
+    for cat, h_val, _ht_val in spec.iter_draw_order(data):
+        parts = [data[categorical_axis] == cat]
+        if spec.split_hue is not None:
+            parts.append(data[spec.split_hue] == h_val)
+        if spec.split_hatch is not None:
+            parts.append(data[spec.split_hatch] == _ht_val)
+        mask = parts[0]
+        for p in parts[1:]:
+            mask = mask & p
+        vals = data.loc[mask, value_col].to_numpy()
+        row: Dict = {"mean": float(np.mean(vals))}
+        if h_val is not None:
+            row["hue_value"] = h_val
+        rows.append(row)
     return rows
 
 
@@ -177,41 +123,31 @@ def build_from_pointplot_call(
 ) -> PointValueMeta:
     """Build a `PointValueMeta` paired with the pointplot's marker positions.
 
-    Means come from a groupby of the raw data (hue-outer, cat-inner, matching
-    seaborn's draw order). Errorbar extents are pulled from the drawn
-    errorbar Line2D segments via `_match_point_errorbars`. Hue colors come
-    from the resolved palette map.
+    Iteration uses the shared `BarSplitSpec` so hue/categorical-axis
+    collapse rules match barplot. Errorbar extents are pulled from the
+    drawn errorbar Line2D segments via `_match_point_errorbars`.
     """
-    orient = "v" if categorical_axis == x else "h"
+    spec = BarSplitSpec.resolve(
+        x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
+    )
+    orient = spec.orient
     cat_categories = _categories_in_draw_order(data[categorical_axis])
+    cat_to_pos = {cat: i for i, cat in enumerate(cat_categories)}
+    value_col = y if categorical_axis == x else x
 
-    agg = _aggregate_means(data, x=x, y=y, hue=hue,
-                           categorical_axis=categorical_axis)
-
-    # Build (xy, hue_value) pairs in the same order as agg.
-    if hue is None:
-        points_xy = []
-        for i, cat in enumerate(cat_categories):
-            pos = i  # categorical axis uses integer positions
-            val = agg[i]["mean"]
-            points_xy.append((pos, val) if orient == "v" else (val, pos))
-        hue_values_for_points: List = [None] * len(points_xy)
-    else:
-        hue_categories = _categories_in_draw_order(data[hue])
-        points_xy = []
-        hue_values_for_points = []
-        idx = 0
-        for h in hue_categories:
-            for i, cat in enumerate(cat_categories):
-                if idx >= len(agg):
-                    break
-                row = agg[idx]
-                if row.get("hue_value") != h:
-                    continue
-                val = row["mean"]
-                points_xy.append((i, val) if orient == "v" else (val, i))
-                hue_values_for_points.append(h)
-                idx += 1
+    points_xy: List[Tuple[float, float]] = []
+    hue_values_for_points: List = []
+    for cat, h_val, _ht_val in spec.iter_draw_order(data):
+        mask = data[categorical_axis] == cat
+        if spec.split_hue is not None:
+            mask = mask & (data[spec.split_hue] == h_val)
+        vals = data.loc[mask, value_col].to_numpy()
+        if len(vals) == 0:
+            continue
+        pos = cat_to_pos[cat]
+        mean = float(np.mean(vals))
+        points_xy.append((pos, mean) if orient == "v" else (mean, pos))
+        hue_values_for_points.append(h_val)
 
     # Tolerance on the categorical axis: 0.5 is conservative (integer positions)
     tol = 0.5
@@ -236,7 +172,7 @@ def build_from_pointplot_call(
         orient=orient,
         points=points,
         errorbar_kind=errorbar if isinstance(errorbar, str) else None,
-        hue_active=hue is not None,
+        hue_active=spec.split_hue is not None,
         owner_is_publiplots=True,
     )
 
@@ -336,31 +272,23 @@ def _aggregate_box_stats(
     Row ordering matches seaborn's dodge draw order: hue-outer, cat-inner.
     """
     value_col = y if categorical_axis == x else x
-    cat_categories = _categories_in_draw_order(data[categorical_axis])
+    spec = BarSplitSpec.resolve(
+        x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
+    )
 
     rows: List[Dict] = []
-    if hue is None:
-        for cat in cat_categories:
-            mask = data[categorical_axis] == cat
-            vals = data.loc[mask, value_col].to_numpy()
-            if len(vals) == 0:
-                continue
-            stats = _compute_box_stats(vals, whis)
-            stats["cat"] = cat
-            rows.append(stats)
-        return rows
-
-    hue_categories = _categories_in_draw_order(data[hue])
-    for h in hue_categories:
-        for cat in cat_categories:
-            mask = (data[categorical_axis] == cat) & (data[hue] == h)
-            vals = data.loc[mask, value_col].to_numpy()
-            if len(vals) == 0:
-                continue
-            stats = _compute_box_stats(vals, whis)
-            stats["cat"] = cat
-            stats["hue_value"] = h
-            rows.append(stats)
+    for cat, h_val, _ht_val in spec.iter_draw_order(data):
+        mask = data[categorical_axis] == cat
+        if spec.split_hue is not None:
+            mask = mask & (data[spec.split_hue] == h_val)
+        vals = data.loc[mask, value_col].to_numpy()
+        if len(vals) == 0:
+            continue
+        stats = _compute_box_stats(vals, whis)
+        stats["cat"] = cat
+        if h_val is not None:
+            stats["hue_value"] = h_val
+        rows.append(stats)
     return rows
 
 

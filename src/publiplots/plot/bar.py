@@ -202,31 +202,31 @@ def barplot(
         order_categorical_axis=order,
     )
 
-    # Determine the strategy for handling hatch and hue
-    # Key insight: use hue=hatch for splitting when needed, then override colors
+    # Resolve which dimensions actually dodge via the shared spec (single
+    # source of truth — annotate builders use the same rules).
+    from publiplots.annotate._splits import BarSplitSpec
+    _split = BarSplitSpec.resolve(
+        x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
+    )
+    split_by_hatch = _split.split_hatch is not None
+    double_split = _split.split_hue is not None and _split.split_hatch is not None
+
     sns_hue = hue
     sns_palette = palette
 
-    # When hue == categorical axis, seaborn doesn't need hue for splitting —
-    # it would only cause unwanted dodge/grouping. Color by palette via x instead.
-    if hue is not None and hue == categorical_axis:
+    if _split.split_hue is None:
+        # hue omitted or equals categorical axis — don't pass it to seaborn.
         sns_hue = None
         sns_palette = None
 
-    # hatch split only needed if hatch is not the same as the categorical axis
-    split_by_hatch = hatch is not None and hatch != categorical_axis
-    double_split = split_by_hatch and hue is not None and hue != categorical_axis and hatch != hue
     if split_by_hatch:
         if double_split:
-            # Need to create double split by creating a new column with the combined value of hue and hatch
             sns_hue = f"{hue}_{hatch}"
-            # Color bars by 
             sns_palette = {
-                x: palette[x.split(_SPLIT_SEPARATOR)[0]] for x in data[f"{hue}_{hatch}"].cat.categories
+                x: palette[x.split(_SPLIT_SEPARATOR)[0]]
+                for x in data[f"{hue}_{hatch}"].cat.categories
             }
         else:
-            # Only need to split by hatch
-            # We will recolor the bars to color argument if hue is None
             sns_hue = hatch
             sns_palette = None
 
