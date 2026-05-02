@@ -45,7 +45,7 @@ def _double_split_df(seed=0):
 def test_bar_hue_only_stashes_one_hue_entry():
     """hatch == categorical_axis -> only a hue entry."""
     df = _bar_df()
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="cond", y="value",
         hue="treat", hatch="cond",
         palette={"ctrl": "#ff0000", "trt": "#00ff00"},
@@ -58,7 +58,7 @@ def test_bar_hue_only_stashes_one_hue_entry():
 def test_bar_hatch_only_stashes_one_hatch_entry():
     """hue == categorical_axis -> only a hatch entry."""
     df = _bar_df()
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="cond", y="value",
         hue="cond", hatch="treat",
         palette={"A": "#ff0000", "B": "#00ff00"},
@@ -71,7 +71,7 @@ def test_bar_hatch_only_stashes_one_hatch_entry():
 def test_bar_combined_stashes_one_hue_entry():
     """hue == hatch -> one combined entry under kind=hue."""
     df = _bar_df()
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="cond", y="value",
         hue="cond", hatch="cond",
         palette={"A": "#ff0000", "B": "#00ff00"},
@@ -99,7 +99,7 @@ def test_bar_double_split_stashes_hue_and_hatch():
 
 def test_bar_legend_false_stashes_nothing():
     df = _bar_df()
-    fig, ax = pp.barplot(
+    ax = pp.barplot(
         data=df, x="cond", y="value",
         hue="treat", hatch="cond",
         palette={"ctrl": "#ff0000", "trt": "#00ff00"},

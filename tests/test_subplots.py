@@ -600,7 +600,8 @@ def test_barplot_without_ax_creates_pp_subplots_figure():
     """pp.barplot without explicit ax should produce a figure managed by pp.subplots."""
     import pandas as pd
     df = pd.DataFrame({'g': ['A', 'B', 'C'], 'v': [1.0, 2.0, 3.0]})
-    fig, _ = pp.barplot(data=df, x='g', y='v', hue='g', palette='pastel')
+    ax = pp.barplot(data=df, x='g', y='v', hue='g', palette='pastel')
+    fig = ax.get_figure()
     # pp.subplots attaches this attribute; plt.subplots does not.
     assert hasattr(fig, "_publiplots_layout"), (
         "barplot with ax=None should use pp.subplots (missing _publiplots_layout attribute)"

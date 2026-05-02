@@ -60,7 +60,7 @@ def violinplot(
     legend_kws: Optional[Dict] = None,
     side: str = "both",
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready violin plot.
 
@@ -150,21 +150,19 @@ def violinplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple violin plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.violinplot(data=df, x="category", y="value")
+    >>> ax = pp.violinplot(data=df, x="category", y="value")
 
     Violin plot with hue grouping:
 
-    >>> fig, ax = pp.violinplot(
+    >>> ax = pp.violinplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
@@ -298,7 +296,7 @@ def violinplot(
     if title is not None:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _side_clip_violin(

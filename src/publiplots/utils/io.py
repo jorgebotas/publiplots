@@ -59,7 +59,7 @@ def savefig(
     --------
     Save a figure with default settings:
     >>> import publiplots as pp
-    >>> fig, ax = pp.scatterplot(data, x='x', y='y')
+    >>> ax = pp.scatterplot(data, x='x', y='y')
     >>> pp.savefig('output.png')
 
     Save with higher DPI:
@@ -178,8 +178,8 @@ def get_figure_size(fig: Figure) -> tuple:
 
     Examples
     --------
-    >>> fig, ax = pp.scatterplot(data, x='x', y='y')
-    >>> width, height = pp.get_figure_size(fig)
+    >>> ax = pp.scatterplot(data, x='x', y='y')
+    >>> width, height = pp.get_figure_size(ax.get_figure())
     >>> print(f"Figure size: {width} x {height} inches")
     """
     return fig.get_size_inches()
@@ -200,7 +200,7 @@ def set_figure_size(fig: Figure, width: float, height: float) -> None:
 
     Examples
     --------
-    >>> fig, ax = pp.scatterplot(data, x='x', y='y')
-    >>> pp.set_figure_size(fig, 8, 6)
+    >>> ax = pp.scatterplot(data, x='x', y='y')
+    >>> pp.set_figure_size(ax.get_figure(), 8, 6)
     """
     fig.set_size_inches(width, height)

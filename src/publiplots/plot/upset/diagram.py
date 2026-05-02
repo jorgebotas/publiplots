@@ -46,7 +46,7 @@ def upsetplot(
     title: str = "",
     intersection_label: str = "",
     set_label: str = ""
-) -> Tuple[Figure, Tuple[Axes, Axes, Axes]]:
+) -> Dict[str, Axes]:
     """
     Create an UpSet plot for visualizing set intersections.
 
@@ -136,14 +136,12 @@ def upsetplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib Figure object.
-
-    axes : tuple of (Axes, Axes, Axes)
-        Tuple containing three axes:
-        - ax_intersections: Intersection size bar plot (top)
-        - ax_matrix: Set membership matrix (middle)
-        - ax_sets: Set size bar plot (left)
+    dict
+        Dict with keys ``"intersections"``, ``"matrix"``, ``"sets"``, each
+        mapping to an Axes:
+        - ``"intersections"``: Intersection size bar plot (top)
+        - ``"matrix"``: Set membership matrix (middle)
+        - ``"sets"``: Set size bar plot (left)
 
     Notes
     -----
@@ -172,7 +170,7 @@ def upsetplot(
     ...     'Set B': {3, 4, 5, 6, 7},
     ...     'Set C': {5, 6, 7, 8, 9}
     ... }
-    >>> fig, axes = upsetplot(data, title='Set Intersections')
+    >>> axes = upsetplot(data, title='Set Intersections')
 
     Create from a DataFrame with binary membership:
 
@@ -181,15 +179,15 @@ def upsetplot(
     ...     'Set B': [0, 1, 1, 1, 0],
     ...     'Set C': [0, 0, 1, 1, 1]
     ... })
-    >>> fig, axes = upsetplot(df, sort_by='degree', min_degree=2)
+    >>> axes = upsetplot(df, sort_by='degree', min_degree=2)
 
     Filter to show only intersections with at least 10 elements:
 
-    >>> fig, axes = upsetplot(data, min_subset_size=10, show_counts=15)
+    >>> axes = upsetplot(data, min_subset_size=10, show_counts=15)
 
     Customize colors and styling:
 
-    >>> fig, axes = upsetplot(
+    >>> axes = upsetplot(
     ...     data,
     ...     color='#ff6b6b',
     ...     elementsize=64  # Larger, more spacious plot
@@ -197,11 +195,11 @@ def upsetplot(
 
     Control plot size via elementsize:
 
-    >>> fig, axes = upsetplot(
+    >>> axes = upsetplot(
     ...     data,
     ...     elementsize=32  # Compact plot
     ... )
-    >>> fig, axes = upsetplot(
+    >>> axes = upsetplot(
     ...     data,
     ...     elementsize=64  # Spacious plot
     ... )
@@ -330,4 +328,8 @@ def upsetplot(
         set_label=set_label,
     )
 
-    return fig, (ax_intersections, ax_matrix, ax_sets)
+    return {
+        "intersections": ax_intersections,
+        "matrix": ax_matrix,
+        "sets": ax_sets,
+    }

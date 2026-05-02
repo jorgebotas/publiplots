@@ -28,7 +28,7 @@ upset_sets = {
 }
 
 # Create basic UpSet plot
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=upset_sets,
     title='Gene Set Intersection Analysis',
     show_counts=15,
@@ -41,7 +41,7 @@ plt.show()
 # Customize the color and transparency of bars.
 
 # Create UpSet plot with custom styling
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=upset_sets,
     sort_by='size',  # Sort by intersection size
     title='Customized UpSet Plot',
@@ -70,7 +70,7 @@ many_sets = {
 }
 
 # Create UpSet plot with many sets
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=many_sets,
     sort_by='size',
     title='Pathway Overlap Analysis (6 Pathways)',
@@ -97,7 +97,7 @@ upset_df = pd.DataFrame({
 })
 
 # Create UpSet plot from DataFrame
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=upset_df,
     sort_by='size',
     title='Cluster and Marker Overlaps',
@@ -143,7 +143,7 @@ ax2.set_title('UpSet Plot (Better for 5+ Sets)', fontsize=12, fontweight='bold')
 plt.show()
 
 # Show the UpSet plot
-fig, axes = pp.upsetplot(
+axes = pp.upsetplot(
     data=five_sets,
     sort_by='size',
     title='Same Data as UpSet Plot (Clearer Visualization)',

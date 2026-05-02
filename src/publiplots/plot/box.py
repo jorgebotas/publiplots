@@ -48,7 +48,7 @@ def boxplot(
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready box plot.
 
@@ -112,21 +112,19 @@ def boxplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple box plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.boxplot(data=df, x="category", y="value")
+    >>> ax = pp.boxplot(data=df, x="category", y="value")
 
     Box plot with hue grouping:
 
-    >>> fig, ax = pp.boxplot(
+    >>> ax = pp.boxplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
@@ -276,7 +274,7 @@ def boxplot(
     if title is not None:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _stash_legend(

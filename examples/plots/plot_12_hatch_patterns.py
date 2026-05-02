@@ -115,7 +115,7 @@ method_data = pd.DataFrame({
 pp.set_hatch_mode(2)
 
 # Create plot with custom hatch mapping
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=method_data,
     x='method',
     y='performance',
@@ -168,7 +168,7 @@ timeseries_data = pd.DataFrame({
 pp.set_hatch_mode(2)
 
 # Create grouped bar plot with hatches
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=timeseries_data,
     x='time',
     y='value',
@@ -213,7 +213,7 @@ treatment_data = pd.DataFrame({
 pp.set_hatch_mode(3)
 
 # Create bar plot with both color and hatch
-fig, ax = pp.barplot(
+ax = pp.barplot(
     data=treatment_data,
     x='tissue',
     y='response',

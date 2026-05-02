@@ -29,7 +29,7 @@ strip_data = pd.DataFrame({
 })
 
 # Create simple strip plot
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='category',
     y='value',
@@ -45,7 +45,7 @@ plt.show()
 # Use jitter to spread points horizontally.
 
 # Create strip plot with jitter
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='category',
     y='value',
@@ -65,7 +65,7 @@ plt.show()
 strip_data['group'] = np.tile(['Group 1', 'Group 2'], n // 2)
 
 # Create strip plot with hue
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='category',
     y='value',
@@ -83,7 +83,7 @@ plt.show()
 # Separate points by hue along the categorical axis.
 
 # Create dodged strip plot
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='category',
     y='value',
@@ -101,7 +101,7 @@ plt.show()
 # Create horizontal strip plot by swapping x and y.
 
 # Create horizontal strip plot
-fig, ax = pp.stripplot(
+ax = pp.stripplot(
     data=strip_data,
     x='value',
     y='category',

@@ -60,7 +60,7 @@ def raincloudplot(
     ylabel: str = "",
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready raincloud plot.
 
@@ -140,21 +140,19 @@ def raincloudplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple raincloud plot:
 
     >>> import publiplots as pp
-    >>> fig, ax = pp.raincloudplot(data=df, x="category", y="value")
+    >>> ax = pp.raincloudplot(data=df, x="category", y="value")
 
     Raincloud plot with hue grouping:
 
-    >>> fig, ax = pp.raincloudplot(
+    >>> ax = pp.raincloudplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
     """
@@ -175,7 +173,7 @@ def raincloudplot(
     orientation = "vertical" if is_categorical(data[x]) else "horizontal"
 
     # 1. Draw the half-violin (cloud) using pp.violinplot with side parameter
-    fig, ax = violinplot(
+    ax = violinplot(
         data=data,
         x=x,
         y=y,
@@ -280,4 +278,4 @@ def raincloudplot(
     if title is not None:
         ax.set_title(title)
 
-    return fig, ax
+    return ax

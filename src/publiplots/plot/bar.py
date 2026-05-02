@@ -51,7 +51,7 @@ def barplot(
     hue_order: Optional[List[str]] = None,
     hatch_order: Optional[List[str]] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a publication-ready bar plot.
 
@@ -118,22 +118,20 @@ def barplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple bar plot:
-    >>> fig, ax = pp.barplot(data=df, x="category", y="value")
+    >>> ax = pp.barplot(data=df, x="category", y="value")
 
     Bar plot with color groups:
-    >>> fig, ax = pp.barplot(data=df, x="category", y="value",
-    ...                       hue="group", palette="pastel")
+    >>> ax = pp.barplot(data=df, x="category", y="value",
+    ...                  hue="group", palette="pastel")
 
     Bar plot with hatched bars and patterns:
-    >>> fig, ax = pp.barplot(
+    >>> ax = pp.barplot(
     ...     data=df, x="condition", y="measurement",
     ...     hatch="treatment", hue="condition",
     ...     hatch_map={"control": "", "treated": "///"},
@@ -324,7 +322,7 @@ def barplot(
     if ylabel is not None: ax.set_ylabel(ylabel)
     if title is not None: ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 # =============================================================================

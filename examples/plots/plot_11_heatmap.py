@@ -29,7 +29,7 @@ expression_matrix = pd.DataFrame(
 )
 
 # Create heatmap with diverging colormap centered at 0
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     expression_matrix,
     cmap='RdBu_r',
     center=0,
@@ -44,7 +44,7 @@ plt.show()
 # -----------------
 # Display values inside each cell.
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     expression_matrix,
     cmap='viridis',
     annot=True,
@@ -71,7 +71,7 @@ for gene in genes:
         })
 long_df = pd.DataFrame(long_data)
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     long_df,
     x='sample',
     y='gene',
@@ -105,7 +105,7 @@ for pathway in pathways:
         })
 enrichment_df = pd.DataFrame(enrichment_data)
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     enrichment_df,
     x='condition',
     y='pathway',
@@ -143,7 +143,7 @@ cluster_matrix = pd.DataFrame(
 cluster_matrix.iloc[:10, :5] += 1.5
 cluster_matrix.iloc[10:, 5:] += 1.5
 
-fig, axes = (
+axes = (
     pp.complex_heatmap(
         cluster_matrix,
         cmap='RdBu_r',
@@ -186,7 +186,7 @@ row_summary = pd.DataFrame({
     'mean': expr_matrix.mean(axis=1).values,
 })
 
-fig, axes = (
+axes = (
     pp.complex_heatmap(
         expr_matrix,
         cmap='viridis',
@@ -233,7 +233,7 @@ for term in go_terms:
         })
 go_df = pd.DataFrame(go_data)
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     go_df,
     x='comparison',
     y='GO_term',
@@ -261,7 +261,7 @@ corr_data = pd.DataFrame(
 corr_data.index = ['Var_' + str(i) for i in range(10)]
 corr_data.columns = corr_data.index
 
-fig, ax = pp.heatmap(
+ax = pp.heatmap(
     corr_data,
     cmap='coolwarm',
     center=0,
@@ -278,7 +278,7 @@ plt.show()
 # -----------------------------------
 # Cluster the data but hide the dendrograms.
 
-fig, axes = (
+axes = (
     pp.complex_heatmap(
         cluster_matrix,
         cmap='viridis',

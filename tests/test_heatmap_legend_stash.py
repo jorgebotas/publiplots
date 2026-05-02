@@ -27,7 +27,7 @@ def test_categorical_heatmap_stashes_continuous_hue_entry():
     """Categorical heatmap stashes one continuous-hue (colorbar) entry."""
     from publiplots.utils.legend_entries import is_continuous_hue
     df = _matrix_df()
-    fig, ax = pp.heatmap(data=df)
+    ax = pp.heatmap(data=df)
     entries = get_entries(ax)
     assert len(entries) == 1
     assert entries[0].kind == "hue"
@@ -36,7 +36,7 @@ def test_categorical_heatmap_stashes_continuous_hue_entry():
 
 def test_categorical_heatmap_legend_false_stashes_nothing():
     df = _matrix_df()
-    fig, ax = pp.heatmap(data=df, legend=False)
+    ax = pp.heatmap(data=df, legend=False)
     assert get_entries(ax) == []
 
 
@@ -57,7 +57,7 @@ def test_dot_heatmap_stashes_hue_and_size_entries():
     """Dot heatmap (value_col + size_col) stashes one continuous-hue + one size entry."""
     from publiplots.utils.legend_entries import is_continuous_hue
     df = _dot_df()
-    fig, ax = pp.heatmap(
+    ax = pp.heatmap(
         data=df, x="col", y="row", value="value", size="size_var",
     )
     entries = get_entries(ax)
@@ -70,7 +70,7 @@ def test_dot_heatmap_stashes_hue_and_size_entries():
 
 def test_dot_heatmap_legend_dict_suppresses_size():
     df = _dot_df()
-    fig, ax = pp.heatmap(
+    ax = pp.heatmap(
         data=df, x="col", y="row", value="value", size="size_var",
         legend={"size": False},
     )
@@ -82,7 +82,7 @@ def test_dot_heatmap_legend_dict_suppresses_size():
 
 def test_dot_heatmap_legend_false_stashes_nothing():
     df = _dot_df()
-    fig, ax = pp.heatmap(
+    ax = pp.heatmap(
         data=df, x="col", y="row", value="value", size="size_var",
         legend=False,
     )

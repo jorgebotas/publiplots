@@ -7,8 +7,8 @@ customization options.
 
 Basic usage:
     >>> import publiplots as pp
-    >>> fig, ax = pp.barplot(data=df, x='category', y='value')
-    >>> pp.savefig(fig, 'output.png')
+    >>> ax = pp.barplot(data=df, x='category', y='value')
+    >>> pp.savefig('output.png')
 
 publiplots applies its publication-grade rcParams on import. Use
 :func:`publiplots.reset_style` to revert to matplotlib defaults.

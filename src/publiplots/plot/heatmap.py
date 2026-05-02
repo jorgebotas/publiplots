@@ -68,7 +68,7 @@ def heatmap(
     yticklabels: Union[bool, str, List] = "auto",
     mask: Optional[Union[pd.DataFrame, np.ndarray]] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a heatmap with publiplots styling.
 
@@ -151,30 +151,28 @@ def heatmap(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Wide-format heatmap:
 
     >>> matrix = pd.DataFrame(np.random.randn(10, 10))
-    >>> fig, ax = pp.heatmap(matrix, cmap="coolwarm", center=0)
+    >>> ax = pp.heatmap(matrix, cmap="coolwarm", center=0)
 
     Long-format heatmap:
 
-    >>> fig, ax = pp.heatmap(df, x="sample", y="gene", value="expression")
+    >>> ax = pp.heatmap(df, x="sample", y="gene", value="expression")
 
     Dot heatmap with size encoding:
 
-    >>> fig, ax = pp.heatmap(df, x="sample", y="gene",
-    ...                       value="expression", size="pvalue")
+    >>> ax = pp.heatmap(df, x="sample", y="gene",
+    ...                  value="expression", size="pvalue")
 
     Annotated heatmap:
 
-    >>> fig, ax = pp.heatmap(matrix, annot=True, fmt=".1f")
+    >>> ax = pp.heatmap(matrix, annot=True, fmt=".1f")
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
@@ -228,7 +226,7 @@ def heatmap(
     # Determine mode: dot heatmap vs standard heatmap
     if size is not None and size_matrix is not None:
         # DOT HEATMAP MODE
-        fig, ax = _draw_dot_heatmap(
+        ax = _draw_dot_heatmap(
             ax=ax,
             matrix=matrix,
             size_matrix=size_matrix,
@@ -253,7 +251,7 @@ def heatmap(
         )
     else:
         # STANDARD HEATMAP MODE
-        fig, ax = _draw_heatmap(
+        ax = _draw_heatmap(
             ax=ax,
             matrix=matrix,
             cmap=cmap,
@@ -283,7 +281,7 @@ def heatmap(
     if title:
         ax.set_title(title)
 
-    return fig, ax
+    return ax
 
 
 def _draw_heatmap(
@@ -306,7 +304,7 @@ def _draw_heatmap(
     legend_kws: Optional[Dict],
     value_col: Optional[str],
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw standard color-encoded heatmap using seaborn.
     """
@@ -368,7 +366,7 @@ def _draw_heatmap(
             )
         render_entries(ax, flags=flags)
 
-    return fig, ax
+    return ax
 
 
 def _draw_dot_heatmap(
@@ -393,7 +391,7 @@ def _draw_dot_heatmap(
     value_col: str,
     size_col: str,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw dot/bubble heatmap where marker size encodes one variable
     and color encodes another.
@@ -539,7 +537,7 @@ def _draw_dot_heatmap(
 
         render_entries(ax, flags=flags)
 
-    return fig, ax
+    return ax
 
 
 def _create_size_legend(
@@ -735,7 +733,7 @@ def complex_heatmap(
     --------
     Basic complex heatmap with margins:
 
-    >>> fig, axes = (
+    >>> axes = (
     ...     pp.complex_heatmap(data, x="sample", y="gene", value="expr")
     ...     .add_top(pp.barplot, data=totals, x="sample", y="count", height=15)
     ...     .add_left(pp.barplot, data=means, x="mean", y="gene", width=15)
@@ -744,7 +742,7 @@ def complex_heatmap(
 
     With clustering and dendrograms:
 
-    >>> fig, axes = (
+    >>> axes = (
     ...     pp.complex_heatmap(matrix, row_cluster=True, col_cluster=True)
     ...     .build()
     ... )
@@ -1140,17 +1138,16 @@ class ComplexHeatmapBuilder:
                 },
             })
 
-    def build(self) -> Tuple[plt.Figure, Dict[str, Union[Axes, List[Axes]]]]:
+    def build(self) -> Dict[str, Union[Axes, List[Axes]]]:
         """
         Build the complex heatmap with all margin plots.
 
         Returns
         -------
-        fig : Figure
-            Matplotlib figure.
-        axes : dict
-            Dictionary with keys 'main', 'top', 'bottom', 'left', 'right'.
-            Each margin key contains a list of axes.
+        dict
+            Dict of axes. Always contains key ``"main"``; may contain
+            ``"top"``, ``"bottom"``, ``"left"``, ``"right"`` as lists of Axes
+            if margin plots were added.
         """
         from matplotlib import gridspec
 
@@ -1284,7 +1281,7 @@ class ComplexHeatmapBuilder:
         if any(m['align'] for m in self._margins['left']):
             ax_main.tick_params(labelleft=False)
 
-        return fig, axes
+        return axes
 
     def _draw_margin_plot(self, ax: Axes, margin: Dict, position: str):
         """Draw a single margin plot."""
@@ -1379,7 +1376,7 @@ def dendrogram(
     linewidth: Optional[float] = None,
     ax: Optional[Axes] = None,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Draw a dendrogram.
 
@@ -1406,10 +1403,8 @@ def dendrogram(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure.
-    ax : Axes
-        Matplotlib axes.
+    Axes
+        The axes where the dendrogram was drawn.
     """
     from scipy.cluster.hierarchy import dendrogram as scipy_dendrogram
     from scipy.cluster.hierarchy import linkage as compute_linkage
@@ -1463,4 +1458,4 @@ def dendrogram(
     else:
         ax.set_ylim(ax.get_ylim())
 
-    return fig, ax
+    return ax

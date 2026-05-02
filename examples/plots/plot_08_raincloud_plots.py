@@ -34,7 +34,7 @@ raincloud_data = pd.DataFrame({
 
 
 # Create simple raincloud plot
-fig, ax = pp.raincloudplot(
+ax = pp.raincloudplot(
     data=raincloud_data,
     x='time',
     y='measurement',
@@ -51,7 +51,7 @@ plt.show()
 # Use the hue parameter to create grouped raincloud plots.
 
 # Create grouped raincloud plot
-fig, ax = pp.raincloudplot(
+ax = pp.raincloudplot(
     data=raincloud_data,
     x='time',
     y='measurement',
@@ -105,7 +105,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create raincloud plot with only cloud and rain elements.
 
-fig, ax = pp.raincloudplot(
+ax = pp.raincloudplot(
     data=raincloud_data[raincloud_data['group'] == 'Control'],
     x='time',
     y='measurement',
@@ -157,7 +157,7 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Adjust transparency of different components.
 
-fig, ax = pp.raincloudplot(
+ax = pp.raincloudplot(
     data=raincloud_data,
     x='time',
     y='measurement',

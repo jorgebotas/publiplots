@@ -29,7 +29,7 @@ swarm_data = pd.DataFrame({
 })
 
 # Create simple swarm plot
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='category',
     y='value',
@@ -48,7 +48,7 @@ plt.show()
 swarm_data['group'] = np.tile(['Group 1', 'Group 2'], n // 2)
 
 # Create swarm plot with hue
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='category',
     y='value',
@@ -66,7 +66,7 @@ plt.show()
 # Separate points by hue along the categorical axis.
 
 # Create dodged swarm plot
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='category',
     y='value',
@@ -84,7 +84,7 @@ plt.show()
 # Adjust marker size for different data densities.
 
 # Create swarm plot with custom size
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='category',
     y='value',
@@ -101,7 +101,7 @@ plt.show()
 # Create horizontal swarm plot by swapping x and y.
 
 # Create horizontal swarm plot
-fig, ax = pp.swarmplot(
+ax = pp.swarmplot(
     data=swarm_data,
     x='value',
     y='category',

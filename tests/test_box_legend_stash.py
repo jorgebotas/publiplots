@@ -28,7 +28,7 @@ def _box_df(seed=0):
 
 def test_boxplot_stashes_hue_entry():
     df = _box_df()
-    fig, ax = pp.boxplot(data=df, x="x", y="y", hue="g", palette="pastel")
+    ax = pp.boxplot(data=df, x="x", y="y", hue="g", palette="pastel")
     entries = get_entries(ax)
     names_kinds = [(e.name, e.kind) for e in entries]
     assert ("g", "hue") in names_kinds
@@ -36,13 +36,13 @@ def test_boxplot_stashes_hue_entry():
 
 def test_boxplot_no_hue_stashes_nothing():
     df = _box_df()
-    fig, ax = pp.boxplot(data=df, x="x", y="y")
+    ax = pp.boxplot(data=df, x="x", y="y")
     assert get_entries(ax) == []
 
 
 def test_boxplot_legend_false_stashes_nothing():
     df = _box_df()
-    fig, ax = pp.boxplot(
+    ax = pp.boxplot(
         data=df, x="x", y="y", hue="g", palette="pastel",
         legend=False,
     )
@@ -62,7 +62,7 @@ def test_boxplot_in_group_suppresses_per_axis_render():
 
 def test_boxplot_legend_dict_suppresses_hue():
     df = _box_df()
-    fig, ax = pp.boxplot(
+    ax = pp.boxplot(
         data=df, x="x", y="y", hue="g", palette="pastel",
         legend={"hue": False},
     )

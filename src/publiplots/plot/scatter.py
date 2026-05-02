@@ -55,7 +55,7 @@ def scatterplot(
     legend_kws: Optional[Dict] = None,
     margins: Union[float, Tuple[float, float]] = 0.1,
     **kwargs
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a scatterplot with publiplots styling.
 
@@ -134,41 +134,39 @@ def scatterplot(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the plot was drawn.
 
     Examples
     --------
     Simple scatterplot with continuous data:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value")
+    >>> ax = pp.scatterplot(data=df, x="time", y="value")
 
     Scatterplot with size encoding:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           size="magnitude", sizes=(50, 500))
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      size="magnitude", sizes=(50, 500))
 
     Scatterplot with categorical color encoding:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           hue="group", palette="pastel")
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      hue="group", palette="pastel")
 
     Scatterplot with continuous color encoding:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           hue="score", palette="viridis",
-    ...                           hue_norm=(0, 100))
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      hue="score", palette="viridis",
+    ...                      hue_norm=(0, 100))
 
     Scatterplot with custom single color:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           color="#e67e7e")
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      color="#e67e7e")
 
     Scatterplot with different marker styles:
-    >>> fig, ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                           hue="group", style="condition",
-    ...                           markers=["o", "^", "s"])
+    >>> ax = pp.scatterplot(data=df, x="time", y="value",
+    ...                      hue="group", style="condition",
+    ...                      markers=["o", "^", "s"])
 
     Categorical scatterplot (positions on grid):
-    >>> fig, ax = pp.scatterplot(data=df, x="category", y="condition",
-    ...                           size="pvalue", hue="log2fc")
+    >>> ax = pp.scatterplot(data=df, x="category", y="condition",
+    ...                      size="pvalue", hue="log2fc")
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
@@ -337,7 +335,7 @@ def scatterplot(
             y=margins[1] if y_is_categorical else None
         )
 
-    return fig, ax
+    return ax
 
 def _handle_categorical_axes(
     data: pd.DataFrame,

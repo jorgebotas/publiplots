@@ -204,7 +204,7 @@ def venn(
     ax: Optional[Axes] = None,
     fmt: str = "{size}",
     color_labels: bool = True,
-) -> Tuple[plt.Figure, Axes]:
+) -> Axes:
     """
     Create a Venn diagram for 2-5 sets.
 
@@ -238,10 +238,8 @@ def venn(
 
     Returns
     -------
-    fig : Figure
-        Matplotlib figure object.
-    ax : Axes
-        Matplotlib axes object.
+    Axes
+        The axes where the Venn diagram was drawn.
 
     Raises
     ------
@@ -257,21 +255,21 @@ def venn(
 
     >>> set1 = {1, 2, 3, 4, 5}
     >>> set2 = {4, 5, 6, 7, 8}
-    >>> fig, ax = pp.venn([set1, set2], labels=['Group A', 'Group B'])
+    >>> ax = pp.venn([set1, set2], labels=['Group A', 'Group B'])
 
     3-way Venn with custom colors:
 
     >>> sets_dict = {'A': set1, 'B': set2, 'C': set3}
     >>> colors = ['red', 'blue', 'green']
-    >>> fig, ax = pp.venn(sets_dict, colors=colors)
+    >>> ax = pp.venn(sets_dict, colors=colors)
 
     4-way Venn with colormap:
 
-    >>> fig, ax = pp.venn([set1, set2, set3, set4], colors='Set1')
+    >>> ax = pp.venn([set1, set2, set3, set4], colors='Set1')
 
     5-way Venn diagram with percentage labels:
 
-    >>> fig, ax = pp.venn(
+    >>> ax = pp.venn(
     ...     [set1, set2, set3, set4, set5],
     ...     fmt='{size} ({percentage:.1f}%)'
     ... )
@@ -323,4 +321,4 @@ def venn(
         color_labels=color_labels,
     )
 
-    return fig, ax
+    return ax
