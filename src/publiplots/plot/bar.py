@@ -530,12 +530,16 @@ def _legend(
                 ),
             )
     elif hue == categorical_axis:
-        # Hatch-only legend
+        # Hatch-only legend. Bars are colored by category (via hue=cat) but
+        # the hatch swatches represent a different dimension — render them
+        # in gray so they read as "this is about the hatch pattern, not the
+        # bar color", matching the double-split case where hue and hatch
+        # are distinct columns.
         if flags["hatch"]:
             labels = list(hatch_map.keys())
             handles = create_legend_handles(
                 labels=labels,
-                colors=[resolve_param("color", color)] * len(hatch_map),
+                colors=["gray"] * len(hatch_map),
                 edgecolors=[edgecolor] * len(hatch_map) if edgecolor else None,
                 hatches=list(hatch_map.values()),
                 **handle_kwargs,

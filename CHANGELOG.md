@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   given collapse rules for matching-column cases). Shared between
   `barplot` and the `bar_values` annotation builder so they can't drift.
 
+### Fixed
+- `barplot` hatch-legend color for the `hue == categorical_axis` + separate
+  `hatch` column case. The hatch swatches now render in gray (matching
+  the double-split convention where hue and hatch are distinct columns);
+  previously they took the publication color, which visually suggested
+  the swatch color was meaningful even though the bar coloring came from
+  the hue legend.
+
 ### Internal
 - Anchor validation moved from the dispatcher to each strategy — each
   one defines its own anchor vocabulary and default. `bar_values` keeps
