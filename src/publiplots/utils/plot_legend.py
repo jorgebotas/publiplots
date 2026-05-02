@@ -119,6 +119,76 @@ def stash_continuous_hue(
     )
 
 
+def merge_categorical_entries(
+    *,
+    name: str,
+    labels: List[str],
+    colors: Optional[List[str]] = None,
+    markers: Optional[List[str]] = None,
+    linestyles: Optional[List[str]] = None,
+    sizes: Optional[List[float]] = None,
+    edgecolors: Optional[Union[str, List[str]]] = None,
+    handle_kwargs: Optional[Dict] = None,
+) -> LegendEntry:
+    """Build one LegendEntry whose swatches encode multiple categorical kinds.
+
+    Used when hue / style (and optionally categorical size) share the same
+    column — the intuitive rendering is one legend column whose swatch
+    encodes every dimension simultaneously (colored + shaped + dashed line
+    for a lineplot, colored shaped marker for a scatter), not N duplicate
+    columns with the same row labels.
+
+    The kind is ``"hue"`` so the merged entry is claimed by the ``hue``
+    flag of ``legend={...}`` / ``legend_group(kind="hue")`` — ``hue`` is
+    the anchor dimension when present, and this keeps behavior predictable.
+
+    Only call this for the all-categorical case. Continuous hue (colorbar)
+    and continuous size (size-tick swatches) cannot merge into a single
+    composite artist — leave those as separate entries.
+
+    Parameters
+    ----------
+    name : str
+        Legend title (typically the shared column name).
+    labels : list of str
+        Labels for each legend row (same across all merged kinds).
+    colors : list of str, optional
+        Per-row fill colors (from the categorical hue palette).
+    markers : list of str, optional
+        Per-row marker symbols (from the style → marker map).
+    linestyles : list of str or tuple, optional
+        Per-row linestyles (from the style → linestyle map).
+    sizes : list of float, optional
+        Per-row marker sizes (only when a size dimension also merges).
+    edgecolors : str or list of str, optional
+        Per-row edge colors. Broadcast when passed as a string.
+    handle_kwargs : dict, optional
+        Extra kwargs forwarded to :func:`create_legend_handles`
+        (``alpha``, ``linewidth``, ``markeredgewidth``, ``color``).
+
+    Returns
+    -------
+    LegendEntry
+        ``kind="hue"`` entry ready to stash via :func:`stash_entry`.
+    """
+    handle_kwargs = dict(handle_kwargs or {})
+    handles = create_legend_handles(
+        labels=labels,
+        colors=colors,
+        edgecolors=edgecolors,
+        markers=markers,
+        linestyles=linestyles,
+        sizes=sizes,
+        **handle_kwargs,
+    )
+    return LegendEntry.build(
+        name=name,
+        kind="hue",
+        handles=handles,
+        labels=labels,
+    )
+
+
 def resolve_style_maps(
     style: Optional[str],
     data: "pd.DataFrame",
