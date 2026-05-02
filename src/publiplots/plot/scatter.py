@@ -9,8 +9,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.colors import Normalize
-from matplotlib.cm import ScalarMappable
-from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 from typing import Optional, Tuple, Union, Dict, List
@@ -18,7 +16,6 @@ from typing import Optional, Tuple, Union, Dict, List
 from publiplots.themes.rcparams import resolve_param
 
 from publiplots.themes.colors import resolve_palette_map
-from publiplots.themes.markers import resolve_marker_map
 from publiplots.utils import is_categorical, is_numeric, create_legend_handles
 from publiplots.utils import legend as legend_fn
 from publiplots.utils.legend_entries import (
@@ -28,6 +25,11 @@ from publiplots.utils.legend_entries import (
     resolve_legend_flags,
     entry_is_in_group,
     is_continuous_hue,
+)
+from publiplots.utils.plot_legend import (
+    get_size_ticks,
+    stash_continuous_hue,
+    resolve_style_maps,
 )
 
 
@@ -397,78 +399,6 @@ def _handle_categorical_axes(
 
     return data, x_col, y_col, x_labels, y_labels
 
-def _get_size_ticks(
-        values: np.ndarray,
-        sizes: Tuple[float, float],
-        size_norm: Normalize,
-        nbins: int = 4,
-        min_n_ticks: int = 3,
-        include_min_max: bool = False,
-    ) -> Tuple[List[str], List[float]]:
-    """
-    Get size ticks for size legend.
-    Uses MaxNLocator to generate ticks.
-    Includes actual min and max from data.
-    Rounds to reasonable precision.
-    Falls back to min and max if no ticks are generated.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Values to get size ticks for.
-    sizes : Tuple[float, float]
-        (min_size, max_size) in points^2.
-    size_norm : Normalize
-        Size normalization object.
-    nbins : int, default=4
-        Number of bins used by MaxNLocator.
-    min_n_ticks : int, default=3
-        Minimum number of ticks to generate.
-    include_min_max : bool, default=False
-        Whether to include actual min and max from data.
-        If True, the first and last tick will be the actual min and max.
-        This is useful if the data is very small and the min and max are not representive.
-    Returns
-    -------
-    tick_labels : List[str]
-        Tick labels.
-    tick_sizes : List[float]
-        Tick sizes.
-    """
-    unique_vals = np.unique(values[~np.isnan(values)])
-    v_min, v_max = size_norm.vmin, size_norm.vmax
-    
-    if len(unique_vals) <= 4:
-        # If few unique values, show them all
-        ticks = unique_vals
-    else:
-        # Use MaxNLocator but ensure we capture extremes
-        locator = MaxNLocator(nbins=nbins, min_n_ticks=min_n_ticks)
-        ticks = locator.tick_values(v_min, v_max)
-        ticks = ticks[(ticks >= v_min) & (ticks <= v_max)]
-        
-        # Include actual min and max from data
-        if include_min_max:
-            ticks = np.unique(np.concatenate([[v_min], ticks, [v_max]]))
-    
-    # Round to reasonable precision
-    if v_max - v_min > 10:
-        ticks = np.array([int(np.round(t)) for t in ticks])
-        ticks = np.unique(ticks)
-    else:
-        ticks = np.unique(np.round(ticks, 1))
-    
-    if ticks.size == 0:  # Fallback
-        ticks = np.array([v_min, v_max])
-    
-    def _get_markersize(size: float) -> float:
-        normalized_size = size_norm(size)
-        actual_size = min(sizes[0] + normalized_size * (sizes[1] - sizes[0]), sizes[1]) 
-        # Convert to markersize for legend
-        return np.sqrt(actual_size / np.pi) * 2
-
-    return [str(t) for t in ticks], [_get_markersize(t) for t in ticks]
-    
 def _legend(
         ax: Axes,
         data: pd.DataFrame, # for size legend
@@ -528,15 +458,8 @@ def _legend(
             )
         else:
             # continuous -> colorbar
-            mappable = ScalarMappable(norm=hue_norm, cmap=palette)
-            stash_entry(
-                ax,
-                LegendEntry.build(
-                    name=hue_label,
-                    kind="hue",
-                    handles=[mappable],
-                    labels=[],
-                ),
+            stash_continuous_hue(
+                ax, name=hue_label, palette=palette, hue_norm=hue_norm
             )
 
     # Stash size entry
@@ -544,7 +467,7 @@ def _legend(
         tick_color = color if hue is None else "gray"
         size_handle_kwargs = handle_kwargs.copy()
         size_handle_kwargs["color"] = tick_color
-        tick_labels, tick_sizes = _get_size_ticks(
+        tick_labels, tick_sizes = get_size_ticks(
             values=data[size].dropna().values,
             sizes=sizes,
             size_norm=size_norm,
@@ -573,12 +496,13 @@ def _legend(
         style_values = data[style].unique()
         style_label = kwargs.pop("style_label", style)
 
-        # Use resolve_marker_map to get marker mapping
-        # If markers is True (from seaborn default), treat as None for our mapping
-        marker_param = markers if isinstance(markers, (list, dict)) else None
-        marker_map = resolve_marker_map(
-            values=list(style_values),
-            marker_map=marker_param
+        # Resolve marker mapping via shared helper (linestyle map unused here).
+        marker_map, _ = resolve_style_maps(
+            style=style,
+            data=data,
+            style_order=list(style_values),
+            markers=markers,
+            dashes=None,
         )
 
         # Determine color for style legend

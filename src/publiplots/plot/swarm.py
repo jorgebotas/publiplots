@@ -10,7 +10,6 @@ from typing import Optional, List, Dict, Tuple, Union
 from publiplots.themes.rcparams import resolve_param
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 import seaborn as sns
 import pandas as pd
@@ -27,6 +26,7 @@ from publiplots.utils.legend_entries import (
     entry_is_in_group,
     is_continuous_hue,
 )
+from publiplots.utils.plot_legend import stash_continuous_hue
 
 
 def swarmplot(
@@ -267,15 +267,8 @@ def _legend(
             )
         else:
             # continuous -> colorbar
-            mappable = ScalarMappable(norm=hue_norm, cmap=palette)
-            stash_entry(
-                ax,
-                LegendEntry.build(
-                    name=hue_label,
-                    kind="hue",
-                    handles=[mappable],
-                    labels=[],
-                ),
+            stash_continuous_hue(
+                ax, name=hue_label, palette=palette, hue_norm=hue_norm
             )
 
     # Render per-axis legend for entries not claimed by a figure-level group.
