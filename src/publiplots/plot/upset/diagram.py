@@ -328,8 +328,58 @@ def upsetplot(
         set_label=set_label,
     )
 
+    # Reserve vertical space for decorations (bar-top annotations, xlabel,
+    # title, ticklabels) that would otherwise clip because the gridspec spans
+    # the full figure (top=1/bottom=0). Draw once, measure overflow, grow the
+    # figure by the measured amount, and shift the gridspec inward so panel
+    # dimensions stay unchanged.
+    _reserve_upset_decoration_space(fig, ax_intersections, ax_sets, ax_matrix)
+
     return {
         "intersections": ax_intersections,
         "matrix": ax_matrix,
         "sets": ax_sets,
     }
+
+
+def _reserve_upset_decoration_space(fig, ax_intersections, ax_sets, ax_matrix):
+    """Grow the figure and shift the gridspec so decorations don't clip.
+
+    UpSet's gridspec uses ``top=1, bottom=0`` (zero margin). Bar-top
+    annotations, xlabels, titles, and ticklabels therefore extend outside
+    the figure canvas and clip on ``plt.show()`` or non-tight ``savefig``.
+
+    Measurement-driven fix: draw once, compute overflow in inches at the
+    top and bottom of the figure, grow ``figheight`` by that amount, then
+    shift the gridspec ``top``/``bottom`` inward by the same fractional
+    amount so the plotted panels keep their original dimensions.
+    """
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    tight = fig.get_tightbbox(renderer)
+    fig_bb = fig.bbox_inches
+
+    # Overflow in inches; negative means safely inside the canvas.
+    top_overflow = max(0.0, tight.y1 - fig_bb.y1)
+    bottom_overflow = max(0.0, -tight.y0)
+
+    if top_overflow == 0.0 and bottom_overflow == 0.0:
+        return  # Nothing to reserve.
+
+    # Small padding beyond the measured overflow so borders don't kiss the
+    # canvas edge.
+    pad_in = 4.0 / 72.0  # ~4 pt
+    top_pad_in = top_overflow + pad_in if top_overflow > 0 else 0.0
+    bottom_pad_in = bottom_overflow + pad_in if bottom_overflow > 0 else 0.0
+
+    current_h_in = fig.get_figheight()
+    new_h_in = current_h_in + top_pad_in + bottom_pad_in
+    fig.set_figheight(new_h_in)
+
+    # Recover the gridspec from any of its subplots and shift top/bottom
+    # inward by the padding we just added.
+    gs = ax_intersections.get_gridspec()
+    gs.update(
+        top=1.0 - top_pad_in / new_h_in,
+        bottom=bottom_pad_in / new_h_in,
+    )
