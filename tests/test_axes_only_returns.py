@@ -58,6 +58,17 @@ def dot_df():
     return pd.DataFrame(data)
 
 
+@pytest.fixture(scope="module")
+def line_df():
+    rng = np.random.default_rng(0)
+    n = 40
+    return pd.DataFrame({
+        "t": np.tile(np.linspace(0, 10, 20), 2),
+        "y": rng.normal(size=n),
+        "g": np.repeat(["A", "B"], 20),
+    })
+
+
 SIMPLE_PLOTS = [
     ("barplot",       "cat_df",     {"x": "cat", "y": "val"}),
     ("boxplot",       "cat_df",     {"x": "cat", "y": "val"}),
@@ -67,13 +78,15 @@ SIMPLE_PLOTS = [
     ("stripplot",     "cat_df",     {"x": "cat", "y": "val"}),
     ("swarmplot",     "cat_df",     {"x": "cat", "y": "val"}),
     ("pointplot",     "cat_df",     {"x": "cat", "y": "val"}),
+    ("lineplot",      "line_df",    {"x": "t",   "y": "y"}),
     ("heatmap",       "matrix_df",  {}),
     ("heatmap",       "dot_df",     {"x": "col", "y": "row", "value": "val", "size": "sz"}),
 ]
 
 _SIMPLE_IDS = [
     "barplot", "boxplot", "violinplot", "raincloudplot", "scatterplot",
-    "stripplot", "swarmplot", "pointplot", "heatmap-categorical", "heatmap-dot",
+    "stripplot", "swarmplot", "pointplot", "lineplot",
+    "heatmap-categorical", "heatmap-dot",
 ]
 
 

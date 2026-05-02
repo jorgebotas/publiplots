@@ -17,8 +17,6 @@ from typing import Optional, Tuple, Union, Dict, List
 
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
-from publiplots.themes.markers import resolve_marker_map
-from publiplots.themes.linestyles import resolve_linestyle_map
 from publiplots.utils import create_legend_handles
 from publiplots.utils.legend import legend as legend_fn
 from publiplots.utils.legend_entries import (
@@ -29,6 +27,7 @@ from publiplots.utils.legend_entries import (
     entry_is_in_group,
     is_continuous_hue,
 )
+from publiplots.utils.plot_legend import resolve_style_maps
 
 
 def pointplot(
@@ -224,21 +223,33 @@ def pointplot(
         )
         # hue_order = list(palette.keys())
 
+        # Normalize sentinel inputs before delegating to shared resolver.
         if markers is not False:
             if markers is True:
                 markers = None
             elif isinstance(markers, str):
                 markers = [markers]
-            # Get marker mapping
-            marker_map = resolve_marker_map(values=list(hue_values), marker_map=markers)
-            # Convert to list for seaborn
-            markers = [marker_map[val] for val in data[hue].unique()]
-        
+
         if linestyles is None:
             linestyles = [linestyle]
         elif isinstance(linestyles, str):
             linestyles = [linestyles]
-        linestyle_map = resolve_linestyle_map(values=list(hue_values), linestyle_map=linestyles)
+
+        # Resolve marker + linestyle maps via shared helper. Pass True to
+        # request defaults when no explicit list/dict is provided; pass False
+        # to skip marker resolution entirely.
+        marker_arg = False if markers is False else (markers if markers is not None else True)
+        marker_map, linestyle_map = resolve_style_maps(
+            style=hue,
+            data=data,
+            style_order=list(hue_values),
+            markers=marker_arg,
+            dashes=linestyles,
+        )
+
+        # Convert back to lists for seaborn (one entry per unique hue value).
+        if markers is not False:
+            markers = [marker_map[val] for val in data[hue].unique()]
         linestyles = [linestyle_map[val] for val in data[hue].unique()]
 
     # Prepare err_kws with linewidth
