@@ -2,14 +2,16 @@
 Value Label Annotations
 =======================
 
-This example demonstrates pp.annotate, the helper for labeling plot
-marks with their aggregated values. v1 supports barplots; the module is
-designed so point_values, box_medians, and other strategies can slot in.
+This example showcases ``pp.annotate`` across every plot type that
+supports it. Each ``pp.*plot`` function takes an ``annotate`` kwarg —
+pass ``True`` for defaults or a dict to override format, anchor, color,
+text kwargs, and (for boxplots/violins) which statistics to label.
 
-Two entry points:
+Anchor vocabularies are strategy-specific:
 
-- ``pp.annotate(ax, kind="bar_values", ...)`` — post-hoc on any axes
-- ``pp.barplot(..., annotate=True | dict)`` — the sugar call
+- ``pp.barplot``: ``outside`` / ``inside`` / ``base`` / ``center``
+- ``pp.pointplot``, ``pp.boxplot``, ``pp.violinplot``:
+  ``top`` / ``bottom`` / ``left`` / ``right`` / ``center``
 """
 
 import publiplots as pp
@@ -94,18 +96,6 @@ fig, ax = pp.barplot(
     annotate={"anchor": "inside", "fmt": ".1f"},
     title='horizontal + anchor="inside" (short bars flip out)',
 )
-plt.show()
-
-# %%
-# Post-hoc on a foreign axes
-# --------------------------
-# pp.annotate works on any Axes with bars on it, not just pp.barplot output.
-# (Here we use plain matplotlib to build the bars so there's no pp.barplot
-# title= to pass; ax.set_title is the matplotlib-native way.)
-fig, ax = plt.subplots()
-ax.bar([0, 1, 2], [1.0, 2.4, 0.7])
-ax.set_title("foreign ax + pp.annotate")
-pp.annotate(ax, kind="bar_values", fmt=".1f")
 plt.show()
 
 # %%
