@@ -210,21 +210,12 @@ plt.show()
 # %%
 # Annotated bars when hue or hatch matches the categorical axis
 # -------------------------------------------------------------
-# Setting ``hue`` or ``hatch`` to the categorical axis doesn't cause
-# dodging — each category just gets its own color/pattern. ``annotate``
-# follows suit: one label per category, correctly paired.
+# Setting ``hue`` (or ``hatch``) to the categorical axis doesn't cause
+# dodging — each category just gets its own color (or pattern). If the
+# *other* split is a separate column, it still causes dodging as usual.
+# ``annotate`` follows suit: one label per drawn bar, correctly paired.
 
-# hue == categorical axis: color-coded single bars per category
-fig, ax = pp.barplot(
-    data=simple_data, x="category", y="value", hue="category",
-    palette="pastel", errorbar=None,
-    annotate={"fmt": ".0f"},
-    title="hue == categorical axis",
-)
-plt.show()
-
-# hue == cat and a separate hatch present: hatch causes dodging, so we
-# get n_cat × n_hatch bars, each labelled.
+# Shared dataset: response per treatment at two time points.
 np.random.seed(101)
 time_data = pd.DataFrame({
     "treatment": np.tile(np.repeat(["Control", "Drug A", "Drug B"], 10), 2),
@@ -235,15 +226,47 @@ time_data = pd.DataFrame({
         np.random.normal(75, 4, 10), np.random.normal(85, 4, 10),
     ]),
 })
-fig, ax = pp.barplot(
+hue_palette = {"Control": "#cccccc", "Drug A": "#8E8EC1", "Drug B": "#60a8a8"}
+
+# hue == categorical axis (vs. hue == cat + hatch on a separate column)
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+pp.barplot(
+    data=simple_data, x="category", y="value", hue="category", ax=axes[0],
+    palette="pastel", errorbar=None,
+    annotate={"fmt": ".0f"},
+    title="hue == categorical axis",
+)
+pp.barplot(
     data=time_data, x="treatment", y="response",
-    hue="treatment", hatch="time",
-    palette={"Control": "#cccccc", "Drug A": "#8E8EC1", "Drug B": "#60a8a8"},
+    hue="treatment", hatch="time", ax=axes[1],
+    palette=hue_palette,
     hatch_map={"24h": "", "48h": "///"},
     errorbar="se",
     annotate={"fmt": ".0f"},
     title="hue == categorical axis + hatch",
-    figsize=(8, 5),
+)
+plt.show()
+
+# hatch == categorical axis (vs. hatch == cat + hue on a separate column)
+hatch_by_cat = {"Control": "", "Drug A": "///", "Drug B": "xxx"}
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+pp.barplot(
+    data=time_data[time_data["time"] == "24h"],
+    x="treatment", y="response", hatch="treatment", ax=axes[0],
+    palette="pastel",
+    hatch_map=hatch_by_cat,
+    errorbar="se",
+    annotate={"fmt": ".0f"},
+    title="hatch == categorical axis",
+)
+pp.barplot(
+    data=time_data, x="treatment", y="response",
+    hue="time", hatch="treatment", ax=axes[1],
+    palette={"24h": "#8E8EC1", "48h": "#60a8a8"},
+    hatch_map=hatch_by_cat,
+    errorbar="se",
+    annotate={"fmt": ".0f"},
+    title="hatch == categorical axis + hue",
 )
 plt.show()
 
