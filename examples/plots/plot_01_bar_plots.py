@@ -228,6 +228,6 @@ fig, ax = pp.barplot(
     x='category', y='value',
     palette='pastel',
     annotate={"fmt": ".0f"},
+    title="annotate={'fmt': '.0f'}",
 )
-ax.set_title("annotate={'fmt': '.0f'}")
 plt.show()

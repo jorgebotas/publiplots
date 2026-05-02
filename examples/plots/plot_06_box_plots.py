@@ -160,6 +160,6 @@ fig, ax = pp.boxplot(
     data=box_data,
     x='category', y='value',
     annotate={"stats": ["median", "q1", "q3"], "fmt": ".1f"},
+    title="annotate={'stats': ['median', 'q1', 'q3']}",
 )
-ax.set_title("annotate={'stats': ['median', 'q1', 'q3']}")
 plt.show()

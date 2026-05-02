@@ -306,6 +306,6 @@ fig, ax = pp.pointplot(
     x='time', y='measurement',
     errorbar='se',
     annotate={"fmt": ".1f"},
+    title="annotate=True",
 )
-ax.set_title("annotate=True")
 plt.show()

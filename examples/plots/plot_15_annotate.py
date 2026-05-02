@@ -27,8 +27,8 @@ df = pd.DataFrame({
     "value": [1.2, 2.8, 2.1, 3.6],
 })
 
-fig, ax = pp.barplot(data=df, x="category", y="value", annotate=True)
-ax.set_title("annotate=True")
+fig, ax = pp.barplot(data=df, x="category", y="value", annotate=True,
+                     title="annotate=True")
 plt.show()
 
 # %%
@@ -37,8 +37,8 @@ plt.show()
 fig, ax = pp.barplot(
     data=df, x="category", y="value",
     annotate={"fmt": "{:.1f}%"},
+    title="annotate={'fmt': '{:.1f}%'}",
 )
-ax.set_title("annotate={'fmt': '{:.1f}%'}")
 plt.show()
 
 # %%
@@ -47,8 +47,8 @@ plt.show()
 fig, axes = plt.subplots(1, 4, figsize=(12, 3))
 for ax, anchor in zip(axes, ("outside", "inside", "base", "center")):
     pp.barplot(data=df, x="category", y="value", ax=ax,
-               annotate={"anchor": anchor})
-    ax.set_title(f"anchor='{anchor}'")
+               annotate={"anchor": anchor},
+               title=f"anchor='{anchor}'")
 plt.show()
 
 # %%
@@ -68,16 +68,15 @@ grouped["cond"] = grouped["cond"].astype("category")
 fig, ax = pp.barplot(
     data=grouped, x="group", y="y", hue="cond", errorbar="se",
     annotate={"color": "hue"},
+    title='annotate={"color": "hue"}',
 )
-ax.set_title('annotate={"color": "hue"}')
 plt.show()
 
 # %%
 # Horizontal orientation
 # ----------------------
 df_h = df.rename(columns={"category": "c", "value": "v"})
-fig, ax = pp.barplot(data=df_h, x="v", y="c", annotate=True)
-ax.set_title("horizontal")
+fig, ax = pp.barplot(data=df_h, x="v", y="c", annotate=True, title="horizontal")
 plt.show()
 
 # %%
@@ -93,18 +92,20 @@ df_mixed = pd.DataFrame({
 fig, ax = pp.barplot(
     data=df_mixed, x="v", y="c",
     annotate={"anchor": "inside", "fmt": ".1f"},
+    title='horizontal + anchor="inside" (short bars flip out)',
 )
-ax.set_title('horizontal + anchor="inside" (short bars flip out)')
 plt.show()
 
 # %%
 # Post-hoc on a foreign axes
 # --------------------------
 # pp.annotate works on any Axes with bars on it, not just pp.barplot output.
+# (Here we use plain matplotlib to build the bars so there's no pp.barplot
+# title= to pass; ax.set_title is the matplotlib-native way.)
 fig, ax = plt.subplots()
 ax.bar([0, 1, 2], [1.0, 2.4, 0.7])
-pp.annotate(ax, kind="bar_values", fmt=".1f")
 ax.set_title("foreign ax + pp.annotate")
+pp.annotate(ax, kind="bar_values", fmt=".1f")
 plt.show()
 
 # %%
@@ -126,8 +127,8 @@ point_df["group"] = point_df["group"].astype("category")
 fig, ax = pp.pointplot(
     data=point_df, x="time", y="v", hue="group",
     errorbar="se", annotate={"fmt": ".2f"},
+    title="pp.pointplot(annotate=True)",
 )
-ax.set_title("pp.pointplot(annotate=True)")
 plt.show()
 
 # %%
@@ -137,8 +138,8 @@ fig, axes = plt.subplots(1, 5, figsize=(15, 3))
 for ax, anchor in zip(axes, ("top", "bottom", "left", "right", "center")):
     pp.pointplot(data=point_df, x="time", y="v", ax=ax,
                  errorbar="se",
-                 annotate={"anchor": anchor, "fmt": ".1f"})
-    ax.set_title(f"anchor='{anchor}'")
+                 annotate={"anchor": anchor, "fmt": ".1f"},
+                 title=f"anchor='{anchor}'")
 plt.show()
 
 # %%
@@ -154,10 +155,11 @@ for g, base in zip(("A", "B", "C"), (1.0, 2.0, 3.0)):
 box_df = pd.DataFrame(box_rows)
 box_df["g"] = box_df["g"].astype("category")
 
-fig, ax = pp.boxplot(data=box_df, x="g", y="y",
-                     annotate={"stats": ["median", "q1", "q3"],
-                               "fmt": ".2f"})
-ax.set_title("pp.boxplot(annotate={'stats': [...]})")
+fig, ax = pp.boxplot(
+    data=box_df, x="g", y="y",
+    annotate={"stats": ["median", "q1", "q3"], "fmt": ".2f"},
+    title="pp.boxplot(annotate={'stats': [...]})",
+)
 plt.show()
 
 # %%
@@ -165,7 +167,9 @@ plt.show()
 # --------------------------
 # pp.violinplot shares the box_stats strategy — violins are a different
 # visual but the same stats (median, quartiles) apply.
-fig, ax = pp.violinplot(data=box_df, x="g", y="y",
-                        annotate={"stats": ["median"], "fmt": ".2f"})
-ax.set_title("pp.violinplot(annotate=True)")
+fig, ax = pp.violinplot(
+    data=box_df, x="g", y="y",
+    annotate={"stats": ["median"], "fmt": ".2f"},
+    title="pp.violinplot(annotate=True)",
+)
 plt.show()
