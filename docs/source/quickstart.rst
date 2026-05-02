@@ -13,7 +13,6 @@ First, import the necessary libraries:
    import publiplots as pp
    import pandas as pd
    import numpy as np
-   import matplotlib.pyplot as plt
 
 Creating Your First Plot
 -------------------------
@@ -42,7 +41,7 @@ Create a simple bar plot from a DataFrame:
        palette='pastel'
    )
 
-   plt.show()
+   pp.show()
 
 Scatter Plot
 ~~~~~~~~~~~~
@@ -71,7 +70,7 @@ Create a scatter plot with color and size encoding:
        title='Scatter Plot Example'
    )
 
-   plt.show()
+   pp.show()
 
 Customizing Your Plots
 -----------------------

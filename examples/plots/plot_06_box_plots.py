@@ -12,7 +12,6 @@ Examples
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Box Plot
@@ -41,7 +40,7 @@ ax = pp.boxplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Box Plot with Hue Grouping
@@ -63,7 +62,7 @@ ax = pp.boxplot(
     ylabel='Value',
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Box Plot
@@ -78,7 +77,7 @@ ax = pp.boxplot(
     xlabel='Value',
     ylabel='Category',
 )
-plt.show()
+pp.show()
 
 # %%
 # Combined Box and Swarm Plot
@@ -109,7 +108,7 @@ pp.swarmplot(
 ax.set_title('Combined Box and Swarm Plot')
 ax.set_xlabel('Category')
 ax.set_ylabel('Value')
-plt.show()
+pp.show()
 
 # %%
 # Customization
@@ -130,7 +129,7 @@ ax = pp.boxplot(
     ylabel='Value',
     alpha=0.3,
 )
-plt.show()
+pp.show()
 
 # %%
 # Box Plot Without Outliers
@@ -146,4 +145,4 @@ ax = pp.boxplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()

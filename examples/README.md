@@ -52,7 +52,7 @@ To add a new example:
    # Description of this section.
    ```
 
-5. Include `plt.show()` after creating figures
+5. Include `pp.show()` after creating figures
 6. Run the example to ensure it works before building docs
 
 ## Notes

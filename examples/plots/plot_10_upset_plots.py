@@ -11,7 +11,6 @@ set intersections, especially useful when dealing with many sets
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Basic UpSet Plot
@@ -33,7 +32,7 @@ axes = pp.upsetplot(
     title='Gene Set Intersection Analysis',
     show_counts=15,
 )
-plt.show()
+pp.show()
 
 # %%
 # UpSet Plot with Custom Colors
@@ -50,7 +49,7 @@ axes = pp.upsetplot(
     bar_linewidth=1.5,
     show_counts=12,
 )
-plt.show()
+pp.show()
 
 # %%
 # UpSet Plot with Many Sets
@@ -77,7 +76,7 @@ axes = pp.upsetplot(
     color='#75B375',
     show_counts=20,
 )
-plt.show()
+pp.show()
 
 # %%
 # UpSet Plot from DataFrame
@@ -105,7 +104,7 @@ axes = pp.upsetplot(
     alpha=0.4,
     show_counts=15,
 )
-plt.show()
+pp.show()
 
 # %%
 # Comparing UpSet vs Venn for 4+ Sets
@@ -140,7 +139,7 @@ ax2.text(0.5, 0.5, 'UpSet plot shown separately\n(see next figure)',
 ax2.axis('off')
 ax2.set_title('UpSet Plot (Better for 5+ Sets)', fontsize=12, fontweight='bold')
 
-plt.show()
+pp.show()
 
 # Show the UpSet plot
 axes = pp.upsetplot(
@@ -151,4 +150,4 @@ axes = pp.upsetplot(
     alpha=0.3,
     show_counts=20,
 )
-plt.show()
+pp.show()

@@ -9,7 +9,6 @@ set global styles, and customize various plotting parameters.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Understanding rcParams
@@ -62,7 +61,7 @@ ax = pp.barplot(
     errorbar='se',
     palette='pastel'
 )
-plt.show()
+pp.show()
 
 # %%
 # Customizing Individual Parameters
@@ -88,7 +87,7 @@ ax = pp.barplot(
     title='Plot with Custom rcParams',
     errorbar='se',
 )
-plt.show()
+pp.show()
 
 # Reset to default (reverts to matplotlib defaults)
 pp.reset_style()
@@ -167,7 +166,7 @@ pp.barplot(
     ax=axes[1, 1]
 )
 
-plt.show()
+pp.show()
 
 # %%
 # Context-Based Styling
@@ -193,7 +192,7 @@ ax = pp.scatterplot(
     palette='pastel',
     alpha=0.2,
 )
-plt.show()
+pp.show()
 
 # Plot 2: Override alpha and color for this plot only
 ax = pp.scatterplot(
@@ -205,7 +204,7 @@ ax = pp.scatterplot(
     palette='pastel',
     alpha=0.5,  # Override default alpha just for this plot
 )
-plt.show()
+pp.show()
 
 # %%
 # Saving Figures with Custom Settings
@@ -234,7 +233,7 @@ print("  - PNG at 300 DPI (publications)")
 print("  - PDF (vector, editable)")
 print("  - SVG (vector, web-friendly)")
 
-plt.show()
+pp.show()
 
 # %%
 # Best Practices Summary

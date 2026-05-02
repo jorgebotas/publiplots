@@ -11,7 +11,6 @@ comparing groups over time or conditions.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Point Plot
@@ -40,7 +39,7 @@ ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 
 # %%
@@ -73,7 +72,7 @@ ax = pp.pointplot(
     palette="RdGyBu_r"
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 
 # %%
@@ -93,7 +92,7 @@ ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 # %%
 # Point Plot with Custom Line Styles
@@ -112,7 +111,7 @@ ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 # %%
 # Complete Customization
@@ -133,7 +132,7 @@ ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 # %%
 # Point Plot with Standard Error
@@ -152,7 +151,7 @@ ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y")
-plt.show()
+pp.show()
 
 # %%
 # Point Plot with Standard Deviation
@@ -171,7 +170,7 @@ ax = pp.pointplot(
     ylabel='Measurement',
 )
 ax.grid(axis="y", alpha=0.3)
-plt.show()
+pp.show()
 
 # %%
 # Forest Plot: Log2 Odds Ratios with Significance Coloring
@@ -291,4 +290,4 @@ ax.axvline(x=placebo_mean, color='red', linestyle=':', linewidth=1.5,
 ax.grid(axis='x', alpha=0.3)
 ax.legend(loc='lower right')
 
-plt.show()
+pp.show()

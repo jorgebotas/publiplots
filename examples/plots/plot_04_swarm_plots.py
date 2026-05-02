@@ -9,7 +9,6 @@ which shows individual data points with minimal overlap.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Swarm Plot
@@ -37,7 +36,7 @@ ax = pp.swarmplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Swarm Plot with Hue Grouping
@@ -58,7 +57,7 @@ ax = pp.swarmplot(
     ylabel='Value',
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Dodged Swarm Plot
@@ -76,7 +75,7 @@ ax = pp.swarmplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Swarm Plot with Custom Size
@@ -93,7 +92,7 @@ ax = pp.swarmplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Swarm Plot
@@ -109,4 +108,4 @@ ax = pp.swarmplot(
     xlabel='Value',
     ylabel='Category',
 )
-plt.show()
+pp.show()

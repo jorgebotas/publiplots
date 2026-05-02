@@ -9,7 +9,6 @@ which shows individual data points with optional jitter.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Strip Plot
@@ -37,7 +36,7 @@ ax = pp.stripplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Strip Plot with Jitter
@@ -54,7 +53,7 @@ ax = pp.stripplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Strip Plot with Hue Grouping
@@ -75,7 +74,7 @@ ax = pp.stripplot(
     ylabel='Value',
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Dodged Strip Plot
@@ -93,7 +92,7 @@ ax = pp.stripplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Strip Plot
@@ -109,4 +108,4 @@ ax = pp.stripplot(
     xlabel='Value',
     ylabel='Category',
 )
-plt.show()
+pp.show()

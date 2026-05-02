@@ -10,7 +10,6 @@ and complex heatmaps with margin plots.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Heatmap (Wide Format)
@@ -37,7 +36,7 @@ ax = pp.heatmap(
     xlabel='Samples',
     ylabel='Genes',
 )
-plt.show()
+pp.show()
 
 # %%
 # Annotated Heatmap
@@ -53,7 +52,7 @@ ax = pp.heatmap(
     linecolor='white',
     title='Annotated Expression Matrix',
 )
-plt.show()
+pp.show()
 
 # %%
 # Heatmap from Long-Format Data
@@ -81,7 +80,7 @@ ax = pp.heatmap(
     title='Heatmap from Long-Format Data',
     legend_kws={'value_label': 'Expression (Z-score)'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Dot Heatmap (Bubble Plot)
@@ -120,7 +119,7 @@ ax = pp.heatmap(
         'size_label': 'P-value',
     },
 )
-plt.show()
+pp.show()
 
 # %%
 # Clustered Heatmap
@@ -154,8 +153,8 @@ axes = (
     )
     .build()
 )
-plt.suptitle('Clustered Heatmap with Dendrograms', y=1.02)
-plt.show()
+pp.suptitle('Clustered Heatmap with Dendrograms', y=1.02)
+pp.show()
 
 # %%
 # Complex Heatmap with Margin Plots
@@ -204,8 +203,8 @@ axes = (
     )
     .build()
 )
-plt.suptitle('Complex Heatmap with Summary Bar Plot', y=1.02)
-plt.show()
+pp.suptitle('Complex Heatmap with Summary Bar Plot', y=1.02)
+pp.show()
 
 # %%
 # Dot Heatmap for GO Enrichment
@@ -247,7 +246,7 @@ ax = pp.heatmap(
         'size_label': '-log10(p-value)',
     },
 )
-plt.show()
+pp.show()
 
 # %%
 # Square Heatmap
@@ -271,7 +270,7 @@ ax = pp.heatmap(
     linewidths=0.5,
     title='Correlation Matrix',
 )
-plt.show()
+pp.show()
 
 # %%
 # Complex Heatmap Without Dendrograms
@@ -290,5 +289,5 @@ axes = (
     )
     .build()
 )
-plt.suptitle('Clustered Heatmap (Dendrograms Hidden)', y=1.02)
-plt.show()
+pp.suptitle('Clustered Heatmap (Dendrograms Hidden)', y=1.02)
+pp.show()

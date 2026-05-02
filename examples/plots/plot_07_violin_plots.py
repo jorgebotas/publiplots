@@ -12,7 +12,6 @@ Examples
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Violin Plot
@@ -41,7 +40,7 @@ ax = pp.violinplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Violin Plot with Hue Grouping
@@ -63,7 +62,7 @@ ax = pp.violinplot(
     ylabel='Value',
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
-plt.show()
+pp.show()
 
 # %%
 # Split Violin Plot
@@ -82,7 +81,7 @@ ax = pp.violinplot(
     xlabel='Category',
     ylabel='Value',
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Violin Plot
@@ -97,7 +96,7 @@ ax = pp.violinplot(
     xlabel='Value',
     ylabel='Category',
 )
-plt.show()
+pp.show()
 
 # %%
 # Combined Violin and Swarm Plot
@@ -129,7 +128,7 @@ pp.swarmplot(
 ax.set_title('Combined Violin and Swarm Plot')
 ax.set_xlabel('Category')
 ax.set_ylabel('Value')
-plt.show()
+pp.show()
 
 # %%
 # Customization
@@ -150,7 +149,7 @@ ax = pp.violinplot(
     ylabel='Value',
     alpha=0.3,
 )
-plt.show()
+pp.show()
 
 # %%
 # Violin Plot with Different Inner Representations
@@ -172,7 +171,7 @@ for ax, inner in zip(axes.flat, inner_types):
         ylabel='Value',
     )
 
-plt.show()
+pp.show()
 
 # %%
 # One-Sided Violin Plots
@@ -211,5 +210,5 @@ pp.violinplot(
     palette={'Group 1': '#8E8EC1', 'Group 2': '#75B375'},
 )
 
-plt.show()
+pp.show()
 

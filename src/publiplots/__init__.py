@@ -37,6 +37,7 @@ from publiplots.plot.heatmap import heatmap, complex_heatmap, dendrogram
 
 # Utilities
 from publiplots.utils.io import savefig, save_multiple, close_all
+from publiplots.utils.display import show, suptitle
 from publiplots.utils.axes import (
     adjust_spines,
     add_grid,
@@ -105,6 +106,9 @@ __all__ = [
     "savefig",
     "save_multiple",
     "close_all",
+    # Display utilities
+    "show",
+    "suptitle",
     # Axes utilities
     "adjust_spines",
     "add_grid",
