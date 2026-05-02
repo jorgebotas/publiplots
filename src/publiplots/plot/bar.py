@@ -326,7 +326,7 @@ def barplot(
 
     if annotate:
         ax._publiplots_bar_meta = build_from_barplot_call(
-            ax=ax, data=data, x=x, y=y, hue=hue,
+            ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
             categorical_axis=categorical_axis,
             palette=palette, errorbar=errorbar,
         )

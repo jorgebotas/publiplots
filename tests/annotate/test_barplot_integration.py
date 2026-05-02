@@ -160,6 +160,108 @@ def test_barplot_annotate_errorbar_none_all_none():
         assert bar.err_high is None
 
 
+def test_barplot_annotate_hue_and_hatch_pair_correctly():
+    """Double-split (hue + hatch, distinct columns) produces n_cat × n_hue
+    × n_hatch bars; every bar must get its own correctly-paired label.
+
+    Regression: the original builder iterated hue × cat only, so double-split
+    bars lost the hatch dimension and silently mispaired labels.
+    """
+    import math
+    rng = np.random.default_rng(789)
+    rows = []
+    heights = {
+        ("A", "Vehicle", "24h"): 95, ("A", "Vehicle", "48h"): 93,
+        ("A", "Drug", "24h"): 75,    ("A", "Drug", "48h"): 60,
+        ("B", "Vehicle", "24h"): 94, ("B", "Vehicle", "48h"): 92,
+        ("B", "Drug", "24h"): 80,    ("B", "Drug", "48h"): 70,
+    }
+    for (cell, treat, time), mean in heights.items():
+        for v in rng.normal(mean, 0.1, 10):  # tight std so labels are predictable
+            rows.append({"cell": cell, "treat": treat, "time": time,
+                         "y": float(v)})
+    df = pd.DataFrame(rows)
+    for c in ("cell", "treat", "time"):
+        df[c] = df[c].astype("category")
+
+    fig, ax = pp.barplot(
+        data=df, x="cell", y="y",
+        hue="treat", hatch="time", errorbar="se",
+        hatch_map={"24h": "", "48h": "///"},
+        annotate={"fmt": ".0f"},
+    )
+    rects = [p for p in ax.patches if p.get_width() > 0 and p.get_height() > 0]
+    assert len(rects) == 8, f"expected 8 bars, got {len(rects)}"
+    assert len(ax.texts) == 8, f"expected 8 labels, got {len(ax.texts)}"
+    for rect, text in zip(rects, ax.texts):
+        expected = round(rect.get_height())
+        assert int(text.get_text()) == expected, (
+            f"label {text.get_text()!r} doesn't match bar height {rect.get_height():.2f}"
+        )
+
+
+def test_barplot_annotate_hue_equals_cat_axis_pairs_correctly():
+    """hue == categorical axis: seaborn doesn't dodge; we emit one label
+    per category (not n_cat × n_cat)."""
+    df = pd.DataFrame({
+        "c": pd.Categorical(["A", "B", "C"]),
+        "v": [1.0, 2.0, 3.0],
+    })
+    fig, ax = pp.barplot(data=df, x="c", y="v", hue="c",
+                         errorbar=None, annotate=True)
+    rects = [p for p in ax.patches if p.get_width() > 0 and p.get_height() > 0]
+    assert len(rects) == 3
+    assert len(ax.texts) == 3
+    for rect, text in zip(rects, ax.texts):
+        assert float(text.get_text()) == pytest.approx(rect.get_height())
+
+
+def test_barplot_annotate_hatch_equals_cat_axis_pairs_correctly():
+    """hatch == categorical axis, no hue: one label per category."""
+    rng = np.random.default_rng(42)
+    rows = []
+    for g, mean in zip(("A", "B", "C"), (1.0, 2.0, 3.0)):
+        for v in rng.normal(mean, 0.1, 10):
+            rows.append({"c": g, "v": float(v)})
+    df = pd.DataFrame(rows)
+    df["c"] = df["c"].astype("category")
+    fig, ax = pp.barplot(
+        data=df, x="c", y="v", hatch="c",
+        hatch_map={"A": "", "B": "///", "C": "xx"},
+        errorbar=None, annotate=True,
+    )
+    rects = [p for p in ax.patches if p.get_width() > 0 and p.get_height() > 0]
+    assert len(rects) == 3
+    assert len(ax.texts) == 3
+    for rect, text in zip(rects, ax.texts):
+        assert float(text.get_text()) == pytest.approx(rect.get_height(), abs=0.02)
+
+
+def test_barplot_annotate_hue_equals_cat_plus_hatch_pairs_correctly():
+    """hue == cat but a separate hatch is present: hatch causes dodging,
+    so we have n_cat × n_hatch bars ordered hatch-outer / cat-inner."""
+    rng = np.random.default_rng(42)
+    rows = []
+    for g in ("A", "B", "C"):
+        for t in ("t1", "t2"):
+            mean = {"A": 1.0, "B": 2.0, "C": 3.0}[g] + (0.0 if t == "t1" else 0.5)
+            for v in rng.normal(mean, 0.1, 10):
+                rows.append({"c": g, "t": t, "v": float(v)})
+    df = pd.DataFrame(rows)
+    df["c"] = df["c"].astype("category")
+    df["t"] = df["t"].astype("category")
+    fig, ax = pp.barplot(
+        data=df, x="c", y="v", hue="c", hatch="t",
+        hatch_map={"t1": "", "t2": "///"},
+        errorbar=None, annotate=True,
+    )
+    rects = [p for p in ax.patches if p.get_width() > 0 and p.get_height() > 0]
+    assert len(rects) == 6
+    assert len(ax.texts) == 6
+    for rect, text in zip(rects, ax.texts):
+        assert float(text.get_text()) == pytest.approx(rect.get_height(), abs=0.02)
+
+
 def test_barplot_annotate_color_hue_without_hue_warns():
     """annotate={'color': 'hue'} on a no-hue barplot warns and falls back."""
     df = pd.DataFrame({

@@ -55,32 +55,73 @@ def _aggregate_means(
     y: str,
     hue: Optional[str],
     categorical_axis: str,
+    hatch: Optional[str] = None,
 ) -> List[Dict]:
-    """Group by (categorical_axis [, hue]) and return per-group mean values.
+    """Group by (categorical_axis [, hue [, hatch]]) and return means.
 
-    Row ordering: hue outer, categorical_axis inner — matches seaborn's
-    dodge draw order. Errorbar extents are not computed here; callers pull
-    them from the drawn errorbar artists via `_match_errorbars`.
+    Row ordering matches seaborn's dodge draw order:
+    - no hue, no hatch: cat only
+    - hue only: hue outer, cat inner
+    - hue + hatch: hue outer, hatch middle, cat inner
+    - hatch only (no hue): hatch outer, cat inner
+
+    Errorbar extents are not computed here; callers pull them from drawn
+    artists via `_match_errorbars`.
     """
     value_col = y if categorical_axis == x else x
     cat_categories = _categories_in_draw_order(data[categorical_axis])
 
+    # A hue or hatch equal to the categorical axis doesn't cause dodging —
+    # seaborn styles each category bar but doesn't split. Collapse those
+    # dimensions from iteration. Also drop hatch if it duplicates hue.
+    split_hue = hue if (hue is not None and hue != categorical_axis) else None
+    split_hatch = hatch if (
+        hatch is not None
+        and hatch != categorical_axis
+        and hatch != hue
+    ) else None
+
     rows: List[Dict] = []
-    if hue is None:
+    if split_hue is None and split_hatch is None:
         for cat in cat_categories:
             mask = data[categorical_axis] == cat
             vals = data.loc[mask, value_col].to_numpy()
             rows.append({"mean": float(np.mean(vals))})
         return rows
 
-    hue_categories = _categories_in_draw_order(data[hue])
-    for h in hue_categories:
-        for cat in cat_categories:
-            mask = (data[categorical_axis] == cat) & (data[hue] == h)
-            vals = data.loc[mask, value_col].to_numpy()
-            if len(vals) == 0:
-                continue
-            rows.append({"mean": float(np.mean(vals)), "hue_value": h})
+    if split_hue is not None and split_hatch is None:
+        for h in _categories_in_draw_order(data[split_hue]):
+            for cat in cat_categories:
+                mask = (data[categorical_axis] == cat) & (data[split_hue] == h)
+                vals = data.loc[mask, value_col].to_numpy()
+                if len(vals) == 0:
+                    continue
+                rows.append({"mean": float(np.mean(vals)), "hue_value": h})
+        return rows
+
+    if split_hue is None and split_hatch is not None:
+        for ht in _categories_in_draw_order(data[split_hatch]):
+            for cat in cat_categories:
+                mask = (data[categorical_axis] == cat) & (data[split_hatch] == ht)
+                vals = data.loc[mask, value_col].to_numpy()
+                if len(vals) == 0:
+                    continue
+                rows.append({"mean": float(np.mean(vals))})
+        return rows
+
+    # Both hue and hatch present and distinct.
+    for h in _categories_in_draw_order(data[split_hue]):
+        for ht in _categories_in_draw_order(data[split_hatch]):
+            for cat in cat_categories:
+                mask = (
+                    (data[categorical_axis] == cat)
+                    & (data[split_hue] == h)
+                    & (data[split_hatch] == ht)
+                )
+                vals = data.loc[mask, value_col].to_numpy()
+                if len(vals) == 0:
+                    continue
+                rows.append({"mean": float(np.mean(vals)), "hue_value": h})
     return rows
 
 
@@ -209,18 +250,20 @@ def build_from_barplot_call(
     categorical_axis: str,
     palette: Optional[Dict],
     errorbar: Optional[str],
+    hatch: Optional[str] = None,
 ) -> BarValueMeta:
     """Build a `BarValueMeta` paired with the barplot's Rectangles.
 
     Means come from a groupby of the raw data; errorbar extents are pulled
     from the drawn errorbar artists via `_match_errorbars`, so they match
     seaborn exactly for every errorbar spec (`"ci"`, `"pi"`, tuples,
-    callables, `None`). Records are paired with Rectangles in draw order.
-    Hue colors come from the resolved palette map.
+    callables, `None`). Records are paired with Rectangles in draw order,
+    which under hue + hatch double-split is hue-outer / hatch-middle /
+    cat-inner. Hue colors come from the resolved palette map.
     """
     orient = "v" if categorical_axis == x else "h"
 
-    agg = _aggregate_means(data, x=x, y=y, hue=hue,
+    agg = _aggregate_means(data, x=x, y=y, hue=hue, hatch=hatch,
                            categorical_axis=categorical_axis)
     rects = [
         p for p in ax.patches
@@ -321,9 +364,8 @@ def _aggregate_box_stats(
     return rows
 
 
-def _center_pos_from_artist(artist, ax: Axes, orient: str) -> float:
-    """Get the categorical-axis center of a drawn artist (PathPatch or
-    PolyCollection)."""
+def _cat_extents_from_artist(artist, ax: Axes, orient: str) -> Tuple[float, float]:
+    """Return (center, half_width) on the categorical axis, in data coords."""
     tr = artist.get_transform() if hasattr(artist, "get_transform") else ax.transData
     # Works for both Patch (get_path) and Collection (get_paths()[0])
     if hasattr(artist, "get_path"):
@@ -332,8 +374,10 @@ def _center_pos_from_artist(artist, ax: Axes, orient: str) -> float:
         extents = artist.get_paths()[0].get_extents(tr)
     extents_data = extents.transformed(ax.transData.inverted())
     if orient == "v":
-        return float((extents_data.x0 + extents_data.x1) / 2.0)
-    return float((extents_data.y0 + extents_data.y1) / 2.0)
+        lo, hi = extents_data.x0, extents_data.x1
+    else:
+        lo, hi = extents_data.y0, extents_data.y1
+    return float((lo + hi) / 2.0), float(abs(hi - lo) / 2.0)
 
 
 def _facecolor_of(artist) -> Tuple[float, float, float, float]:
@@ -372,7 +416,7 @@ def _build_box_stats_meta(
 
     boxes: List[BoxStatsRecord] = []
     for artist, row in zip(artists, agg):
-        center_pos = _center_pos_from_artist(artist, ax, orient)
+        center_pos, cat_half_width = _cat_extents_from_artist(artist, ax, orient)
         hue_color = None
         if hue is not None and palette is not None:
             key = row.get("hue_value")
@@ -382,6 +426,7 @@ def _build_box_stats_meta(
             hue_color = _facecolor_of(artist)
         boxes.append(BoxStatsRecord(
             center_pos=center_pos,
+            cat_half_width=cat_half_width,
             stats={k: v for k, v in row.items() if k in VALID_BOX_STATS},
             hue_color=hue_color,
         ))

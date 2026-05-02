@@ -65,11 +65,14 @@ class BoxStatsRecord:
     """Statistics computed for a single box.
 
     `center_pos` is the categorical-axis coordinate of the box's center
-    (e.g. x for orient="v"). `stats` is a dict mapping stat name to its
-    value-axis coordinate, populated only for the stats the caller asked to
-    label.
+    (e.g. x for orient="v"). `cat_half_width` is the half-extent of the
+    drawn artist on the same axis (in data coords) — used by the strategy
+    to place `left`/`right`-anchored labels just past the box edge.
+    `stats` is a dict mapping stat name to its value-axis coordinate,
+    populated only for the stats the caller asked to label.
     """
     center_pos: float                           # x for orient="v", y for "h"
+    cat_half_width: float                       # half-width on categorical axis (data coords)
     stats: dict                                 # {"median": y, "q1": y, ...}
     hue_color: Optional[RGBA]
 

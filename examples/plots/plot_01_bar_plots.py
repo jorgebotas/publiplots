@@ -186,6 +186,68 @@ fig, ax = pp.barplot(
 plt.show()
 
 # %%
+# Annotated hue + hatch bars
+# ---------------------------
+# ``annotate=True`` pairs each bar with its aggregated value correctly
+# even when bars are dodged across both a hue and a hatch dimension —
+# 12 bars here (3 cell types × 2 treatments × 2 time points), 12 labels.
+
+fig, ax = pp.barplot(
+    data=double_split_data,
+    x="cell_type",
+    y="viability",
+    hue="treatment",
+    hatch="time",
+    errorbar="se",
+    palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
+    hatch_map={"24h": "", "48h": "///"},
+    figsize=(8, 5),
+    annotate={"fmt": ".0f"},
+    title="annotate=True with hue × hatch",
+)
+plt.show()
+
+# %%
+# Annotated bars when hue or hatch matches the categorical axis
+# -------------------------------------------------------------
+# Setting ``hue`` or ``hatch`` to the categorical axis doesn't cause
+# dodging — each category just gets its own color/pattern. ``annotate``
+# follows suit: one label per category, correctly paired.
+
+# hue == categorical axis: color-coded single bars per category
+fig, ax = pp.barplot(
+    data=simple_data, x="category", y="value", hue="category",
+    palette="pastel", errorbar=None,
+    annotate={"fmt": ".0f"},
+    title="hue == categorical axis",
+)
+plt.show()
+
+# hue == cat and a separate hatch present: hatch causes dodging, so we
+# get n_cat × n_hatch bars, each labelled.
+np.random.seed(101)
+time_data = pd.DataFrame({
+    "treatment": np.tile(np.repeat(["Control", "Drug A", "Drug B"], 10), 2),
+    "time": np.repeat(["24h", "48h"], 30),
+    "response": np.concatenate([
+        np.random.normal(50, 3, 10), np.random.normal(70, 4, 10),
+        np.random.normal(80, 4, 10), np.random.normal(55, 3, 10),
+        np.random.normal(75, 4, 10), np.random.normal(85, 4, 10),
+    ]),
+})
+fig, ax = pp.barplot(
+    data=time_data, x="treatment", y="response",
+    hue="treatment", hatch="time",
+    palette={"Control": "#cccccc", "Drug A": "#8E8EC1", "Drug B": "#60a8a8"},
+    hatch_map={"24h": "", "48h": "///"},
+    errorbar="se",
+    annotate={"fmt": ".0f"},
+    title="hue == categorical axis + hatch",
+    figsize=(8, 5),
+)
+plt.show()
+
+# %%
 # Horizontal Bar Plot
 # -------------------
 # Create horizontal bars by swapping x and y axes.

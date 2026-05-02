@@ -23,11 +23,6 @@ _VALID_ANCHORS = {"top", "bottom", "left", "right", "center"}
 _DEFAULT_ANCHOR = "right"
 _DEFAULT_STATS: Tuple[str, ...] = ("median",)
 
-# Horizontal half-width of a box is unknown at strategy time unless we
-# re-measure the PathPatch. For the right/left anchor we apply a fixed
-# clearance in mm plus the user's offset. For top/bottom anchors the value
-# axis extent of the stat (q3 etc.) is all we need.
-_BOX_HALF_WIDTH_MM = 2.0
 
 
 def _format_value(value: float, fmt: str) -> str:
@@ -57,12 +52,9 @@ def _resolve_box_anchor(
     """Return (x, y, ha, va) for a label on a single box statistic.
 
     The stat lives on the value axis at `stat_value`; the box lives at
-    `box.center_pos` on the categorical axis. Anchors steer the label
-    away from the stat in the requested direction.
+    `box.center_pos` on the categorical axis, with half-width
+    `box.cat_half_width`. Anchors steer the label outward from the stat.
     """
-    half_width_x = mm_to_data(_BOX_HALF_WIDTH_MM, ax, axis="x")
-    half_width_y = mm_to_data(_BOX_HALF_WIDTH_MM, ax, axis="y")
-
     if orient == "v":
         px = box.center_pos
         py = stat_value
@@ -73,9 +65,9 @@ def _resolve_box_anchor(
         if anchor == "bottom":
             return px, py - offset_y, "center", "top"
         if anchor == "right":
-            return px + half_width_x + offset_x, py, "left", "center"
+            return px + box.cat_half_width + offset_x, py, "left", "center"
         if anchor == "left":
-            return px - half_width_x - offset_x, py, "right", "center"
+            return px - box.cat_half_width - offset_x, py, "right", "center"
         if anchor == "center":
             return px, py, "center", "center"
     else:
@@ -85,9 +77,9 @@ def _resolve_box_anchor(
         offset_x = mm_to_data(offset_mm, ax, axis="x") if anchor in ("left", "right") else 0.0
         offset_y = mm_to_data(offset_mm, ax, axis="y") if anchor in ("top", "bottom") else 0.0
         if anchor == "top":
-            return px, py + half_width_y + offset_y, "center", "bottom"
+            return px, py + box.cat_half_width + offset_y, "center", "bottom"
         if anchor == "bottom":
-            return px, py - half_width_y - offset_y, "center", "top"
+            return px, py - box.cat_half_width - offset_y, "center", "top"
         if anchor == "right":
             return px + offset_x, py, "left", "center"
         if anchor == "left":
