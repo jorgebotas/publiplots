@@ -27,7 +27,7 @@ print(f"  Default capsize: {pp.rcParams['capsize']}")
 print(f"  Hatch mode: {pp.rcParams['hatch_mode']}")
 
 print("\nMatplotlib Parameters (via pp.rcParams):")
-print(f"  Figure size: {pp.rcParams['figure.figsize']}")
+print(f"  Axes size (mm): {pp.rcParams['subplots.axes_size']}")
 print(f"  Line width: {pp.rcParams['lines.linewidth']}")
 print(f"  Font size: {pp.rcParams['font.size']}")
 print(f"  DPI: {pp.rcParams['savefig.dpi']}")
@@ -50,7 +50,7 @@ sample_data = pd.DataFrame({
 })
 
 print("\nDefault PubliPlots Style (applied on import):")
-print(f"  Figure size: {pp.rcParams['figure.figsize']}")
+print(f"  Axes size (mm): {pp.rcParams['subplots.axes_size']}")
 print(f"  Font size: {pp.rcParams['font.size']}")
 print(f"  DPI: {pp.rcParams['savefig.dpi']}")
 
@@ -76,9 +76,9 @@ pp.rcParams['capsize'] = 0.15     # Larger error bar caps
 pp.rcParams['hatch_mode'] = 2     # Medium density hatch patterns
 
 # Also customize matplotlib parameters
-pp.rcParams['figure.figsize'] = (8, 5)  # Wider figures
-pp.rcParams['lines.linewidth'] = 2.5    # Thicker lines
-pp.rcParams['font.size'] = 11           # Slightly larger font
+pp.rcParams['subplots.axes_size'] = (80, 50)  # Wider axes (mm)
+pp.rcParams['lines.linewidth'] = 2.5           # Thicker lines
+pp.rcParams['font.size'] = 11                  # Slightly larger font
 
 # Create plot with custom defaults
 fig, ax = pp.barplot(

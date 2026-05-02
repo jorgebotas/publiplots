@@ -66,7 +66,6 @@ def _venn(
     dataset_labels: List[str],
     colors: List[Tuple[float, ...]],
     alpha: float,
-    figsize: Tuple[float, float],
     ax: Optional[Axes],
     color_labels: bool = True,
 ) -> Axes:
@@ -95,7 +94,7 @@ def _venn(
     ylim = (y_range[0] - padding * y_height, y_range[1] + padding * y_height)
 
     # Initialize axes with proper limits
-    ax = init_axes(ax, figsize, xlim=xlim, ylim=ylim)
+    ax = init_axes(ax, xlim=xlim, ylim=ylim)
 
     # Draw all circles/ellipses
     for circle, color in zip(circles, colors):
@@ -202,7 +201,6 @@ def venn(
     labels: Optional[List[str]] = None,
     colors: Optional[Union[List[str], str]] = None,
     alpha: Optional[float] = None,
-    figsize: Optional[Tuple[float, float]] = None,
     ax: Optional[Axes] = None,
     fmt: str = "{size}",
     color_labels: bool = True,
@@ -228,8 +226,6 @@ def venn(
         - None (uses 'pastel' palette)
     alpha : float, default=0.3
         Transparency of set regions (0=transparent, 1=opaque).
-    figsize : tuple, default=(10, 6)
-        Figure size as (width, height) in inches.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     fmt : str, default='{size}'
@@ -308,15 +304,12 @@ def venn(
     # Generate petal labels (intersection sizes)
     petal_labels = generate_petal_labels(sets_list, fmt=fmt)
 
-    # Create figure if not provided
-    # Only fall back to matplotlib's figsize when the user explicitly provides one;
-    # otherwise use pp.subplots so axes_size comes from pp.rcParams["subplots.axes_size"].
+    # Create figure via pp.subplots to install SubplotsAutoLayout; users who
+    # want custom dimensions should compose with pp.subplots(axes_size=...)
+    # before calling and pass ax=.
     if ax is None:
-        if figsize is not None:
-            fig, ax = plt.subplots(figsize=figsize)
-        else:
-            from publiplots.layout.subplots import subplots as _pp_subplots
-            fig, ax = _pp_subplots()
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        fig, ax = _pp_subplots()
     else:
         fig = ax.get_figure()
 
@@ -326,7 +319,6 @@ def venn(
         dataset_labels=labels,
         colors=colors,
         alpha=alpha,
-        figsize=figsize,
         ax=ax,
         color_labels=color_labels,
     )

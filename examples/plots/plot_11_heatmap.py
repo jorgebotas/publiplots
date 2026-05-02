@@ -150,7 +150,7 @@ fig, axes = (
         center=0,
         row_cluster=True,
         col_cluster=True,
-        figsize=(5, 5),
+        axes_size=(90, 90),
     )
     .build()
 )
@@ -190,7 +190,7 @@ fig, axes = (
     pp.complex_heatmap(
         expr_matrix,
         cmap='viridis',
-        figsize=(4, 4),
+        axes_size=(80, 80),
         row_cluster=True,
         col_cluster=True,
     )
@@ -286,7 +286,7 @@ fig, axes = (
         col_cluster=True,
         row_dendrogram=False,  # Hide row dendrogram
         col_dendrogram=False,  # Hide column dendrogram
-        figsize=(5, 5),
+        axes_size=(90, 90),
     )
     .build()
 )

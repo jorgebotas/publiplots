@@ -266,12 +266,11 @@ def upsetplot(
     n_sets = processed["n_sets"]
     n_intersections = processed["n_intersections"]
 
-    # Create figure with initial size (will be adjusted by setup_upset_axes)
-    # Initial size is just a starting point - setup_upset_axes will resize based on elementsize
-    default_width, default_height = resolve_param("figure.figsize")
-    width = max(default_width, n_intersections * 0.4)
-    height = max(default_height, n_sets * 0.8 + 3)
-    fig = plt.figure(figsize=(width, height))
+    # Create a bare figure; setup_upset_axes() immediately resizes it (via
+    # fig.set_figwidth/set_figheight) based on elementsize, so we don't
+    # reserve space or install SubplotsAutoLayout here — UpSet manages its
+    # own gridspec and figure dimensions.
+    fig = plt.figure()
 
     # Setup axes with proper sizing that maintains proportions
     # Figure size is automatically calculated based on elementsize

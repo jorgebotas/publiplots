@@ -25,6 +25,21 @@ _RESERVATION_KEYS = (
 _LAYOUT_ENGINE_KWARGS = ("layout", "constrained_layout", "tight_layout")
 
 
+def reject_figsize(kwargs: dict) -> None:
+    """Raise TypeError if ``figsize`` appears in ``kwargs``.
+
+    publiplots plot functions no longer accept ``figsize=``. To customize
+    axes dimensions, compose with ``pp.subplots(axes_size=(w_mm, h_mm))``
+    and pass ``ax=``.
+    """
+    if "figsize" in kwargs:
+        raise TypeError(
+            "publiplots plot functions no longer accept figsize=. "
+            "Use pp.subplots(axes_size=(w_mm, h_mm)) to customize axes "
+            "dimensions, then pass ax= to the plot function."
+        )
+
+
 def subplots(
     nrows: int = 1,
     ncols: int = 1,

@@ -5,7 +5,6 @@ This module provides the fundamental drawing primitives for creating Venn diagra
 including functions to draw ellipses and text labels on matplotlib axes.
 """
 
-from matplotlib.pyplot import subplots
 from matplotlib.patches import Ellipse, Polygon
 from matplotlib.colors import to_rgba
 from matplotlib.axes import Axes
@@ -126,23 +125,21 @@ def draw_text(
 
 def init_axes(
     ax: Optional[Axes],
-    figsize: Tuple[float, float],
     xlim: Optional[Tuple[float, float]] = None,
     ylim: Optional[Tuple[float, float]] = None,
 ) -> Axes:
     """
     Initialize or configure axes for Venn diagram plotting.
 
-    This function creates new axes if none are provided, or configures existing axes
-    with the appropriate settings for Venn diagrams. It sets up an equal aspect ratio,
-    removes frame and ticks, and establishes coordinate limits based on the geometry.
+    Creates new axes via ``pp.subplots`` if none are provided, or configures
+    existing axes with the appropriate settings for Venn diagrams. Sets up an
+    equal aspect ratio, removes frame and ticks, and establishes coordinate
+    limits based on the geometry.
 
     Parameters
     ----------
     ax : matplotlib.axes.Axes or None
-        Existing axes to configure, or None to create new axes
-    figsize : tuple of float
-        Figure size as (width, height) in inches, used only when creating new axes
+        Existing axes to configure, or None to create new axes via pp.subplots.
     xlim : tuple of float, optional
         X-axis limits. If None, uses automatic limits.
     ylim : tuple of float, optional
@@ -151,17 +148,11 @@ def init_axes(
     Returns
     -------
     matplotlib.axes.Axes
-        Configured axes ready for Venn diagram plotting
-
-    Examples
-    --------
-    >>> ax = init_axes(None, figsize=(8, 8), xlim=(-2, 2), ylim=(-2, 2))
-    >>> # Or with existing axes:
-    >>> fig, ax = plt.subplots()
-    >>> ax = init_axes(ax, figsize=(8, 8))
+        Configured axes ready for Venn diagram plotting.
     """
     if ax is None:
-        _, ax = subplots(nrows=1, ncols=1, figsize=figsize)
+        from publiplots.layout.subplots import subplots as _pp_subplots
+        _, ax = _pp_subplots(nrows=1, ncols=1)
 
     # Set basic properties
     ax.set_aspect("equal")

@@ -607,18 +607,6 @@ def test_barplot_without_ax_creates_pp_subplots_figure():
     )
 
 
-def test_barplot_with_figsize_uses_matplotlib_fallback():
-    """Explicit figsize preserves back-compat and takes the plt.subplots path."""
-    import pandas as pd
-    df = pd.DataFrame({'g': ['A', 'B', 'C'], 'v': [1.0, 2.0, 3.0]})
-    fig, _ = pp.barplot(data=df, x='g', y='v', hue='g', palette='pastel',
-                        figsize=(5, 3))
-    # Explicit figsize → matplotlib path → no publiplots layout attached.
-    assert not hasattr(fig, "_publiplots_layout"), (
-        "explicit figsize should use plt.subplots (publiplots layout unexpectedly present)"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Width-awareness: legend_column auto-sizing
 # ---------------------------------------------------------------------------

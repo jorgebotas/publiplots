@@ -71,7 +71,10 @@ plt.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create horizontal raincloud plots by swapping x and y.
 
-fig, ax = pp.raincloudplot(
+# Horizontal raincloud needs a tall axes area; compose with pp.subplots
+# instead of passing figsize=.
+fig, ax = pp.subplots(axes_size=(60, 80))
+pp.raincloudplot(
     data=raincloud_data,
     x='measurement',
     y='time',
@@ -82,7 +85,6 @@ fig, ax = pp.raincloudplot(
     ylabel='Time',
     cloud_alpha=0.6,
     palette="RdGyBu_r",
-    figsize=(4, 7),
     box_offset=0.1,
     rain_offset=0.2,
     rain_kws=dict(
@@ -90,7 +92,8 @@ fig, ax = pp.raincloudplot(
         alpha=0.5,
         jitter=False,
         marker="x"
-    )
+    ),
+    ax=ax,
 )
 plt.show()
 
