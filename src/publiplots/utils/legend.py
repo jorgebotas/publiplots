@@ -70,6 +70,28 @@ class MarkerPatch(Patch):
         self.markeredgewidth = markeredgewidth
 
 
+class LinePatch(Patch):
+    """
+    Custom patch for line-only legend handles (lineplot with hue/style).
+
+    Draws a horizontal colored line with optional dash pattern. Used when the
+    legend entry represents a line series with no distinguishing marker —
+    typically hue (color) or style (dash) on a lineplot.
+    """
+    def __init__(self, linestyle="-", **kwargs):
+        # Remove kwargs that Patch doesn't understand
+        for _k in ("markersize", "markeredgewidth"):
+            kwargs.pop(_k, None)
+        super().__init__(**kwargs)
+        self.linestyle = linestyle
+
+    def get_linestyle(self) -> str:
+        return self.linestyle
+
+    def set_linestyle(self, linestyle: str):
+        self.linestyle = linestyle
+
+
 class LineMarkerPatch(Patch):
     """
     Custom patch for line+marker legend handles (pointplot, lineplot, etc.).
@@ -462,6 +484,57 @@ class HandlerLineMarker(HandlerBase):
         return marker, color, size, alpha, linewidth, markeredgewidth, edgecolor, linestyle
 
 
+class HandlerLine(HandlerBase):
+    """Legend handler for line-only swatches (lineplot hue/style entries).
+
+    Draws a single horizontal line with the handle's color, alpha,
+    linewidth, and linestyle.
+    """
+
+    def create_artists(
+        self,
+        legend: Legend,
+        orig_handle: Any,
+        xdescent: float,
+        ydescent: float,
+        width: float,
+        height: float,
+        fontsize: float,
+        trans: Any,
+    ) -> List:
+        from matplotlib.lines import Line2D
+        from matplotlib.colors import to_rgba
+
+        color = orig_handle.get_facecolor()
+        alpha = orig_handle.get_alpha()
+        linewidth = orig_handle.get_linewidth()
+        linestyle = orig_handle.get_linestyle() if hasattr(orig_handle, "get_linestyle") else "-"
+        if alpha is None:
+            alpha = resolve_param("alpha")
+        if not linewidth:
+            linewidth = resolve_param("lines.linewidth")
+
+        # Normalize seaborn-style dash tuples (on, off) → matplotlib's
+        # (offset, (on, off)) form. A plain (on, off) tuple is how seaborn
+        # accepts ``dashes={label: (4, 2)}``; matplotlib's Line2D needs the
+        # (offset, dash_seq) form.
+        if isinstance(linestyle, tuple) and len(linestyle) == 2 and all(
+            isinstance(v, (int, float)) for v in linestyle
+        ):
+            linestyle = (0, linestyle)
+
+        line_y = 0.5 * height - 0.5 * ydescent
+        line = Line2D(
+            [-xdescent, width - xdescent],
+            [line_y, line_y],
+            color=to_rgba(color, alpha if alpha is not None else 1.0),
+            linewidth=linewidth,
+            linestyle=linestyle,
+            transform=trans,
+        )
+        return [line]
+
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -479,11 +552,13 @@ def get_legend_handler_map() -> Dict[type, HandlerBase]:
     handler_rectangle = HandlerRectangle()
     handler_marker = HandlerMarker()
     handler_line_marker = HandlerLineMarker()
+    handler_line = HandlerLine()
 
     return {
         Rectangle: handler_rectangle,
         MarkerPatch: handler_marker,
         LineMarkerPatch: handler_line_marker,
+        LinePatch: handler_line,
         Patch: handler_rectangle,
     }
 
@@ -602,6 +677,22 @@ def create_legend_handles(
                 label=label,
                 markersize=size,
                 markeredgewidth=markeredgewidth,
+            )
+            handles.append(handle)
+    elif linestyles is not None or style == "line":
+        # Line-only swatch: one horizontal colored line per entry. Used by
+        # lineplot for hue (solid line, distinguish by color) and style
+        # (distinguish by dash pattern).
+        if linestyles is None:
+            linestyles = ["-"] * len(labels)
+        for label, col, edge_col, linestyle in zip(labels, colors, edgecolors, linestyles):
+            handle = LinePatch(
+                linestyle=linestyle,
+                facecolor=col,
+                edgecolor=edge_col,
+                alpha=alpha,
+                linewidth=linewidth,
+                label=label,
             )
             handles.append(handle)
     else:
@@ -1499,9 +1590,11 @@ __all__ = [
     "HandlerRectangle",
     "HandlerMarker",
     "HandlerLineMarker",
+    "HandlerLine",
     "RectanglePatch",
     "MarkerPatch",
     "LineMarkerPatch",
+    "LinePatch",
     "get_legend_handler_map",
     "create_legend_handles",
     "LegendBuilder",

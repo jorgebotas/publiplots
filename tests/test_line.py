@@ -81,6 +81,34 @@ def test_lineplot_continuous_hue_colorbar(line_df):
     assert entries and isinstance(entries[0].handles[0], ScalarMappable)
 
 
+def test_lineplot_categorical_hue_uses_line_patch(line_df):
+    """Categorical-hue handles must be LinePatch (colored line swatch),
+    not RectanglePatch — the swatch is a solid colored line matching
+    the rendered plot."""
+    from publiplots.utils.legend import LinePatch
+    ax = pp.lineplot(data=line_df, x="t", y="y", hue="g", palette="pastel")
+    hue_entry = next(e for e in get_entries(ax) if e.kind == "hue")
+    assert all(isinstance(h, LinePatch) for h in hue_entry.handles)
+
+
+def test_lineplot_style_dashes_uses_line_patch_with_dash_linestyle(line_df):
+    """Style-via-dashes handles must be LinePatch with the user's dash
+    pattern embedded in each handle's linestyle."""
+    from publiplots.utils.legend import LinePatch
+    ax = pp.lineplot(
+        data=line_df, x="t", y="y",
+        style="g", palette="pastel",
+        dashes={"A": (4, 2), "B": (1, 1)},
+    )
+    style_entry = next(e for e in get_entries(ax) if e.kind == "style")
+    assert all(isinstance(h, LinePatch) for h in style_entry.handles)
+    linestyles = [h.get_linestyle() for h in style_entry.handles]
+    # User's tuples preserved on the handle (normalization to (offset, seq)
+    # happens at render time in HandlerLine, not at stash time).
+    assert (4, 2) in linestyles
+    assert (1, 1) in linestyles
+
+
 # ---- Legend stash ----
 
 def test_lineplot_legend_false_stashes_nothing(line_df):
