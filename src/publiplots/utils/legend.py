@@ -506,11 +506,8 @@ class HandlerLine(HandlerBase):
         from matplotlib.colors import to_rgba
 
         color = orig_handle.get_facecolor()
-        alpha = orig_handle.get_alpha()
         linewidth = orig_handle.get_linewidth()
         linestyle = orig_handle.get_linestyle() if hasattr(orig_handle, "get_linestyle") else "-"
-        if alpha is None:
-            alpha = resolve_param("alpha")
         if not linewidth:
             linewidth = resolve_param("lines.linewidth")
 
@@ -523,11 +520,14 @@ class HandlerLine(HandlerBase):
         ):
             linestyle = (0, linestyle)
 
+        # Legend line is always fully opaque for readability, matching
+        # HandlerLineMarker's behavior. The stored alpha on the handle
+        # reflects the plot's fill transparency, not the legend swatch.
         line_y = 0.5 * height - 0.5 * ydescent
         line = Line2D(
             [-xdescent, width - xdescent],
             [line_y, line_y],
-            color=to_rgba(color, alpha if alpha is not None else 1.0),
+            color=to_rgba(color, 1.0),
             linewidth=linewidth,
             linestyle=linestyle,
             transform=trans,
