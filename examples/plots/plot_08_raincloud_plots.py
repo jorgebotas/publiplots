@@ -13,7 +13,6 @@ Examples
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Raincloud Plot
@@ -43,7 +42,7 @@ ax = pp.raincloudplot(
     ylabel='Measurement',
     cloud_alpha=0.6,
 )
-plt.show()
+pp.show()
 
 # %%
 # Raincloud Plot with Hue Grouping (Vertical)
@@ -64,7 +63,7 @@ ax = pp.raincloudplot(
     box_offset=0.1,
     rain_offset=0.1,
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Raincloud Plot with Hue
@@ -95,7 +94,7 @@ pp.raincloudplot(
     ),
     ax=ax,
 )
-plt.show()
+pp.show()
 
 # %%
 # Customization
@@ -115,7 +114,7 @@ ax = pp.raincloudplot(
     ylabel='Measurement',
     cloud_alpha=0.6,
 )
-plt.show()
+pp.show()
 
 # %%
 # Raincloud Plot with Custom Cloud Side
@@ -150,7 +149,7 @@ pp.raincloudplot(
     cloud_alpha=0.6,
 )
 
-plt.show()
+pp.show()
 
 # %%
 # Raincloud Plot with Custom Alpha Values
@@ -172,4 +171,4 @@ ax = pp.raincloudplot(
     box_offset=0.1,
     rain_offset=0.1,
 )
-plt.show()
+pp.show()

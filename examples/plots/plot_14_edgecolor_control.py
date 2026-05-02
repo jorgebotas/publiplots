@@ -14,7 +14,6 @@ it once applies uniform edges across every plot in the figure.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # Use a higher alpha for this example so face colors are vivid — it makes
 # edge colors easier to spot by contrast.
@@ -48,7 +47,7 @@ pp.barplot(
     title='Default: edges match palette',
     ax=ax,
 )
-plt.show()
+pp.show()
 
 # %%
 # Global Override via rcParams
@@ -70,7 +69,7 @@ pp.barplot(
     title="rcParams['edgecolor'] = 'black'",
     ax=ax,
 )
-plt.show()
+pp.show()
 
 # %%
 # Uniform Edges Across Plot Types
@@ -116,7 +115,7 @@ pp.scatterplot(
     data=mixed_data, x='group', y='value', hue='group',
     palette='pastel', title='Scatter', ax=axes[2],
 )
-plt.show()
+pp.show()
 
 # %%
 # Composite Plots: Raincloud
@@ -184,7 +183,7 @@ group.add_legend(
     ),
     label='condition',
 )
-plt.show()
+pp.show()
 
 # %%
 # Per-Call Override
@@ -214,7 +213,7 @@ pp.barplot(
     title="edgecolor='#c0392b' (per-call)",
     ax=axes[1],
 )
-plt.show()
+pp.show()
 
 # %%
 # Restoring the Default
@@ -234,7 +233,7 @@ pp.barplot(
     title="Back to default (None = auto)",
     ax=ax,
 )
-plt.show()
+pp.show()
 
 # Restore the global alpha default.
 pp.rcParams['alpha'] = 0.1

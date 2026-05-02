@@ -9,7 +9,6 @@ including simple bars, grouped bars, error bars, and hatch patterns.
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Simple Bar Plot
@@ -32,7 +31,7 @@ ax = pp.barplot(
     ylabel='Value',
     palette='pastel',
 )
-plt.show()
+pp.show()
 
 # %%
 # Bar Plot with Error Bars
@@ -63,7 +62,7 @@ ax = pp.barplot(
     capsize=0.1,
     palette='pastel',
 )
-plt.show()
+pp.show()
 
 # %%
 # Grouped Bar Plot with Hue
@@ -103,7 +102,7 @@ ax = pp.barplot(
     errorbar='se',
     palette="RdGyBu_r",
 )
-plt.show()
+pp.show()
 
 # %%
 # Bar Plot with Hatch Patterns Only
@@ -135,7 +134,7 @@ ax = pp.barplot(
     hatch_map={'Low': '', 'Medium': '//', 'High': 'xx'},
     alpha=0.0,
 )
-plt.show()
+pp.show()
 
 # %%
 # Bar Plot with Hue and Hatch (Double Split)
@@ -182,7 +181,7 @@ ax = pp.barplot(
     palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
     hatch_map={"24h": "", "48h": "///"},
 )
-plt.show()
+pp.show()
 
 # %%
 # Horizontal Bar Plot
@@ -212,7 +211,7 @@ ax = pp.barplot(
     alpha=0.3,
     order=horizontal_data['gene'].tolist()
 )
-plt.show()
+pp.show()
 
 # %%
 # Shared Legend Across Subplots
@@ -243,4 +242,4 @@ for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
         title=title, ax=ax,
         errorbar="se",
     )
-plt.show()
+pp.show()

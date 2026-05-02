@@ -9,7 +9,6 @@ labels, and formatting.
 
 import publiplots as pp
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # 2-Way Venn Diagram
@@ -26,7 +25,7 @@ ax = pp.venn(
     labels=['Set A', 'Set B'],
     colors=pp.color_palette('pastel', n_colors=2),
 )
-plt.show()
+pp.show()
 
 # %%
 # 2-Way Venn with Percentage Format
@@ -50,7 +49,7 @@ pp.venn(
     alpha=0.3,
     ax=ax,
 )
-plt.show()
+pp.show()
 
 # %%
 # 3-Way Venn Diagram
@@ -68,7 +67,7 @@ ax = pp.venn(
     labels=['Set A', 'Set B', 'Set C'],
     colors=pp.color_palette('pastel', n_colors=3),
 )
-plt.show()
+pp.show()
 
 # %%
 # 4-Way Venn Diagram
@@ -90,7 +89,7 @@ pp.venn(
     colors=pp.color_palette('pastel', n_colors=4),
     ax=ax,
 )
-plt.show()
+pp.show()
 
 # %%
 # 5-Way Venn Diagram
@@ -113,7 +112,7 @@ pp.venn(
     colors=pp.color_palette('pastel', n_colors=5),
     ax=ax,
 )
-plt.show()
+pp.show()
 
 # %%
 # Custom Styled Venn Diagram
@@ -134,5 +133,5 @@ pp.venn(
     alpha=0.4,
     ax=ax,
 )
-plt.title('Differentially Expressed Genes', fontsize=14, fontweight='bold')
-plt.show()
+ax.set_title('Differentially Expressed Genes', fontsize=14, fontweight='bold')
+pp.show()

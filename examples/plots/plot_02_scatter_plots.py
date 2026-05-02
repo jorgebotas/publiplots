@@ -10,7 +10,6 @@ color scales, and bubble plots (categorical scatter heatmaps).
 import publiplots as pp
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # %%
 # Basic Scatter Plot
@@ -35,7 +34,7 @@ ax = pp.scatterplot(
     ylabel='Y Variable',
 )
 ax.margins(x=0.1, y=0.1)
-plt.show()
+pp.show()
 
 # %%
 # Scatter with Size Encoding
@@ -57,7 +56,7 @@ ax = pp.scatterplot(
     ylabel='Y Variable',
 )
 ax.margins(x=0.1, y=0.1)
-plt.show()
+pp.show()
 
 # %%
 # Scatter with Categorical Hue
@@ -79,7 +78,7 @@ ax = pp.scatterplot(
     ylabel='Y Variable',
     alpha=0.2,
 )
-plt.show()
+pp.show()
 
 # %%
 # Scatter with Continuous Color Scale
@@ -105,7 +104,7 @@ ax = pp.scatterplot(
     legend_kws=dict(hue_label="Continuous Score"),
 )
 ax.margins(0.1)
-plt.show()
+pp.show()
 
 # %%
 # Bubble Plot (Categorical Scatter Heatmap)
@@ -142,7 +141,7 @@ ax = pp.scatterplot(
     xlabel='Condition',
     ylabel='Cell Type',
 )
-plt.show()
+pp.show()
 
 # %%
 # Bubble Plot with Continuous Colors
@@ -167,7 +166,7 @@ ax = pp.scatterplot(
     ylabel='Cell Type',
     alpha=0.2,
 )
-plt.show()
+pp.show()
 
 # %%
 # Large Bubble Plot
@@ -205,7 +204,7 @@ ax = pp.scatterplot(
     xlabel='Time Point',
     ylabel='Tissue',
 )
-plt.show()
+pp.show()
 
 # %%
 # Shared Legend Across Subplots
@@ -232,4 +231,4 @@ for ax, title in zip(axes, ['Sample A', 'Sample B', 'Sample C']):
         data=shared_df, x='x', y='y', hue='g',
         palette='pastel', title=title, ax=ax,
     )
-plt.show()
+pp.show()
