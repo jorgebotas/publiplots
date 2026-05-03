@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-05-03
+
+### Added
+- `pp.lineplot` — full seaborn-parity line plot with publiplots
+  conventions. Supports continuous/categorical `hue`, `size`, and
+  `style`; `err_style="band"`/`"bars"`; `estimator`/`errorbar`/`n_boot`/
+  `seed`/`orient`/`sort`; and the same `legend` / `legend_kws` /
+  `legend_group` pipeline as the rest of the library. Gallery example
+  at `plot_04_lineplot.py`; scripts `plot_05`–`plot_16` shifted up by
+  one slot.
+- `publiplots.utils.legend.LinePatch` + `HandlerLine` — line-only
+  legend swatch (horizontal colored line with optional dash pattern).
+  Used for lineplot hue and style legends.
+- Categorical `size=` for `scatterplot` and `lineplot`. Passing a
+  categorical column (or a ``pd.Categorical``) to ``size=`` resolves
+  to one handle per category via the new ``resolve_size_map`` helper;
+  accepts an explicit ``sizes={category: width}`` dict, a list, a
+  ``(min, max)`` tuple, or a default ``(1.0, 4.0)`` interpolation.
+- Shared plot-legend helpers in `publiplots.utils.plot_legend`:
+  `get_size_ticks`, `stash_continuous_hue`, `resolve_style_maps`,
+  `resolve_size_map`, `merge_categorical_entries`. Lifted from the
+  scatter/point/strip/swarm modules and reused across scatter + line.
+
+### Fixed
+- When ``hue`` and ``style`` reference the **same categorical column**,
+  `scatterplot` and `lineplot` now stash one merged `LegendEntry` whose
+  swatches encode both dimensions (colored shaped marker for scatter;
+  colored dashed line for lineplot) instead of two legend columns with
+  identical row labels. Continuous hue (colorbar) and continuous size
+  (size-tick swatches) stay separate — no sensible composite artist.
+- ``pp.barplot(hue=x_column)`` without a ``hatch`` column previously
+  stashed an empty ``LegendEntry(name=None, kind="hatch")`` that
+  rendered as a blank legend frame on the axes. Guarded so nothing is
+  stashed when ``hatch_map`` is empty.
+- `LegendBuilder` row overlap with oversized markers. New helper
+  `compute_min_labelspacing` scales `labelspacing` so size-encoded
+  scatter legends no longer stack their circles on top of each other.
+  Caller-supplied `labelspacing` always wins; text-only legends keep
+  the matplotlib default.
+
+### Changed
+- Default scatter `sizes` tightened from `(50, 500)` to `(20, 200)`
+  (points²). Produces legibly-sized markers without overflowing the
+  plot area or forcing oversized legend swatches. Only applies when
+  `sizes=None`; explicit user ranges are unchanged.
+
+[0.8.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.8.0
+
 ## [0.7.1] - 2026-05-02
 
 ### Added
