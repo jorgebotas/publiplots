@@ -189,6 +189,78 @@ def merge_categorical_entries(
     )
 
 
+def resolve_size_map(
+    size: Optional[str],
+    data: "pd.DataFrame",
+    size_order: Optional[List] = None,
+    sizes: Optional[Union[List, Dict, Tuple[float, float]]] = None,
+) -> Dict:
+    """Resolve a ``{category: width}`` map for categorical size variables.
+
+    Parallel to :func:`resolve_style_maps` but for the ``size`` dimension.
+    Only call this after verifying the size column is categorical —
+    numeric size uses the continuous path via :func:`get_size_ticks`.
+
+    Parameters
+    ----------
+    size : str | None
+        Name of the size column in ``data``. If None, returns an empty dict.
+    data : pd.DataFrame
+        Source data used to extract unique size values.
+    size_order : list | None
+        Optional ordering of size values. If None, uses
+        ``data[size].unique()``.
+    sizes : list | dict | tuple | None
+        Size specification:
+
+        - dict: explicit ``{category: width}`` map (returned as-is,
+          filtered to ``size_order``).
+        - list: widths to cycle through in order of the categories.
+        - tuple ``(min, max)``: interpolate linearly across the categories
+          (first → min, last → max).
+        - None: falls back to a default ``(1.0, 4.0)`` interpolation.
+
+    Returns
+    -------
+    dict
+        Ordered ``{category: width}`` mapping.
+    """
+    if size is None:
+        return {}
+
+    # When the user passes an explicit ``sizes`` dict, its key order is a
+    # clear signal of the legend order they want — ``data[size].unique()``
+    # returns values in encounter order, which is rarely meaningful.
+    # Explicit ``size_order`` still wins when provided.
+    if isinstance(sizes, dict) and size_order is None:
+        values = list(sizes.keys())
+    else:
+        values = list(data[size].unique() if size_order is None else size_order)
+    n = len(values)
+    if n == 0:
+        return {}
+
+    if isinstance(sizes, dict):
+        return {v: sizes[v] for v in values if v in sizes}
+
+    if isinstance(sizes, (list, tuple)) and len(sizes) == 2 and not isinstance(sizes, list):
+        lo, hi = sizes
+        if n == 1:
+            return {values[0]: float(hi)}
+        step = (hi - lo) / (n - 1)
+        return {v: float(lo + i * step) for i, v in enumerate(values)}
+
+    if isinstance(sizes, list):
+        return {v: float(sizes[i % len(sizes)]) for i, v in enumerate(values)}
+
+    # Default: interpolate between 1.0 and 4.0 (reasonable line/marker range).
+    lo, hi = 1.0, 4.0
+    if n == 1:
+        return {values[0]: hi}
+    step = (hi - lo) / (n - 1)
+    return {v: float(lo + i * step) for i, v in enumerate(values)}
+
+
 def resolve_style_maps(
     style: Optional[str],
     data: "pd.DataFrame",

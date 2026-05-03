@@ -59,6 +59,31 @@ ax.margins(x=0.1, y=0.1)
 pp.show()
 
 # %%
+# Scatter with Categorical Size
+# ------------------------------
+# ``size=`` also accepts a categorical column. Pass an explicit
+# ``sizes={category: area_points²}`` map to control the area assigned to
+# each category; without one, publiplots interpolates evenly between the
+# tuple's endpoints. The legend shows one marker per category.
+
+scatter_data['tier'] = pd.cut(
+    scatter_data['magnitude'], bins=3, labels=['low', 'med', 'high'],
+)
+
+ax = pp.scatterplot(
+    data=scatter_data,
+    x='x',
+    y='y',
+    size='tier',
+    sizes={'low': 30, 'med': 150, 'high': 500},
+    title='Scatter Plot with Categorical Size',
+    xlabel='X Variable',
+    ylabel='Y Variable',
+)
+ax.margins(x=0.1, y=0.1)
+pp.show()
+
+# %%
 # Scatter with Categorical Hue
 # -----------------------------
 # Color points by categorical groups.

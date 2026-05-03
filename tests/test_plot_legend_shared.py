@@ -13,6 +13,7 @@ from publiplots.utils.legend import LinePatch, MarkerPatch
 from publiplots.utils.plot_legend import (
     get_size_ticks,
     merge_categorical_entries,
+    resolve_size_map,
     stash_continuous_hue,
     resolve_style_maps,
 )
@@ -141,6 +142,79 @@ def test_merge_categorical_entries_colors_plus_markers_yields_marker_patches():
     assert len(entry.handles) == 3
     assert all(isinstance(h, MarkerPatch) for h in entry.handles)
     assert [h.get_marker() for h in entry.handles] == ["o", "^", "s"]
+
+
+# ---- resolve_size_map ----
+
+def test_resolve_size_map_none_returns_empty():
+    df = pd.DataFrame({"g": ["A", "B"]})
+    assert resolve_size_map(size=None, data=df) == {}
+
+
+def test_resolve_size_map_dict_is_passthrough_filtered_to_order():
+    df = pd.DataFrame({"g": ["A", "B", "C"]})
+    out = resolve_size_map(
+        size="g", data=df, size_order=["C", "A"],
+        sizes={"A": 1.0, "B": 2.0, "C": 3.0},
+    )
+    assert list(out.keys()) == ["C", "A"]
+    assert out == {"C": 3.0, "A": 1.0}
+
+
+def test_resolve_size_map_tuple_interpolates_across_categories():
+    df = pd.DataFrame({"g": ["low", "med", "high"]})
+    out = resolve_size_map(
+        size="g", data=df, size_order=["low", "med", "high"],
+        sizes=(1.0, 5.0),
+    )
+    assert list(out.keys()) == ["low", "med", "high"]
+    assert out["low"] == 1.0
+    assert out["med"] == 3.0
+    assert out["high"] == 5.0
+
+
+def test_resolve_size_map_list_cycles():
+    df = pd.DataFrame({"g": ["A", "B", "C", "D"]})
+    out = resolve_size_map(
+        size="g", data=df, size_order=["A", "B", "C", "D"],
+        sizes=[1.0, 2.0],
+    )
+    assert out == {"A": 1.0, "B": 2.0, "C": 1.0, "D": 2.0}
+
+
+def test_resolve_size_map_default_interpolates_1_to_4():
+    """When sizes is None, default falls back to (1.0, 4.0)."""
+    df = pd.DataFrame({"g": ["A", "B", "C"]})
+    out = resolve_size_map(size="g", data=df,
+                           size_order=["A", "B", "C"], sizes=None)
+    assert out == {"A": 1.0, "B": 2.5, "C": 4.0}
+
+
+def test_resolve_size_map_dict_order_wins_over_encounter_order():
+    """An explicit dict is a strong signal of legend order — it should beat
+    ``data[size].unique()`` (which returns encounter order)."""
+    df = pd.DataFrame({"g": ["med", "med", "low", "high"]})
+    out = resolve_size_map(
+        size="g", data=df, size_order=None,
+        sizes={"low": 1.0, "med": 2.0, "high": 3.0},
+    )
+    assert list(out.keys()) == ["low", "med", "high"]
+
+
+def test_resolve_size_map_explicit_size_order_beats_dict_order():
+    """``size_order`` is the user's explicit order — it wins over dict keys."""
+    df = pd.DataFrame({"g": ["A", "B", "C"]})
+    out = resolve_size_map(
+        size="g", data=df, size_order=["C", "A", "B"],
+        sizes={"A": 1.0, "B": 2.0, "C": 3.0},
+    )
+    assert list(out.keys()) == ["C", "A", "B"]
+
+
+def test_resolve_size_map_single_category_uses_upper_bound():
+    df = pd.DataFrame({"g": ["only"]})
+    out = resolve_size_map(size="g", data=df, sizes=(1.0, 5.0))
+    assert out == {"only": 5.0}
 
 
 def test_merge_categorical_entries_respects_handle_kwargs():
