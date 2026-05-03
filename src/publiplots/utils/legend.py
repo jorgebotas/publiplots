@@ -728,6 +728,57 @@ def create_legend_handles(
     return handles
 
 
+def compute_min_labelspacing(
+    handles: List,
+    fontsize: float,
+    default: float = 0.3,
+    breathing: float = 0.25,
+) -> float:
+    """Return a ``labelspacing`` (font-size units) large enough to avoid
+    row overlap given the tallest handle in ``handles``.
+
+    Matplotlib lays out legend rows at height ``fontsize * (1 +
+    labelspacing)`` (approximately) — fine for text-sized swatches but
+    not for size-encoded markers, whose diameter can exceed the font
+    size several times over. For a handle with effective height ``h`` in
+    points, the row needs ``labelspacing >= (h / fontsize) - 1`` so the
+    marker fits without touching the next row.
+
+    Handles without a ``get_markersize`` method contribute ``fontsize``
+    (the default row height), so text-only legends stay at ``default``.
+
+    Parameters
+    ----------
+    handles : list
+        Legend handles (MarkerPatch, LineMarkerPatch, LinePatch,
+        RectanglePatch, ...). Each may or may not carry a markersize.
+    fontsize : float
+        Legend text font size in points.
+    default : float, default=0.3
+        Baseline matplotlib labelspacing (font-size units).
+    breathing : float, default=0.25
+        Extra spacing (font-size units) added on top of the raw marker
+        requirement so rows don't kiss.
+
+    Returns
+    -------
+    float
+        ``labelspacing`` in font-size units; always ``>= default``.
+    """
+    tallest_pt = 0.0
+    for h in handles:
+        if hasattr(h, "get_markersize"):
+            ms = h.get_markersize()
+            if ms is not None and ms > tallest_pt:
+                tallest_pt = float(ms)
+
+    if tallest_pt <= fontsize:
+        return default
+
+    required = (tallest_pt / fontsize) - 1.0 + breathing
+    return max(default, required)
+
+
 # =============================================================================
 # Legend Builder (Primary Interface)
 # =============================================================================
@@ -918,9 +969,13 @@ class LegendBuilder:
         fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
         title_fontsize = resolve_param("legend.title_fontsize", fontsize)
 
-        # Get legend parameters
+        # Get legend parameters. If labelspacing isn't set, fall back to
+        # the adaptive minimum so oversized markers are budgeted for.
         ncol = kwargs.get('ncol', 1)
-        labelspacing = kwargs.get('labelspacing', 0.3)  # in font-size units
+        labelspacing = kwargs.get(
+            'labelspacing',
+            compute_min_labelspacing(handles, fontsize),
+        )
         borderpad = kwargs.get('borderpad', 0.4)
 
         # Calculate rows
@@ -1087,6 +1142,14 @@ class LegendBuilder:
             self._layout.current_x, self._layout.current_y
         )
 
+        # Adaptive row spacing: when a handle's marker exceeds the font
+        # size (scatter size legends, over-sized circle swatches) the
+        # default ``labelspacing=0.3`` produces overlapping rows. Widen
+        # the spacing to fit the tallest handle unless the caller set
+        # ``labelspacing`` explicitly.
+        fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
+        default_labelspacing = compute_min_labelspacing(handles, fontsize)
+
         # Prepare legend kwargs
         legend_kwargs = {
             "loc": "upper left",
@@ -1096,7 +1159,7 @@ class LegendBuilder:
             "borderaxespad": 0,
             "borderpad": 0.4,
             "handletextpad": 0.8,
-            "labelspacing": 0.3,
+            "labelspacing": default_labelspacing,
             "handler_map": kwargs.pop("handler_map", get_legend_handler_map()),
             "alignment": "left",
         }
