@@ -473,7 +473,7 @@ def _draw_dot_heatmap(
         size="__size",
         palette=cmap,
         hue_norm=hue_norm,
-        sizes=sizes if sizes is not None else (20, 500),
+        sizes=sizes,
         size_norm=size_norm,
         alpha=alpha,
         linewidth=linewidth,
@@ -496,7 +496,7 @@ def _draw_dot_heatmap(
     # labels at integer positions.
     ax.set_xticks(np.arange(n_cols + 1) - 0.5, minor=True)
     ax.set_yticks(np.arange(n_rows + 1) - 0.5, minor=True)
-    ax.grid(which="minor", color="#e0e0e0", linestyle="-", linewidth=0.5)
+    ax.grid(which="minor", color="#b0b0b0", linestyle="-", linewidth=0.5)
     ax.tick_params(which="minor", bottom=False, left=False)
 
     for spine in ax.spines.values():

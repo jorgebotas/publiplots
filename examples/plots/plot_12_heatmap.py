@@ -112,7 +112,6 @@ ax = pp.heatmap(
     size='pvalue',
     cmap='RdBu_r',
     center=0,
-    sizes=(50, 400),
     title='Pathway Enrichment Analysis',
     legend_kws={
         'value_label': 'Enrichment Score',
@@ -239,7 +238,8 @@ ax = pp.heatmap(
     value='fold_enrichment',
     size='neg_log_pvalue',
     cmap='Reds',
-    sizes=(30, 350),
+    edgecolor='darkgray',
+    square=True,
     title='GO Enrichment Analysis',
     legend_kws={
         'value_label': 'Fold Enrichment',
