@@ -11,21 +11,17 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
-from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 from typing import Optional, Tuple, Union, Dict, List
 
 from publiplots.themes.rcparams import resolve_param
-from publiplots.themes.colors import resolve_palette_map
-from publiplots.utils import is_categorical, is_numeric, create_legend_handles
 from publiplots.utils.legend_entries import (
     LegendEntry,
     stash_entry,
     resolve_legend_flags,
 )
 from publiplots.utils.plot_legend import render_entries
-from publiplots.utils.transparency import apply_transparency
 
 
 def heatmap(
@@ -390,208 +386,115 @@ def _draw_dot_heatmap(
     legend_kws: Optional[Dict],
     value_col: str,
     size_col: str,
-    **kwargs
+    **kwargs,
 ) -> Axes:
+    """Draw a dot/bubble heatmap by delegating to :func:`pp.scatterplot`.
+
+    A dot heatmap is a scatter plot on a categorical × categorical grid
+    with continuous hue (``value``) and numeric size (``size``). All the
+    marker styling, double-layer edge/face handling, transparency, and
+    legend stashing already live in ``pp.scatterplot`` — this function
+    flattens the two matrices into a long-format frame, delegates, and
+    adds the heatmap-specific chrome (inverted y-axis, minor grid
+    between cells, no spines).
     """
-    Draw dot/bubble heatmap where marker size encodes one variable
-    and color encodes another.
-    """
-    fig = ax.get_figure()
-    legend_kws = legend_kws or {}
+    from publiplots.plot.scatter import scatterplot as pp_scatterplot
 
-    # Default sizes
-    if sizes is None:
-        sizes = (20, 500)
+    legend_kws = dict(legend_kws or {})
 
-    # Flatten matrices for plotting
-    n_rows, n_cols = matrix.shape
-
-    # Create coordinate grids
-    x_coords = []
-    y_coords = []
-    colors = []
-    marker_sizes = []
-
+    # Flatten matrices into a long-format DataFrame, honoring mask + NaN.
+    rows: List[Dict] = []
     for i, row_label in enumerate(y_labels):
         for j, col_label in enumerate(x_labels):
-            # Check mask
             if mask is not None:
                 if isinstance(mask, pd.DataFrame):
-                    if mask.iloc[i, j]:
+                    if bool(mask.iloc[i, j]):
                         continue
-                elif mask[i, j]:
+                elif bool(mask[i, j]):
                     continue
-
             val = matrix.iloc[i, j]
             size_val = size_matrix.iloc[i, j]
-
-            # Skip NaN values
             if pd.isna(val) or pd.isna(size_val):
                 continue
+            rows.append({
+                "__x": col_label,
+                "__y": row_label,
+                "__value": float(val),
+                "__size": float(size_val),
+            })
+    long_df = pd.DataFrame(rows)
 
-            x_coords.append(j)
-            y_coords.append(i)
-            colors.append(val)
-            marker_sizes.append(size_val)
+    # Preserve user-specified row/col order (scatter auto-orders by first
+    # encounter, which matches the matrix order for dense grids but not
+    # when mask drops leading cells of a row/column).
+    long_df["__x"] = pd.Categorical(long_df["__x"], categories=x_labels, ordered=True)
+    long_df["__y"] = pd.Categorical(long_df["__y"], categories=y_labels, ordered=True)
 
-    x_coords = np.array(x_coords)
-    y_coords = np.array(y_coords)
-    colors = np.array(colors)
-    marker_sizes = np.array(marker_sizes)
-
-    # Color normalization
-    c_min = vmin if vmin is not None else colors.min()
-    c_max = vmax if vmax is not None else colors.max()
-
+    # hue_norm: a TwoSlopeNorm when ``center`` is set, else (vmin, vmax)
+    # letting scatter compute the range when needed.
     if center is not None:
         from matplotlib.colors import TwoSlopeNorm
-        color_norm = TwoSlopeNorm(vmin=c_min, vcenter=center, vmax=c_max)
+        c_min = vmin if vmin is not None else float(long_df["__value"].min())
+        c_max = vmax if vmax is not None else float(long_df["__value"].max())
+        hue_norm = TwoSlopeNorm(vmin=c_min, vcenter=center, vmax=c_max)
+    elif vmin is not None or vmax is not None:
+        hue_norm = (
+            vmin if vmin is not None else float(long_df["__value"].min()),
+            vmax if vmax is not None else float(long_df["__value"].max()),
+        )
     else:
-        color_norm = Normalize(vmin=c_min, vmax=c_max)
+        hue_norm = None
 
-    # Size normalization
-    if size_norm is None:
-        size_norm = Normalize(vmin=marker_sizes.min(), vmax=marker_sizes.max())
-    elif isinstance(size_norm, tuple):
-        size_norm = Normalize(vmin=size_norm[0], vmax=size_norm[1])
+    # Translate legend_kws: heatmap uses ``value_label`` / ``size_label``;
+    # scatter uses ``hue_label`` / ``size_label``.
+    scatter_legend_kws: Dict = {}
+    if "value_label" in legend_kws:
+        scatter_legend_kws["hue_label"] = legend_kws["value_label"]
+    elif value_col:
+        scatter_legend_kws["hue_label"] = value_col
+    if "size_label" in legend_kws:
+        scatter_legend_kws["size_label"] = legend_kws["size_label"]
+    elif size_col:
+        scatter_legend_kws["size_label"] = size_col
 
-    # Map sizes to point sizes
-    normalized_sizes = size_norm(marker_sizes)
-    point_sizes = sizes[0] + normalized_sizes * (sizes[1] - sizes[0])
-
-    # Draw scatter
-    scatter = ax.scatter(
-        x_coords + 0.5,  # Center in cells
-        y_coords + 0.5,
-        c=colors,
-        s=point_sizes,
-        cmap=cmap,
-        norm=color_norm,
-        edgecolors=edgecolor if edgecolor else "face",
-        linewidths=linewidth,
-        zorder=2,
-        **kwargs
+    pp_scatterplot(
+        data=long_df,
+        x="__x",
+        y="__y",
+        hue="__value",
+        size="__size",
+        palette=cmap,
+        hue_norm=hue_norm,
+        sizes=sizes if sizes is not None else (20, 500),
+        size_norm=size_norm,
+        alpha=alpha,
+        linewidth=linewidth,
+        edgecolor=edgecolor,
+        ax=ax,
+        legend=legend,
+        legend_kws=scatter_legend_kws,
+        margins=0.5,
+        **kwargs,
     )
 
-    # Apply publiplots transparency styling
-    apply_transparency(scatter, face_alpha=alpha, edge_alpha=1.0)
-
-    # Set axis limits and ticks
-    ax.set_xlim(0, n_cols)
-    ax.set_ylim(0, n_rows)
-    ax.set_xticks(np.arange(n_cols) + 0.5)
-    ax.set_yticks(np.arange(n_rows) + 0.5)
-    ax.set_xticklabels(x_labels)
-    ax.set_yticklabels(y_labels)
-
-    # Invert y-axis to match heatmap convention (top to bottom)
+    # Heatmap chrome: row 0 on top, minor grid between cells, no spines.
     ax.invert_yaxis()
-
-    # Square aspect ratio if requested
     if square:
         ax.set_aspect("equal")
 
-    # Add grid lines between cells
-    ax.set_xticks(np.arange(n_cols + 1), minor=True)
-    ax.set_yticks(np.arange(n_rows + 1), minor=True)
+    # Minor ticks at cell boundaries (positions -0.5, 0.5, 1.5, ...) give
+    # a grid between rows/columns without clashing with the major tick
+    # labels at integer positions.
+    n_rows, n_cols = len(y_labels), len(x_labels)
+    ax.set_xticks(np.arange(n_cols + 1) - 0.5, minor=True)
+    ax.set_yticks(np.arange(n_rows + 1) - 0.5, minor=True)
     ax.grid(which="minor", color="#e0e0e0", linestyle="-", linewidth=0.5)
     ax.tick_params(which="minor", bottom=False, left=False)
 
-    # Remove spines
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    # Stash colorbar + size entries and render per-axis unless claimed by a group.
-    if legend is not False:
-        flags = resolve_legend_flags(legend)
-
-        if flags["hue"]:
-            mappable = ScalarMappable(norm=color_norm, cmap=cmap)
-            stash_entry(
-                ax,
-                LegendEntry.build(
-                    name=legend_kws.get("value_label", value_col or ""),
-                    kind="hue",
-                    handles=[mappable],
-                    labels=[],
-                ),
-            )
-
-        if flags["size"]:
-            size_handles, size_labels = _create_size_legend(
-                marker_sizes=marker_sizes,
-                sizes=sizes,
-                size_norm=size_norm,
-                alpha=alpha,
-                linewidth=linewidth,
-            )
-            stash_entry(
-                ax,
-                LegendEntry.build(
-                    name=legend_kws.get("size_label", size_col or ""),
-                    kind="size",
-                    handles=size_handles,
-                    labels=size_labels,
-                ),
-            )
-
-        render_entries(ax, flags=flags)
-
     return ax
-
-
-def _create_size_legend(
-    marker_sizes: np.ndarray,
-    sizes: Tuple[float, float],
-    size_norm: Normalize,
-    alpha: float,
-    linewidth: float,
-    nbins: int = 4,
-) -> Tuple[List, List[str]]:
-    """
-    Create legend handles for size encoding.
-    """
-    # Get representative size values
-    v_min, v_max = size_norm.vmin, size_norm.vmax
-    unique_vals = np.unique(marker_sizes[~np.isnan(marker_sizes)])
-
-    if len(unique_vals) <= 4:
-        ticks = unique_vals
-    else:
-        locator = MaxNLocator(nbins=nbins, min_n_ticks=3)
-        ticks = locator.tick_values(v_min, v_max)
-        ticks = ticks[(ticks >= v_min) & (ticks <= v_max)]
-
-    # Round ticks
-    if v_max - v_min > 10:
-        ticks = np.array([int(np.round(t)) for t in ticks])
-        ticks = np.unique(ticks)
-    else:
-        ticks = np.unique(np.round(ticks, 1))
-
-    if len(ticks) == 0:
-        ticks = np.array([v_min, v_max])
-
-    # Calculate marker sizes for legend
-    def get_markersize(val):
-        normalized = size_norm(val)
-        point_size = sizes[0] + normalized * (sizes[1] - sizes[0])
-        return np.sqrt(point_size / np.pi) * 2
-
-    tick_labels = [str(t) for t in ticks]
-    tick_sizes = [get_markersize(t) for t in ticks]
-
-    # Create handles using publiplots legend system
-    handles = create_legend_handles(
-        labels=tick_labels,
-        sizes=tick_sizes,
-        color="gray",
-        alpha=alpha,
-        linewidth=linewidth,
-        style="circle",
-    )
-
-    return handles, tick_labels
 
 
 # =============================================================================
