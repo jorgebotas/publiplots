@@ -110,6 +110,34 @@ ax = pp.lineplot(
 pp.show()
 
 # %%
+# Categorical Size (line width per group)
+# ----------------------------------------
+# ``size=`` accepts a categorical column too. Pass an explicit
+# ``sizes={category: linewidth}`` to control the width per category, or
+# let publiplots interpolate between the default ``(1.0, 4.0)``. The
+# legend shows one line swatch per category at its assigned width.
+
+np.random.seed(21)
+rows = []
+for tier, offset in [("low", -0.5), ("med", 0.0), ("high", 0.5)]:
+    for tt in t:
+        rows.append({"time": tt, "value": np.sin(tt) + offset +
+                     np.random.normal(0, 0.1), "tier": tier})
+tiered = pd.DataFrame(rows)
+
+ax = pp.lineplot(
+    data=tiered,
+    x="time",
+    y="value",
+    size="tier",
+    sizes={"low": 0.75, "med": 2.0, "high": 4.0},
+    title="Line Plot with Categorical Size",
+    xlabel="Time",
+    ylabel="Response",
+)
+pp.show()
+
+# %%
 # Hue + Style on Different Variables
 # -----------------------------------
 # ``hue=`` and ``style=`` become especially useful when they map to
