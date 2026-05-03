@@ -29,6 +29,7 @@ from publiplots.utils.legend_entries import (
 )
 from publiplots.utils.plot_legend import (
     get_size_ticks,
+    merge_categorical_entries,
     stash_continuous_hue,
     resolve_style_maps,
 )
@@ -376,28 +377,75 @@ def _legend(
     legend_kws = dict(legend_kws or {})
     handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color)
 
+    # Detect "same variable used for multiple kinds" so we can stash one
+    # merged LegendEntry instead of N duplicate columns with identical row
+    # labels. Merge requires both dimensions to be categorical (continuous
+    # hue is a colorbar, which can't composite with shaped markers).
+    categorical_hue = hue is not None and isinstance(palette, dict)
+    categorical_style = style is not None and bool(linestyle_map or marker_map)
+    merge_hue_style = (
+        categorical_hue
+        and categorical_style
+        and hue == style
+        and flags["hue"]
+        and flags["style"]
+    )
+
     # Stash hue entry
     if hue is not None and flags["hue"]:
         hue_label = legend_kws.pop("hue_label", hue)
         if isinstance(palette, dict):  # categorical
             labels = [str(k) for k in palette.keys()]
-            hue_handles = create_legend_handles(
-                labels=labels,
-                colors=list(palette.values()),
-                edgecolors=[edgecolor] * len(palette) if edgecolor else None,
-                linestyles=["-"] * len(palette),
-                markeredgewidth=markeredgewidth,
-                **handle_kwargs,
-            )
-            stash_entry(
-                ax,
-                LegendEntry.build(
+            if merge_hue_style:
+                # Combined swatch: colored line with the style's marker and
+                # dash pattern, per row. Stashed as kind="hue" so legend
+                # flags / legend_group("hue") continue to control it.
+                style_values = list(palette.keys())
+                merged = merge_categorical_entries(
                     name=hue_label,
-                    kind="hue",
-                    handles=hue_handles,
                     labels=labels,
-                ),
-            )
+                    colors=list(palette.values()),
+                    markers=(
+                        [marker_map[v] for v in style_values]
+                        if marker_map else None
+                    ),
+                    linestyles=(
+                        [linestyle_map[v] for v in style_values]
+                        if linestyle_map
+                        else ["-"] * len(style_values)
+                    ),
+                    sizes=(
+                        [markersize] * len(style_values) if marker_map else None
+                    ),
+                    edgecolors=(
+                        [edgecolor] * len(style_values) if edgecolor else None
+                    ),
+                    handle_kwargs={
+                        **handle_kwargs,
+                        "markeredgewidth": markeredgewidth,
+                    },
+                )
+                stash_entry(ax, merged)
+                # Consume style_label so legend_kws doesn't leak the key.
+                legend_kws.pop("style_label", None)
+            else:
+                hue_handles = create_legend_handles(
+                    labels=labels,
+                    colors=list(palette.values()),
+                    edgecolors=[edgecolor] * len(palette) if edgecolor else None,
+                    linestyles=["-"] * len(palette),
+                    markeredgewidth=markeredgewidth,
+                    **handle_kwargs,
+                )
+                stash_entry(
+                    ax,
+                    LegendEntry.build(
+                        name=hue_label,
+                        kind="hue",
+                        handles=hue_handles,
+                        labels=labels,
+                    ),
+                )
         else:
             # continuous -> colorbar
             stash_continuous_hue(
@@ -433,8 +481,8 @@ def _legend(
             ),
         )
 
-    # Stash style entry
-    if style is not None and flags["style"]:
+    # Stash style entry (skipped when already merged into the hue entry above)
+    if style is not None and flags["style"] and not merge_hue_style:
         # Prefer linestyle_map's keys (fall back to marker_map's keys).
         style_values = list((linestyle_map or marker_map).keys())
         style_labels = [str(v) for v in style_values]

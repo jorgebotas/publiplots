@@ -26,6 +26,7 @@ def line_df():
         "t": np.tile(np.linspace(0, 10, 20), 2),
         "y": rng.normal(size=n),
         "g": np.repeat(["A", "B"], 20),
+        "m": np.tile(np.repeat(["raw", "smoothed"], 10), 2),
         "s": rng.uniform(1, 5, n),
     })
 
@@ -56,7 +57,7 @@ def test_lineplot_with_hue_stashes_hue_entry(line_df):
 
 def test_lineplot_with_hue_size_style(line_df):
     ax = pp.lineplot(data=line_df, x="t", y="y",
-                     hue="g", size="s", style="g",
+                     hue="g", size="s", style="m",
                      palette="pastel", markers=True)
     kinds = {e.kind for e in get_entries(ax)}
     assert {"hue", "size", "style"} <= kinds
@@ -134,6 +135,58 @@ def test_lineplot_in_group_suppresses_per_axis_render(line_df):
                 palette="pastel", ax=axes[0])
     fig.canvas.draw()
     assert [c for c in axes[0].get_children() if isinstance(c, Legend)] == []
+
+
+# ---- Same-variable dedup ----
+
+def test_lineplot_hue_equals_style_single_entry(line_df):
+    """When hue and style reference the same categorical column, stash one
+    merged LegendEntry instead of duplicate hue + style entries."""
+    ax = pp.lineplot(
+        data=line_df, x="t", y="y",
+        hue="g", style="g",
+        palette="pastel",
+        dashes={"A": (4, 2), "B": (1, 1)},
+    )
+    entries = get_entries(ax)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.name == "g"
+    assert entry.kind == "hue"
+    # The merged handle must carry the style's linestyle so the swatch
+    # shows the dash pattern alongside the color.
+    linestyles = [h.get_linestyle() for h in entry.handles]
+    assert (4, 2) in linestyles and (1, 1) in linestyles
+
+
+def test_lineplot_hue_equals_style_different_columns_kept_separate(line_df):
+    """When hue and style reference *different* columns, keep them as two
+    separate entries (the intentional two-legend case)."""
+    ax = pp.lineplot(
+        data=line_df, x="t", y="y",
+        hue="g", style="m",
+        palette="pastel",
+    )
+    kinds = {e.kind for e in get_entries(ax)}
+    assert {"hue", "style"} <= kinds
+
+
+def test_lineplot_continuous_hue_equals_style_not_merged(line_df):
+    """Continuous hue (colorbar) cannot composite with a style swatch —
+    keep them as separate entries. ``is_categorical`` returning True for
+    a small-int numeric column would defeat this test, so use a truly
+    continuous score column."""
+    df = line_df.assign(score=np.linspace(0.0, 100.0, len(line_df)))
+    ax = pp.lineplot(
+        data=df, x="t", y="y",
+        hue="score", style="score",
+        palette="viridis", hue_norm=(0, 100),
+        dashes=True,
+    )
+    kinds = [e.kind for e in get_entries(ax)]
+    # hue stays as continuous hue (ScalarMappable), style stays separate.
+    assert kinds.count("hue") == 1
+    assert "style" in kinds
 
 
 # ---- Reject ----

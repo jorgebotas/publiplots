@@ -9,8 +9,10 @@ import pandas as pd
 import pytest
 
 from publiplots.utils.legend_entries import get_entries
+from publiplots.utils.legend import LinePatch, MarkerPatch
 from publiplots.utils.plot_legend import (
     get_size_ticks,
+    merge_categorical_entries,
     stash_continuous_hue,
     resolve_style_maps,
 )
@@ -104,3 +106,52 @@ def test_resolve_style_maps_respects_style_order():
         markers=True, dashes=None,
     )
     assert list(marker_map.keys()) == ["C", "A", "B"]
+
+
+# ---- merge_categorical_entries ----
+
+def test_merge_categorical_entries_colors_plus_linestyles_yields_line_patches():
+    """Merged hue + style (linestyles) for lineplot: one colored dashed line
+    per row, stashed under kind='hue'."""
+    entry = merge_categorical_entries(
+        name="g",
+        labels=["A", "B"],
+        colors=["#ff0000", "#0000ff"],
+        linestyles=[(4, 2), (1, 1)],
+    )
+    assert entry.name == "g"
+    assert entry.kind == "hue"
+    assert len(entry.handles) == 2
+    assert all(isinstance(h, LinePatch) for h in entry.handles)
+    linestyles = [h.get_linestyle() for h in entry.handles]
+    assert (4, 2) in linestyles and (1, 1) in linestyles
+
+
+def test_merge_categorical_entries_colors_plus_markers_yields_marker_patches():
+    """Merged hue + style (markers) for scatter: one colored shaped marker
+    per row."""
+    entry = merge_categorical_entries(
+        name="g",
+        labels=["A", "B", "C"],
+        colors=["#ff0000", "#00ff00", "#0000ff"],
+        markers=["o", "^", "s"],
+    )
+    assert entry.name == "g"
+    assert entry.kind == "hue"
+    assert len(entry.handles) == 3
+    assert all(isinstance(h, MarkerPatch) for h in entry.handles)
+    assert [h.get_marker() for h in entry.handles] == ["o", "^", "s"]
+
+
+def test_merge_categorical_entries_respects_handle_kwargs():
+    """Alpha / linewidth from handle_kwargs reach the underlying handles."""
+    entry = merge_categorical_entries(
+        name="g",
+        labels=["A"],
+        colors=["#123456"],
+        linestyles=["-"],
+        handle_kwargs={"alpha": 0.5, "linewidth": 3.0},
+    )
+    handle = entry.handles[0]
+    assert handle.get_alpha() == 0.5
+    assert handle.get_linewidth() == 3.0

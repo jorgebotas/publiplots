@@ -28,6 +28,7 @@ from publiplots.utils.legend_entries import (
 )
 from publiplots.utils.plot_legend import (
     get_size_ticks,
+    merge_categorical_entries,
     stash_continuous_hue,
     resolve_style_maps,
 )
@@ -436,26 +437,68 @@ def _legend(
 
     flags = resolve_legend_flags(legend)
 
+    # Detect "same variable used for multiple kinds" so we can stash one
+    # merged LegendEntry instead of N duplicate columns. Merge requires
+    # both dimensions to be categorical (continuous hue is a colorbar,
+    # which can't composite with shaped markers).
+    categorical_hue = hue is not None and isinstance(palette, dict)
+    # Resolve style marker map up-front (used by the merge path and the
+    # independent style-stash path below).
+    style_values = list(data[style].unique()) if style is not None else []
+    if style is not None:
+        marker_map, _ = resolve_style_maps(
+            style=style,
+            data=data,
+            style_order=style_values,
+            markers=markers,
+            dashes=None,
+        )
+    else:
+        marker_map = {}
+    categorical_style = style is not None and bool(marker_map)
+    merge_hue_style = (
+        categorical_hue
+        and categorical_style
+        and hue == style
+        and flags["hue"]
+        and flags["style"]
+    )
+
     # Stash hue entry
     if hue is not None and flags["hue"]:
         hue_label = kwargs.pop("hue_label", hue)
         if isinstance(palette, dict):  # categorical
             hue_labels = list(palette.keys())
-            hue_handles = create_legend_handles(
-                labels=hue_labels,
-                colors=list(palette.values()),
-                edgecolors=[edgecolor] * len(palette) if edgecolor else None,
-                **handle_kwargs
-            )
-            stash_entry(
-                ax,
-                LegendEntry.build(
+            if merge_hue_style:
+                # Combined swatch: colored marker of the right shape, per row.
+                merged = merge_categorical_entries(
                     name=hue_label,
-                    kind="hue",
-                    handles=hue_handles,
+                    labels=[str(v) for v in hue_labels],
+                    colors=list(palette.values()),
+                    markers=[marker_map[v] for v in hue_labels],
+                    edgecolors=(
+                        [edgecolor] * len(hue_labels) if edgecolor else None
+                    ),
+                    handle_kwargs=handle_kwargs,
+                )
+                stash_entry(ax, merged)
+                kwargs.pop("style_label", None)
+            else:
+                hue_handles = create_legend_handles(
                     labels=hue_labels,
-                ),
-            )
+                    colors=list(palette.values()),
+                    edgecolors=[edgecolor] * len(palette) if edgecolor else None,
+                    **handle_kwargs
+                )
+                stash_entry(
+                    ax,
+                    LegendEntry.build(
+                        name=hue_label,
+                        kind="hue",
+                        handles=hue_handles,
+                        labels=hue_labels,
+                    ),
+                )
         else:
             # continuous -> colorbar
             stash_continuous_hue(
@@ -491,19 +534,9 @@ def _legend(
             ),
         )
 
-    # Stash style entry
-    if style is not None and flags["style"]:
-        style_values = data[style].unique()
+    # Stash style entry (skipped when already merged into the hue entry above)
+    if style is not None and flags["style"] and not merge_hue_style:
         style_label = kwargs.pop("style_label", style)
-
-        # Resolve marker mapping via shared helper (linestyle map unused here).
-        marker_map, _ = resolve_style_maps(
-            style=style,
-            data=data,
-            style_order=list(style_values),
-            markers=markers,
-            dashes=None,
-        )
 
         # Determine color for style legend
         style_color = color if hue is None else "gray"

@@ -534,8 +534,10 @@ def _legend(
         # the hatch swatches represent a different dimension — render them
         # in gray so they read as "this is about the hatch pattern, not the
         # bar color", matching the double-split case where hue and hatch
-        # are distinct columns.
-        if flags["hatch"]:
+        # are distinct columns. When ``hatch`` is None, ``hatch_map`` is an
+        # empty dict — there's nothing to stash, and rendering an empty
+        # entry would produce a blank legend frame.
+        if flags["hatch"] and hatch_map:
             labels = list(hatch_map.keys())
             handles = create_legend_handles(
                 labels=labels,

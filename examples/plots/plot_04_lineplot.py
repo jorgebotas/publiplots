@@ -142,6 +142,29 @@ ax = pp.lineplot(
 pp.show()
 
 # %%
+# Hue and Style on the Same Variable
+# -----------------------------------
+# When ``hue=`` and ``style=`` map to the *same* column, publiplots
+# merges them into a single legend whose swatches encode both
+# dimensions at once — the colored, dashed line matches how the series
+# actually appears on the plot. Handy when a single categorical
+# variable is the organising axis of the figure.
+
+ax = pp.lineplot(
+    data=multi,
+    x="time",
+    y="value",
+    hue="group",
+    style="group",
+    palette="pastel",
+    dashes={"Control": (1, 0), "Treated": (4, 2), "Recovery": (1, 1)},
+    title="Hue and Style on the Same Variable",
+    xlabel="Time",
+    ylabel="Response",
+)
+pp.show()
+
+# %%
 # Shared Legend Across Subplots
 # ------------------------------
 # When several line plots share the same ``hue`` variable, attach

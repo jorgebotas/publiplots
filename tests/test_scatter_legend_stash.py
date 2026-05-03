@@ -80,6 +80,41 @@ def test_scatterplot_in_group_suppresses_per_axis_render():
     assert per_axis_legends == []
 
 
+def test_scatterplot_hue_equals_style_single_entry():
+    """When hue and style reference the same categorical column, stash one
+    merged LegendEntry (colored shaped marker per row) instead of duplicate
+    hue + style entries."""
+    df = _scatter_df()
+    ax = pp.scatterplot(
+        data=df, x="x", y="y",
+        hue="g", style="g",
+        palette="pastel",
+        markers=["o", "^", "s"],
+    )
+    entries = get_entries(ax)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.name == "g"
+    assert entry.kind == "hue"
+    # Each handle must carry a marker (verifies the style dimension made
+    # it onto the merged swatch).
+    markers = [h.get_marker() for h in entry.handles]
+    assert set(markers) == {"o", "^", "s"}
+
+
+def test_scatterplot_hue_equals_style_different_columns_kept_separate():
+    """When hue and style reference *different* columns, keep them as two
+    separate entries."""
+    df = _scatter_df().assign(m_cat=np.tile(["r", "s"], len(_scatter_df()) // 2))
+    ax = pp.scatterplot(
+        data=df, x="x", y="y",
+        hue="g", style="m_cat",
+        palette="pastel",
+    )
+    kinds = {e.kind for e in get_entries(ax)}
+    assert {"hue", "style"} <= kinds
+
+
 def test_scatterplot_no_group_renders_per_axis_legend():
     from matplotlib.legend import Legend
     df = _scatter_df()
