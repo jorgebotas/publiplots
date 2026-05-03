@@ -732,20 +732,20 @@ def compute_min_labelspacing(
     handles: List,
     fontsize: float,
     default: float = 0.3,
-    breathing: float = 1.0,
+    breathing: float = 0.75,
 ) -> float:
-    """Return a ``labelspacing`` (font-size units) large enough to avoid
-    row overlap given the tallest handle in ``handles``.
+    """Return a ``labelspacing`` (font-size units) appropriate for the
+    tallest marker in ``handles``.
 
-    Matplotlib lays out legend rows at height ``fontsize * (1 +
-    labelspacing)`` (approximately) — fine for text-sized swatches but
-    not for size-encoded markers, whose diameter can exceed the font
-    size several times over. For a handle with effective height ``h`` in
-    points, the row needs ``labelspacing >= (h / fontsize) - 1`` so the
-    marker fits without touching the next row.
+    Matplotlib's legend auto-expands each row box to fit its handle
+    (row height ≈ ``max(marker_pt, fontsize*handleheight)``), so
+    ``labelspacing`` is the *additional* clearance between rows rather
+    than the row height itself. That means a single small constant is
+    enough when any handle is oversized — the rows themselves already
+    take care of the marker height.
 
-    Handles without a ``get_markersize`` method contribute ``fontsize``
-    (the default row height), so text-only legends stay at ``default``.
+    Handles without a ``get_markersize`` method don't count as oversized,
+    so text-only legends stay at ``default``.
 
     Parameters
     ----------
@@ -755,12 +755,12 @@ def compute_min_labelspacing(
     fontsize : float
         Legend text font size in points.
     default : float, default=0.3
-        Baseline matplotlib labelspacing (font-size units).
-    breathing : float, default=1.0
-        Extra spacing (font-size units) added on top of the raw marker
-        requirement so rows don't kiss. Default of 1.0 reads as ~one
-        line-height of clearance between rows, which stays visually
-        balanced from ~10 pt markers up to ~30 pt.
+        Baseline matplotlib labelspacing used for text-only legends.
+    breathing : float, default=0.75
+        Inter-row clearance in font-size units, used whenever any handle
+        is taller than the font. 0.75 reads as roughly three-quarters of
+        a line-height of whitespace between rows — balanced at any
+        marker size without excess.
 
     Returns
     -------
@@ -777,8 +777,7 @@ def compute_min_labelspacing(
     if tallest_pt <= fontsize:
         return default
 
-    required = (tallest_pt / fontsize) - 1.0 + breathing
-    return max(default, required)
+    return max(default, breathing)
 
 
 # =============================================================================
