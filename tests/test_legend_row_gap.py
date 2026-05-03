@@ -39,11 +39,16 @@ def test_compute_min_labelspacing_small_markers_returns_default():
     assert compute_min_labelspacing(handles, fontsize=8.0) == 0.3
 
 
-def test_compute_min_labelspacing_large_markers_uses_breathing_constant():
-    """Any handle taller than the font size triggers the breathing
-    constant (0.75). Matplotlib's row box auto-expands to fit the marker,
-    so labelspacing only needs to supply inter-row clearance — not scale
-    with the marker height."""
+def test_compute_min_labelspacing_large_markers_scales_with_tallest():
+    """Matplotlib's legend row slot is fixed at ``fontsize *
+    handleheight``, so oversized markers overflow into adjacent rows.
+    labelspacing must scale with the tallest marker:
+
+        labelspacing ≥ (tallest / fontsize) - 1 + breathing
+
+    With breathing=0.5, a 24-pt marker on an 8-pt font needs
+    labelspacing ≥ 24/8 - 1 + 0.5 = 2.5.
+    """
     handles = [
         MarkerPatch(marker="o", facecolor="red", edgecolor="red",
                     alpha=1.0, linewidth=1.0, label="big", markersize=24.0),
@@ -51,7 +56,7 @@ def test_compute_min_labelspacing_large_markers_uses_breathing_constant():
                     alpha=1.0, linewidth=1.0, label="small", markersize=6.0),
     ]
     got = compute_min_labelspacing(handles, fontsize=8.0)
-    assert got == pytest.approx(0.75)
+    assert got == pytest.approx(2.5)
 
 
 def test_compute_min_labelspacing_never_below_default():

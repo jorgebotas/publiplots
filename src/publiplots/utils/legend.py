@@ -732,17 +732,27 @@ def compute_min_labelspacing(
     handles: List,
     fontsize: float,
     default: float = 0.3,
-    breathing: float = 0.75,
+    breathing: float = 0.5,
 ) -> float:
-    """Return a ``labelspacing`` (font-size units) appropriate for the
-    tallest marker in ``handles``.
+    """Return a ``labelspacing`` (font-size units) large enough to avoid
+    row overlap given the tallest handle in ``handles``.
 
-    Matplotlib's legend auto-expands each row box to fit its handle
-    (row height ≈ ``max(marker_pt, fontsize*handleheight)``), so
-    ``labelspacing`` is the *additional* clearance between rows rather
-    than the row height itself. That means a single small constant is
-    enough when any handle is oversized — the rows themselves already
-    take care of the marker height.
+    Matplotlib's legend packs rows using a fixed-height handle slot of
+    ``fontsize * handleheight`` (~5.6 pt at 8 pt font). Oversized
+    markers overflow that slot on both sides and bleed into adjacent
+    rows when ``labelspacing`` is a small constant. We model the
+    required spacing directly:
+
+    ::
+
+        row_center_to_center ≈ fontsize * (1 + labelspacing)
+        row_center_to_center ≥ tallest_marker + gap
+
+    → ``labelspacing ≥ (marker / fontsize) - 1 + (gap / fontsize)``.
+
+    With ``breathing`` as ``gap / fontsize``, the edge-to-edge clearance
+    between markers stays constant at every size — both the smallest
+    and largest adjacent swatches get the same whitespace.
 
     Handles without a ``get_markersize`` method don't count as oversized,
     so text-only legends stay at ``default``.
@@ -756,11 +766,9 @@ def compute_min_labelspacing(
         Legend text font size in points.
     default : float, default=0.3
         Baseline matplotlib labelspacing used for text-only legends.
-    breathing : float, default=0.75
-        Inter-row clearance in font-size units, used whenever any handle
-        is taller than the font. 0.75 reads as roughly three-quarters of
-        a line-height of whitespace between rows — balanced at any
-        marker size without excess.
+    breathing : float, default=0.5
+        Edge-to-edge clearance between markers in font-size units.
+        0.5 at 8 pt fonts = 4 pt of whitespace between adjacent swatches.
 
     Returns
     -------
@@ -777,7 +785,8 @@ def compute_min_labelspacing(
     if tallest_pt <= fontsize:
         return default
 
-    return max(default, breathing)
+    required = (tallest_pt / fontsize) - 1.0 + breathing
+    return max(default, required)
 
 
 # =============================================================================
