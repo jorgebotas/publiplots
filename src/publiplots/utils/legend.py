@@ -732,7 +732,7 @@ def compute_min_labelspacing(
     handles: List,
     fontsize: float,
     default: float = 0.3,
-    breathing: float = 0.25,
+    breathing: float = 1.0,
 ) -> float:
     """Return a ``labelspacing`` (font-size units) large enough to avoid
     row overlap given the tallest handle in ``handles``.
@@ -756,9 +756,11 @@ def compute_min_labelspacing(
         Legend text font size in points.
     default : float, default=0.3
         Baseline matplotlib labelspacing (font-size units).
-    breathing : float, default=0.25
+    breathing : float, default=1.0
         Extra spacing (font-size units) added on top of the raw marker
-        requirement so rows don't kiss.
+        requirement so rows don't kiss. Default of 1.0 reads as ~one
+        line-height of clearance between rows, which stays visually
+        balanced from ~10 pt markers up to ~30 pt.
 
     Returns
     -------

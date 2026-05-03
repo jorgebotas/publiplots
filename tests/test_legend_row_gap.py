@@ -41,7 +41,7 @@ def test_compute_min_labelspacing_small_markers_returns_default():
 
 def test_compute_min_labelspacing_large_markers_scales_with_tallest():
     """With a 24-pt marker on an 8-pt font, labelspacing >= (24/8) - 1 +
-    breathing = 2.25."""
+    breathing = 3.0 (default breathing=1.0)."""
     handles = [
         MarkerPatch(marker="o", facecolor="red", edgecolor="red",
                     alpha=1.0, linewidth=1.0, label="big", markersize=24.0),
@@ -49,7 +49,7 @@ def test_compute_min_labelspacing_large_markers_scales_with_tallest():
                     alpha=1.0, linewidth=1.0, label="small", markersize=6.0),
     ]
     got = compute_min_labelspacing(handles, fontsize=8.0)
-    assert got == pytest.approx(2.25)
+    assert got == pytest.approx(3.0)
 
 
 def test_compute_min_labelspacing_never_below_default():
