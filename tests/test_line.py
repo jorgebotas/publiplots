@@ -189,6 +189,45 @@ def test_lineplot_continuous_hue_equals_style_not_merged(line_df):
     assert "style" in kinds
 
 
+# ---- Categorical size ----
+
+@pytest.fixture(scope="module")
+def cat_size_df():
+    rng = np.random.default_rng(42)
+    return pd.DataFrame({
+        "t": np.tile(np.linspace(0, 10, 20), 3),
+        "y": rng.normal(size=60),
+        "tier": np.repeat(["low", "med", "high"], 20),
+    })
+
+
+def test_lineplot_categorical_size_does_not_crash(cat_size_df):
+    """Regression: previously crashed in get_size_ticks via np.isnan(str)."""
+    ax = pp.lineplot(data=cat_size_df, x="t", y="y", size="tier")
+    assert isinstance(ax, Axes)
+
+
+def test_lineplot_categorical_size_stashes_one_handle_per_category(cat_size_df):
+    ax = pp.lineplot(data=cat_size_df, x="t", y="y", size="tier",
+                     sizes={"low": 0.5, "med": 2.0, "high": 5.0})
+    [entry] = [e for e in get_entries(ax) if e.kind == "size"]
+    assert entry.name == "tier"
+    by_label = dict(zip(entry.labels, entry.handles))
+    assert by_label["low"].get_linewidth() == 0.5
+    assert by_label["med"].get_linewidth() == 2.0
+    assert by_label["high"].get_linewidth() == 5.0
+
+
+def test_lineplot_categorical_size_default_uses_tuple_interpolation(cat_size_df):
+    """With no ``sizes`` kwarg, publiplots falls back to (1.0, 4.0)
+    linearly across the categories."""
+    ax = pp.lineplot(data=cat_size_df, x="t", y="y", size="tier")
+    [entry] = [e for e in get_entries(ax) if e.kind == "size"]
+    widths = [h.get_linewidth() for h in entry.handles]
+    # Three categories → (1.0, 2.5, 4.0).
+    assert widths == [1.0, 2.5, 4.0]
+
+
 # ---- Reject ----
 
 def test_lineplot_rejects_figsize(line_df):

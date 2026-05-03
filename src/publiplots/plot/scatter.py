@@ -29,6 +29,7 @@ from publiplots.utils.legend_entries import (
 from publiplots.utils.plot_legend import (
     get_size_ticks,
     merge_categorical_entries,
+    resolve_size_map,
     stash_continuous_hue,
     resolve_style_maps,
 )
@@ -229,12 +230,19 @@ def scatterplot(
     if sizes is None:
         sizes = (100, 100) if size is None else (50, 500)
 
-    # Set default size normalization
-    if size is not None and is_numeric(data[size]):
+    # Size resolution: numeric → Normalize + get_size_ticks; categorical →
+    # explicit {category: area_points²} map (get_size_ticks assumes numeric).
+    size_is_numeric = size is not None and is_numeric(data[size])
+    size_map: Dict = {}
+    if size is not None and size_is_numeric:
         if size_norm is None:
             size_norm = (data[size].min(), data[size].max())
         if isinstance(size_norm, tuple):
             size_norm = Normalize(vmin=size_norm[0], vmax=size_norm[1])
+    elif size is not None:
+        size_map = resolve_size_map(
+            size=size, data=data, size_order=None, sizes=sizes,
+        )
 
     # Create normalization for hue if needed
     if hue is not None and is_numeric(data[hue]):
@@ -255,7 +263,9 @@ def scatterplot(
         "hue": hue,
         "hue_norm": hue_norm,
         "size": size,
-        "sizes": sizes if size is not None else None,
+        # Categorical → forward the resolved {category: area} map so seaborn
+        # and the legend agree on per-category marker areas.
+        "sizes": (size_map if size_map else sizes) if size is not None else None,
         "size_norm": size_norm if size is not None else None,
         "style": style,
         "markers": markers if style is not None else None,
@@ -317,6 +327,7 @@ def scatterplot(
         size=size,
         style=style,
         markers=markers,
+        size_map=size_map,
         color=color,
         palette=palette,
         alpha=alpha,
@@ -412,6 +423,7 @@ def _legend(
         hue_norm: Optional[Normalize],
         size_norm: Optional[Normalize],
         sizes: Tuple[float, float],
+        size_map: Optional[Dict] = None,
         alpha: Optional[float] = None,
         linewidth: Optional[float] = None,
         edgecolor: Optional[str] = None,
@@ -505,34 +517,55 @@ def _legend(
                 ax, name=hue_label, palette=palette, hue_norm=hue_norm
             )
 
-    # Stash size entry
+    # Stash size entry. Numeric → MaxNLocator ticks + area-to-markersize
+    # via get_size_ticks. Categorical → one marker per category, marker
+    # diameter derived from the category's area (same sqrt(a/pi)*2 rule).
     if size is not None and flags["size"]:
         tick_color = color if hue is None else "gray"
         size_handle_kwargs = handle_kwargs.copy()
         size_handle_kwargs["color"] = tick_color
-        tick_labels, tick_sizes = get_size_ticks(
-            values=data[size].dropna().values,
-            sizes=sizes,
-            size_norm=size_norm,
-            nbins=kwargs.pop("size_nbins", 4),
-            min_n_ticks=kwargs.pop("size_min_n_ticks", 3),
-            include_min_max=kwargs.pop("size_include_min_max", False),
-        )
-        size_handles = create_legend_handles(
-            labels=tick_labels,
-            sizes=tick_sizes,
-            **size_handle_kwargs
-        )
         size_label = kwargs.pop("size_label", size)
-        stash_entry(
-            ax,
-            LegendEntry.build(
-                name=size_label,
-                kind="size",
-                handles=size_handles,
+        if size_map:
+            import numpy as _np
+            labels = [str(k) for k in size_map.keys()]
+            tick_sizes = [_np.sqrt(float(a) / _np.pi) * 2 for a in size_map.values()]
+            size_handles = create_legend_handles(
+                labels=labels,
+                sizes=tick_sizes,
+                **size_handle_kwargs,
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=size_label,
+                    kind="size",
+                    handles=size_handles,
+                    labels=labels,
+                ),
+            )
+        else:
+            tick_labels, tick_sizes = get_size_ticks(
+                values=data[size].dropna().values,
+                sizes=sizes,
+                size_norm=size_norm,
+                nbins=kwargs.pop("size_nbins", 4),
+                min_n_ticks=kwargs.pop("size_min_n_ticks", 3),
+                include_min_max=kwargs.pop("size_include_min_max", False),
+            )
+            size_handles = create_legend_handles(
                 labels=tick_labels,
-            ),
-        )
+                sizes=tick_sizes,
+                **size_handle_kwargs
+            )
+            stash_entry(
+                ax,
+                LegendEntry.build(
+                    name=size_label,
+                    kind="size",
+                    handles=size_handles,
+                    labels=tick_labels,
+                ),
+            )
 
     # Stash style entry (skipped when already merged into the hue entry above)
     if style is not None and flags["style"] and not merge_hue_style:

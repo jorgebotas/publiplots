@@ -80,6 +80,41 @@ def test_scatterplot_in_group_suppresses_per_axis_render():
     assert per_axis_legends == []
 
 
+def test_scatterplot_categorical_size_does_not_crash():
+    """Regression: previously crashed in get_size_ticks via np.isnan(str)."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "x": rng.normal(size=20),
+        "y": rng.normal(size=20),
+        "tier": rng.choice(["low", "med", "high"], size=20),
+    })
+    ax = pp.scatterplot(data=df, x="x", y="y", size="tier")
+    entries = get_entries(ax)
+    [entry] = [e for e in entries if e.kind == "size"]
+    assert entry.name == "tier"
+
+
+def test_scatterplot_categorical_size_explicit_dict():
+    """With an explicit ``{cat: area_points²}`` map, the legend markers use
+    the diameter sqrt(area/pi)*2."""
+    import math
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "x": rng.normal(size=20),
+        "y": rng.normal(size=20),
+        "tier": rng.choice(["low", "med", "high"], size=20),
+    })
+    ax = pp.scatterplot(
+        data=df, x="x", y="y", size="tier",
+        sizes={"low": 20, "med": 100, "high": 400},
+    )
+    [entry] = [e for e in get_entries(ax) if e.kind == "size"]
+    by_label = dict(zip(entry.labels, entry.handles))
+    for label, area in [("low", 20), ("med", 100), ("high", 400)]:
+        expected = math.sqrt(area / math.pi) * 2
+        assert abs(by_label[label].get_markersize() - expected) < 1e-6
+
+
 def test_scatterplot_hue_equals_style_single_entry():
     """When hue and style reference the same categorical column, stash one
     merged LegendEntry (colored shaped marker per row) instead of duplicate
