@@ -90,6 +90,21 @@ def test_bar_hatch_legend_is_gray_when_hue_equals_cat_axis():
         )
 
 
+def test_bar_hue_equals_cat_axis_no_hatch_stashes_nothing():
+    """hue == categorical_axis without ``hatch``: nothing to stash (an
+    empty hatch entry would render as a blank legend frame on the axes).
+    Regression: previously stashed ``LegendEntry(name=None, kind='hatch',
+    handles=[], labels=())``.
+    """
+    from matplotlib.legend import Legend
+    df = _bar_df()
+    ax = pp.barplot(data=df, x="cond", y="value", hue="cond",
+                    palette="pastel")
+    assert get_entries(ax) == []
+    ax.get_figure().canvas.draw()
+    assert [c for c in ax.get_children() if isinstance(c, Legend)] == []
+
+
 def test_bar_combined_stashes_one_hue_entry():
     """hue == hatch -> one combined entry under kind=hue."""
     df = _bar_df()
