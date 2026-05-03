@@ -246,6 +246,9 @@ ax = pp.heatmap(
         'size_label': '-log10(p-value)',
     },
 )
+# Square aspect compresses the x-axis — rotate the long condition labels
+# so they fit without overlapping.
+pp.rotate(ax, axis='x', rotation=30, ha='right')
 pp.show()
 
 # %%

@@ -493,14 +493,19 @@ def _draw_dot_heatmap(
 
     # Minor ticks at cell boundaries (positions -0.5, 0.5, 1.5, ...) give
     # a grid between rows/columns without clashing with the major tick
-    # labels at integer positions.
+    # labels at integer positions. Style spines to match — the border and
+    # the inner grid should read as one continuous outline of the cell
+    # matrix, not two tones.
+    grid_color = "#b0b0b0"
+    grid_linewidth = 0.5
     ax.set_xticks(np.arange(n_cols + 1) - 0.5, minor=True)
     ax.set_yticks(np.arange(n_rows + 1) - 0.5, minor=True)
-    ax.grid(which="minor", color="#b0b0b0", linestyle="-", linewidth=0.5)
+    ax.grid(which="minor", color=grid_color, linestyle="-", linewidth=grid_linewidth)
     ax.tick_params(which="minor", bottom=False, left=False)
 
     for spine in ax.spines.values():
-        spine.set_visible(False)
+        spine.set_edgecolor(grid_color)
+        spine.set_linewidth(grid_linewidth)
 
     return ax
 
