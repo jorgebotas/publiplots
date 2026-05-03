@@ -457,6 +457,14 @@ def _draw_dot_heatmap(
     elif size_col:
         scatter_legend_kws["size_label"] = size_col
 
+    # Half a cell of padding on each side ("heatmap look"): independent of
+    # cell count. matplotlib's ``ax.margins`` expresses padding as a
+    # fraction of the data extent, so 0.5 / (n_cells - 1) equals a
+    # half-cell visual pad on either side of the data.
+    n_rows, n_cols = len(y_labels), len(x_labels)
+    x_margin = 0.5 / max(n_cols - 1, 1)
+    y_margin = 0.5 / max(n_rows - 1, 1)
+
     pp_scatterplot(
         data=long_df,
         x="__x",
@@ -473,19 +481,19 @@ def _draw_dot_heatmap(
         ax=ax,
         legend=legend,
         legend_kws=scatter_legend_kws,
-        margins=0.5,
+        margins=(x_margin, y_margin),
         **kwargs,
     )
 
-    # Heatmap chrome: row 0 on top, minor grid between cells, no spines.
-    ax.invert_yaxis()
+    # Heatmap chrome: minor grid between cells, no spines. Scatter's
+    # categorical-axis handling already places the first row at the top,
+    # so no explicit invert_yaxis is needed (it would un-invert it).
     if square:
         ax.set_aspect("equal")
 
     # Minor ticks at cell boundaries (positions -0.5, 0.5, 1.5, ...) give
     # a grid between rows/columns without clashing with the major tick
     # labels at integer positions.
-    n_rows, n_cols = len(y_labels), len(x_labels)
     ax.set_xticks(np.arange(n_cols + 1) - 0.5, minor=True)
     ax.set_yticks(np.arange(n_rows + 1) - 0.5, minor=True)
     ax.grid(which="minor", color="#e0e0e0", linestyle="-", linewidth=0.5)
