@@ -228,7 +228,14 @@ def resolve_size_map(
     if size is None:
         return {}
 
-    values = list(data[size].unique() if size_order is None else size_order)
+    # When the user passes an explicit ``sizes`` dict, its key order is a
+    # clear signal of the legend order they want — ``data[size].unique()``
+    # returns values in encounter order, which is rarely meaningful.
+    # Explicit ``size_order`` still wins when provided.
+    if isinstance(sizes, dict) and size_order is None:
+        values = list(sizes.keys())
+    else:
+        values = list(data[size].unique() if size_order is None else size_order)
     n = len(values)
     if n == 0:
         return {}

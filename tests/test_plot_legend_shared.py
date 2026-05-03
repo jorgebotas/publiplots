@@ -190,6 +190,27 @@ def test_resolve_size_map_default_interpolates_1_to_4():
     assert out == {"A": 1.0, "B": 2.5, "C": 4.0}
 
 
+def test_resolve_size_map_dict_order_wins_over_encounter_order():
+    """An explicit dict is a strong signal of legend order — it should beat
+    ``data[size].unique()`` (which returns encounter order)."""
+    df = pd.DataFrame({"g": ["med", "med", "low", "high"]})
+    out = resolve_size_map(
+        size="g", data=df, size_order=None,
+        sizes={"low": 1.0, "med": 2.0, "high": 3.0},
+    )
+    assert list(out.keys()) == ["low", "med", "high"]
+
+
+def test_resolve_size_map_explicit_size_order_beats_dict_order():
+    """``size_order`` is the user's explicit order — it wins over dict keys."""
+    df = pd.DataFrame({"g": ["A", "B", "C"]})
+    out = resolve_size_map(
+        size="g", data=df, size_order=["C", "A", "B"],
+        sizes={"A": 1.0, "B": 2.0, "C": 3.0},
+    )
+    assert list(out.keys()) == ["C", "A", "B"]
+
+
 def test_resolve_size_map_single_category_uses_upper_bound():
     df = pd.DataFrame({"g": ["only"]})
     out = resolve_size_map(size="g", data=df, sizes=(1.0, 5.0))
