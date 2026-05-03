@@ -728,6 +728,67 @@ def create_legend_handles(
     return handles
 
 
+def compute_min_labelspacing(
+    handles: List,
+    fontsize: float,
+    default: float = 0.3,
+    breathing: float = 0.5,
+) -> float:
+    """Return a ``labelspacing`` (font-size units) large enough to avoid
+    row overlap given the tallest handle in ``handles``.
+
+    Matplotlib's legend packs rows using a fixed-height handle slot of
+    ``fontsize * handleheight`` (~5.6 pt at 8 pt font). Oversized
+    markers overflow that slot on both sides and bleed into adjacent
+    rows when ``labelspacing`` is a small constant. We model the
+    required spacing directly:
+
+    ::
+
+        row_center_to_center ≈ fontsize * (1 + labelspacing)
+        row_center_to_center ≥ tallest_marker + gap
+
+    → ``labelspacing ≥ (marker / fontsize) - 1 + (gap / fontsize)``.
+
+    With ``breathing`` as ``gap / fontsize``, the edge-to-edge clearance
+    between markers stays constant at every size — both the smallest
+    and largest adjacent swatches get the same whitespace.
+
+    Handles without a ``get_markersize`` method don't count as oversized,
+    so text-only legends stay at ``default``.
+
+    Parameters
+    ----------
+    handles : list
+        Legend handles (MarkerPatch, LineMarkerPatch, LinePatch,
+        RectanglePatch, ...). Each may or may not carry a markersize.
+    fontsize : float
+        Legend text font size in points.
+    default : float, default=0.3
+        Baseline matplotlib labelspacing used for text-only legends.
+    breathing : float, default=0.5
+        Edge-to-edge clearance between markers in font-size units.
+        0.5 at 8 pt fonts = 4 pt of whitespace between adjacent swatches.
+
+    Returns
+    -------
+    float
+        ``labelspacing`` in font-size units; always ``>= default``.
+    """
+    tallest_pt = 0.0
+    for h in handles:
+        if hasattr(h, "get_markersize"):
+            ms = h.get_markersize()
+            if ms is not None and ms > tallest_pt:
+                tallest_pt = float(ms)
+
+    if tallest_pt <= fontsize:
+        return default
+
+    required = (tallest_pt / fontsize) - 1.0 + breathing
+    return max(default, required)
+
+
 # =============================================================================
 # Legend Builder (Primary Interface)
 # =============================================================================
@@ -918,9 +979,13 @@ class LegendBuilder:
         fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
         title_fontsize = resolve_param("legend.title_fontsize", fontsize)
 
-        # Get legend parameters
+        # Get legend parameters. If labelspacing isn't set, fall back to
+        # the adaptive minimum so oversized markers are budgeted for.
         ncol = kwargs.get('ncol', 1)
-        labelspacing = kwargs.get('labelspacing', 0.3)  # in font-size units
+        labelspacing = kwargs.get(
+            'labelspacing',
+            compute_min_labelspacing(handles, fontsize),
+        )
         borderpad = kwargs.get('borderpad', 0.4)
 
         # Calculate rows
@@ -1087,6 +1152,14 @@ class LegendBuilder:
             self._layout.current_x, self._layout.current_y
         )
 
+        # Adaptive row spacing: when a handle's marker exceeds the font
+        # size (scatter size legends, over-sized circle swatches) the
+        # default ``labelspacing=0.3`` produces overlapping rows. Widen
+        # the spacing to fit the tallest handle unless the caller set
+        # ``labelspacing`` explicitly.
+        fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
+        default_labelspacing = compute_min_labelspacing(handles, fontsize)
+
         # Prepare legend kwargs
         legend_kwargs = {
             "loc": "upper left",
@@ -1096,7 +1169,7 @@ class LegendBuilder:
             "borderaxespad": 0,
             "borderpad": 0.4,
             "handletextpad": 0.8,
-            "labelspacing": 0.3,
+            "labelspacing": default_labelspacing,
             "handler_map": kwargs.pop("handler_map", get_legend_handler_map()),
             "alignment": "left",
         }

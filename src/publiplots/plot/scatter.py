@@ -94,7 +94,7 @@ def scatterplot(
         - None: uses default palette
     sizes : tuple of float, optional
         (min_size, max_size) in points^2 for marker sizes.
-        Default: (50, 500) for continuous data, (100, 100) for no size encoding.
+        Default: (20, 200) for continuous data, (100, 100) for no size encoding.
     markers : bool, list, dict, optional
         Markers to use for different levels of the style variable:
         - True: use default marker set
@@ -148,7 +148,7 @@ def scatterplot(
 
     Scatterplot with size encoding:
     >>> ax = pp.scatterplot(data=df, x="time", y="value",
-    ...                      size="magnitude", sizes=(50, 500))
+    ...                      size="magnitude", sizes=(20, 200))
 
     Scatterplot with categorical color encoding:
     >>> ax = pp.scatterplot(data=df, x="time", y="value",
@@ -228,7 +228,7 @@ def scatterplot(
 
     # Set default sizes
     if sizes is None:
-        sizes = (100, 100) if size is None else (50, 500)
+        sizes = (100, 100) if size is None else (20, 200)
 
     # Size resolution: numeric → Normalize + get_size_ticks; categorical →
     # explicit {category: area_points²} map (get_size_ticks assumes numeric).
