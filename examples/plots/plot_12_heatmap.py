@@ -112,7 +112,6 @@ ax = pp.heatmap(
     size='pvalue',
     cmap='RdBu_r',
     center=0,
-    sizes=(50, 400),
     title='Pathway Enrichment Analysis',
     legend_kws={
         'value_label': 'Enrichment Score',
@@ -239,13 +238,17 @@ ax = pp.heatmap(
     value='fold_enrichment',
     size='neg_log_pvalue',
     cmap='Reds',
-    sizes=(30, 350),
+    edgecolor='darkgray',
+    square=True,
     title='GO Enrichment Analysis',
     legend_kws={
         'value_label': 'Fold Enrichment',
         'size_label': '-log10(p-value)',
     },
 )
+# Square aspect compresses the x-axis — rotate the long condition labels
+# so they fit without overlapping.
+pp.rotate(ax, axis='x', rotation=30, ha='right')
 pp.show()
 
 # %%
