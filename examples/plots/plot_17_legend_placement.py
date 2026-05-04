@@ -110,14 +110,14 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
 pp.show()
 
 # %%
-# 4b. Bottom with ``align='end'``
-# -------------------------------
-# Override the default center-alignment to pin the legend to the right
-# edge of the grid — useful when the legend should align with a
-# particular panel column rather than the figure midline.
+# 4b. Bottom with ``align='start'``
+# ---------------------------------
+# Override the default center-alignment to pin the legend to the left
+# edge of the grid — a common choice when the legend should align with
+# the first panel column rather than the figure midline.
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
-pp.legend_group(side="bottom", align="end")
+pp.legend_group(side="bottom", align="start")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=_df[_df["panel"] == panel], x="x", y="y",

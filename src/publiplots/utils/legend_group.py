@@ -133,11 +133,10 @@ class MultiAxesLegendGroup:
     """
 
     # Default outward gap (mm) between the anchor's edge and the
-    # legend's near side. For side='right' the gap sits in otherwise
-    # empty space, so 2 mm suffices. For the other sides the gap sits
-    # adjacent to tick labels / titles and needs more air for the legend
-    # not to crowd them.
-    _DEFAULT_X_OFFSET_MM = {"right": 2, "left": 5, "bottom": 5, "top": 5}
+    # legend's near side. Per-side mapping so the defaults can be tuned
+    # independently in the future (e.g., if tick labels start crowding
+    # a specific side more than others).
+    _DEFAULT_X_OFFSET_MM = {"right": 2, "left": 2, "bottom": 2, "top": 2}
 
     # side → default orientation. Horizontal makes sense on top/bottom
     # where there's plenty of figure width; vertical stays the default

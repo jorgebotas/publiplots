@@ -154,14 +154,14 @@ def test_figure_anchored_auto_collect_still_works():
 
 @pytest.mark.parametrize("side,expected_gap_mm", [
     ("right", 2.0),
-    ("left", 5.0),
-    ("bottom", 5.0),
-    ("top", 5.0),
+    ("left", 2.0),
+    ("bottom", 2.0),
+    ("top", 2.0),
 ])
 def test_figure_anchored_default_outward_gap_per_side(side, expected_gap_mm):
     """The outward gap between the decorated-grid edge and the legend's
-    near side defaults to 2 mm for side='right' (back-compat) and 5 mm
-    for the other sides (so tick labels / titles don't crowd the legend)."""
+    near side defaults to 2 mm on every side. The per-side mapping
+    exists so defaults can be tuned independently later."""
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
