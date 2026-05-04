@@ -903,7 +903,7 @@ class LegendBuilder:
             vpad=vpad,
             max_width=max_width,
         )
-        self._layout.reset_to(axes_height_mm=self._get_edge_length())
+        self._layout.reset_to(edge_length_mm=self._get_edge_length())
         self._reactor = LayoutReactor.get(self.fig)
         self._external_to_axis = external_to_axis
         # Element storage: list of (type, object) tuples
@@ -1098,16 +1098,16 @@ class LegendBuilder:
         return handle_width + text_width + padding
 
     # =========================================================================
-    # Column Management
+    # Band Management
     # =========================================================================
 
-    def _check_overflow(self, required_height: float) -> bool:
-        """Check if element fits in current column."""
-        return self._layout.check_overflow(required_height)
+    def _check_overflow(self, required_along: float) -> bool:
+        """True if an element of this along-edge size overflows the current band."""
+        return self._layout.check_overflow(required_along)
 
-    def _start_new_column(self):
-        """Create a new column when vertical space exhausted."""
-        self._layout.start_new_column()
+    def _start_new_band(self):
+        """Create a new band outward when along-edge space is exhausted."""
+        self._layout.start_new_band()
 
     def _adjust_legend_ncol_for_height(
         self,
@@ -1238,11 +1238,11 @@ class LegendBuilder:
 
         # Check overflow
         if self._check_overflow(estimated_height):
-            self._start_new_column()
+            self._start_new_band()
 
         # Convert current position to figure coordinates
         x_fig, y_fig = self._mm_to_figure_coords(
-            self._layout.current_x, self._layout.current_y
+            self._layout.current_outward, self._layout.current_along
         )
 
         # Adaptive row spacing: when a handle's marker exceeds the font
@@ -1304,14 +1304,14 @@ class LegendBuilder:
 
         # Capture position BEFORE advancing the cursor — this is where the
         # legend was actually placed, and what the reactor needs.
-        placement_x_mm = self._layout.current_x
+        placement_x_mm = self._layout.current_outward
         # mm_y_from_top is tracked directly in the layout (stable across
         # axes height changes from constrained_layout etc).
-        mm_y_from_top = self._layout.current_y_from_top
+        mm_y_from_top = self._layout.along_from_start
 
         # Update layout cursor for the next element
         self._layout.update_width(width)
-        self._layout.advance_y(height)
+        self._layout.advance_along(height)
 
         # Register with the reactor so the anchor follows axes changes.
         self._reactor.register(
@@ -1422,13 +1422,13 @@ class LegendBuilder:
 
         # Check overflow using estimate
         if self._check_overflow(total_estimated_height):
-            self._start_new_column()
+            self._start_new_band()
 
         # Add title if needed and measure actual height
         title_height_actual = 0
         if title_position == "top" and label:
             x_fig, y_fig = self._mm_to_figure_coords(
-                self._layout.current_x, self._layout.current_y
+                self._layout.current_outward, self._layout.current_along
             )
             title_obj = self.fig.text(
                 x_fig, y_fig, label,
@@ -1442,8 +1442,8 @@ class LegendBuilder:
 
             # Register the title with the reactor so it follows axes changes
             # (otherwise the colorbar would reposition but the title would stay pinned).
-            title_x_mm = self._layout.current_x
-            title_mm_y_from_top = self._layout.current_y_from_top
+            title_x_mm = self._layout.current_outward
+            title_mm_y_from_top = self._layout.along_from_start
             self._reactor.register(
                 ax=self._anchor_ax,
                 artist=title_obj,
@@ -1454,13 +1454,13 @@ class LegendBuilder:
             )
 
             # Position colorbar below measured title
-            cbar_y_start = self._layout.current_y - title_height_actual - title_pad
+            cbar_y_start = self._layout.current_along - title_height_actual - title_pad
         else:
-            cbar_y_start = self._layout.current_y
+            cbar_y_start = self._layout.current_along
             title_width_actual = 0
 
         # Create colorbar axes
-        x_fig, y_fig_top = self._mm_to_figure_coords(self._layout.current_x, cbar_y_start)
+        x_fig, y_fig_top = self._mm_to_figure_coords(self._layout.current_outward, cbar_y_start)
 
         fig_extent = self.fig.get_window_extent()
         cbar_width_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
@@ -1508,17 +1508,17 @@ class LegendBuilder:
         # Colorbar top sits below the title (if any) by title_height + title_pad.
         # The layout cursor still points at the title position, so we compute
         # the colorbar's offset explicitly before advancing.
-        placement_x_mm = self._layout.current_x
+        placement_x_mm = self._layout.current_outward
         if title_position == "top" and label:
             mm_y_from_top = (
-                self._layout.current_y_from_top + title_height_actual + title_pad
+                self._layout.along_from_start + title_height_actual + title_pad
             )
         else:
-            mm_y_from_top = self._layout.current_y_from_top
+            mm_y_from_top = self._layout.along_from_start
 
         # Update layout cursor past the full title+colorbar block.
         self._layout.update_width(actual_width)
-        self._layout.advance_y(total_height_actual)
+        self._layout.advance_along(total_height_actual)
 
         # Register with the reactor. Colorbars need mm_width + mm_height so
         # the reactor dispatches to cbar.ax.set_position instead of
@@ -1590,7 +1590,7 @@ class LegendBuilder:
 
     def get_remaining_height(self) -> float:
         """Get remaining vertical space."""
-        return max(0, self._layout.current_y)
+        return max(0, self._layout.current_along)
 
 
 def _get_legend_data(ax: Axes) -> dict:
