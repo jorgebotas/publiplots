@@ -253,10 +253,31 @@ class SubplotsAutoLayout:
         return overhang_px / dpi * 25.4 + 1.0
 
     def _artist_window_extent(self, obj):
-        """Duck-typed window-extent accessor (Legend/Colorbar/Text)."""
+        """Duck-typed tight-bbox accessor (Legend/Colorbar/Text).
+
+        Returns the *tight* bbox, not the bare window extent — the tight
+        bbox includes decorations attached outside the artist's
+        rectangle, like colorbar tick labels and titles sitting past the
+        color strip. Without that, the reactor measures only the narrow
+        color strip and the tick labels get clipped on save.
+
+        Legend.get_window_extent() already equals its tightbbox (the
+        legend packs its own frame internally), so this call is
+        idempotent there.
+        """
+        # Colorbar-like: geometry lives on a child Axes, which exposes
+        # get_tightbbox. Use it so tick labels / titles are included.
+        if hasattr(obj, "ax") and hasattr(obj.ax, "get_tightbbox"):
+            return obj.ax.get_tightbbox()
+        if hasattr(obj, "get_tightbbox"):
+            try:
+                return obj.get_tightbbox()
+            except TypeError:
+                # Some artists require a renderer arg.
+                pass
         if hasattr(obj, "get_window_extent"):
             return obj.get_window_extent()
-        if hasattr(obj, "ax"):  # Colorbar stores geometry on .ax
+        if hasattr(obj, "ax"):
             return obj.ax.get_window_extent()
         return None
 
