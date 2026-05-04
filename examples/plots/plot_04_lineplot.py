@@ -170,6 +170,32 @@ ax = pp.lineplot(
 pp.show()
 
 # %%
+# Markers on Aggregated Points
+# -----------------------------
+# ``markers=True`` draws a marker at each aggregated x position —
+# useful to emphasise discrete observations on top of the trend line.
+# publiplots styles markers with the same double-layer convention as
+# ``pp.pointplot``: a semi-transparent fill over a solid colored ring,
+# so the fill reads the group color without hiding the connecting
+# line. ``edgecolor=`` overrides the ring color if you want a neutral
+# outline for high-density plots.
+
+ax = pp.lineplot(
+    data=two_vars,
+    x="time",
+    y="value",
+    hue="group",
+    style="method",
+    palette="pastel",
+    markers=True,
+    dashes=False,
+    title="Hue + Style with Markers",
+    xlabel="Time",
+    ylabel="Response",
+)
+pp.show()
+
+# %%
 # Hue and Style on the Same Variable
 # -----------------------------------
 # When ``hue=`` and ``style=`` map to the *same* column, publiplots
