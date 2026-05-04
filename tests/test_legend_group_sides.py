@@ -349,3 +349,30 @@ def test_orientation_invalid_raises():
 def test_align_invalid_raises():
     with pytest.raises(ValueError, match="align must be"):
         pp.legend_group(align="middle")
+
+
+@pytest.mark.parametrize("anchor_kind", ["figure", "axes"])
+def test_right_side_legend_top_aligned_with_axes_top(anchor_kind):
+    """Regression: axes-anchored groups used to leave ~vpad extra white
+    space above the legend because the default vpad=5 landed the legend
+    below axes.y1 by 5 mm, while figure-anchored groups reach the same
+    visual position because the _GridAnchor sits higher. Both modes now
+    put the legend top within ~1 mm of the anchor axes' top."""
+    fig, axes = pp.subplots(1, 3, axes_size=(40, 30))
+    for ax in axes:
+        ax.plot([0, 1, 2], [0, 1, 0])
+        ax.set_title("title")
+    if anchor_kind == "figure":
+        group = pp.legend_group(side="right")
+    else:
+        group = pp.legend_group(anchor=axes[-1], side="right")
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+
+    ax_top_px = axes[-1].get_window_extent().y1
+    legend_top_px = group._builder.elements[0][1].get_window_extent().y1
+    delta_mm = (ax_top_px - legend_top_px) / fig.dpi * 25.4
+    assert abs(delta_mm) < 1.5, (
+        f"{anchor_kind}-anchored: legend top should be within ~1 mm of "
+        f"axes top; got delta={delta_mm:.2f} mm"
+    )

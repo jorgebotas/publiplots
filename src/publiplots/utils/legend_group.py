@@ -167,7 +167,7 @@ class MultiAxesLegendGroup:
         y_offset: Optional[float] = None,
         gap: float = 2,
         column_spacing: float = 5,
-        vpad: float = 5,
+        vpad: Optional[float] = None,
         max_width: Optional[float] = None,
     ):
         if side not in ("right", "left", "bottom", "top"):
@@ -203,6 +203,15 @@ class MultiAxesLegendGroup:
         else:
             self.anchor = anchor
             self._anchor_kind = "axes"
+
+        # Default vpad: axes-anchored groups align their legend's top
+        # edge with the axes rectangle (no top padding), while
+        # figure-anchored groups sit inside the decorated-grid rectangle
+        # which already includes title_space above every axes — a
+        # small vpad keeps the legend from crowding that title. Both
+        # paths end up with the legend top at roughly axes-top.
+        if vpad is None:
+            vpad = 0 if self._anchor_kind == "axes" else 5
 
         if collect is not None:
             if isinstance(collect, str) or not hasattr(collect, "__iter__"):
@@ -487,7 +496,7 @@ def legend_group(
     y_offset: Optional[float] = None,
     gap: float = 2,
     column_spacing: float = 5,
-    vpad: float = 5,
+    vpad: Optional[float] = None,
     max_width: Optional[float] = None,
 ) -> MultiAxesLegendGroup:
     """Create a shared legend band.
