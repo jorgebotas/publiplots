@@ -376,6 +376,32 @@ ax = pp.barplot(
 pp.show()
 
 # %%
+# Legend Inside the Axes
+# ----------------------
+# By default publiplots parks the legend just past the right edge of the
+# axes so plots can line up cleanly. For compact figures or when the data
+# leaves a natural empty corner, pass ``legend_kws={"inside": True,
+# "loc": "upper right"}`` to place the legend inside the axes frame
+# using matplotlib's native corner-based placement. ``inside=True``
+# works with any ``loc`` string that :func:`matplotlib.axes.Axes.legend`
+# accepts (``"upper right"``, ``"lower left"``, ``"best"``, etc.); omit
+# ``loc`` and matplotlib picks the emptiest corner.
+
+ax = pp.barplot(
+    data=hue_data,
+    x="time",
+    y="measurement",
+    hue="group",
+    palette="RdGyBu_r",
+    errorbar="se",
+    title='Inside legend via legend_kws={"inside": True, "loc": "upper left"}',
+    xlabel="Time Point",
+    ylabel="Measurement",
+    legend_kws={"inside": True, "loc": "upper left"},
+)
+pp.show()
+
+# %%
 # Shared Legend Across Subplots
 # ------------------------------
 # When several bar subplots share the same ``hue`` and ``hatch`` variables,
@@ -403,6 +429,33 @@ for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
         hatch_map={"24h": "", "48h": "///"},
         title=title, ax=ax,
         errorbar="se",
+    )
+pp.show()
+
+# %%
+# Split Legends: Shared Group, Panel-Local Hatch
+# ----------------------------------------------
+# The two placement modes compose. When a genuine double-split bar
+# (``hue`` and ``hatch`` both distinct from the categorical axis) has
+# one dimension repeated across panels and another that's panel-local
+# information, ``pp.legend_group(collect=[...])`` lifts the shared
+# entry into a single figure-level legend while ``legend_kws={"inside":
+# True, ...}`` keeps the non-collected entry inside each axes. Here the
+# ``group`` color palette is shared across the three samples (collected
+# once on the right) and the ``time`` hatch is local per panel (tucked
+# into each axes' upper-left corner).
+
+fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
+pp.legend_group(anchor=axes[-1], collect=["group"])
+for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
+    pp.barplot(
+        data=shared_df, x="cat", y="val",
+        hue="group", hatch="time",
+        palette="pastel",
+        hatch_map={"24h": "", "48h": "///"},
+        title=title, ax=ax,
+        errorbar="se",
+        legend_kws={"inside": True, "loc": "upper left"},
     )
 pp.show()
 

@@ -278,3 +278,35 @@ for ax, title in zip(axes, ['Sample A', 'Sample B', 'Sample C']):
         palette='pastel', title=title, ax=ax,
     )
 pp.show()
+
+# %%
+# Split Legends: Shared Hue, Panel-Local Style
+# --------------------------------------------
+# The inside and figure-level placements compose. When each panel uses
+# both ``hue`` (shared across panels — typically a palette the whole
+# figure agrees on) and ``style`` (panel-specific — e.g., measurement
+# replicate or assay version), collect only the shared entry into the
+# group and let ``legend_kws={"inside": True, ...}`` tuck the style
+# marker legend inside each panel.
+
+np.random.seed(27)
+split_df = pd.DataFrame({
+    'x': np.random.randn(180),
+    'y': np.random.randn(180),
+    'treatment': np.tile(['Control', 'Low', 'High'], 60),
+    'replicate': np.tile(['R1', 'R2'], 90),
+    'sample': np.repeat(['Sample A', 'Sample B', 'Sample C'], 60),
+})
+
+fig, axes = pp.subplots(1, 3, axes_size=(45, 40))
+pp.legend_group(anchor=axes[-1], collect=['treatment'])
+for ax, sample in zip(axes, ['Sample A', 'Sample B', 'Sample C']):
+    pp.scatterplot(
+        data=split_df[split_df['sample'] == sample],
+        x='x', y='y',
+        hue='treatment', style='replicate',
+        palette='pastel',
+        title=sample, ax=ax,
+        legend_kws={'inside': True, 'loc': 'upper right'},
+    )
+pp.show()

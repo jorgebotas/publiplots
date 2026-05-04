@@ -78,7 +78,7 @@ def stash_hue_legend(
             ),
         )
 
-    render_entries(ax, flags=flags)
+    render_entries(ax, flags=flags, legend_kws=legend_kws)
 
 
 def stash_continuous_hue(
@@ -388,7 +388,34 @@ def get_size_ticks(
     return [str(t) for t in ticks], [_get_markersize(t) for t in ticks]
 
 
-def render_entries(ax: Axes, *, flags: Dict[str, bool]) -> None:
+_BUILDER_FORWARD_KEYS = frozenset({
+    "inside", "loc", "bbox_to_anchor", "bbox_transform", "ncol",
+    "frameon", "title_fontsize", "prop", "alignment", "borderpad",
+    "borderaxespad", "handletextpad", "handlelength", "columnspacing",
+    "labelspacing", "markerscale", "markerfirst",
+})
+
+
+def _builder_kwargs(legend_kws: Optional[Dict]) -> Dict:
+    """Extract the subset of ``legend_kws`` meant for ``LegendBuilder``.
+
+    The plot ``_legend`` helpers consume kind-specific keys (``hue_label``,
+    ``hatch_label``, ``size_label``, ``size_nbins``, etc.) and leave the
+    matplotlib ``ax.legend()`` passthrough keys behind. This filter picks
+    those up and hands them to ``builder.add_legend``/``add_colorbar`` so
+    users can pass e.g. ``legend_kws={'inside': True, 'loc': 'upper right'}``.
+    """
+    if not legend_kws:
+        return {}
+    return {k: v for k, v in legend_kws.items() if k in _BUILDER_FORWARD_KEYS}
+
+
+def render_entries(
+    ax: Axes,
+    *,
+    flags: Dict[str, bool],
+    legend_kws: Optional[Dict] = None,
+) -> None:
     """Render all stashed entries on ``ax`` not claimed by a figure-level group.
 
     For each stashed entry whose kind flag is True and that isn't claimed by
@@ -397,6 +424,10 @@ def render_entries(ax: Axes, *, flags: Dict[str, bool]) -> None:
     colorbar, everything else becomes a standard legend entry.
 
     If nothing remains to render, no builder is instantiated.
+
+    ``legend_kws`` is the plot-function argument; kind-specific keys like
+    ``hue_label`` should already have been popped by the caller. Remaining
+    keys in :data:`_BUILDER_FORWARD_KEYS` are forwarded to the builder.
     """
     fig = ax.get_figure()
     to_render = [
@@ -405,15 +436,18 @@ def render_entries(ax: Axes, *, flags: Dict[str, bool]) -> None:
     ]
     if not to_render:
         return
+    builder_kws = _builder_kwargs(legend_kws)
     builder = legend_fn(ax=ax, auto=False)
     for entry in to_render:
         if entry.kind == "hue" and is_continuous_hue(entry.handles):
             builder.add_colorbar(
                 mappable=entry.handles[0],
                 label=entry.name,
+                **builder_kws,
             )
         else:
             builder.add_legend(
                 handles=list(entry.handles),
                 label=entry.name,
+                **builder_kws,
             )

@@ -608,4 +608,4 @@ def _legend(
                 ),
             )
 
-    render_entries(ax, flags=flags)
+    render_entries(ax, flags=flags, legend_kws=kwargs)

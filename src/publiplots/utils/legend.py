@@ -1131,11 +1131,13 @@ class LegendBuilder:
             Maximum height in millimeters. If legend exceeds this, increase ncol
             to fit (PyComplexHeatmap behavior).
         **kwargs
-            Additional kwargs for legend customization:
-            - ncol: number of columns (auto-adjusted if max_height exceeded)
-            - labelspacing: vertical space between entries
-            - handletextpad: space between handle and text
-            - columnspacing: space between columns (in font-size units)
+            Additional kwargs for legend customization. ``inside`` (bool,
+            default ``False``) bypasses the mm-based outside-axes column and
+            renders the legend inside the axes using matplotlib's native
+            axes-relative placement; pair with ``loc='upper right'`` etc. to
+            pick the corner. The rest (``ncol``, ``labelspacing``,
+            ``handletextpad``, ``columnspacing``, etc.) are forwarded to
+            ``ax.legend()``.
 
         Returns
         -------
@@ -1146,6 +1148,44 @@ class LegendBuilder:
         -----
         All dimensions in millimeters. Columns created automatically on overflow.
         """
+        inside = bool(kwargs.pop("inside", False))
+
+        if inside:
+            # Inside-axes placement: let matplotlib own the geometry. Don't
+            # touch the mm cursor, don't build figure-fraction bbox, don't
+            # register with the reactor — the legend lives in axes coords
+            # and tracks automatically across axes resizes.
+            fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
+            default_labelspacing = compute_min_labelspacing(handles, fontsize)
+            legend_kwargs = {
+                "frameon": frameon,
+                "borderpad": 0.4,
+                "handletextpad": 0.8,
+                "labelspacing": default_labelspacing,
+                "handler_map": kwargs.pop("handler_map", get_legend_handler_map()),
+                "alignment": "left",
+            }
+            if label:
+                legend_kwargs["title"] = label
+            legend_kwargs.update(kwargs)
+            # ax.legend() replaces ax.legend_ and evicts earlier Legend
+            # children. Preserve prior legends built by this same builder
+            # (so multiple add_legend calls stack) AND any legend left on
+            # self.ax by a different builder (notably pp.legend_group
+            # having attached an outside-right collected entry to this
+            # same axes).
+            prior = [e[1] for e in self.elements
+                     if e[0] == "legend" and e[1].axes is self.ax]
+            prior_ids = {id(p) for p in prior}
+            if self.ax.legend_ is not None and id(self.ax.legend_) not in prior_ids:
+                prior.append(self.ax.legend_)
+            legend = self.ax.legend(handles=handles, **legend_kwargs)
+            for p in prior:
+                if p is not legend:
+                    self.ax.add_artist(p)
+            self.elements.append(("legend", legend))
+            return legend
+
         # Auto-adjust ncol if max_height specified
         if max_height is not None:
             optimal_ncol = self._adjust_legend_ncol_for_height(
@@ -1192,14 +1232,20 @@ class LegendBuilder:
 
         legend_kwargs.update(kwargs)
 
-        # Create legend
-        existing_legends = [e[1] for e in self.elements if e[0] == "legend" and e[1].axes == self.ax]
+        # Create legend. ax.legend() clears prior Legend children; preserve
+        # both legends we built earlier on this axes AND a legend left by
+        # a different builder (notably an inside-axes legend that lives on
+        # the same axes as a pp.legend_group anchor).
+        prior = [e[1] for e in self.elements
+                 if e[0] == "legend" and e[1].axes is self.ax]
+        prior_ids = {id(p) for p in prior}
+        if self.ax.legend_ is not None and id(self.ax.legend_) not in prior_ids:
+            prior.append(self.ax.legend_)
         legend = self.ax.legend(handles=handles, **legend_kwargs)
         legend.set_clip_on(False)
-
-        # Re-add existing legends (matplotlib limitation) - only for same axes
-        for existing_legend in existing_legends:
-            self.ax.add_artist(existing_legend)
+        for p in prior:
+            if p is not legend:
+                self.ax.add_artist(p)
 
         # Measure actual dimensions
         width, height = self._measure_object_dimensions(legend)
