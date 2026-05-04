@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-05-04
+
+### Added
+- `pp.scatterplot` gains `background_marker: bool | str = False`. When
+  truthy, each point gets a solid background-colored twin (white by
+  default; any color string overrides it) so overlap is hidden —
+  useful for publication panels, small-multiples, and categorical
+  bubble plots where each point should read independently. Off by
+  default because duplicating every point doubles artist count and
+  overlap is often informative. The real work is foreground
+  pre-compositing: face colors are blended over `background_color`
+  at the user's `alpha` and drawn at full opacity, so overlapping
+  points last-draw-wins instead of alpha-blending into muddy
+  patches. A lower-zorder `PathCollection` twin is also emitted so
+  the effect survives non-white axes patches (PR #110).
+- Gallery panel "Hiding Overlap with `background_marker`" in
+  `plot_02_scatter_plots.py` showing the three modes side by side
+  (PR #110).
+
+### Internal
+- New `composite_facecolors_over` and `apply_background_markers`
+  helpers in `publiplots.utils.transparency`, reusing the same
+  abstraction boundary as `apply_double_layer_markers` (Line2D
+  counterpart used by `pp.pointplot` / `pp.lineplot`) (PR #110).
+
+[0.8.4]: https://github.com/jorgebotas/publiplots/releases/tag/v0.8.4
+
 ## [0.8.3] - 2026-05-04
 
 ### Fixed
