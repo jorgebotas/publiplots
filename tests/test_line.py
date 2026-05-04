@@ -110,6 +110,37 @@ def test_lineplot_style_dashes_uses_line_patch_with_dash_linestyle(line_df):
     assert (1, 1) in linestyles
 
 
+def test_lineplot_hue_style_dashes_markers_renders(line_df):
+    """Regression for issue #99: hue + style + dashes={...(on, off)...} + markers
+    used to crash in matplotlib's ``_get_dash_pattern`` during legend render
+    because ``HandlerLineMarker`` forwarded the raw on-off tuple to a fresh
+    ``Line2D``. Rendering must not raise."""
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.lineplot(
+        data=line_df, x="t", y="y",
+        hue="g", style="m",
+        palette={"A": "#43adaa", "B": "#6565eb"},
+        dashes={"raw": "", "smoothed": (4, 2)},
+        markers=True, ax=ax, sort=False, errorbar=None, legend=True,
+    )
+    fig.canvas.draw()
+
+
+def test_lineplot_hue_equals_style_dashes_markers_renders(line_df):
+    """Regression for issue #99, merge_hue_style branch: when hue == style the
+    handle is a merged ``LineMarkerPatch`` carrying the raw dash tuple. It must
+    render without crashing too."""
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.lineplot(
+        data=line_df, x="t", y="y",
+        hue="g", style="g",
+        palette={"A": "#43adaa", "B": "#6565eb"},
+        dashes={"A": (4, 2), "B": (1, 1)},
+        markers=True, ax=ax, sort=False, errorbar=None, legend=True,
+    )
+    fig.canvas.draw()
+
+
 # ---- Legend stash ----
 
 def test_lineplot_legend_false_stashes_nothing(line_df):

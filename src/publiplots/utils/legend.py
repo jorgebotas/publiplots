@@ -26,6 +26,27 @@ import matplotlib.pyplot as plt
 # Custom Legend Handlers
 # =============================================================================
 
+
+def _normalize_dash_linestyle(ls: Any) -> Any:
+    """Normalize a bare on-off dash tuple to matplotlib's canonical form.
+
+    Seaborn accepts ``dashes={label: (on, off)}`` and stores the bare tuple
+    verbatim on the handle; matplotlib's ``Line2D._get_dash_pattern`` only
+    accepts named strings or the ``(offset, (on, off, ...))`` form, so a
+    ``(on, off)`` tuple fed straight back into a new ``Line2D`` crashes with
+    ``TypeError: 'int' object is not iterable``.
+
+    Returns anything other than a bare numeric 2-tuple unchanged.
+    """
+    if (
+        isinstance(ls, tuple)
+        and len(ls) == 2
+        and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in ls)
+    ):
+        return (0, ls)
+    return ls
+
+
 class RectanglePatch(Patch):
     """
     Custom rectangle patch object for legend handles.
@@ -457,7 +478,7 @@ class HandlerLineMarker(HandlerBase):
             color = orig_handle.get_facecolor()
             edgecolor = orig_handle.get_edgecolor()
             alpha = orig_handle.get_alpha() if orig_handle.get_alpha() is not None else alpha
-            linestyle = orig_handle.get_linestyle()
+            linestyle = _normalize_dash_linestyle(orig_handle.get_linestyle())
             linewidth = orig_handle.get_linewidth()
             markeredgewidth = orig_handle.get_markeredgewidth()
             # Use actual markersize from patch (already in correct units)
@@ -468,7 +489,7 @@ class HandlerLineMarker(HandlerBase):
         # Extract from Line2D (standard matplotlib - fallback)
         elif isinstance(orig_handle, Line2D):
             marker = orig_handle.get_marker() or marker
-            linestyle = orig_handle.get_linestyle()
+            linestyle = _normalize_dash_linestyle(orig_handle.get_linestyle())
             color = orig_handle.get_color() or orig_handle.get_markerfacecolor()
             line_size = orig_handle.get_markersize()
             if line_size:
@@ -508,17 +529,9 @@ class HandlerLine(HandlerBase):
         color = orig_handle.get_facecolor()
         linewidth = orig_handle.get_linewidth()
         linestyle = orig_handle.get_linestyle() if hasattr(orig_handle, "get_linestyle") else "-"
+        linestyle = _normalize_dash_linestyle(linestyle)
         if not linewidth:
             linewidth = resolve_param("lines.linewidth")
-
-        # Normalize seaborn-style dash tuples (on, off) → matplotlib's
-        # (offset, (on, off)) form. A plain (on, off) tuple is how seaborn
-        # accepts ``dashes={label: (4, 2)}``; matplotlib's Line2D needs the
-        # (offset, dash_seq) form.
-        if isinstance(linestyle, tuple) and len(linestyle) == 2 and all(
-            isinstance(v, (int, float)) for v in linestyle
-        ):
-            linestyle = (0, linestyle)
 
         # Legend line is always fully opaque for readability, matching
         # HandlerLineMarker's behavior. The stored alpha on the handle
