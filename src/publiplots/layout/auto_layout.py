@@ -139,8 +139,10 @@ class SubplotsAutoLayout:
                     per.append(max(max_px / dpi * 25.4, 0.0))
                 measured[side] = tuple(per)
 
-        if "legend_column" not in self._locked:
-            measured["legend_column"] = self._measure_legend_column()
+        # Measure the single figure's legend_group (if any) and dispatch
+        # its overhang to the right reservation field based on (side,
+        # anchor_kind).
+        self._apply_legend_band_measurement(measured, axes_matrix)
         return measured
 
     def _side_extent(self, ax, calc, managed_artist_ids) -> float:
@@ -232,32 +234,83 @@ class SubplotsAutoLayout:
                         return True
         return False
 
-    def _measure_legend_column(self) -> float:
-        """mm width past the anchor axes' right edge, plus 1 mm padding."""
+    # Per-side overhang calculators. Each returns the signed distance
+    # (in pixels) that 'obj' projects past the 'anchor_bb' edge in the
+    # chosen direction. Distances are non-negative after the max() below.
+    _OVERHANG_BY_SIDE = {
+        "right":  lambda anchor_bb, obj_bb: obj_bb.x1 - anchor_bb.x1,
+        "left":   lambda anchor_bb, obj_bb: anchor_bb.x0 - obj_bb.x0,
+        "bottom": lambda anchor_bb, obj_bb: anchor_bb.y0 - obj_bb.y0,
+        "top":    lambda anchor_bb, obj_bb: obj_bb.y1 - anchor_bb.y1,
+    }
+
+    # side → (figure-anchored FigureLayout field, axes-anchored per-cell field)
+    _FIELD_BY_SIDE = {
+        "right":  ("legend_column",       "right",        "col"),
+        "left":   ("legend_band_left",    "ylabel_space", "col"),
+        "bottom": ("legend_band_bottom",  "xlabel_space", "row"),
+        "top":    ("legend_band_top",     "title_space",  "row"),
+    }
+
+    def _apply_legend_band_measurement(self, measured: dict, axes_matrix) -> None:
+        """Measure the figure's pp.legend_group overhang and write it
+        into the correct FigureLayout reservation based on the group's
+        ``side`` and anchor kind."""
         group = getattr(self._fig, "_publiplots_legend_group", None)
         if group is None:
-            return 0.0
-
-        # Force collection so artists exist to measure.
-        group._materialize()
-        if not group._builder.elements:
-            return 0.0
-
+            return
         dpi = self._fig.dpi
         if dpi <= 0:
-            return 0.0
+            return
+
+        # Force materialization so artists exist to measure.
+        group._materialize()
+        if not group._builder.elements:
+            return
+
+        side = group._side
+        overhang_fn = self._OVERHANG_BY_SIDE[side]
+        figure_field, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
 
         anchor_bb = group.anchor.get_window_extent()
-        max_x1 = anchor_bb.x1
+        max_overhang_px = 0.0
         for _, obj in group._builder.elements:
             extent = self._artist_window_extent(obj)
             if extent is None:
                 continue
-            max_x1 = max(max_x1, extent.x1)
-        overhang_px = max_x1 - anchor_bb.x1
-        if overhang_px <= 0:
-            return 0.0
-        return overhang_px / dpi * 25.4 + 1.0
+            max_overhang_px = max(max_overhang_px, overhang_fn(anchor_bb, extent))
+        if max_overhang_px <= 0:
+            return
+        overhang_mm = max_overhang_px / dpi * 25.4 + 1.0
+
+        if group._anchor_kind == "figure":
+            if figure_field in self._locked:
+                return
+            measured[figure_field] = overhang_mm
+            return
+
+        # Axes-anchored: grow the per-cell reservation for the anchor's
+        # row/column. Merge with whatever the auto-measurement already
+        # produced (so label/title space co-exists with legend space).
+        if cell_field in self._locked:
+            return
+        ax = group.anchor
+        r, c = self._find_ax_indices(ax, axes_matrix)
+        if axis_kind == "col":
+            existing = list(measured.get(cell_field, getattr(self._layout, cell_field)))
+            existing[c] = max(existing[c], overhang_mm)
+            measured[cell_field] = tuple(existing)
+        else:  # "row"
+            existing = list(measured.get(cell_field, getattr(self._layout, cell_field)))
+            existing[r] = max(existing[r], overhang_mm)
+            measured[cell_field] = tuple(existing)
+
+    def _find_ax_indices(self, ax, axes_matrix):
+        for r, row in enumerate(axes_matrix):
+            for c, a in enumerate(row):
+                if a is ax:
+                    return r, c
+        return 0, 0
 
     def _artist_window_extent(self, obj):
         """Duck-typed tight-bbox accessor (Legend/Colorbar/Text).

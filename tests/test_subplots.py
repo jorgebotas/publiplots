@@ -540,14 +540,15 @@ def test_subplots_negative_tuple_element_raises():
         pp.subplots(2, 1, axes_size=(50, 30), title_space=(5, -1))
 
 
-def test_auto_layout_excludes_legend_group_from_tightbbox():
-    """pp.legend_group anchors a legend external to the axes — its width
-    is handled by legend_column, not the column's `right` reservation."""
+def test_auto_layout_figure_anchored_legend_group_uses_legend_column():
+    """Figure-anchored ``pp.legend_group()`` writes overhang into
+    ``legend_column`` (the far-right scalar reservation), leaving every
+    per-column ``right[]`` at baseline."""
     from publiplots.utils.legend import create_legend_handles
     fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
     for ax in axes:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(anchor=axes[-1])
+    group = pp.legend_group()  # figure-anchored (no explicit anchor)
     group.add_legend(
         handles=create_legend_handles(
             labels=["A", "B", "C"],
@@ -558,11 +559,48 @@ def test_auto_layout_excludes_legend_group_from_tightbbox():
     )
     fig.canvas.draw()
     layout = fig._publiplots_layout
-    # The rightmost column's `right` should be close to baseline (< 5 mm),
-    # NOT inflated to the legend's width.
-    assert layout.right[-1] < 5.0, (
-        f"right[-1] should be ~ baseline (legend excluded from tightbbox); "
+    # Every column's right-side reservation stays at baseline — the
+    # legend lives in the separate legend_column scalar.
+    for c in range(len(axes)):
+        assert layout.right[c] < 5.0, (
+            f"right[{c}] should be ~ baseline (legend in legend_column); "
+            f"got {layout.right[c]:.1f} mm"
+        )
+    assert layout.legend_column > 10.0, (
+        f"legend_column should absorb the legend width; got {layout.legend_column:.1f} mm"
+    )
+
+
+def test_auto_layout_axes_anchored_legend_group_grows_per_cell_right():
+    """Axes-anchored ``pp.legend_group(anchor=axes[r, c])`` grows the
+    anchor column's per-cell ``right[c]``, not the figure-level
+    ``legend_column``."""
+    from publiplots.utils.legend import create_legend_handles
+    fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
+    for ax in axes:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(anchor=axes[-1])  # axes-anchored, last column
+    group.add_legend(
+        handles=create_legend_handles(
+            labels=["A", "B", "C"],
+            colors=list(pp.color_palette("pastel", 3)),
+            alpha=0.2, linewidth=1.0,
+        ),
+        label="group",
+    )
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    assert layout.right[-1] > 10.0, (
+        f"right[-1] should absorb the legend width (axes-anchored); "
         f"got {layout.right[-1]:.1f} mm"
+    )
+    assert layout.right[0] < 5.0 and layout.right[1] < 5.0, (
+        f"other columns should stay at baseline; "
+        f"got right[0]={layout.right[0]:.1f}, right[1]={layout.right[1]:.1f}"
+    )
+    assert layout.legend_column < 0.5, (
+        f"legend_column should not absorb axes-anchored width; "
+        f"got {layout.legend_column:.1f} mm"
     )
 
 
@@ -632,9 +670,11 @@ def test_legend_column_is_zero_without_group():
 
 
 def test_legend_column_auto_grows_with_group():
+    """Figure-anchored legend_group auto-grows the figure's legend_column."""
     from publiplots.utils.legend import create_legend_handles
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
-    # Stash so auto-collect picks something up
+    # Stash so auto-collect picks something up on the first axes (doesn't
+    # matter which — the group walks every axes in the grid).
     stash_entry(
         axes[0],
         LegendEntry.build(
@@ -644,7 +684,7 @@ def test_legend_column_auto_grows_with_group():
             labels=("A", "B"),
         ),
     )
-    pp.legend_group(anchor=axes[-1])
+    pp.legend_group()  # figure-anchored (no anchor=)
     fig.savefig("/tmp/test_legend_column_auto.png")
     layout = fig._publiplots_layout
     assert layout.legend_column > 5.0, (

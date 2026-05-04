@@ -1,19 +1,22 @@
 """
-Shared legend column across multiple subplots.
+Shared legend band across multiple subplots.
 
-MultiAxesLegendGroup composes one unified legend column anchored to a
-chosen axes even when individual legends/colorbars are attached to other
-axes in the same figure. This is the primary tool for complex subplot
-layouts.
+MultiAxesLegendGroup composes one unified legend band anchored to a
+chosen side of the figure (or a single axes) even when individual
+legends/colorbars are attached to other axes in the same figure. This
+is the primary tool for complex subplot layouts.
 """
 
 import warnings
 from typing import List, Optional, Sequence
 
+import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.cm import ScalarMappable
 from matplotlib.colorbar import Colorbar
+from matplotlib.transforms import Bbox
 
 from publiplots.utils.legend import LegendBuilder
 from publiplots.utils.legend_entries import (
@@ -23,19 +26,75 @@ from publiplots.utils.legend_entries import (
 )
 
 
+class _GridAnchor:
+    """Virtual Axes proxy spanning the whole publiplots subplot grid.
+
+    Duck-types the small slice of ``matplotlib.axes.Axes`` that
+    ``LegendBuilder`` and ``LayoutReactor`` use (``get_position()`` +
+    ``get_figure()`` + ``get_window_extent()``). Lets figure-anchored
+    ``pp.legend_group`` share exactly the same placement machinery as
+    axes-anchored groups — the anchor just happens to be the grid bbox
+    instead of a single axes' bbox.
+    """
+
+    def __init__(self, fig: Figure) -> None:
+        self._fig = fig
+
+    def get_figure(self) -> Figure:
+        return self._fig
+
+    def get_position(self) -> Bbox:
+        """Union of all publiplots axes positions, in figure fractions."""
+        matrix = getattr(self._fig, "_publiplots_axes", None)
+        if matrix is None:
+            return Bbox.from_extents(0.0, 0.0, 1.0, 1.0)
+        x0 = y0 = 1.0
+        x1 = y1 = 0.0
+        for row in matrix:
+            for ax in row:
+                pos = ax.get_position()
+                x0, y0 = min(x0, pos.x0), min(y0, pos.y0)
+                x1, y1 = max(x1, pos.x1), max(y1, pos.y1)
+        if x0 >= x1 or y0 >= y1:
+            return Bbox.from_extents(0.0, 0.0, 1.0, 1.0)
+        return Bbox.from_extents(x0, y0, x1, y1)
+
+    def get_window_extent(self, renderer=None):
+        """Pixel extent of the grid bbox — matches ``Axes.get_window_extent``."""
+        pos = self.get_position()
+        fig_w = self._fig.get_window_extent().width
+        fig_h = self._fig.get_window_extent().height
+        return Bbox.from_extents(
+            pos.x0 * fig_w, pos.y0 * fig_h,
+            pos.x1 * fig_w, pos.y1 * fig_h,
+        )
+
+
 class MultiAxesLegendGroup:
     """
-    Unified legend column across multiple axes.
+    Unified legend band across multiple axes.
 
-    All elements share a single mm-based layout anchored to ``anchor``. Each
-    element can be attached to a different axes (via ``ax=`` on ``add_*``
-    calls) for hit-testing and picking; its POSITION is always computed
-    against the anchor's right edge regardless of which axes owns the artist.
+    All elements share a single mm-based layout anchored to the chosen
+    side of ``anchor``. Each element can be attached to a different
+    axes (via ``ax=`` on ``add_*`` calls) for hit-testing and picking;
+    its POSITION is always computed against the anchor's chosen edge
+    regardless of which axes owns the artist.
 
     Parameters
     ----------
-    anchor : Axes
-        The axes whose right edge defines x=0 for the shared column.
+    anchor : Axes, optional
+        The axes whose chosen edge defines the origin for the shared
+        band. When ``None`` (default), the group is **figure-anchored**:
+        it spans the full subplot grid on the chosen side (e.g.,
+        ``side='right'`` anchors to the rightmost cells' right edge and
+        extends vertically across every row). Pass an explicit axes to
+        pin the band to that single cell instead (axes-anchored).
+    side : {'right', 'bottom', 'left', 'top'}, default 'right'
+        Which edge of the anchor the band grows outward from. ``'right'``
+        is the classic publiplots outside-right column.
+    figure : Figure, optional
+        Figure to attach a figure-anchored group to. Defaults to
+        ``plt.gcf()``; only needed when no current figure exists.
     collect : list or tuple of str, optional
         Names of entries to auto-collect from across the grid's stashed
         ``LegendEntry`` objects. ``None`` (default) collects everything.
@@ -47,8 +106,11 @@ class MultiAxesLegendGroup:
 
     def __init__(
         self,
-        anchor: Axes,
+        anchor: Optional[Axes] = None,
         collect: Optional[Sequence[str]] = None,
+        *,
+        side: str = "right",
+        figure: Optional[Figure] = None,
         x_offset: float = 2,
         y_offset: Optional[float] = None,
         gap: float = 2,
@@ -56,7 +118,23 @@ class MultiAxesLegendGroup:
         vpad: float = 5,
         max_width: Optional[float] = None,
     ):
-        self.anchor = anchor
+        if side not in ("right", "left", "bottom", "top"):
+            raise ValueError(
+                f"side must be 'right' | 'left' | 'bottom' | 'top', got {side!r}"
+            )
+        self._side = side
+
+        # Decide anchor kind. When the caller passes an explicit axes we
+        # pin the band to that one axes (and its per-cell reservation
+        # tuple grows). Otherwise span the whole grid via _GridAnchor.
+        if anchor is None:
+            fig = figure if figure is not None else plt.gcf()
+            self.anchor = _GridAnchor(fig)
+            self._anchor_kind = "figure"
+        else:
+            self.anchor = anchor
+            self._anchor_kind = "axes"
+
         if collect is not None:
             if isinstance(collect, str) or not hasattr(collect, "__iter__"):
                 raise TypeError(
@@ -65,14 +143,17 @@ class MultiAxesLegendGroup:
                 )
             collect = list(collect)
         self._collect = collect
-        # Track whether _materialize has already run (set by Task 3).
         self._materialized = False
         self._warned_mismatch = False
-        # anchor_ax=anchor pins position math/reactor to the anchor regardless
-        # of self.ax swaps during add_* calls.
+        # anchor_ax=self.anchor pins position math/reactor to the anchor
+        # regardless of self.ax swaps during add_* calls. For
+        # figure-anchored groups anchor_ax is the _GridAnchor proxy,
+        # which exposes the same get_position()/get_figure() API.
+        builder_ax = self.anchor if self._anchor_kind == "axes" \
+                     else self._pick_builder_ax()
         self._builder = LegendBuilder(
-            ax=anchor,
-            anchor_ax=anchor,
+            ax=builder_ax,
+            anchor_ax=self.anchor,
             x_offset=x_offset,
             y_offset=y_offset,
             gap=gap,
@@ -80,9 +161,31 @@ class MultiAxesLegendGroup:
             vpad=vpad,
             max_width=max_width,
             external_to_axis=True,
+            side=side,
         )
         # Register on the figure so plot functions can check claims.
-        anchor.get_figure()._publiplots_legend_group = self
+        self.anchor.get_figure()._publiplots_legend_group = self
+
+    def _pick_builder_ax(self) -> Axes:
+        """Pick a real axes from the figure to attach Legend artists to.
+
+        Figure-anchored groups use ``_GridAnchor`` only for position
+        math; the actual matplotlib ``Legend`` artist still needs a
+        real Axes parent. Default to the corner cell closest to the
+        legend's edge so hit-testing lines up with where the user sees
+        the band sitting.
+        """
+        fig = self.anchor.get_figure()
+        matrix = getattr(fig, "_publiplots_axes", None)
+        if matrix is None:
+            return fig.axes[0]
+        if self._side == "right":
+            return matrix[0][-1]
+        if self._side == "left":
+            return matrix[0][0]
+        if self._side == "bottom":
+            return matrix[-1][0]
+        return matrix[0][0]  # "top"
 
     def claims(self, name: str) -> bool:
         """True if the group will render an entry with this name."""
@@ -145,6 +248,17 @@ class MultiAxesLegendGroup:
                 label=entry.name,
             )
 
+    def _default_target_ax(self) -> Axes:
+        """Axes to attach a Legend artist to when no explicit ax= is passed.
+
+        For axes-anchored groups, that's the anchor. For figure-anchored
+        groups the anchor is a ``_GridAnchor`` proxy (not a real Axes);
+        the builder's pre-picked corner cell is used instead.
+        """
+        if self._anchor_kind == "axes":
+            return self.anchor
+        return self._builder.ax  # corner cell picked in __init__
+
     def add_legend(
         self,
         handles: List,
@@ -153,12 +267,13 @@ class MultiAxesLegendGroup:
         ax: Optional[Axes] = None,
         **kwargs,
     ) -> Legend:
-        """Add a legend to the shared column.
+        """Add a legend to the shared band.
 
-        The artist is attached to ax (defaults to anchor); position is
-        always computed against the anchor's right edge.
+        The artist is attached to ``ax`` (defaults to a sensible corner
+        cell for figure-anchored groups, or the anchor for axes-anchored);
+        position is always computed against the anchor's chosen edge.
         """
-        target_ax = ax if ax is not None else self.anchor
+        target_ax = ax if ax is not None else self._default_target_ax()
         original_ax = self._builder.ax
         try:
             self._builder.ax = target_ax
@@ -174,8 +289,8 @@ class MultiAxesLegendGroup:
         ax: Optional[Axes] = None,
         **kwargs,
     ) -> Colorbar:
-        """Add a colorbar to the shared column. See add_legend for ax semantics."""
-        target_ax = ax if ax is not None else self.anchor
+        """Add a colorbar to the shared band. See add_legend for ax semantics."""
+        target_ax = ax if ax is not None else self._default_target_ax()
         original_ax = self._builder.ax
         try:
             self._builder.ax = target_ax
@@ -186,8 +301,10 @@ class MultiAxesLegendGroup:
 
 
 def legend_group(
-    anchor: Axes,
+    anchor: Optional[Axes] = None,
     *,
+    side: str = "right",
+    figure: Optional[Figure] = None,
     collect: Optional[Sequence[str]] = None,
     x_offset: float = 2,
     y_offset: Optional[float] = None,
@@ -196,12 +313,21 @@ def legend_group(
     vpad: float = 5,
     max_width: Optional[float] = None,
 ) -> MultiAxesLegendGroup:
-    """Create a shared legend column anchored to ``anchor``.
+    """Create a shared legend band.
 
-    See :class:`MultiAxesLegendGroup` for parameter docs.
+    Pass ``anchor=None`` (default) for a **figure-anchored** band that
+    spans the full subplot grid on the chosen side. Pass
+    ``anchor=axes[r, c]`` to pin the band to a single cell; the
+    corresponding per-cell reservation (``right[c]`` for ``side='right'``,
+    ``xlabel_space[r]`` for ``side='bottom'``, etc.) absorbs the band
+    width.
+
+    See :class:`MultiAxesLegendGroup` for all parameter docs.
     """
     return MultiAxesLegendGroup(
         anchor=anchor,
+        side=side,
+        figure=figure,
         collect=collect,
         x_offset=x_offset,
         y_offset=y_offset,

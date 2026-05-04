@@ -863,6 +863,7 @@ class LegendBuilder:
         max_width: Optional[float] = None,
         anchor_ax: Optional[Axes] = None,
         external_to_axis: bool = False,
+        side: str = "right",
     ):
         """Initialize legend builder. All dimensions in millimeters.
 
@@ -872,17 +873,28 @@ class LegendBuilder:
             Axes the legend/colorbar artist is attached to (for picking,
             ``ax.legend_`` association, etc.).
         anchor_ax : Axes, optional
-            Axes whose right edge is used as the origin for mm-based
-            placement math and for reactor registration. Defaults to `ax`.
-            Used by MultiAxesLegendGroup to attach artists to one axes
-            while positioning them relative to another.
+            Axes whose chosen edge is used as the origin for mm-based
+            placement math and for reactor registration. Defaults to
+            ``ax``. Used by MultiAxesLegendGroup to attach artists to one
+            axes while positioning them relative to another (or to a
+            virtual grid anchor for figure-anchored groups).
+        side : {'right', 'left', 'bottom', 'top'}, default 'right'
+            Which edge of ``anchor_ax`` the legend grows outward from.
+            'right' matches the historical placement (columns fill
+            rightward, rows downward).
         """
         from publiplots.utils.legend_layout import LegendLayout
         from publiplots.utils.layout_reactor import LayoutReactor
 
+        if side not in ("right", "left", "bottom", "top"):
+            raise ValueError(
+                f"side must be 'right' | 'left' | 'bottom' | 'top', got {side!r}"
+            )
+
         self.ax = ax
         self._anchor_ax = anchor_ax if anchor_ax is not None else ax
         self.fig = self._anchor_ax.get_figure()
+        self._side = side
         self._layout = LegendLayout(
             x_offset=x_offset,
             y_offset=y_offset,
@@ -891,11 +903,29 @@ class LegendBuilder:
             vpad=vpad,
             max_width=max_width,
         )
-        self._layout.reset_to(axes_height_mm=self._get_axes_height())
+        self._layout.reset_to(axes_height_mm=self._get_edge_length())
         self._reactor = LayoutReactor.get(self.fig)
         self._external_to_axis = external_to_axis
         # Element storage: list of (type, object) tuples
         self.elements = []
+
+    def _get_edge_length(self) -> float:
+        """Along-edge length of the anchor in mm.
+
+        For side='right'|'left' that's the axes height; for
+        side='top'|'bottom' it's the axes width. The ``LegendLayout``
+        cursor treats this uniformly as the 'down the edge' distance
+        available before overflowing to a new column.
+        """
+        if self._side in ("right", "left"):
+            return self._get_axes_height()
+        return self._get_axes_width()
+
+    def _get_axes_width(self) -> float:
+        ax_pos = self._anchor_ax.get_position()
+        fig_width_px = self.fig.get_window_extent().width
+        axes_width_px = ax_pos.width * fig_width_px
+        return axes_width_px / self.fig.dpi / self.MM2INCH
 
     # =========================================================================
     # Conversion Utilities
@@ -910,34 +940,44 @@ class LegendBuilder:
 
     def _mm_to_figure_coords(self, x_mm: float, y_mm: float) -> Tuple[float, float]:
         """
-        Convert mm position to figure coordinates.
+        Convert mm position to figure coordinates at the chosen edge.
 
         Parameters
         ----------
         x_mm : float
-            Horizontal distance from right edge of axes (mm)
+            Outward distance from the edge (mm). Rightward for
+            ``side='right'``, leftward for ``'left'``, downward for
+            ``'bottom'``, upward for ``'top'``.
         y_mm : float
-            Remaining vertical space (mm). Converted to position from top internally.
+            Remaining along-edge space (mm). Converted to position from
+            the starting corner internally.
 
         Returns
         -------
         x_fig, y_fig : float
-            Position in figure coordinates
+            Position in figure coordinates.
         """
         ax_pos = self._anchor_ax.get_position()
         fig_extent = self.fig.get_window_extent()
 
-        # y_mm represents remaining space, convert to position from top
-        axes_height = self._get_axes_height()
-        position_from_top = axes_height - y_mm
+        # y_mm represents remaining along-edge space; position_from_start
+        # is how far we've advanced from the corner where the cursor
+        # began (top for right/left, left for bottom/top).
+        edge_length = self._get_edge_length()
+        position_from_start = edge_length - y_mm
 
-        # Convert mm to figure fraction
-        x_offset_fig = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.width
-        y_offset_fig = (position_from_top * self.MM2INCH * self.fig.dpi) / fig_extent.height
-
-        # Position relative to axes
-        x_fig = ax_pos.x1 + x_offset_fig
-        y_fig = ax_pos.y1 - y_offset_fig
+        if self._side in ("right", "left"):
+            outward_frac = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.width
+            along_frac = (position_from_start * self.MM2INCH * self.fig.dpi) / fig_extent.height
+            y_fig = ax_pos.y1 - along_frac
+            x_fig = (ax_pos.x1 + outward_frac) if self._side == "right" \
+                    else (ax_pos.x0 - outward_frac)
+        else:  # bottom | top
+            outward_frac = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.height
+            along_frac = (position_from_start * self.MM2INCH * self.fig.dpi) / fig_extent.width
+            x_fig = ax_pos.x0 + along_frac
+            y_fig = (ax_pos.y0 - outward_frac) if self._side == "bottom" \
+                    else (ax_pos.y1 + outward_frac)
 
         return x_fig, y_fig
 
@@ -1213,9 +1253,21 @@ class LegendBuilder:
         fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
         default_labelspacing = compute_min_labelspacing(handles, fontsize)
 
-        # Prepare legend kwargs
+        # Prepare legend kwargs. ``loc`` maps to the matplotlib corner of
+        # the legend box that coincides with bbox_to_anchor — pick it so
+        # the legend grows *away from* the anchor edge:
+        #   side='right'  → anchor sits at legend's upper-left corner.
+        #   side='left'   → anchor sits at legend's upper-right corner.
+        #   side='bottom' → anchor sits at legend's upper-left corner (cursor rotates).
+        #   side='top'    → anchor sits at legend's lower-left corner.
+        loc_by_side = {
+            "right": "upper left",
+            "left": "upper right",
+            "bottom": "upper left",
+            "top": "lower left",
+        }
         legend_kwargs = {
-            "loc": "upper left",
+            "loc": loc_by_side[self._side],
             "bbox_to_anchor": (x_fig, y_fig),
             "bbox_transform": self.fig.transFigure,  # Use figure coords
             "frameon": frameon,
@@ -1267,6 +1319,7 @@ class LegendBuilder:
             artist=legend,
             mm_x_from_right=placement_x_mm,
             mm_y_from_top=mm_y_from_top,
+            side=self._side,
             external_to_axis=self._external_to_axis,
         )
 
@@ -1274,7 +1327,7 @@ class LegendBuilder:
         self.elements.append(("legend", legend))
 
         return legend
-    
+
     def add_colorbar(
         self,
         mappable: Optional[ScalarMappable] = None,
@@ -1396,6 +1449,7 @@ class LegendBuilder:
                 artist=title_obj,
                 mm_x_from_right=title_x_mm,
                 mm_y_from_top=title_mm_y_from_top,
+                side=self._side,
                 external_to_axis=self._external_to_axis,
             )
 
@@ -1476,6 +1530,7 @@ class LegendBuilder:
             mm_y_from_top=mm_y_from_top,
             mm_width=width,        # the mm width parameter of add_colorbar
             mm_height=cbar_height, # measured mm height (from _measure_object_dimensions)
+            side=self._side,
             external_to_axis=self._external_to_axis,
         )
 
