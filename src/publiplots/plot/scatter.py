@@ -51,6 +51,7 @@ def scatterplot(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     edgecolor: Optional[str] = None,
+    background_marker: Union[bool, str] = False,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
@@ -112,6 +113,11 @@ def scatterplot(
         Width of marker edges.
     edgecolor : str, optional
         Color for marker edges. If None, uses same color as fill.
+    background_marker : bool or str, default=False
+        If truthy, draws a solid background-colored marker behind each point
+        to hide overlap. ``True`` uses white; a color string (e.g. ``"#eeeeee"``)
+        overrides the background color. Off by default because duplicating
+        every point doubles artist count and overlap is often informative.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -283,18 +289,34 @@ def scatterplot(
         "linewidth": linewidth,
         "zorder": 2,
     })
+    from publiplots.utils.transparency import (
+        ArtistTracker,
+        apply_transparency,
+        apply_background_markers,
+    )
+    tracker = ArtistTracker(ax)
     sns.scatterplot(**scatter_kwargs)
 
-    collection = ax.collections[0]
-    
-    collection.set_edgecolors(
-        edgecolor if edgecolor else collection.get_facecolors()
-    )
-    collection.set_linewidths(linewidth)
+    new_collections = tracker.get_new_collections()
+    collection = new_collections[0]
 
-    # Apply differential transparency to face vs edge
-    from publiplots.utils.transparency import apply_transparency
-    apply_transparency(collection, face_alpha=alpha, edge_alpha=1.0)
+    for c in new_collections:
+        c.set_edgecolors(
+            edgecolor if edgecolor else c.get_facecolors()
+        )
+        c.set_linewidths(linewidth)
+        # Apply differential transparency to face vs edge
+        apply_transparency(c, face_alpha=alpha, edge_alpha=1.0)
+
+    # Optional: draw solid background twins under each foreground collection
+    # to hide point overlap. Drawn AFTER foreground so ax.collections[0] still
+    # refers to the original foreground collection (relied on below for
+    # cmap/label wiring). zorder controls visual stacking.
+    if background_marker:
+        bg_color = "white" if background_marker is True else background_marker
+        apply_background_markers(
+            new_collections, ax, background_color=bg_color,
+        )
 
     # Set colormap and normalization for collection
     # Used by legend builder to create colorbar

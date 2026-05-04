@@ -191,6 +191,57 @@ def apply_double_layer_markers(
         )
 
 
+def apply_background_markers(
+    collections: Sequence[PathCollection],
+    ax: Axes,
+    background_color: Union[str, tuple] = "white",
+) -> List[PathCollection]:
+    """Draw a solid background layer behind each scatter PathCollection.
+
+    Scatter counterpart to :func:`apply_double_layer_markers`. For each
+    input collection, emits a twin ``PathCollection`` with identical
+    offsets, per-point paths (so ``style=`` markers are preserved) and
+    sizes, a solid ``background_color`` face, no edge, and a zorder
+    0.1 lower than the source. Visual stacking is controlled by zorder;
+    insertion order on ``ax.collections`` is preserved so callers that
+    index ``ax.collections[0]`` for cmap/label wiring stay correct as
+    long as they dispatch here AFTER the foreground is ready.
+
+    Parameters
+    ----------
+    collections : sequence of PathCollection
+        Foreground scatter collections to twin.
+    ax : Axes
+        Axes to draw into.
+    background_color : str or tuple, default="white"
+        Face color of the background layer.
+
+    Returns
+    -------
+    list of PathCollection
+        Newly-created background collections, in input order.
+    """
+    backgrounds: List[PathCollection] = []
+    for fg in collections:
+        offsets = fg.get_offsets()
+        if len(offsets) == 0:
+            continue
+        sizes = fg.get_sizes()
+        paths = fg.get_paths()
+        bg = ax.scatter(
+            offsets[:, 0], offsets[:, 1],
+            s=sizes if len(sizes) else None,
+            c=[to_rgba(background_color)],
+            edgecolors="none",
+            linewidths=0,
+            zorder=fg.get_zorder() - 0.1,
+        )
+        if len(paths):
+            bg.set_paths(paths)
+        backgrounds.append(bg)
+    return backgrounds
+
+
 def apply_transparency(
     artists: Union[PathCollection, Sequence[Patch]],
     face_alpha: float,
