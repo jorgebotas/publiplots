@@ -264,48 +264,27 @@ def barplot(
     # Create bars
     sns.barplot(**barplot_kwargs)
 
-    # When hue == categorical axis, recolor bars from palette
-    if hue is not None and hue == categorical_axis and palette:
-        categories = order if order else list(data[categorical_axis].cat.categories)
-        for idx, patch in enumerate(tracker.get_new_patches()):
-            if idx < len(categories):
-                bar_color = palette.get(categories[idx], color)
-                # Set edge to palette color so the main flow copies it to face correctly
-                patch.set_edgecolor(bar_color)
-        # Also recolor error bar lines
-        for idx, line in enumerate(tracker.get_new_lines()):
-            if idx < len(categories):
-                line.set_color(edgecolor if edgecolor is not None else palette.get(categories[idx], color))
+    # Paint face, hatch, and edge in one deterministic pass. Replaces the
+    # prior chain of ``seaborn fill=False puts palette on edge`` + ``copy
+    # edge to face later`` tricks which were order-dependent and broke
+    # under mpl 3.10.8 when ``color=`` was set alongside ``hatch=`` (#105).
+    _paint_bars(
+        patches=tracker.get_new_patches(),
+        errorbars=tracker.get_new_lines(),
+        data=data,
+        split=_split,
+        hue=hue,
+        hatch=hatch,
+        categorical_axis=categorical_axis,
+        linewidth=linewidth,
+        color=color,
+        edgecolor=edgecolor,
+        palette=palette,
+        hatch_map=hatch_map,
+    )
 
-    # Apply hatch patterns and override colors if needed
-    if hatch is not None:
-        _apply_hatches_and_override_colors(
-            ax=ax,
-            data=data,
-            hue=hue,
-            hatch=hatch,
-            categorical_axis=categorical_axis,
-            double_split=double_split,
-            linewidth=linewidth,
-            color=color,
-            edgecolor=edgecolor,
-            palette=palette,
-            hatch_map=hatch_map,
-        )
-
-    # Set facecolor from seaborn's edge (palette color), optionally override edgecolor
-    for patch in tracker.get_new_patches():
-        palette_color = patch.get_edgecolor()  # seaborn fill=False puts palette color on edge
-        patch.set_facecolor(palette_color)
-        if edgecolor is not None:
-            patch.set_edgecolor(edgecolor)
     # Apply differential transparency to face vs edge
     tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
-
-    # Apply edgecolor to error bar lines
-    if edgecolor is not None:
-        for line in tracker.get_new_lines():
-            line.set_color(edgecolor)
 
     # Stash entries and render per-axis unless claimed by a figure-level group.
     _legend(
@@ -406,76 +385,89 @@ def _prepare_split_data(
         )
     return data
 
-def _apply_hatches_and_override_colors(
-        ax: Axes,
+def _paint_bars(
+        patches: List,
+        errorbars: List,
         data: pd.DataFrame,
+        split,
         hue: Optional[str],
-        hatch: str,
+        hatch: Optional[str],
         categorical_axis: str,
-        double_split: bool,
         linewidth: float,
         color: Optional[str],
         edgecolor: Optional[str],
-        palette: Optional[Union[str, Dict, List]],
+        palette: Optional[Dict[str, str]],
         hatch_map: Optional[Dict[str, str]],
     ) -> None:
-    """
-    Apply hatch patterns using patch.get_label() and idx // n_x, then override colors.
+    """Paint face, hatch, and edge on each bar in a single deterministic pass.
 
-    Uses the approach from user"s example:
-    - Track which category each patch belongs to via idx // n_x
-    - Use patch.get_label() or hue_order to determine the category
-    - Apply hatch based on the hatch column value
-    - Override colors if needed
-    """
-    # Override color if hue is not defined (default to color argument)
-    # Or if hue is not the same as hatch
-    override_color = hue is None or hue != hatch
-    n_axis = len(data[categorical_axis].unique())
-    n_hue = len(data[hue].unique()) if hue is not None else 1
-    n_hatch = len(data[hatch].unique())  # always defined
-    total_bars = n_axis * n_hue * n_hatch
-    hue_order = list(palette.keys())
-    hatch_order = list(hatch_map.keys())
-    errorbars = ax.get_lines()
+    For every new patch produced by ``sns.barplot(fill=False)``:
 
-    for idx, patch in enumerate(ax.patches):
-        if not hasattr(patch, "get_height"):
+    1. Choose the face color from the appropriate source (``palette``
+       keyed by axis/hue/hatch category, or scalar ``color``).
+    2. Apply the hatch pattern (empty when ``hatch`` is None).
+    3. Set the edge color to ``edgecolor`` if provided, else to the face
+       color so bars read as solid shapes.
+    4. Match the paired error-bar line color.
+
+    Iteration order is taken from ``BarSplitSpec.iter_draw_order`` — the
+    same authoritative iterator the annotate layer uses — so the
+    per-bar ``(cat, hue_value, hatch_value)`` triples line up 1:1 with
+    the patches seaborn drew.
+
+    Single-pass ordering avoids the cross-version matplotlib fragility
+    where reading ``patch.get_edgecolor()`` after an in-place mutation
+    returned a stale sentinel and black face colors leaked through
+    (issue #105).
+    """
+    bar_patches = [p for p in patches if hasattr(p, "get_height")]
+    triples = list(split.iter_draw_order(data))
+
+    for idx, patch in enumerate(bar_patches):
+        if idx >= len(triples):
+            # Safety: seaborn drew more patches than the spec iterates.
+            # Shouldn't happen; skip rather than crash.
             continue
+        cat, hue_value, hatch_value = triples[idx]
 
-        bar_idx = idx % total_bars
-        axis_idx = bar_idx % n_axis
-        # Get hatch and hue index in palette and hatch_map
-        # If hatch is the same as the categorical axis, we need to use the axis_idx
-        hatch_idx = (bar_idx // n_axis) % n_hatch if hatch != categorical_axis else axis_idx
-        # If double split, we take into account the combined index
-        # Otherwise, if matching hatch and hue, we use the hatch index
-        # Otherwise, we use the axis index
-        hue_idx = (bar_idx // (n_axis * n_hatch)) if double_split else (
-            hatch_idx if hue == hatch else axis_idx
-        )
+        # Resolve face color. The branches are mutually exclusive and
+        # map 1:1 to the legend dispatch in ``_legend``; keep them in
+        # sync.
+        if split.split_hue is not None:
+            # ``hue`` genuinely dodges. ``hue_value`` is authoritative.
+            face_color = palette[hue_value]
+        elif hue is not None and hue == categorical_axis and palette:
+            # hue collapses onto the categorical axis — color by cat.
+            face_color = palette.get(cat, color)
+        elif hue is not None and hue == hatch and palette:
+            # hue == hatch: palette keyed by hatch value.
+            face_color = palette.get(hatch_value, color)
+        else:
+            # No hue split — fall back to the scalar ``color``.
+            face_color = color
 
-        # Apply hatch pattern to all patches
-        hatch_pattern = hatch_map.get(hatch_order[hatch_idx], "")
-        patch.set_hatch(hatch_pattern)
-        # set_hatch_linewidth
-        patch.set_hatch_linewidth(linewidth)
+        patch.set_facecolor(face_color)
 
-        # Repaint the bars when needed (override colors if not using double
-        # split AND hatch isn't the categorical axis). `hue_idx` is only a
-        # valid `hue_order` index on this branch — on the `hatch == categorical_axis`
-        # branch it was computed from `axis_idx`, which ranges over `[0, n_axis)`
-        # and can exceed `len(hue_order)` when n_hue < n_axis. Gating the
-        # `bar_color` computation behind the same condition as the recolor
-        # avoids an IndexError on paths where the value was never used anyway.
-        if not (double_split or hatch == categorical_axis):
-            bar_color = palette[hue_order[hue_idx]] if hue is not None else color
-            patch.set_edgecolor(edgecolor if edgecolor is not None else bar_color)
-            patch.set_facecolor(bar_color)
+        if hatch is not None:
+            # Resolve the hatch key:
+            # - split_hatch active → hatch_value is authoritative.
+            # - hue == hatch → split_hatch is None; use hue_value.
+            # - hatch == categorical axis → use the category label.
+            if hatch_value is not None:
+                hatch_key = hatch_value
+            elif hue is not None and hue == hatch:
+                hatch_key = hue_value
+            else:
+                hatch_key = cat
+            patch.set_hatch(hatch_map.get(hatch_key, ""))
+            patch.set_hatch_linewidth(linewidth)
 
-            # Match error bar colors to bar colors
-            if bar_idx < len(errorbars):
-                errorbars[bar_idx].set_color(edgecolor if edgecolor is not None else bar_color)
+        patch.set_edgecolor(edgecolor if edgecolor is not None else face_color)
+
+        if idx < len(errorbars):
+            errorbars[idx].set_color(
+                edgecolor if edgecolor is not None else face_color
+            )
 
 def _legend(
         ax: Axes,
