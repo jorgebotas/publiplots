@@ -108,6 +108,89 @@ class ArtistTracker:
                 apply_transparency(new_patches, face_alpha=face_alpha, edge_alpha=edge_alpha)
 
 
+def apply_double_layer_markers(
+    ax: Axes,
+    *,
+    alpha: float,
+    edgecolor: Optional[str] = None,
+    markersize: Optional[float] = None,
+    markeredgewidth: Optional[float] = None,
+) -> None:
+    """Replace every line's markers with publiplots' double-layer style.
+
+    For each ``Line2D`` on ``ax`` that has a marker, strip the marker
+    off the original line (keeping the connecting line intact) and
+    draw two stacked marker-only lines on top:
+
+    1. **Background layer**: white-filled, same shape and size, no
+       edge. Masks the connecting line where markers overlap it — so
+       the transparent fill in layer 2 doesn't blend with the line.
+    2. **Foreground layer**: line-color fill at ``alpha``, line-color
+       edge (or explicit ``edgecolor``) at full opacity.
+
+    Called by ``pp.pointplot`` and ``pp.lineplot`` so both plots share
+    the exact same marker rendering: pale fill, solid ring, no line
+    bleed-through.
+
+    Parameters
+    ----------
+    ax : Axes
+        Axes containing lines with markers to style.
+    alpha : float
+        Transparency applied to the foreground fill (``0.0``..``1.0``).
+        The foreground edge stays at full opacity.
+    edgecolor : str, optional
+        Override for the ring color. If None, the line's own color is
+        used.
+    markersize : float, optional
+        Override for the marker size. If None, preserves each line's
+        current size.
+    markeredgewidth : float, optional
+        Override for the ring width. If None, preserves each line's
+        current markeredgewidth.
+    """
+    layers: list = []
+    for line in ax.lines:
+        marker = line.get_marker()
+        if marker in (None, "None", ""):
+            continue
+        layers.append({
+            "x": line.get_xdata(),
+            "y": line.get_ydata(),
+            "marker": marker,
+            "color": line.get_color(),
+            "size": markersize if markersize is not None else line.get_markersize(),
+            "edgewidth": (
+                markeredgewidth if markeredgewidth is not None
+                else line.get_markeredgewidth()
+            ),
+        })
+        line.set_markersize(0)
+
+    for data in layers:
+        ring = edgecolor if edgecolor else data["color"]
+        # Layer 1: white masks the underlying line.
+        ax.plot(
+            data["x"], data["y"], data["marker"],
+            markeredgecolor=ring,
+            markerfacecolor="white",
+            markersize=data["size"],
+            markeredgewidth=0,
+            linestyle="none",
+            zorder=99,
+        )
+        # Layer 2: semi-transparent colored fill + opaque ring.
+        ax.plot(
+            data["x"], data["y"], data["marker"],
+            markeredgecolor=ring,
+            markerfacecolor=to_rgba(data["color"], alpha),
+            markersize=data["size"],
+            markeredgewidth=data["edgewidth"],
+            linestyle="none",
+            zorder=100,
+        )
+
+
 def apply_transparency(
     artists: Union[PathCollection, Sequence[Patch]],
     face_alpha: float,

@@ -318,6 +318,19 @@ def lineplot(
     sns_kwargs.update(kwargs)
     sns.lineplot(**sns_kwargs)
 
+    # Apply publiplots double-layer marker styling (shared with pointplot):
+    # pale fill, solid ring, no line bleed-through. Seaborn's default is
+    # a white edge on an opaque pastel face, which clashes with the
+    # visual language pointplot established.
+    from publiplots.utils.transparency import apply_double_layer_markers
+    apply_double_layer_markers(
+        ax,
+        alpha=alpha,
+        markersize=markersize,
+        markeredgewidth=markeredgewidth,
+        edgecolor=edgecolor,
+    )
+
     # Labels
     if xlabel:
         ax.set_xlabel(xlabel)
