@@ -864,6 +864,7 @@ class LegendBuilder:
         anchor_ax: Optional[Axes] = None,
         external_to_axis: bool = False,
         side: str = "right",
+        orientation: str = "vertical",
     ):
         """Initialize legend builder. All dimensions in millimeters.
 
@@ -882,6 +883,14 @@ class LegendBuilder:
             Which edge of ``anchor_ax`` the legend grows outward from.
             'right' matches the historical placement (columns fill
             rightward, rows downward).
+        orientation : {'vertical', 'horizontal'}, default 'vertical'
+            Primary stacking direction of successive legends and of
+            entries within each legend. ``'vertical'`` stacks entries
+            downward and advances successive legends downward; overflow
+            (exhausted along-edge length) starts a new band *outward*.
+            ``'horizontal'`` lays entries along the edge (default
+            ``ncol = len(handles)``) and advances successive legends
+            rightward; overflow starts a new band further outward.
         """
         from publiplots.utils.legend_layout import LegendLayout
         from publiplots.utils.layout_reactor import LayoutReactor
@@ -890,11 +899,16 @@ class LegendBuilder:
             raise ValueError(
                 f"side must be 'right' | 'left' | 'bottom' | 'top', got {side!r}"
             )
+        if orientation not in ("vertical", "horizontal"):
+            raise ValueError(
+                f"orientation must be 'vertical' | 'horizontal', got {orientation!r}"
+            )
 
         self.ax = ax
         self._anchor_ax = anchor_ax if anchor_ax is not None else ax
         self.fig = self._anchor_ax.get_figure()
         self._side = side
+        self._orientation = orientation
         self._layout = LegendLayout(
             x_offset=x_offset,
             y_offset=y_offset,
@@ -902,6 +916,7 @@ class LegendBuilder:
             column_spacing=column_spacing,
             vpad=vpad,
             max_width=max_width,
+            orientation=orientation,
         )
         self._layout.reset_to(edge_length_mm=self._get_edge_length())
         self._reactor = LayoutReactor.get(self.fig)
@@ -1226,6 +1241,11 @@ class LegendBuilder:
             self.elements.append(("legend", legend))
             return legend
 
+        # Horizontal orientation default: lay out every handle in a
+        # single row. User-provided ncol wins.
+        if self._orientation == "horizontal" and "ncol" not in kwargs:
+            kwargs["ncol"] = max(1, len(handles))
+
         # Auto-adjust ncol if max_height specified
         if max_height is not None:
             optimal_ncol = self._adjust_legend_ncol_for_height(
@@ -1233,11 +1253,15 @@ class LegendBuilder:
             )
             kwargs['ncol'] = optimal_ncol
 
-        # Estimate height
-        estimated_height = self._estimate_legend_height(handles, label, **kwargs)
+        # Estimate the legend's along-edge extent: height when stacking
+        # vertically, width when laying out horizontally.
+        if self._orientation == "horizontal":
+            estimated_along = self._estimate_legend_width(handles, label, **kwargs)
+        else:
+            estimated_along = self._estimate_legend_height(handles, label, **kwargs)
 
         # Check overflow
-        if self._check_overflow(estimated_height):
+        if self._check_overflow(estimated_along):
             self._start_new_band()
 
         # Convert current position to figure coordinates
@@ -1309,9 +1333,17 @@ class LegendBuilder:
         # axes height changes from constrained_layout etc).
         mm_y_from_top = self._layout.along_from_start
 
-        # Update layout cursor for the next element
-        self._layout.update_width(width)
-        self._layout.advance_along(height)
+        # Update layout cursor for the next element.
+        # - vertical: height advances along the edge, width is the band's
+        #   outward extent.
+        # - horizontal: width advances along the edge, height is the
+        #   band's outward extent.
+        if self._orientation == "horizontal":
+            self._layout.update_width(height)
+            self._layout.advance_along(width)
+        else:
+            self._layout.update_width(width)
+            self._layout.advance_along(height)
 
         # Register with the reactor so the anchor follows axes changes.
         self._reactor.register(
