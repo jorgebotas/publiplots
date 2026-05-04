@@ -21,7 +21,10 @@ from publiplots.layout.figure_layout import FigureLayout
 
 _MM2INCH = 1 / 25.4
 _UPDATE_THRESHOLD_MM = 0.1
-_ALL_SIDES = {"title_space", "xlabel_space", "ylabel_space", "right", "legend_column"}
+_ALL_SIDES = {
+    "title_space", "xlabel_space", "ylabel_space", "right",
+    "legend_column", "legend_band_bottom", "legend_band_top", "legend_band_left",
+}
 # Cap on settle() draws; 1-3 is typical.
 _MAX_CONVERGENCE_ITERS = 5
 
@@ -210,10 +213,14 @@ class SubplotsAutoLayout:
             if getattr(reg, "external_to_axis", False)
         }
 
+    _SCALAR_SIDES = {
+        "legend_column", "legend_band_bottom", "legend_band_top", "legend_band_left",
+    }
+
     def _needs_update(self, measured: Dict[str, Tuple[float, ...]]) -> bool:
         for side, new_val in measured.items():
             current = getattr(self._layout, side)
-            if side == "legend_column":
+            if side in self._SCALAR_SIDES:
                 if abs(new_val - current) >= _UPDATE_THRESHOLD_MM:
                     return True
             else:

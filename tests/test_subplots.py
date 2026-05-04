@@ -289,8 +289,8 @@ def test_auto_layout_locked_side_not_remeasured():
 def test_auto_layout_no_hook_when_all_sides_locked():
     layout = _make_layout()
     fig, _ = _make_fig_with_layout(layout)
-    all_sides = {"title_space", "xlabel_space", "ylabel_space", "right", "legend_column"}
-    reactor = SubplotsAutoLayout(fig, layout, locked=all_sides)
+    from publiplots.layout.auto_layout import _ALL_SIDES
+    reactor = SubplotsAutoLayout(fig, layout, locked=_ALL_SIDES)
     # No draw-event callback should be connected
     assert reactor._cid is None
 

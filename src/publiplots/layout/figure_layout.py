@@ -37,7 +37,13 @@ class FigureLayout:
     outer_pad : float
         Figure outer margin (same on all four sides).
     legend_column : float
-        Extra width on the far right, outside the grid. Never auto-measured.
+        Extra width on the far right, outside the grid. Used by
+        figure-anchored ``pp.legend_group(side='right')``.
+    legend_band_bottom, legend_band_top, legend_band_left : float
+        Extra mm on the bottom / top / left of the figure, outside the
+        grid. Used by figure-anchored ``pp.legend_group(side=...)``.
+        Default ``0.0``. All four scalars only kick in when a
+        figure-anchored legend group asks for space on that side.
     """
 
     nrows: int
@@ -51,6 +57,9 @@ class FigureLayout:
     wspace: float
     outer_pad: float
     legend_column: float
+    legend_band_bottom: float = 0.0
+    legend_band_top: float = 0.0
+    legend_band_left: float = 0.0
 
     def __post_init__(self) -> None:
         for side in ("title_space", "xlabel_space", "ylabel_space", "right"):
@@ -82,6 +91,7 @@ class FigureLayout:
         w_ax, h_ax = self.axes_size
         W = (
             self.outer_pad
+            + self.legend_band_left
             + sum(self.ylabel_space)
             + self.ncols * w_ax
             + sum(self.right)
@@ -91,10 +101,12 @@ class FigureLayout:
         )
         H = (
             self.outer_pad
+            + self.legend_band_top
             + sum(self.title_space)
             + self.nrows * h_ax
             + sum(self.xlabel_space)
             + max(self.nrows - 1, 0) * self.hspace
+            + self.legend_band_bottom
             + self.outer_pad
         )
         return W, H
@@ -103,11 +115,11 @@ class FigureLayout:
         """Figure-fraction (x0, y0, w, h) for the cell at (row, col)."""
         W, H = self.figure_size()
         w_ax, h_ax = self.axes_size
-        x0_mm = self.outer_pad
+        x0_mm = self.outer_pad + self.legend_band_left
         for c in range(col):
             x0_mm += self.ylabel_space[c] + w_ax + self.right[c] + self.wspace
         x0_mm += self.ylabel_space[col]
-        y0_mm = self.outer_pad
+        y0_mm = self.outer_pad + self.legend_band_bottom
         for r in range(self.nrows - 1, row, -1):
             y0_mm += self.xlabel_space[r] + h_ax + self.title_space[r] + self.hspace
         y0_mm += self.xlabel_space[row]
