@@ -26,7 +26,7 @@ from publiplots.utils.legend_entries import (
     entry_is_in_group,
     is_continuous_hue,
 )
-from publiplots.utils.plot_legend import stash_continuous_hue
+from publiplots.utils.plot_legend import render_entries, stash_continuous_hue
 
 
 def stripplot(
@@ -280,23 +280,4 @@ def _legend(
     if legend is False:
         return
 
-    fig = ax.get_figure()
-    entries_to_render = [
-        e for e in get_entries(ax)
-        if flags[e.kind] and not entry_is_in_group(fig, e)
-    ]
-    if not entries_to_render:
-        return
-
-    builder = legend_fn(ax=ax, auto=False)
-    for entry in entries_to_render:
-        if entry.kind == "hue" and is_continuous_hue(entry.handles):
-            builder.add_colorbar(
-                mappable=entry.handles[0],
-                label=entry.name,
-            )
-        else:
-            builder.add_legend(
-                handles=list(entry.handles),
-                label=entry.name,
-            )
+    render_entries(ax, flags=flags, legend_kws=kwargs)

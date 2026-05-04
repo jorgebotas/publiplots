@@ -360,7 +360,7 @@ def _draw_heatmap(
                     labels=[],
                 ),
             )
-        render_entries(ax, flags=flags)
+        render_entries(ax, flags=flags, legend_kws=legend_kws)
 
     return ax
 
