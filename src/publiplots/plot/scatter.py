@@ -51,6 +51,7 @@ def scatterplot(
     alpha: Optional[float] = None,
     linewidth: Optional[float] = None,
     edgecolor: Optional[str] = None,
+    background_marker: Union[bool, str] = False,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
@@ -112,6 +113,11 @@ def scatterplot(
         Width of marker edges.
     edgecolor : str, optional
         Color for marker edges. If None, uses same color as fill.
+    background_marker : bool or str, default=False
+        If truthy, draws a solid background-colored marker behind each point
+        to hide overlap. ``True`` uses white; a color string (e.g. ``"#eeeeee"``)
+        overrides the background color. Off by default because duplicating
+        every point doubles artist count and overlap is often informative.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -283,18 +289,47 @@ def scatterplot(
         "linewidth": linewidth,
         "zorder": 2,
     })
+    from publiplots.utils.transparency import (
+        ArtistTracker,
+        apply_transparency,
+        apply_background_markers,
+        composite_facecolors_over,
+    )
+    tracker = ArtistTracker(ax)
     sns.scatterplot(**scatter_kwargs)
 
-    collection = ax.collections[0]
-    
-    collection.set_edgecolors(
-        edgecolor if edgecolor else collection.get_facecolors()
-    )
-    collection.set_linewidths(linewidth)
+    new_collections = tracker.get_new_collections()
+    collection = new_collections[0]
 
-    # Apply differential transparency to face vs edge
-    from publiplots.utils.transparency import apply_transparency
-    apply_transparency(collection, face_alpha=alpha, edge_alpha=1.0)
+    # When background_marker is active, we can't rely on zorder alone: all
+    # points within a PathCollection share the same zorder and alpha-blend
+    # together in a single paint pass, ignoring any disc below. Instead we
+    # pre-composite the face color over bg_color and draw the foreground at
+    # full opacity — so overlapping points last-draw-wins instead of blending.
+    bg_color = None
+    if background_marker:
+        bg_color = "white" if background_marker is True else background_marker
+
+    for c in new_collections:
+        c.set_edgecolors(
+            edgecolor if edgecolor else c.get_facecolors()
+        )
+        c.set_linewidths(linewidth)
+        if bg_color is not None:
+            composite_facecolors_over(c, bg_color, alpha=alpha)
+            apply_transparency(c, face_alpha=1.0, edge_alpha=1.0)
+        else:
+            # Apply differential transparency to face vs edge
+            apply_transparency(c, face_alpha=alpha, edge_alpha=1.0)
+
+    # Optional: solid background twins below the foreground. Not strictly
+    # needed for overlap hiding (handled by the composite above) but it keeps
+    # the edge ring and marker shape on a solid ground if the axes have a
+    # non-white patch color.
+    if bg_color is not None:
+        apply_background_markers(
+            new_collections, ax, background_color=bg_color,
+        )
 
     # Set colormap and normalization for collection
     # Used by legend builder to create colorbar

@@ -105,6 +105,31 @@ ax = pp.scatterplot(
 pp.show()
 
 # %%
+# Hiding Overlap with ``background_marker``
+# ------------------------------------------
+# Scatters preserve point overlap by default so you can read density. For
+# figures where every point should stand on its own — small-multiples,
+# publication panels, categorical bubble plots — pass ``background_marker``
+# to draw a solid twin under each point. ``True`` uses white; any color
+# string (e.g. ``"#f2f2f2"``) overrides the background color. Off by default
+# because duplicating every point doubles artist count.
+
+fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
+for ax, bg, subtitle in zip(
+    axes,
+    [False, True, "#f2f2f2"],
+    ['default (overlap visible)', 'background_marker=True', 'background_marker="#f2f2f2"'],
+):
+    pp.scatterplot(
+        data=scatter_data,
+        x='x', y='y', hue='group', palette='pastel',
+        background_marker=bg,
+        title=subtitle, ax=ax,
+        legend=False,
+    )
+pp.show()
+
+# %%
 # Scatter with Continuous Color Scale
 # ------------------------------------
 # Use a continuous color scale for hue encoding.
