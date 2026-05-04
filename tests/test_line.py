@@ -228,6 +228,72 @@ def test_lineplot_categorical_size_default_uses_tuple_interpolation(cat_size_df)
     assert widths == [1.0, 2.5, 4.0]
 
 
+# ---- Double-layer marker styling ----
+
+def _foreground_marker_lines(ax):
+    """Pick only the double-layer foreground marker lines.
+
+    publiplots' ``apply_double_layer_markers`` draws *three* artists
+    per group: the original connecting line (ms=0, markers stripped);
+    a white-background marker layer; and a foreground marker layer
+    with alpha fill + opaque ring. We assert the contract on the
+    foreground layer, detected by its transparent markerfacecolor.
+    """
+    from matplotlib.colors import to_rgba
+    fg = []
+    for line in ax.lines:
+        if line.get_markersize() in (None, 0, 0.0):
+            continue
+        mfc = to_rgba(line.get_markerfacecolor())
+        if mfc[3] < 1.0:  # alpha-filled layer
+            fg.append(line)
+    return fg
+
+
+def test_lineplot_markers_use_double_layer_style(line_df):
+    """Markers must follow publiplots' double-layer convention: face in
+    the line's color at rcParams['alpha'] (pale fill), edge in the
+    line's color at full opacity (solid ring). Seaborn's default is a
+    white edge on an opaque pastel face — this test guards against
+    regression back to that styling."""
+    from matplotlib.colors import to_rgba
+    from publiplots.themes.rcparams import resolve_param
+    alpha_rc = resolve_param("alpha", None)
+
+    ax = pp.lineplot(
+        data=line_df, x="t", y="y",
+        hue="g", style="m",
+        palette="pastel", markers=True,
+    )
+    foreground = _foreground_marker_lines(ax)
+    assert foreground, "no foreground marker layer produced"
+    for line in foreground:
+        mfc = to_rgba(line.get_markerfacecolor())
+        mec = to_rgba(line.get_markeredgecolor())
+        # Face RGB equals edge RGB; alphas differ (face dim, edge opaque).
+        assert mfc[:3] == mec[:3]
+        assert abs(mfc[3] - alpha_rc) < 1e-6
+        assert mec[3] == 1.0
+
+
+def test_lineplot_edgecolor_override_applies_to_markers(line_df):
+    """``edgecolor=`` overrides the ring color while the face stays
+    in the line's own color."""
+    from matplotlib.colors import to_rgba
+    ax = pp.lineplot(
+        data=line_df, x="t", y="y",
+        hue="g", style="m",
+        palette="pastel", markers=True,
+        edgecolor="black",
+    )
+    black = to_rgba("black")
+    foreground = _foreground_marker_lines(ax)
+    assert foreground
+    for line in foreground:
+        mec = to_rgba(line.get_markeredgecolor())
+        assert mec[:3] == black[:3]
+
+
 # ---- Reject ----
 
 def test_lineplot_rejects_figsize(line_df):

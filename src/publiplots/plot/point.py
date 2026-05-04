@@ -9,7 +9,7 @@ from publiplots.utils.validation import is_categorical
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.colors import to_rgba, Normalize
+from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 import numpy as np
 import pandas as pd
@@ -301,9 +301,10 @@ def pointplot(
     # Create pointplot
     sns.pointplot(**pointplot_kwargs)
 
-    # Apply marker styling (double-layer effect)
-    _apply_marker_styling(
-        ax=ax,
+    # Apply marker styling (double-layer effect — shared with lineplot)
+    from publiplots.utils.transparency import apply_double_layer_markers
+    apply_double_layer_markers(
+        ax,
         alpha=alpha,
         edgecolor=edgecolor,
     )
@@ -389,78 +390,6 @@ def _format_for_custom_errorbar(
     data[value_col] = data["__value"]
     data.drop(columns=["__value"], inplace=True)
     return data
-
-
-def _apply_marker_styling(
-    ax: Axes,
-    alpha: float,
-    edgecolor: Optional[str] = None,
-) -> List[Dict]:
-    """
-    Apply double-layer marker styling to pointplot.
-
-    Extracts markers from lines, removes them, and redraws with:
-    1. White background layer
-    2. Semi-transparent colored fill layer
-
-    Parameters
-    ----------
-    ax : Axes
-        Axes containing the pointplot.
-    alpha : float
-        Transparency for marker fill.
-    markeredgewidth : float
-        Width of marker edges.
-
-    """
-    # Extract markers and line info from lines
-    markers = []
-    for line in ax.lines:
-        marker = line.get_marker()
-        if marker != "None":
-            markers.append({
-                'x': line.get_xdata(),
-                'y': line.get_ydata(),
-                'marker': marker,
-                'color': line.get_color(),
-                'markersize': line.get_markersize(),
-                'linestyle': line.get_linestyle(),
-                'linewidth': line.get_linewidth(),
-                'markeredgewidth': line.get_markeredgewidth(),
-            })
-            # Remove marker from original line (keep the line itself)
-            line.set_markersize(0)
-
-    # Redraw markers with double-layer effect
-    for data in markers:
-        x = data['x']
-        y = data['y']
-        marker = data['marker']
-        color = data['color']
-        size = data['markersize']
-        markeredgewidth = data['markeredgewidth'] 
-
-        # Layer 1: White background (no edge)
-        ax.plot(
-            x, y, marker,
-            markeredgecolor=edgecolor if edgecolor else color,
-            markerfacecolor="white",
-            markersize=size,
-            markeredgewidth=0,
-            linestyle='none',
-            zorder=99
-        )
-
-        # Layer 2: Semi-transparent colored fill with edge
-        ax.plot(
-            x, y, marker,
-            markeredgecolor=edgecolor if edgecolor else color,
-            markerfacecolor=to_rgba(color, alpha),
-            markersize=size,
-            markeredgewidth=markeredgewidth,
-            linestyle='none',
-            zorder=100
-        )
 
 
 def _legend(
