@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-05-04
+
+### Added
+- `pp.heatmap` dot heatmap mode now accepts `square=True` (force
+  equal aspect) and `edgecolor=` (override bubble edges), delegating
+  to `pp.scatterplot`'s own support for both.
+
+### Fixed
+- Dot heatmap bubble edges rendered in steel blue (matplotlib's
+  default C0) regardless of the cmap.  ``ax.scatter(edgecolors="face")``
+  recorded a sentinel that ``apply_transparency`` snapshotted before
+  the figure drew, locking the wrong color onto every bubble.
+  ``_draw_dot_heatmap`` now delegates to `pp.scatterplot`, which sets
+  edge colors explicitly from the resolved facecolors in the right
+  order. ``edgecolor=`` kwarg also now overrides correctly.
+- Colorbar tick labels clipped outside the figure bounds under
+  sphinx-gallery's scraper (``savefig.bbox='standard'``,
+  ``pad_inches=0``) when the colorbar had no title. Root cause:
+  ``SubplotsAutoLayout._artist_window_extent`` returned the bare
+  colorbar rectangle instead of the tight bbox, so the reactor
+  didn't reserve space for tick labels. Colorbars with a title
+  happened to work because the title is a separate ``fig.text``
+  artist that the reactor already measured. Switched to
+  ``get_tightbbox()`` which includes all decorations.
+- Dot heatmap axis limits inflated to absurd margins for small
+  categorical grids (3 columns → xlim spanned 4 units). Per-axis
+  margin is now ``0.5 / max(n - 1, 1)`` — half a cell of padding
+  regardless of grid size.
+
+### Changed
+- Dot heatmap default ``sizes`` changed from ``(50, 500)`` to
+  ``(20, 200)`` (the shared scatter default). User-supplied
+  ``sizes=`` is unchanged. Existing figures with an explicit
+  ``sizes=`` keyword continue to render identically.
+- Dot heatmap spines and minor grid now share a single neutral gray
+  (``#b0b0b0``) for a coherent cell-matrix outline. Previous
+  ``#e0e0e0`` grid was too faint against a white background.
+
+### Internal
+- ``_draw_dot_heatmap`` delegates to ``pp.scatterplot`` instead of
+  calling ``ax.scatter`` + reimplementing transparency, edge
+  handling, size legends, and colorbar stashing. Removes 175 lines
+  of duplicated logic; centralizes future fixes in one place.
+- Deletes ``_create_size_legend`` helper (scatter's size legend
+  path covers every case).
+
+[0.8.1]: https://github.com/jorgebotas/publiplots/releases/tag/v0.8.1
+
 ## [0.8.0] - 2026-05-03
 
 ### Added
