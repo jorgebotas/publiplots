@@ -376,6 +376,32 @@ ax = pp.barplot(
 pp.show()
 
 # %%
+# Legend Inside the Axes
+# ----------------------
+# By default publiplots parks the legend just past the right edge of the
+# axes so plots can line up cleanly. For compact figures or when the data
+# leaves a natural empty corner, pass ``legend_kws={"inside": True,
+# "loc": "upper right"}`` to place the legend inside the axes frame
+# using matplotlib's native corner-based placement. ``inside=True``
+# works with any ``loc`` string that :func:`matplotlib.axes.Axes.legend`
+# accepts (``"upper right"``, ``"lower left"``, ``"best"``, etc.); omit
+# ``loc`` and matplotlib picks the emptiest corner.
+
+ax = pp.barplot(
+    data=hue_data,
+    x="time",
+    y="measurement",
+    hue="group",
+    palette="RdGyBu_r",
+    errorbar="se",
+    title='Inside legend via legend_kws={"inside": True, "loc": "upper left"}',
+    xlabel="Time Point",
+    ylabel="Measurement",
+    legend_kws={"inside": True, "loc": "upper left"},
+)
+pp.show()
+
+# %%
 # Shared Legend Across Subplots
 # ------------------------------
 # When several bar subplots share the same ``hue`` and ``hatch`` variables,

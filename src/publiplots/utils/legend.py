@@ -1132,6 +1132,11 @@ class LegendBuilder:
             to fit (PyComplexHeatmap behavior).
         **kwargs
             Additional kwargs for legend customization:
+            - ``inside`` (bool, default False): when True, bypass the mm-based
+              outside-axes column and render the legend inside the axes using
+              matplotlib's native axes-relative placement. Pair with
+              ``loc='upper right'`` etc. to pick the corner. The reactor does
+              not reposition inside legends.
             - ncol: number of columns (auto-adjusted if max_height exceeded)
             - labelspacing: vertical space between entries
             - handletextpad: space between handle and text
@@ -1146,6 +1151,36 @@ class LegendBuilder:
         -----
         All dimensions in millimeters. Columns created automatically on overflow.
         """
+        inside = bool(kwargs.pop("inside", False))
+
+        if inside:
+            # Inside-axes placement: let matplotlib own the geometry. Don't
+            # touch the mm cursor, don't build figure-fraction bbox, don't
+            # register with the reactor — the legend lives in axes coords
+            # and tracks automatically across axes resizes.
+            fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
+            default_labelspacing = compute_min_labelspacing(handles, fontsize)
+            legend_kwargs = {
+                "frameon": frameon,
+                "borderpad": 0.4,
+                "handletextpad": 0.8,
+                "labelspacing": default_labelspacing,
+                "handler_map": kwargs.pop("handler_map", get_legend_handler_map()),
+                "alignment": "left",
+            }
+            if label:
+                legend_kwargs["title"] = label
+            legend_kwargs.update(kwargs)
+            existing_legends = [
+                e[1] for e in self.elements
+                if e[0] == "legend" and e[1].axes == self.ax
+            ]
+            legend = self.ax.legend(handles=handles, **legend_kwargs)
+            for existing in existing_legends:
+                self.ax.add_artist(existing)
+            self.elements.append(("legend", legend))
+            return legend
+
         # Auto-adjust ncol if max_height specified
         if max_height is not None:
             optimal_ncol = self._adjust_legend_ncol_for_height(
