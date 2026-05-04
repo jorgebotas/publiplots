@@ -139,6 +139,22 @@ class MultiAxesLegendGroup:
     # not to crowd them.
     _DEFAULT_X_OFFSET_MM = {"right": 2, "left": 5, "bottom": 5, "top": 5}
 
+    # side → default orientation. Horizontal makes sense on top/bottom
+    # where there's plenty of figure width; vertical stays the default
+    # for right/left where width is narrow.
+    _DEFAULT_ORIENTATION = {
+        "right": "vertical", "left": "vertical",
+        "bottom": "horizontal", "top": "horizontal",
+    }
+
+    # side → default along-edge alignment. Horizontal bands center to
+    # balance the figure; vertical bands start at the top (current
+    # 'upper' behaviour).
+    _DEFAULT_ALIGN = {
+        "right": "start", "left": "start",
+        "bottom": "center", "top": "center",
+    }
+
     def __init__(
         self,
         anchor: Optional[Axes] = None,
@@ -146,6 +162,8 @@ class MultiAxesLegendGroup:
         *,
         side: str = "right",
         figure: Optional[Figure] = None,
+        orientation: str = "auto",
+        align: str = "auto",
         x_offset: Optional[float] = None,
         y_offset: Optional[float] = None,
         gap: float = 2,
@@ -157,7 +175,22 @@ class MultiAxesLegendGroup:
             raise ValueError(
                 f"side must be 'right' | 'left' | 'bottom' | 'top', got {side!r}"
             )
+        if orientation not in ("auto", "vertical", "horizontal"):
+            raise ValueError(
+                f"orientation must be 'auto' | 'vertical' | 'horizontal', "
+                f"got {orientation!r}"
+            )
+        if align not in ("auto", "start", "center", "end"):
+            raise ValueError(
+                f"align must be 'auto' | 'start' | 'center' | 'end', got {align!r}"
+            )
         self._side = side
+        self._orientation = (
+            self._DEFAULT_ORIENTATION[side] if orientation == "auto" else orientation
+        )
+        self._align = (
+            self._DEFAULT_ALIGN[side] if align == "auto" else align
+        )
         if x_offset is None:
             x_offset = self._DEFAULT_X_OFFSET_MM[side]
 
@@ -182,6 +215,8 @@ class MultiAxesLegendGroup:
         self._collect = collect
         self._materialized = False
         self._warned_mismatch = False
+        self._align_connected = False
+        self._aligning = False  # re-entrancy guard for _on_draw_align
         # anchor_ax=self.anchor pins position math/reactor to the anchor
         # regardless of self.ax swaps during add_* calls. For
         # figure-anchored groups anchor_ax is the _GridAnchor proxy,
@@ -199,6 +234,7 @@ class MultiAxesLegendGroup:
             max_width=max_width,
             external_to_axis=True,
             side=side,
+            orientation=self._orientation,
         )
         # Register on the figure so plot functions can check claims.
         self.anchor.get_figure()._publiplots_legend_group = self
@@ -274,6 +310,109 @@ class MultiAxesLegendGroup:
         for key in order:
             self._render_entry(seen[key])
 
+        # Align pass runs on each draw via the reactor hook so it uses
+        # the current (possibly still-settling) figure geometry.
+        # Absolute positioning → idempotent as geometry converges.
+        if self._align != "start" and not self._align_connected:
+            # Wrap the reactor's _refresh_all to run alignment AFTER it
+            # repositions every registration. That way align sees the
+            # post-refresh anchor position but can still override the
+            # along-edge offsets before matplotlib renders.
+            reactor = self._builder._reactor
+            if not hasattr(reactor, "_align_callbacks"):
+                reactor._align_callbacks = []
+                _orig_refresh = reactor._refresh_all
+
+                def _refresh_then_align():
+                    result = _orig_refresh()
+                    for cb in reactor._align_callbacks:
+                        cb()
+                    return result
+
+                reactor._refresh_all = _refresh_then_align
+            reactor._align_callbacks.append(self._on_draw_align_cb)
+            self._align_connected = True
+
+    def _on_draw_align_cb(self) -> None:
+        """Post-reactor-refresh alignment hook. Runs inside each draw
+        after LayoutReactor has repositioned every registration; our
+        alignment override fires on the registrations this group owns,
+        then those overrides reach the canvas via the reactor's next
+        refresh. Guarded against re-entrancy (measuring triggers draws).
+        """
+        if self._aligning:
+            return
+        self._aligning = True
+        try:
+            self._apply_along_alignment()
+            # Re-run reactor refresh with the updated mm_y_from_top
+            # values so matplotlib renders the new positions in this
+            # draw (not the next one).
+            self._builder._reactor._refresh_all()
+        finally:
+            self._aligning = False
+
+    def _apply_along_alignment(self) -> None:
+        """Re-position all placed reactor registrations along the anchor edge
+        to honor ``self._align``.
+
+        Each row (legends sharing an outward offset) is aligned
+        independently so a wrapped block stays visually balanced. We
+        recompute each registration's **absolute** along-edge offset
+        (``mm_y_from_top`` — historical field name, semantically
+        "along-edge mm from the starting corner") from the known legend
+        extents, then re-run the reactor so the legends snap to the new
+        figure-fraction positions.
+
+        The starting corner of the along-edge axis is ``ax_pos.y1`` for
+        side=right/left (top of anchor) and ``ax_pos.x0`` for
+        side=top/bottom (left of anchor). "Along-edge mm from start"
+        increases as we move AWAY from that corner.
+        """
+        if self._align == "start":
+            return
+        if not self._builder.elements:
+            return
+
+        reactor = self._builder._reactor
+        element_ids = {id(a) for _, a in self._builder.elements}
+        regs = [r for r in reactor._registrations if id(r.artist) in element_ids]
+        if not regs:
+            return
+
+        orient = self._orientation
+        edge_length_mm = self._builder._get_edge_length()
+        gap_mm = self._builder._layout.gap
+
+        # Group regs into rows sharing the same outward offset.
+        rows = {}
+        for reg in regs:
+            key = round(reg.mm_x_from_right, 3)
+            rows.setdefault(key, []).append(reg)
+
+        for row_regs in rows.values():
+            # Measure each legend's along-edge extent.
+            extents = []
+            for reg in row_regs:
+                w, h = self._builder._measure_object_dimensions(reg.artist)
+                extents.append(w if orient == "horizontal" else h)
+            total = sum(extents) + gap_mm * (len(row_regs) - 1)
+            if total >= edge_length_mm:
+                # Block already fills the edge — no room to align.
+                continue
+            if self._align == "center":
+                start = (edge_length_mm - total) / 2
+            elif self._align == "end":
+                start = edge_length_mm - total - self._builder._layout.vpad
+            else:
+                start = self._builder._layout.vpad
+            cursor = start
+            for reg, extent in zip(row_regs, extents):
+                reg.mm_y_from_top = cursor
+                cursor += extent + gap_mm
+
+        reactor._refresh_all()
+
     def _render_entry(self, entry: LegendEntry) -> None:
         """Route to add_legend (categorical) or add_colorbar (continuous)."""
         if entry.kind == "hue" and is_continuous_hue(entry.handles):
@@ -342,6 +481,8 @@ def legend_group(
     *,
     side: str = "right",
     figure: Optional[Figure] = None,
+    orientation: str = "auto",
+    align: str = "auto",
     collect: Optional[Sequence[str]] = None,
     x_offset: Optional[float] = None,
     y_offset: Optional[float] = None,
@@ -359,12 +500,21 @@ def legend_group(
     ``xlabel_space[r]`` for ``side='bottom'``, etc.) absorbs the band
     width.
 
+    ``orientation`` defaults to ``'horizontal'`` for ``side='top'|'bottom'``
+    (entries run along the edge left-to-right, multiple legends sit
+    side-by-side, overflow spills outward in new rows) and
+    ``'vertical'`` for ``'right'|'left'`` (current behaviour).
+    ``align`` defaults to ``'center'`` for top/bottom and ``'start'``
+    for left/right.
+
     See :class:`MultiAxesLegendGroup` for all parameter docs.
     """
     return MultiAxesLegendGroup(
         anchor=anchor,
         side=side,
         figure=figure,
+        orientation=orientation,
+        align=align,
         collect=collect,
         x_offset=x_offset,
         y_offset=y_offset,
