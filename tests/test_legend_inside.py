@@ -143,3 +143,70 @@ def test_inside_false_explicit_still_renders_outside(df):
     x_frac, _ = _anchor_fig_frac(leg, fig)
     ax_pos = ax.get_position()
     assert x_frac > ax_pos.x1
+
+
+def test_inside_coexists_with_legend_group():
+    """Per-panel inside legend + figure-level legend_group collecting a shared
+    entry. The collected entry should render once via the group; each panel
+    should still render the non-collected entries inside its own axes.
+    """
+    rng = np.random.default_rng(0)
+    t = np.linspace(0, 10, 30)
+    rows = []
+    for p in "ABC":
+        for g in ["Control", "Treated"]:
+            for m in ["raw", "smoothed"]:
+                for tt in t:
+                    rows.append({
+                        "panel": p, "time": tt,
+                        "value": np.sin(tt) + rng.normal(0, 0.1),
+                        "group": g, "method": m,
+                    })
+    df_ = pd.DataFrame(rows)
+
+    fig, axes = pp.subplots(1, 3, axes_size=(45, 35))
+    # Collect only the shared hue across panels.
+    pp.legend_group(anchor=axes[-1], collect=["group"])
+    for ax, panel in zip(axes, "ABC"):
+        pp.lineplot(
+            data=df_[df_["panel"] == panel], x="time", y="value",
+            hue="group", style="method", palette="pastel",
+            dashes={"raw": (1, 0), "smoothed": (4, 2)},
+            ax=ax,
+            legend_kws={"inside": True, "loc": "lower right"},
+        )
+    fig.canvas.draw()
+
+    # Each non-anchor panel should render the style=method legend inside its axes.
+    for ax in axes[:-1]:
+        legend_titles = [
+            c.get_title().get_text()
+            for c in ax.get_children()
+            if type(c).__name__ == "Legend"
+        ]
+        assert legend_titles == ["method"], (
+            f"panel legend titles: expected ['method'], got {legend_titles}"
+        )
+
+    # The anchor panel (axes[-1]) hosts the legend_group's collected "group"
+    # legend. The style=method inside legend was also rendered on this panel,
+    # but matplotlib's `ax.legend_` slot only holds the most recently attached
+    # one; both artists exist as children.
+    anchor_titles = [
+        c.get_title().get_text()
+        for c in axes[-1].get_children()
+        if type(c).__name__ == "Legend"
+    ]
+    assert "group" in anchor_titles, (
+        f"legend_group didn't render 'group' on anchor axes: {anchor_titles}"
+    )
+    # Confirm the group entry isn't duplicated inside non-anchor panels.
+    for ax in axes[:-1]:
+        titles = [
+            c.get_title().get_text()
+            for c in ax.get_children()
+            if type(c).__name__ == "Legend"
+        ]
+        assert "group" not in titles, (
+            f"group entry leaked to non-anchor panel: {titles}"
+        )

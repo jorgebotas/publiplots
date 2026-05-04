@@ -1131,16 +1131,13 @@ class LegendBuilder:
             Maximum height in millimeters. If legend exceeds this, increase ncol
             to fit (PyComplexHeatmap behavior).
         **kwargs
-            Additional kwargs for legend customization:
-            - ``inside`` (bool, default False): when True, bypass the mm-based
-              outside-axes column and render the legend inside the axes using
-              matplotlib's native axes-relative placement. Pair with
-              ``loc='upper right'`` etc. to pick the corner. The reactor does
-              not reposition inside legends.
-            - ncol: number of columns (auto-adjusted if max_height exceeded)
-            - labelspacing: vertical space between entries
-            - handletextpad: space between handle and text
-            - columnspacing: space between columns (in font-size units)
+            Additional kwargs for legend customization. ``inside`` (bool,
+            default ``False``) bypasses the mm-based outside-axes column and
+            renders the legend inside the axes using matplotlib's native
+            axes-relative placement; pair with ``loc='upper right'`` etc. to
+            pick the corner. The rest (``ncol``, ``labelspacing``,
+            ``handletextpad``, ``columnspacing``, etc.) are forwarded to
+            ``ax.legend()``.
 
         Returns
         -------

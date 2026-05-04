@@ -402,6 +402,43 @@ ax = pp.barplot(
 pp.show()
 
 # %%
+# Inside Legend + Shared Legend Group
+# -----------------------------------
+# The two placement modes compose. A figure-level ``pp.legend_group``
+# can collect a *shared* entry (e.g., the treatment palette repeated
+# across every subplot) while each subplot renders its own *panel-local*
+# entries inside the axes via ``legend_kws={"inside": True, ...}``. The
+# group claims its collected entry; non-collected entries fall back to
+# the per-axis render, which now honours the inside flag.
+
+np.random.seed(31)
+panel_df = pd.DataFrame({
+    "cat": np.tile(["A", "B", "C"], 3 * 60),
+    "val": np.random.randn(3 * 180)
+            + np.tile([0.0, 0.8, 1.6], 3 * 60),
+    "group": np.tile(np.repeat(["low", "high"], 90), 3),
+    "panel": np.repeat(["Sample 1", "Sample 2", "Sample 3"], 180),
+})
+
+fig, axes = pp.subplots(1, 3, axes_size=(45, 35))
+# collect=['group'] means only the shared hue is lifted into the group.
+pp.legend_group(anchor=axes[-1], collect=["group"])
+for ax, title in zip(axes, ["Sample 1", "Sample 2", "Sample 3"]):
+    pp.barplot(
+        data=panel_df[panel_df["panel"] == title],
+        x="cat", y="val",
+        hue="group", hatch="cat",
+        palette="pastel",
+        hatch_map={"A": "", "B": "//", "C": "xx"},
+        errorbar="se",
+        title=title, ax=ax,
+        # The per-panel hatch legend renders inside each axes; the shared
+        # hue (`group`) legend is collected and rendered once on the right.
+        legend_kws={"inside": True, "loc": "upper left"},
+    )
+pp.show()
+
+# %%
 # Shared Legend Across Subplots
 # ------------------------------
 # When several bar subplots share the same ``hue`` and ``hatch`` variables,
