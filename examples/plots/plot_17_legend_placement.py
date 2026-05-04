@@ -18,6 +18,18 @@ publiplots offers three complementary legend-placement knobs:
    ``side='bottom'``, ...) absorbs the band width, pushing just that
    axes' column/row larger.
 
+``pp.legend_group`` also chooses its **orientation** and **alignment**
+per side by default:
+
+- ``side='top'`` / ``'bottom'`` → ``orientation='horizontal'`` (entries
+  run along the edge, ``ncol`` defaults to ``len(handles)``) and
+  ``align='center'`` (centered along the anchor edge).
+- ``side='left'`` / ``'right'`` → ``orientation='vertical'`` and
+  ``align='start'`` (legend begins at the anchor's top corner).
+
+Override either with ``orientation='vertical'|'horizontal'`` or
+``align='start'|'center'|'end'`` when the default isn't what you want.
+
 This gallery walks through each mode.
 """
 
@@ -83,10 +95,29 @@ pp.show()
 # --------------------------------------------------
 # When panels leave spare vertical headroom, a bottom-anchored legend
 # uses that space instead of the figure's right column. Same call, just
-# ``side='bottom'``.
+# ``side='bottom'``. The default orientation flips to ``horizontal``
+# (entries run along the edge) and ``align='center'`` keeps the block
+# balanced under the grid.
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
 pp.legend_group(side="bottom")
+for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
+    pp.scatterplot(
+        data=_df[_df["panel"] == panel], x="x", y="y",
+        hue="group", palette="pastel",
+        title=f"Panel {panel}", ax=axes[r, c],
+    )
+pp.show()
+
+# %%
+# 4b. Bottom with ``align='end'``
+# -------------------------------
+# Override the default center-alignment to pin the legend to the right
+# edge of the grid — useful when the legend should align with a
+# particular panel column rather than the figure midline.
+
+fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+pp.legend_group(side="bottom", align="end")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=_df[_df["panel"] == panel], x="x", y="y",
