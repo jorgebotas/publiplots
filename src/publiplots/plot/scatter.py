@@ -293,6 +293,7 @@ def scatterplot(
         ArtistTracker,
         apply_transparency,
         apply_background_markers,
+        composite_facecolors_over,
     )
     tracker = ArtistTracker(ax)
     sns.scatterplot(**scatter_kwargs)
@@ -300,20 +301,32 @@ def scatterplot(
     new_collections = tracker.get_new_collections()
     collection = new_collections[0]
 
+    # When background_marker is active, we can't rely on zorder alone: all
+    # points within a PathCollection share the same zorder and alpha-blend
+    # together in a single paint pass, ignoring any disc below. Instead we
+    # pre-composite the face color over bg_color and draw the foreground at
+    # full opacity — so overlapping points last-draw-wins instead of blending.
+    bg_color = None
+    if background_marker:
+        bg_color = "white" if background_marker is True else background_marker
+
     for c in new_collections:
         c.set_edgecolors(
             edgecolor if edgecolor else c.get_facecolors()
         )
         c.set_linewidths(linewidth)
-        # Apply differential transparency to face vs edge
-        apply_transparency(c, face_alpha=alpha, edge_alpha=1.0)
+        if bg_color is not None:
+            composite_facecolors_over(c, bg_color, alpha=alpha)
+            apply_transparency(c, face_alpha=1.0, edge_alpha=1.0)
+        else:
+            # Apply differential transparency to face vs edge
+            apply_transparency(c, face_alpha=alpha, edge_alpha=1.0)
 
-    # Optional: draw solid background twins under each foreground collection
-    # to hide point overlap. Drawn AFTER foreground so ax.collections[0] still
-    # refers to the original foreground collection (relied on below for
-    # cmap/label wiring). zorder controls visual stacking.
-    if background_marker:
-        bg_color = "white" if background_marker is True else background_marker
+    # Optional: solid background twins below the foreground. Not strictly
+    # needed for overlap hiding (handled by the composite above) but it keeps
+    # the edge ring and marker shape on a solid ground if the axes have a
+    # non-white patch color.
+    if bg_color is not None:
         apply_background_markers(
             new_collections, ax, background_color=bg_color,
         )

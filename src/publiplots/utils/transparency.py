@@ -191,6 +191,48 @@ def apply_double_layer_markers(
         )
 
 
+def composite_facecolors_over(
+    collection: PathCollection,
+    background_color: Union[str, tuple],
+    alpha: float,
+) -> None:
+    """Pre-composite a collection's face colors over a solid background.
+
+    Why this exists: all points in a ``PathCollection`` share one paint pass
+    and one zorder, so overlapping points alpha-blend *with each other*,
+    ignoring anything drawn below. That's the correct behavior when overlap
+    is informative, but it defeats the "white-backed" marker style — you'd
+    see blended dark spots where points stack.
+
+    This helper pre-multiplies each point's face color over
+    ``background_color`` using standard straight-alpha compositing, leaving
+    the result at full opacity. Draw the collection at ``face_alpha=1.0``
+    afterwards and overlapping points last-draw-wins — producing the same
+    pale fill that ``alpha=alpha`` would give over the background, but now
+    opaque so overlap is hidden.
+
+    Parameters
+    ----------
+    collection : PathCollection
+        Scatter collection whose face colors should be composited.
+    background_color : str or tuple
+        The color to composite over (typically matches the background
+        marker / axes patch color).
+    alpha : float
+        The transparency that WOULD have been applied; used as the mix
+        ratio. ``alpha=1`` leaves face colors unchanged.
+    """
+    face_colors = collection.get_facecolors()
+    if len(face_colors) == 0:
+        return
+    bg = np.asarray(to_rgba(background_color))  # (4,)
+    blended = np.asarray(face_colors).copy()
+    # straight-alpha composite: out = alpha * fg + (1 - alpha) * bg
+    blended[:, :3] = alpha * blended[:, :3] + (1.0 - alpha) * bg[:3]
+    blended[:, 3] = 1.0
+    collection.set_facecolors(blended)
+
+
 def apply_background_markers(
     collections: Sequence[PathCollection],
     ax: Axes,

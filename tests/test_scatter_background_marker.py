@@ -110,6 +110,40 @@ def test_background_marker_with_style_copies_per_point_paths():
     np.testing.assert_allclose(bg.get_facecolors()[0], to_rgba("white"))
 
 
+def test_background_marker_makes_foreground_opaque():
+    # Overlap hiding requires the foreground to be fully opaque — otherwise
+    # overlapping points alpha-blend with each other (single paint pass,
+    # shared zorder) and the background layer has no visible effect.
+    ax = pp.scatterplot(
+        data=_df(), x="x", y="y", alpha=0.2, background_marker=True,
+    )
+    fg = ax.collections[0]
+    # Face alpha must be fully opaque.
+    assert np.allclose(fg.get_facecolors()[:, 3], 1.0)
+
+
+def test_background_marker_composites_face_over_background():
+    # Foreground face colors should be the straight-alpha composite of the
+    # original color over background_color at the user's alpha — same visual
+    # tone as alpha-blending would give, but now opaque.
+    df = _df()
+    alpha = 0.3
+    palette = {"A": "#ff0000", "B": "#00ff00", "C": "#0000ff"}
+    ax = pp.scatterplot(
+        data=df, x="x", y="y", hue="g", palette=palette,
+        alpha=alpha, background_marker=True,
+    )
+    fg_faces = ax.collections[0].get_facecolors()
+    # For a pure red point over white: expect alpha*1 + (1-alpha)*1 = 1 (R),
+    # alpha*0 + (1-alpha)*1 = 0.7 (G, B). Find a red-palette point.
+    red_idx = np.argmax(df["g"].eq("A").values)
+    r, g, b, a = fg_faces[red_idx]
+    np.testing.assert_allclose(r, 1.0, atol=1e-6)
+    np.testing.assert_allclose(g, 1.0 - alpha, atol=1e-6)
+    np.testing.assert_allclose(b, 1.0 - alpha, atol=1e-6)
+    np.testing.assert_allclose(a, 1.0)
+
+
 def test_background_marker_with_numeric_size_matches_sizes():
     df = _df()
     ax = pp.scatterplot(
