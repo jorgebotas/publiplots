@@ -27,14 +27,28 @@ from publiplots.utils.legend_entries import (
 
 
 class _GridAnchor:
-    """Virtual Axes proxy spanning the whole publiplots subplot grid.
+    """Virtual Axes proxy spanning the whole publiplots subplot grid
+    **including its decorations** (tick labels, axis labels, titles).
 
     Duck-types the small slice of ``matplotlib.axes.Axes`` that
     ``LegendBuilder`` and ``LayoutReactor`` use (``get_position()`` +
     ``get_figure()`` + ``get_window_extent()``). Lets figure-anchored
     ``pp.legend_group`` share exactly the same placement machinery as
-    axes-anchored groups — the anchor just happens to be the grid bbox
-    instead of a single axes' bbox.
+    axes-anchored groups — the anchor just happens to be the decorated
+    grid rectangle (the outer boundary of everything *except* legend
+    bands) rather than a single axes' rectangle.
+
+    The decorated-grid bbox is computed from the ``FigureLayout``:
+
+        x0 = (outer_pad + legend_band_left)     / W
+        x1 = (W - outer_pad - legend_column)    / W
+        y0 = (outer_pad + legend_band_bottom)   / H
+        y1 = (H - outer_pad - legend_band_top)  / H
+
+    Anchoring here (rather than the axes-rectangle union) guarantees
+    that side='bottom' sits BELOW all xlabel_space, side='top' sits
+    ABOVE all title_space, side='left' sits LEFT of all ylabel_space,
+    etc. — i.e., the legend doesn't overlap with axis decorations.
     """
 
     def __init__(self, fig: Figure) -> None:
@@ -44,7 +58,21 @@ class _GridAnchor:
         return self._fig
 
     def get_position(self) -> Bbox:
-        """Union of all publiplots axes positions, in figure fractions."""
+        """Decorated-grid bbox in figure fractions."""
+        layout = getattr(self._fig, "_publiplots_layout", None)
+        if layout is not None:
+            W, H = layout.figure_size()
+            # Sanity guard: avoid division by zero if the layout hasn't
+            # measured yet (e.g., during the first draw before sizes are
+            # known).
+            if W > 0 and H > 0:
+                x0 = (layout.outer_pad + layout.legend_band_left) / W
+                x1 = (W - layout.outer_pad - layout.legend_column) / W
+                y0 = (layout.outer_pad + layout.legend_band_bottom) / H
+                y1 = (H - layout.outer_pad - layout.legend_band_top) / H
+                return Bbox.from_extents(x0, y0, x1, y1)
+        # Fallback when no publiplots layout is installed (figure built
+        # by raw matplotlib): union the axes rectangles only.
         matrix = getattr(self._fig, "_publiplots_axes", None)
         if matrix is None:
             return Bbox.from_extents(0.0, 0.0, 1.0, 1.0)
@@ -60,7 +88,7 @@ class _GridAnchor:
         return Bbox.from_extents(x0, y0, x1, y1)
 
     def get_window_extent(self, renderer=None):
-        """Pixel extent of the grid bbox — matches ``Axes.get_window_extent``."""
+        """Pixel extent of the decorated-grid bbox."""
         pos = self.get_position()
         fig_w = self._fig.get_window_extent().width
         fig_h = self._fig.get_window_extent().height
@@ -104,6 +132,13 @@ class MultiAxesLegendGroup:
         Same meaning as :class:`LegendBuilder` — all in millimeters.
     """
 
+    # Default outward gap (mm) between the anchor's edge and the
+    # legend's near side. For side='right' the gap sits in otherwise
+    # empty space, so 2 mm suffices. For the other sides the gap sits
+    # adjacent to tick labels / titles and needs more air for the legend
+    # not to crowd them.
+    _DEFAULT_X_OFFSET_MM = {"right": 2, "left": 5, "bottom": 5, "top": 5}
+
     def __init__(
         self,
         anchor: Optional[Axes] = None,
@@ -111,7 +146,7 @@ class MultiAxesLegendGroup:
         *,
         side: str = "right",
         figure: Optional[Figure] = None,
-        x_offset: float = 2,
+        x_offset: Optional[float] = None,
         y_offset: Optional[float] = None,
         gap: float = 2,
         column_spacing: float = 5,
@@ -123,6 +158,8 @@ class MultiAxesLegendGroup:
                 f"side must be 'right' | 'left' | 'bottom' | 'top', got {side!r}"
             )
         self._side = side
+        if x_offset is None:
+            x_offset = self._DEFAULT_X_OFFSET_MM[side]
 
         # Decide anchor kind. When the caller passes an explicit axes we
         # pin the band to that one axes (and its per-cell reservation
@@ -306,7 +343,7 @@ def legend_group(
     side: str = "right",
     figure: Optional[Figure] = None,
     collect: Optional[Sequence[str]] = None,
-    x_offset: float = 2,
+    x_offset: Optional[float] = None,
     y_offset: Optional[float] = None,
     gap: float = 2,
     column_spacing: float = 5,

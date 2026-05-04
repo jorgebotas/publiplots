@@ -147,3 +147,77 @@ def test_figure_anchored_auto_collect_still_works():
     assert group._materialized
     assert len(group._builder.elements) == 1
     assert group._builder.elements[0][1].get_title().get_text() == "g"
+
+
+# --- spacing / overlap guards -----------------------------------------------
+
+
+@pytest.mark.parametrize("side,expected_gap_mm", [
+    ("right", 2.0),
+    ("left", 5.0),
+    ("bottom", 5.0),
+    ("top", 5.0),
+])
+def test_figure_anchored_default_outward_gap_per_side(side, expected_gap_mm):
+    """The outward gap between the decorated-grid edge and the legend's
+    near side defaults to 2 mm for side='right' (back-compat) and 5 mm
+    for the other sides (so tick labels / titles don't crowd the legend)."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side=side)
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+
+    anc = group.anchor.get_window_extent()
+    legend = group._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    dpi = fig.dpi
+    if side == "right":
+        gap_mm = (lb.x0 - anc.x1) / dpi * 25.4
+    elif side == "left":
+        gap_mm = (anc.x0 - lb.x1) / dpi * 25.4
+    elif side == "bottom":
+        gap_mm = (anc.y0 - lb.y1) / dpi * 25.4
+    else:  # "top"
+        gap_mm = (lb.y0 - anc.y1) / dpi * 25.4
+    assert abs(gap_mm - expected_gap_mm) < 0.5, (
+        f"side={side}: expected ~{expected_gap_mm:.1f} mm gap, got {gap_mm:.2f}"
+    )
+
+
+def test_figure_anchored_grid_bbox_excludes_xlabel_space():
+    """The _GridAnchor's bottom edge sits at the bottom of the xlabel_space
+    zone (not the raw axes rectangle), so a bottom-anchored legend never
+    overlaps with x-tick labels.
+    """
+    from matplotlib.legend import Legend
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side="bottom")
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+
+    # Measure each axes' tight bbox WITHOUT the group's Legend child —
+    # that legend is a visual sibling of the tick labels, not part of
+    # the panel's own decoration footprint.
+    anc_y0 = group.anchor.get_window_extent().y0
+    group_legend_id = id(group._builder.elements[0][1])
+    for ax in np.atleast_2d(axes).flat:
+        toggled = []
+        for child in ax.get_children():
+            if isinstance(child, Legend) and id(child) == group_legend_id:
+                child.set_in_layout(False)
+                toggled.append(child)
+        try:
+            tb = ax.get_tightbbox()
+        finally:
+            for c in toggled:
+                c.set_in_layout(True)
+        if tb is None:
+            continue
+        assert tb.y0 >= anc_y0 - 0.5, (
+            f"anchor y0={anc_y0:.2f} px but ax tight y0={tb.y0:.2f} px: "
+            "anchor must sit below tick labels."
+        )
