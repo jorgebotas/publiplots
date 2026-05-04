@@ -137,6 +137,61 @@ ax = pp.barplot(
 pp.show()
 
 # %%
+# Single Color + Hatch on a Separate Column
+# ------------------------------------------
+# When a single fixed color represents the family of bars and a second
+# categorical column differentiates bars by pattern only, pass ``color=``
+# together with ``hatch=`` pointing at that other column. All bars get
+# the same face color; the hatch encodes the sub-category.
+
+np.random.seed(2024)
+encoder_data = pd.DataFrame({
+    "model": np.repeat(["Baseline", "Proposed"], 24),
+    "encoder": np.tile(np.repeat(["1D CNN", "2D CNN"], 12), 2),
+    "score": np.concatenate([
+        np.random.normal(0.70, 0.04, 12), np.random.normal(0.73, 0.04, 12),
+        np.random.normal(0.78, 0.03, 12), np.random.normal(0.82, 0.03, 12),
+    ]),
+})
+
+ax = pp.barplot(
+    data=encoder_data,
+    x="model",
+    y="score",
+    color="#43adaa",
+    hatch="encoder",
+    hatch_map={"1D CNN": "", "2D CNN": "///"},
+    errorbar="se",
+    title="Fixed color + hatch differentiates encoder",
+    xlabel="Model family",
+    ylabel="Score",
+)
+pp.show()
+
+# %%
+# Hue and Hatch on the Same Column
+# ---------------------------------
+# When ``hue=`` and ``hatch=`` point at the *same* column, publiplots
+# merges them into a single legend whose swatches encode both color and
+# pattern — useful when a single categorical variable is the organizing
+# axis of the figure.
+
+ax = pp.barplot(
+    data=encoder_data,
+    x="model",
+    y="score",
+    hue="encoder",
+    hatch="encoder",
+    palette={"1D CNN": "#8E8EC1", "2D CNN": "#60a8a8"},
+    hatch_map={"1D CNN": "", "2D CNN": "///"},
+    errorbar="se",
+    title="hue == hatch → combined legend",
+    xlabel="Model family",
+    ylabel="Score",
+)
+pp.show()
+
+# %%
 # Bar Plot with Hue and Hatch (Double Split)
 # -------------------------------------------
 # Combine color grouping (hue) and pattern differentiation (hatch) for
@@ -180,6 +235,29 @@ ax = pp.barplot(
     errorbar="se",
     palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
     hatch_map={"24h": "", "48h": "///"},
+)
+pp.show()
+
+# %%
+# Explicit Edge Color with Hatch
+# -------------------------------
+# The ``edgecolor=`` argument overrides the automatic face-derived edges
+# on *every* bar, independently of whether a hatch is active. Pair it
+# with ``hatch=`` to produce classic print-style bars: colored fill,
+# consistent black outline, pattern fill on the hatched subset.
+
+ax = pp.barplot(
+    data=encoder_data,
+    x="model",
+    y="score",
+    color="#43adaa",
+    edgecolor="black",
+    hatch="encoder",
+    hatch_map={"1D CNN": "", "2D CNN": "///"},
+    errorbar="se",
+    title="edgecolor='black' + hatch",
+    xlabel="Model family",
+    ylabel="Score",
 )
 pp.show()
 
