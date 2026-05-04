@@ -1168,13 +1168,21 @@ class LegendBuilder:
             if label:
                 legend_kwargs["title"] = label
             legend_kwargs.update(kwargs)
-            existing_legends = [
-                e[1] for e in self.elements
-                if e[0] == "legend" and e[1].axes == self.ax
-            ]
+            # ax.legend() replaces ax.legend_ and evicts earlier Legend
+            # children. Preserve prior legends built by this same builder
+            # (so multiple add_legend calls stack) AND any legend left on
+            # self.ax by a different builder (notably pp.legend_group
+            # having attached an outside-right collected entry to this
+            # same axes).
+            prior = [e[1] for e in self.elements
+                     if e[0] == "legend" and e[1].axes is self.ax]
+            prior_ids = {id(p) for p in prior}
+            if self.ax.legend_ is not None and id(self.ax.legend_) not in prior_ids:
+                prior.append(self.ax.legend_)
             legend = self.ax.legend(handles=handles, **legend_kwargs)
-            for existing in existing_legends:
-                self.ax.add_artist(existing)
+            for p in prior:
+                if p is not legend:
+                    self.ax.add_artist(p)
             self.elements.append(("legend", legend))
             return legend
 
@@ -1224,14 +1232,20 @@ class LegendBuilder:
 
         legend_kwargs.update(kwargs)
 
-        # Create legend
-        existing_legends = [e[1] for e in self.elements if e[0] == "legend" and e[1].axes == self.ax]
+        # Create legend. ax.legend() clears prior Legend children; preserve
+        # both legends we built earlier on this axes AND a legend left by
+        # a different builder (notably an inside-axes legend that lives on
+        # the same axes as a pp.legend_group anchor).
+        prior = [e[1] for e in self.elements
+                 if e[0] == "legend" and e[1].axes is self.ax]
+        prior_ids = {id(p) for p in prior}
+        if self.ax.legend_ is not None and id(self.ax.legend_) not in prior_ids:
+            prior.append(self.ax.legend_)
         legend = self.ax.legend(handles=handles, **legend_kwargs)
         legend.set_clip_on(False)
-
-        # Re-add existing legends (matplotlib limitation) - only for same axes
-        for existing_legend in existing_legends:
-            self.ax.add_artist(existing_legend)
+        for p in prior:
+            if p is not legend:
+                self.ax.add_artist(p)
 
         # Measure actual dimensions
         width, height = self._measure_object_dimensions(legend)

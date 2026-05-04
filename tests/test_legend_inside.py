@@ -189,16 +189,17 @@ def test_inside_coexists_with_legend_group():
         )
 
     # The anchor panel (axes[-1]) hosts the legend_group's collected "group"
-    # legend. The style=method inside legend was also rendered on this panel,
-    # but matplotlib's `ax.legend_` slot only holds the most recently attached
-    # one; both artists exist as children.
-    anchor_titles = [
+    # legend AND the per-panel inside style=method legend. Both artists
+    # must survive: matplotlib's ax.legend() call during _materialize()
+    # evicts prior Legend children, so LegendBuilder re-attaches them.
+    anchor_titles = sorted(
         c.get_title().get_text()
         for c in axes[-1].get_children()
         if type(c).__name__ == "Legend"
-    ]
-    assert "group" in anchor_titles, (
-        f"legend_group didn't render 'group' on anchor axes: {anchor_titles}"
+    )
+    assert anchor_titles == ["group", "method"], (
+        f"anchor axes lost one of its legends after legend_group materialize: "
+        f"{anchor_titles}"
     )
     # Confirm the group entry isn't duplicated inside non-anchor panels.
     for ax in axes[:-1]:
