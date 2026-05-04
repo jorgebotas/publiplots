@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2026-05-04
+
+### Fixed
+- `pp.barplot(color=<hex>, hatch=<col>, hatch_map=...)` rendered black
+  bars regardless of `color=` or `palette=` under matplotlib 3.10.8,
+  and was inconsistent across matplotlib versions. The face-color flow
+  round-tripped through `patch.get_edgecolor()` after several in-place
+  rewrites, picking up a stale sentinel. Replaced the four sequential
+  paint passes with a single `_paint_bars` helper driven by
+  `BarSplitSpec.iter_draw_order` that sets face → hatch → edge in one
+  pass. Closes #105 (PR #108).
+
+### Added
+- Gallery panels in `plot_01_bar_plots.py` covering the previously
+  undocumented combinations: fixed `color=` + `hatch=` on a separate
+  column, `hue == hatch` on the same column (combined legend), and
+  `edgecolor=` override paired with `hatch=` (PR #108).
+
+[0.8.3]: https://github.com/jorgebotas/publiplots/releases/tag/v0.8.3
+
 ## [0.8.2] - 2026-05-04
 
 ### Fixed
