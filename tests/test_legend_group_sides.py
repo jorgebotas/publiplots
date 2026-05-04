@@ -221,3 +221,131 @@ def test_figure_anchored_grid_bbox_excludes_xlabel_space():
             f"anchor y0={anc_y0:.2f} px but ax tight y0={tb.y0:.2f} px: "
             "anchor must sit below tick labels."
         )
+
+
+# --- orientation + align ---------------------------------------------------
+
+
+@pytest.mark.parametrize("side,expected_orientation,expected_align", [
+    ("right", "vertical", "start"),
+    ("left", "vertical", "start"),
+    ("bottom", "horizontal", "center"),
+    ("top", "horizontal", "center"),
+])
+def test_default_orientation_and_align_per_side(side, expected_orientation, expected_align):
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side=side)
+    assert group._orientation == expected_orientation
+    assert group._align == expected_align
+
+
+def test_bottom_horizontal_legend_is_wider_than_tall():
+    """side='bottom' defaults to horizontal layout: the legend's pixel
+    width should comfortably exceed its height (>= 2x)."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side="bottom")
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+    bb = group._builder.elements[0][1].get_window_extent()
+    assert (bb.x1 - bb.x0) > 2 * (bb.y1 - bb.y0), (
+        f"expected horizontal layout (w>>h); got w={bb.x1-bb.x0:.1f} "
+        f"h={bb.y1-bb.y0:.1f}"
+    )
+
+
+def test_right_vertical_legend_is_taller_than_wide():
+    """side='right' keeps the historical vertical layout."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side="right")
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+    bb = group._builder.elements[0][1].get_window_extent()
+    assert (bb.y1 - bb.y0) > (bb.x1 - bb.x0), (
+        f"expected vertical layout (h>w); got w={bb.x1-bb.x0:.1f} "
+        f"h={bb.y1-bb.y0:.1f}"
+    )
+
+
+def test_bottom_center_align_places_legend_at_grid_midpoint():
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side="bottom")
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+    anc = group.anchor.get_window_extent()
+    bb = group._builder.elements[0][1].get_window_extent()
+    anc_mid = (anc.x0 + anc.x1) / 2
+    leg_mid = (bb.x0 + bb.x1) / 2
+    delta_mm = abs(anc_mid - leg_mid) / fig.dpi * 25.4
+    assert delta_mm < 1.0, f"expected legend centered on anchor; got delta={delta_mm:.2f} mm"
+
+
+def test_explicit_align_end_on_bottom():
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side="bottom", align="end")
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+    anc = group.anchor.get_window_extent()
+    bb = group._builder.elements[0][1].get_window_extent()
+    # Legend right edge should be close to anchor right edge.
+    right_gap_mm = (anc.x1 - bb.x1) / fig.dpi * 25.4
+    # ... and far from the left edge.
+    left_gap_mm = (bb.x0 - anc.x0) / fig.dpi * 25.4
+    assert right_gap_mm < 10.0 and left_gap_mm > 30.0, (
+        f"expected end-aligned; got right_gap={right_gap_mm:.1f}, "
+        f"left_gap={left_gap_mm:.1f}"
+    )
+
+
+def test_explicit_orientation_vertical_on_bottom():
+    """Explicit orientation='vertical' on a bottom-side group produces
+    a stacked (tall) legend even though bottom defaults to horizontal."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side="bottom", orientation="vertical")
+    assert group._orientation == "vertical"
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+    bb = group._builder.elements[0][1].get_window_extent()
+    # Vertical layout: height > width.
+    assert (bb.y1 - bb.y0) > (bb.x1 - bb.x0), (
+        f"explicit orientation=vertical should stack; got w={bb.x1-bb.x0:.1f} "
+        f"h={bb.y1-bb.y0:.1f}"
+    )
+
+
+def test_user_ncol_override_wins_on_horizontal():
+    """Passing ncol=1 via add_legend on a horizontal-orientation group
+    still stacks vertically (user override wins over the orientation
+    default)."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend_group(side="bottom")
+    group.add_legend(handles=_sample_handles(), label="group", ncol=1)
+    fig.canvas.draw()
+    bb = group._builder.elements[0][1].get_window_extent()
+    assert (bb.y1 - bb.y0) > (bb.x1 - bb.x0), (
+        f"ncol=1 should stack vertically; got w={bb.x1-bb.x0:.1f} "
+        f"h={bb.y1-bb.y0:.1f}"
+    )
+
+
+def test_orientation_invalid_raises():
+    with pytest.raises(ValueError, match="orientation must be"):
+        pp.legend_group(orientation="diagonal")
+
+
+def test_align_invalid_raises():
+    with pytest.raises(ValueError, match="align must be"):
+        pp.legend_group(align="middle")
