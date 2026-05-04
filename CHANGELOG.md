@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-05-04
+
+### Fixed
+- `pp.lineplot` markers now follow the publiplots double-layer
+  convention (pale fill + solid colored ring), matching `pp.pointplot`.
+  Seaborn's default was a white edge on an opaque pastel face, which
+  clashed visually. Lifts pointplot's two-pass marker renderer into a
+  shared `apply_double_layer_markers` helper in
+  `utils/transparency.py` so both plots stay in sync (PR #106).
+- `pp.lineplot(hue=..., style=..., dashes={'X': (on, off)}, markers=True)`
+  crashed in matplotlib's `Line2D._get_dash_pattern` because
+  `HandlerLineMarker` forwarded the raw on-off tuple to a fresh
+  `Line2D`. Extracted a `_normalize_dash_linestyle` helper and
+  routed both `HandlerLine` and `HandlerLineMarker` through it so
+  they can't drift again. Closes #99 (PR #104).
+
+### Added
+- Gallery panel "Markers on Aggregated Points" in
+  `plot_04_lineplot.py` demonstrating the double-layer marker
+  styling on a lineplot (PR #106).
+
+### Internal
+- Shared marker renderer `apply_double_layer_markers` now lives in
+  `publiplots.utils.transparency`; `pp.pointplot` and `pp.lineplot`
+  both delegate to it. Removes ~75 lines of duplicated logic from
+  `plot/point.py` (PR #106).
+
+[0.8.2]: https://github.com/jorgebotas/publiplots/releases/tag/v0.8.2
+
 ## [0.8.1] - 2026-05-04
 
 ### Added
