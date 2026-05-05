@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-05-05
+
+### Added
+- `pp.legend_group` can now be attached **after** the plot calls with
+  the same end-state as attaching it before. On construction the group
+  walks every axes in the grid, finds per-axis Legend artists whose
+  titles match entries it will claim, removes them, and unregisters
+  their `LayoutReactor` entries. `SubplotsAutoLayout` shrinks the
+  per-column / per-row reservation on the next draw — no explicit
+  redraw needed. Legends for entries the group does NOT claim
+  (different kind, or excluded via ``collect=``) survive the eviction
+  (PR #116).
+
+### Fixed
+- `pp.legend_group(figure=fig, side='bottom')` crashed with
+  `AttributeError: 'FigureCanvasPdf' object has no attribute
+  'get_renderer'` when saving to PDF, SVG, or PS.
+  `LegendBuilder._measure_object_dimensions` called
+  `self.fig.canvas.get_renderer()`, a method only present on
+  `FigureCanvasAgg`. It now calls `get_window_extent()` without a
+  renderer argument, falling back to matplotlib's cached renderer
+  populated by the preceding `canvas.draw()`. Closes #115 (PR #116).
+
+### Docs
+- README gains a "Matplotlib backends" section clarifying publiplots
+  is backend-agnostic and won't call `matplotlib.use(...)` implicitly
+  (PR #116).
+
+[0.9.1]: https://github.com/jorgebotas/publiplots/releases/tag/v0.9.1
+
 ## [0.9.0] - 2026-05-05
 
 ### Added
