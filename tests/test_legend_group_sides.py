@@ -376,3 +376,32 @@ def test_right_side_legend_top_aligned_with_axes_top(anchor_kind):
         f"{anchor_kind}-anchored: legend top should be within ~1 mm of "
         f"axes top; got delta={delta_mm:.2f} mm"
     )
+
+
+def test_per_axis_outside_right_legend_top_aligned_with_axes():
+    """Regression: ``pp.scatterplot(..., title=...)`` with the default
+    outside-right legend used to sit 5 mm below the axes top because
+    LegendBuilder defaulted vpad=5 regardless of anchor kind. Now
+    LegendBuilder resolves the default vpad from self._anchor_ax:
+    a real Axes gets vpad=0 (flush with axes top), a _GridAnchor gets
+    vpad=5. This regression covers the per-axis path (no legend_group)."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "x": rng.normal(size=40),
+        "y": rng.normal(size=40),
+        "g": np.tile(list("AB"), 20),
+    })
+    ax = pp.scatterplot(
+        data=df, x="x", y="y", hue="g", palette="pastel",
+        title="per-axis",
+    )
+    fig = ax.get_figure()
+    fig.canvas.draw()
+    assert ax.legend_ is not None
+    ax_top_px = ax.get_window_extent().y1
+    legend_top_px = ax.legend_.get_window_extent().y1
+    delta_mm = (ax_top_px - legend_top_px) / fig.dpi * 25.4
+    assert abs(delta_mm) < 1.5, (
+        f"per-axis legend top should be within ~1 mm of axes top; "
+        f"got delta={delta_mm:.2f} mm"
+    )

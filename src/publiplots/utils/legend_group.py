@@ -196,6 +196,9 @@ class MultiAxesLegendGroup:
         # Decide anchor kind. When the caller passes an explicit axes we
         # pin the band to that one axes (and its per-cell reservation
         # tuple grows). Otherwise span the whole grid via _GridAnchor.
+        # LegendBuilder resolves the default vpad from self._anchor_ax
+        # (real Axes → 0; _GridAnchor → 5) so both anchor modes end up
+        # visually aligned with the axes top.
         if anchor is None:
             fig = figure if figure is not None else plt.gcf()
             self.anchor = _GridAnchor(fig)
@@ -203,15 +206,6 @@ class MultiAxesLegendGroup:
         else:
             self.anchor = anchor
             self._anchor_kind = "axes"
-
-        # Default vpad: axes-anchored groups align their legend's top
-        # edge with the axes rectangle (no top padding), while
-        # figure-anchored groups sit inside the decorated-grid rectangle
-        # which already includes title_space above every axes — a
-        # small vpad keeps the legend from crowding that title. Both
-        # paths end up with the legend top at roughly axes-top.
-        if vpad is None:
-            vpad = 0 if self._anchor_kind == "axes" else 5
 
         if collect is not None:
             if isinstance(collect, str) or not hasattr(collect, "__iter__"):

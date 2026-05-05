@@ -859,7 +859,7 @@ class LegendBuilder:
         y_offset: Optional[float] = None,
         gap: float = 2,
         column_spacing: float = 5,
-        vpad: float = 5,
+        vpad: Optional[float] = None,
         max_width: Optional[float] = None,
         anchor_ax: Optional[Axes] = None,
         external_to_axis: bool = False,
@@ -909,6 +909,19 @@ class LegendBuilder:
         self.fig = self._anchor_ax.get_figure()
         self._side = side
         self._orientation = orientation
+
+        # Default vpad: when the anchor is a real Axes (per-axis legend
+        # or axes-anchored legend_group), vpad=0 lands the legend's top
+        # flush with the axes rectangle top — title_space lives above
+        # axes.y1 so it's already accounted for by pp.subplots. When
+        # the anchor is a _GridAnchor (figure-anchored group),
+        # ``anchor.y1`` is the decorated-grid top which sits ABOVE every
+        # axes' title_space; vpad=5 keeps the legend from hugging that
+        # top border visually.
+        if vpad is None:
+            from publiplots.utils.legend_group import _GridAnchor
+            vpad = 5 if isinstance(self._anchor_ax, _GridAnchor) else 0
+
         self._layout = LegendLayout(
             x_offset=x_offset,
             y_offset=y_offset,
@@ -1665,7 +1678,7 @@ def legend(
     x_offset: float = 2,
     gap: float = 2,
     column_spacing: float = 5,
-    vpad: float = 5,
+    vpad: Optional[float] = None,
     **kwargs
 ) -> LegendBuilder:
     """
