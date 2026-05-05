@@ -859,10 +859,12 @@ class LegendBuilder:
         y_offset: Optional[float] = None,
         gap: float = 2,
         column_spacing: float = 5,
-        vpad: float = 5,
+        vpad: Optional[float] = None,
         max_width: Optional[float] = None,
         anchor_ax: Optional[Axes] = None,
         external_to_axis: bool = False,
+        side: str = "right",
+        orientation: str = "vertical",
     ):
         """Initialize legend builder. All dimensions in millimeters.
 
@@ -872,17 +874,54 @@ class LegendBuilder:
             Axes the legend/colorbar artist is attached to (for picking,
             ``ax.legend_`` association, etc.).
         anchor_ax : Axes, optional
-            Axes whose right edge is used as the origin for mm-based
-            placement math and for reactor registration. Defaults to `ax`.
-            Used by MultiAxesLegendGroup to attach artists to one axes
-            while positioning them relative to another.
+            Axes whose chosen edge is used as the origin for mm-based
+            placement math and for reactor registration. Defaults to
+            ``ax``. Used by MultiAxesLegendGroup to attach artists to one
+            axes while positioning them relative to another (or to a
+            virtual grid anchor for figure-anchored groups).
+        side : {'right', 'left', 'bottom', 'top'}, default 'right'
+            Which edge of ``anchor_ax`` the legend grows outward from.
+            'right' matches the historical placement (columns fill
+            rightward, rows downward).
+        orientation : {'vertical', 'horizontal'}, default 'vertical'
+            Primary stacking direction of successive legends and of
+            entries within each legend. ``'vertical'`` stacks entries
+            downward and advances successive legends downward; overflow
+            (exhausted along-edge length) starts a new band *outward*.
+            ``'horizontal'`` lays entries along the edge (default
+            ``ncol = len(handles)``) and advances successive legends
+            rightward; overflow starts a new band further outward.
         """
         from publiplots.utils.legend_layout import LegendLayout
         from publiplots.utils.layout_reactor import LayoutReactor
 
+        if side not in ("right", "left", "bottom", "top"):
+            raise ValueError(
+                f"side must be 'right' | 'left' | 'bottom' | 'top', got {side!r}"
+            )
+        if orientation not in ("vertical", "horizontal"):
+            raise ValueError(
+                f"orientation must be 'vertical' | 'horizontal', got {orientation!r}"
+            )
+
         self.ax = ax
         self._anchor_ax = anchor_ax if anchor_ax is not None else ax
         self.fig = self._anchor_ax.get_figure()
+        self._side = side
+        self._orientation = orientation
+
+        # Default vpad: when the anchor is a real Axes (per-axis legend
+        # or axes-anchored legend_group), vpad=0 lands the legend's top
+        # flush with the axes rectangle top — title_space lives above
+        # axes.y1 so it's already accounted for by pp.subplots. When
+        # the anchor is a _GridAnchor (figure-anchored group),
+        # ``anchor.y1`` is the decorated-grid top which sits ABOVE every
+        # axes' title_space; vpad=5 keeps the legend from hugging that
+        # top border visually.
+        if vpad is None:
+            from publiplots.utils.legend_group import _GridAnchor
+            vpad = 5 if isinstance(self._anchor_ax, _GridAnchor) else 0
+
         self._layout = LegendLayout(
             x_offset=x_offset,
             y_offset=y_offset,
@@ -890,12 +929,31 @@ class LegendBuilder:
             column_spacing=column_spacing,
             vpad=vpad,
             max_width=max_width,
+            orientation=orientation,
         )
-        self._layout.reset_to(axes_height_mm=self._get_axes_height())
+        self._layout.reset_to(edge_length_mm=self._get_edge_length())
         self._reactor = LayoutReactor.get(self.fig)
         self._external_to_axis = external_to_axis
         # Element storage: list of (type, object) tuples
         self.elements = []
+
+    def _get_edge_length(self) -> float:
+        """Along-edge length of the anchor in mm.
+
+        For side='right'|'left' that's the axes height; for
+        side='top'|'bottom' it's the axes width. The ``LegendLayout``
+        cursor treats this uniformly as the 'down the edge' distance
+        available before overflowing to a new column.
+        """
+        if self._side in ("right", "left"):
+            return self._get_axes_height()
+        return self._get_axes_width()
+
+    def _get_axes_width(self) -> float:
+        ax_pos = self._anchor_ax.get_position()
+        fig_width_px = self.fig.get_window_extent().width
+        axes_width_px = ax_pos.width * fig_width_px
+        return axes_width_px / self.fig.dpi / self.MM2INCH
 
     # =========================================================================
     # Conversion Utilities
@@ -910,34 +968,44 @@ class LegendBuilder:
 
     def _mm_to_figure_coords(self, x_mm: float, y_mm: float) -> Tuple[float, float]:
         """
-        Convert mm position to figure coordinates.
+        Convert mm position to figure coordinates at the chosen edge.
 
         Parameters
         ----------
         x_mm : float
-            Horizontal distance from right edge of axes (mm)
+            Outward distance from the edge (mm). Rightward for
+            ``side='right'``, leftward for ``'left'``, downward for
+            ``'bottom'``, upward for ``'top'``.
         y_mm : float
-            Remaining vertical space (mm). Converted to position from top internally.
+            Remaining along-edge space (mm). Converted to position from
+            the starting corner internally.
 
         Returns
         -------
         x_fig, y_fig : float
-            Position in figure coordinates
+            Position in figure coordinates.
         """
         ax_pos = self._anchor_ax.get_position()
         fig_extent = self.fig.get_window_extent()
 
-        # y_mm represents remaining space, convert to position from top
-        axes_height = self._get_axes_height()
-        position_from_top = axes_height - y_mm
+        # y_mm represents remaining along-edge space; position_from_start
+        # is how far we've advanced from the corner where the cursor
+        # began (top for right/left, left for bottom/top).
+        edge_length = self._get_edge_length()
+        position_from_start = edge_length - y_mm
 
-        # Convert mm to figure fraction
-        x_offset_fig = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.width
-        y_offset_fig = (position_from_top * self.MM2INCH * self.fig.dpi) / fig_extent.height
-
-        # Position relative to axes
-        x_fig = ax_pos.x1 + x_offset_fig
-        y_fig = ax_pos.y1 - y_offset_fig
+        if self._side in ("right", "left"):
+            outward_frac = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.width
+            along_frac = (position_from_start * self.MM2INCH * self.fig.dpi) / fig_extent.height
+            y_fig = ax_pos.y1 - along_frac
+            x_fig = (ax_pos.x1 + outward_frac) if self._side == "right" \
+                    else (ax_pos.x0 - outward_frac)
+        else:  # bottom | top
+            outward_frac = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.height
+            along_frac = (position_from_start * self.MM2INCH * self.fig.dpi) / fig_extent.width
+            x_fig = ax_pos.x0 + along_frac
+            y_fig = (ax_pos.y0 - outward_frac) if self._side == "bottom" \
+                    else (ax_pos.y1 + outward_frac)
 
         return x_fig, y_fig
 
@@ -1058,16 +1126,16 @@ class LegendBuilder:
         return handle_width + text_width + padding
 
     # =========================================================================
-    # Column Management
+    # Band Management
     # =========================================================================
 
-    def _check_overflow(self, required_height: float) -> bool:
-        """Check if element fits in current column."""
-        return self._layout.check_overflow(required_height)
+    def _check_overflow(self, required_along: float) -> bool:
+        """True if an element of this along-edge size overflows the current band."""
+        return self._layout.check_overflow(required_along)
 
-    def _start_new_column(self):
-        """Create a new column when vertical space exhausted."""
-        self._layout.start_new_column()
+    def _start_new_band(self):
+        """Create a new band outward when along-edge space is exhausted."""
+        self._layout.start_new_band()
 
     def _adjust_legend_ncol_for_height(
         self,
@@ -1186,6 +1254,11 @@ class LegendBuilder:
             self.elements.append(("legend", legend))
             return legend
 
+        # Horizontal orientation default: lay out every handle in a
+        # single row. User-provided ncol wins.
+        if self._orientation == "horizontal" and "ncol" not in kwargs:
+            kwargs["ncol"] = max(1, len(handles))
+
         # Auto-adjust ncol if max_height specified
         if max_height is not None:
             optimal_ncol = self._adjust_legend_ncol_for_height(
@@ -1193,16 +1266,20 @@ class LegendBuilder:
             )
             kwargs['ncol'] = optimal_ncol
 
-        # Estimate height
-        estimated_height = self._estimate_legend_height(handles, label, **kwargs)
+        # Estimate the legend's along-edge extent: height when stacking
+        # vertically, width when laying out horizontally.
+        if self._orientation == "horizontal":
+            estimated_along = self._estimate_legend_width(handles, label, **kwargs)
+        else:
+            estimated_along = self._estimate_legend_height(handles, label, **kwargs)
 
         # Check overflow
-        if self._check_overflow(estimated_height):
-            self._start_new_column()
+        if self._check_overflow(estimated_along):
+            self._start_new_band()
 
         # Convert current position to figure coordinates
         x_fig, y_fig = self._mm_to_figure_coords(
-            self._layout.current_x, self._layout.current_y
+            self._layout.current_outward, self._layout.current_along
         )
 
         # Adaptive row spacing: when a handle's marker exceeds the font
@@ -1213,9 +1290,21 @@ class LegendBuilder:
         fontsize = resolve_param("legend.fontsize", resolve_param("font.size"))
         default_labelspacing = compute_min_labelspacing(handles, fontsize)
 
-        # Prepare legend kwargs
+        # Prepare legend kwargs. ``loc`` maps to the matplotlib corner of
+        # the legend box that coincides with bbox_to_anchor — pick it so
+        # the legend grows *away from* the anchor edge:
+        #   side='right'  → anchor sits at legend's upper-left corner.
+        #   side='left'   → anchor sits at legend's upper-right corner.
+        #   side='bottom' → anchor sits at legend's upper-left corner (cursor rotates).
+        #   side='top'    → anchor sits at legend's lower-left corner.
+        loc_by_side = {
+            "right": "upper left",
+            "left": "upper right",
+            "bottom": "upper left",
+            "top": "lower left",
+        }
         legend_kwargs = {
-            "loc": "upper left",
+            "loc": loc_by_side[self._side],
             "bbox_to_anchor": (x_fig, y_fig),
             "bbox_transform": self.fig.transFigure,  # Use figure coords
             "frameon": frameon,
@@ -1252,14 +1341,22 @@ class LegendBuilder:
 
         # Capture position BEFORE advancing the cursor — this is where the
         # legend was actually placed, and what the reactor needs.
-        placement_x_mm = self._layout.current_x
+        placement_x_mm = self._layout.current_outward
         # mm_y_from_top is tracked directly in the layout (stable across
         # axes height changes from constrained_layout etc).
-        mm_y_from_top = self._layout.current_y_from_top
+        mm_y_from_top = self._layout.along_from_start
 
-        # Update layout cursor for the next element
-        self._layout.update_width(width)
-        self._layout.advance_y(height)
+        # Update layout cursor for the next element.
+        # - vertical: height advances along the edge, width is the band's
+        #   outward extent.
+        # - horizontal: width advances along the edge, height is the
+        #   band's outward extent.
+        if self._orientation == "horizontal":
+            self._layout.update_width(height)
+            self._layout.advance_along(width)
+        else:
+            self._layout.update_width(width)
+            self._layout.advance_along(height)
 
         # Register with the reactor so the anchor follows axes changes.
         self._reactor.register(
@@ -1267,6 +1364,7 @@ class LegendBuilder:
             artist=legend,
             mm_x_from_right=placement_x_mm,
             mm_y_from_top=mm_y_from_top,
+            side=self._side,
             external_to_axis=self._external_to_axis,
         )
 
@@ -1274,7 +1372,7 @@ class LegendBuilder:
         self.elements.append(("legend", legend))
 
         return legend
-    
+
     def add_colorbar(
         self,
         mappable: Optional[ScalarMappable] = None,
@@ -1369,13 +1467,13 @@ class LegendBuilder:
 
         # Check overflow using estimate
         if self._check_overflow(total_estimated_height):
-            self._start_new_column()
+            self._start_new_band()
 
         # Add title if needed and measure actual height
         title_height_actual = 0
         if title_position == "top" and label:
             x_fig, y_fig = self._mm_to_figure_coords(
-                self._layout.current_x, self._layout.current_y
+                self._layout.current_outward, self._layout.current_along
             )
             title_obj = self.fig.text(
                 x_fig, y_fig, label,
@@ -1389,24 +1487,25 @@ class LegendBuilder:
 
             # Register the title with the reactor so it follows axes changes
             # (otherwise the colorbar would reposition but the title would stay pinned).
-            title_x_mm = self._layout.current_x
-            title_mm_y_from_top = self._layout.current_y_from_top
+            title_x_mm = self._layout.current_outward
+            title_mm_y_from_top = self._layout.along_from_start
             self._reactor.register(
                 ax=self._anchor_ax,
                 artist=title_obj,
                 mm_x_from_right=title_x_mm,
                 mm_y_from_top=title_mm_y_from_top,
+                side=self._side,
                 external_to_axis=self._external_to_axis,
             )
 
             # Position colorbar below measured title
-            cbar_y_start = self._layout.current_y - title_height_actual - title_pad
+            cbar_y_start = self._layout.current_along - title_height_actual - title_pad
         else:
-            cbar_y_start = self._layout.current_y
+            cbar_y_start = self._layout.current_along
             title_width_actual = 0
 
         # Create colorbar axes
-        x_fig, y_fig_top = self._mm_to_figure_coords(self._layout.current_x, cbar_y_start)
+        x_fig, y_fig_top = self._mm_to_figure_coords(self._layout.current_outward, cbar_y_start)
 
         fig_extent = self.fig.get_window_extent()
         cbar_width_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
@@ -1454,17 +1553,17 @@ class LegendBuilder:
         # Colorbar top sits below the title (if any) by title_height + title_pad.
         # The layout cursor still points at the title position, so we compute
         # the colorbar's offset explicitly before advancing.
-        placement_x_mm = self._layout.current_x
+        placement_x_mm = self._layout.current_outward
         if title_position == "top" and label:
             mm_y_from_top = (
-                self._layout.current_y_from_top + title_height_actual + title_pad
+                self._layout.along_from_start + title_height_actual + title_pad
             )
         else:
-            mm_y_from_top = self._layout.current_y_from_top
+            mm_y_from_top = self._layout.along_from_start
 
         # Update layout cursor past the full title+colorbar block.
         self._layout.update_width(actual_width)
-        self._layout.advance_y(total_height_actual)
+        self._layout.advance_along(total_height_actual)
 
         # Register with the reactor. Colorbars need mm_width + mm_height so
         # the reactor dispatches to cbar.ax.set_position instead of
@@ -1476,6 +1575,7 @@ class LegendBuilder:
             mm_y_from_top=mm_y_from_top,
             mm_width=width,        # the mm width parameter of add_colorbar
             mm_height=cbar_height, # measured mm height (from _measure_object_dimensions)
+            side=self._side,
             external_to_axis=self._external_to_axis,
         )
 
@@ -1535,7 +1635,7 @@ class LegendBuilder:
 
     def get_remaining_height(self) -> float:
         """Get remaining vertical space."""
-        return max(0, self._layout.current_y)
+        return max(0, self._layout.current_along)
 
 
 def _get_legend_data(ax: Axes) -> dict:
@@ -1578,7 +1678,7 @@ def legend(
     x_offset: float = 2,
     gap: float = 2,
     column_spacing: float = 5,
-    vpad: float = 5,
+    vpad: Optional[float] = None,
     **kwargs
 ) -> LegendBuilder:
     """

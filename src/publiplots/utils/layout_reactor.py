@@ -34,10 +34,19 @@ _DISPLACEMENT_WARNING = (
 class _Registration:
     ax: Axes
     artist: object  # Legend or Colorbar; duck-typed via set_bbox_to_anchor
+    # mm_x_from_right / mm_y_from_top keep their historical names for
+    # back-compat with the side='right' path that predates side= support.
+    # Semantically they encode (outward_mm, along_mm) from the chosen
+    # anchor corner:
+    #   side='right'  → outward=rightward from ax.x1,  along=downward from ax.y1
+    #   side='left'   → outward=leftward  from ax.x0,  along=downward from ax.y1
+    #   side='bottom' → outward=downward  from ax.y0,  along=rightward from ax.x0
+    #   side='top'    → outward=upward    from ax.y1,  along=rightward from ax.x0
     mm_x_from_right: float
     mm_y_from_top: float
     mm_width: Optional[float] = None
     mm_height: Optional[float] = None
+    side: str = "right"
     # External overlays (e.g., pp.legend_group anchored to an axes) should
     # NOT count toward the axes' tightbbox in SubplotsAutoLayout. Their
     # geometry is owned by the reactor + user's legend_column reservation,
@@ -82,6 +91,7 @@ class LayoutReactor:
         mm_y_from_top: float,
         mm_width: Optional[float] = None,
         mm_height: Optional[float] = None,
+        side: str = "right",
         external_to_axis: bool = False,
     ) -> None:
         """Track this element; its bbox_to_anchor will be refreshed every draw.
@@ -107,6 +117,7 @@ class LayoutReactor:
             mm_y_from_top=mm_y_from_top,
             mm_width=mm_width,
             mm_height=mm_height,
+            side=side,
             external_to_axis=external_to_axis,
         ))
 
@@ -145,17 +156,47 @@ class LayoutReactor:
         fig = self._fig
         ax_pos = reg.ax.get_position()
         fig_extent = fig.get_window_extent()
-        # Convert mm offsets to figure fractions
-        x_frac = (reg.mm_x_from_right * _MM2INCH * fig.dpi) / fig_extent.width
-        y_frac = (reg.mm_y_from_top * _MM2INCH * fig.dpi) / fig_extent.height
-        new_x = ax_pos.x1 + x_frac
-        new_y = ax_pos.y1 - y_frac
+        # Convert mm offsets to figure fractions. outward_frac is mm away
+        # from the chosen edge; along_frac is mm into the edge's tangent.
+        outward_frac_x = (reg.mm_x_from_right * _MM2INCH * fig.dpi) / fig_extent.width
+        outward_frac_y = (reg.mm_x_from_right * _MM2INCH * fig.dpi) / fig_extent.height
+        along_frac_x = (reg.mm_y_from_top * _MM2INCH * fig.dpi) / fig_extent.width
+        along_frac_y = (reg.mm_y_from_top * _MM2INCH * fig.dpi) / fig_extent.height
+
+        if reg.side == "right":
+            new_x = ax_pos.x1 + outward_frac_x
+            new_y = ax_pos.y1 - along_frac_y
+        elif reg.side == "left":
+            new_x = ax_pos.x0 - outward_frac_x
+            new_y = ax_pos.y1 - along_frac_y
+        elif reg.side == "bottom":
+            new_x = ax_pos.x0 + along_frac_x
+            new_y = ax_pos.y0 - outward_frac_y
+        elif reg.side == "top":
+            new_x = ax_pos.x0 + along_frac_x
+            new_y = ax_pos.y1 + outward_frac_y
+        else:
+            raise ValueError(f"unknown side: {reg.side!r}")
 
         # Colorbar path — artist has .ax and we stored mm dimensions.
         if reg.mm_width is not None and reg.mm_height is not None:
             w_frac = (reg.mm_width * _MM2INCH * fig.dpi) / fig_extent.width
             h_frac = (reg.mm_height * _MM2INCH * fig.dpi) / fig_extent.height
-            reg.artist.ax.set_position([new_x, new_y - h_frac, w_frac, h_frac])
+            # Colorbar set_position uses the bottom-left corner.
+            # For side='right' (legacy), new_y is the top edge → subtract h.
+            # For side='top'   new_y is the bottom edge of the colorbar → keep.
+            # For side='bottom' new_y is the top edge → subtract h.
+            # For side='left'  new_y is the top edge → subtract h.
+            # Also flip x for left: new_x is the right edge → subtract w.
+            if reg.side in ("right", "bottom", "left"):
+                bottom_y = new_y - h_frac
+            else:  # "top"
+                bottom_y = new_y
+            if reg.side == "left":
+                left_x = new_x - w_frac
+            else:
+                left_x = new_x
+            reg.artist.ax.set_position([left_x, bottom_y, w_frac, h_frac])
             return
 
         # Text path — figure-level text (e.g., colorbar titles added via fig.text).
