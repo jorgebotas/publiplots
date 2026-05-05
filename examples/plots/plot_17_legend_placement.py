@@ -228,12 +228,21 @@ for panel in "ABCD":
                 })
 line_df = pd.DataFrame(_line_rows)
 
+# Define the palette as a mapping BEFORE the loop so each treatment
+# keeps the same color across every panel — otherwise a panel that
+# only saw a subset of treatments would hand out colors positionally
+# and the merged legend would render inconsistent colors.
+treatment_palette = dict(zip(
+    ["Control", "Low", "High"],
+    pp.color_palette("pastel", 3),
+))
+
 fig, axes = pp.subplots(2, 2, axes_size=(50, 30))
 pp.legend_group(side="bottom")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.lineplot(
         data=line_df[line_df["panel"] == panel], x="time", y="value",
-        hue="treatment", style="method", palette="pastel",
+        hue="treatment", style="method", palette=treatment_palette,
         dashes={"raw": (1, 0), "smoothed": (4, 2)},
         title=f"Panel {panel}", ax=axes[r, c],
     )
@@ -257,13 +266,23 @@ bar_df = pd.DataFrame({
     "panel": np.repeat(list("ABCD"), 120),
 })
 
+# Pin each group level to a specific color by passing the palette as a
+# mapping. Without this, each panel would resolve its palette from
+# whatever subset of levels it contains, producing color drift across
+# panels (e.g., 'mid' → second color in a low+mid panel but first
+# color in a mid+high panel).
+group_palette = dict(zip(
+    ["low", "mid", "high"],
+    pp.color_palette("pastel", 3),
+))
+
 fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
 pp.legend_group(side="bottom")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.barplot(
         data=bar_df[bar_df["panel"] == panel], x="cat", y="val",
         hue="group", hatch="time",
-        palette="pastel", hatch_map={"24h": "", "48h": "///"},
+        palette=group_palette, hatch_map={"24h": "", "48h": "///"},
         errorbar="se", title=f"Panel {panel}", ax=axes[r, c],
     )
 pp.show()
