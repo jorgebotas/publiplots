@@ -450,3 +450,29 @@ def test_per_axis_outside_right_legend_top_aligned_with_axes():
         f"per-axis legend top should be within ~1 mm of axes top; "
         f"got delta={delta_mm:.2f} mm"
     )
+
+
+def test_legend_group_saves_to_pdf_without_renderer_error(tmp_path):
+    """Regression: LegendBuilder._measure_object_dimensions used to call
+    ``self.fig.canvas.get_renderer()`` which exists on FigureCanvasAgg
+    but NOT on FigureCanvasPdf / Svg / Ps. The alignment callback fires
+    during ``fig.savefig('x.pdf')`` and the measurement path used to
+    crash with AttributeError. Closes #115."""
+    df = pd.DataFrame({
+        "x": [0, 1, 2] * 2,
+        "y": [0, 1, 2, 0.5, 1.5, 2.5],
+        "m": ["A"] * 3 + ["B"] * 3,
+    })
+    fig, axes = pp.subplots(nrows=1, ncols=2)
+    for ax in axes:
+        pp.lineplot(data=df, x="x", y="y", hue="m", ax=ax,
+                    errorbar=None, legend=True)
+    pp.legend_group(figure=fig, side="bottom")
+    # Each of these triggers a _measure_object_dimensions call during
+    # the align hook. Previously this crashed on non-AGG canvases.
+    fig.savefig(tmp_path / "ok.pdf")
+    fig.savefig(tmp_path / "ok.svg")
+    fig.savefig(tmp_path / "ok.png")
+    assert (tmp_path / "ok.pdf").exists()
+    assert (tmp_path / "ok.svg").exists()
+    assert (tmp_path / "ok.png").exists()

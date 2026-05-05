@@ -1025,11 +1025,17 @@ class LegendBuilder:
         """
         self.fig.canvas.draw()
 
-        # Get bounding box
+        # Get bounding box. Call get_window_extent() without a renderer:
+        # the draw() above populates matplotlib's cached renderer on the
+        # active canvas, and get_window_extent() falls back to that
+        # cache when no renderer is passed. This keeps measurement
+        # working on non-AGG canvases (PDF / PS / SVG), which don't
+        # expose ``canvas.get_renderer()`` — previously a legend_group
+        # that worked under PNG save crashed under PDF save. See #115.
         if hasattr(obj, 'ax'):  # Colorbar
-            bbox = obj.ax.get_window_extent(self.fig.canvas.get_renderer())
+            bbox = obj.ax.get_window_extent()
         elif hasattr(obj, 'get_window_extent'):
-            bbox = obj.get_window_extent(self.fig.canvas.get_renderer())
+            bbox = obj.get_window_extent()
         else:
             return 0, 0
 
