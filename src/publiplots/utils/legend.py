@@ -438,7 +438,7 @@ class HandlerLineMarker(HandlerBase):
             marker=marker,
             markersize=size,
             markerfacecolor=to_rgba(color, alpha),
-            markeredgecolor=to_rgba(color, 1.0),
+            markeredgecolor=to_rgba(edgecolor, 1.0),
             markeredgewidth=markeredgewidth,
             linestyle='none',
             transform=trans,
