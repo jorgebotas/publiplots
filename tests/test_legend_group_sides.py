@@ -452,6 +452,108 @@ def test_per_axis_outside_right_legend_top_aligned_with_axes():
     )
 
 
+# --- seamless "after-plot" attachment ---------------------------------------
+
+
+def test_legend_group_attached_after_plots_evicts_per_axis_legends():
+    """pp.legend_group attached AFTER plot calls should remove the
+    per-axis legend artists that each plot drew, since it'll render a
+    shared legend itself. No ghost legends on the per-axis panels."""
+    from matplotlib.legend import Legend
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "x": rng.normal(size=90),
+        "y": rng.normal(size=90),
+        "g": np.tile(list("ABC"), 30),
+    })
+    fig, axes = pp.subplots(1, 3, axes_size=(35, 25))
+    for ax in axes:
+        pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    # Before attaching the group, every panel has its own 'g' legend.
+    pre = [sum(1 for c in ax.get_children() if isinstance(c, Legend)) for ax in axes]
+    assert pre == [1, 1, 1], f"expected one per-axis legend each, got {pre}"
+    # Attach the group AFTER the plots — should evict claimed entries.
+    group = pp.legend_group(side="right")
+    fig.canvas.draw()
+    # Only the anchor axes should still carry a Legend (the group's own
+    # shared legend); the other panels should have no Legend left.
+    counts = [sum(1 for c in ax.get_children() if isinstance(c, Legend)) for ax in axes]
+    assert counts[:-1] == [0, 0], (
+        f"non-anchor panels should have no legend, got {counts[:-1]}"
+    )
+    assert counts[-1] == 1, f"anchor panel should host the group legend, got {counts[-1]}"
+    assert len(group._builder.elements) == 1
+
+
+def test_legend_group_after_plots_preserves_unclaimed_inside_legends():
+    """A scatter with hue + style + ``legend_kws={'inside': True}`` draws
+    a per-axis legend with BOTH entries merged. When ``legend_group(...
+    collect=['g'])`` attaches after the plots, only the 'g' entry is
+    evicted — the style legend stays inside each panel."""
+    from matplotlib.legend import Legend
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "x": rng.normal(size=180),
+        "y": rng.normal(size=180),
+        "g": np.tile(list("ABC"), 60),
+        "r": np.tile(list("12"), 90),
+    })
+    fig, axes = pp.subplots(1, 3, axes_size=(35, 25))
+    for ax in axes:
+        pp.scatterplot(
+            data=df, x="x", y="y", hue="g", style="r", palette="pastel", ax=ax,
+            legend_kws={"inside": True, "loc": "upper right"},
+        )
+    group = pp.legend_group(side="right", collect=["g"])
+    fig.canvas.draw()
+    for ax in axes[:-1]:
+        titles = [
+            c.get_title().get_text()
+            for c in ax.get_children() if isinstance(c, Legend)
+        ]
+        assert titles == ["r"], (
+            f"non-anchor panel should keep only the 'r' inside legend; "
+            f"got {titles}"
+        )
+    anchor_titles = sorted(
+        c.get_title().get_text()
+        for c in axes[-1].get_children() if isinstance(c, Legend)
+    )
+    # The anchor still carries its own 'r' inside legend plus the
+    # group's shared 'g' legend.
+    assert anchor_titles == ["g", "r"], anchor_titles
+
+
+def test_legend_group_after_plots_shrinks_per_axis_reservation():
+    """After eviction, SubplotsAutoLayout should shrink the per-column
+    ``right`` reservation (which used to accommodate the per-axis legend)
+    back to baseline — the freed space becomes the figure-level
+    ``legend_column`` band instead."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "x": rng.normal(size=90),
+        "y": rng.normal(size=90),
+        "g": np.tile(list("ABC"), 30),
+    })
+    fig, axes = pp.subplots(1, 3, axes_size=(35, 25))
+    for ax in axes:
+        pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    # First draw with per-axis legends present → right[-1] inflated.
+    fig.canvas.draw()
+    # Now attach the group after the fact.
+    pp.legend_group(side="right")
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    # All per-column right reservations should be near zero; the width
+    # went into legend_column instead.
+    for i, r in enumerate(layout.right):
+        assert r < 5.0, f"right[{i}] should shrink after eviction, got {r:.1f}"
+    assert layout.legend_column > 5.0, (
+        f"legend_column should absorb the legend width; "
+        f"got {layout.legend_column:.1f}"
+    )
+
+
 def test_legend_group_saves_to_pdf_without_renderer_error(tmp_path):
     """Regression: LegendBuilder._measure_object_dimensions used to call
     ``self.fig.canvas.get_renderer()`` which exists on FigureCanvasAgg
