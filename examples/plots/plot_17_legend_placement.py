@@ -201,3 +201,88 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
         legend_kws={"inside": True, "loc": "upper right"},
     )
 pp.show()
+
+# %%
+# 8. Multi-kind legends: lineplot (hue + linestyle)
+# -------------------------------------------------
+# When a plot exposes several orthogonal legend kinds — e.g., a
+# lineplot with both ``hue=`` (3 colored lines) and ``style=`` (2
+# dash styles) — ``pp.legend_group`` collects each kind as its own
+# legend entry. On a bottom/top horizontal band they sit side-by-side
+# along the edge, centered as a block; the two-kind layout is a good
+# stress test for the along-edge cursor advancing between successive
+# legends. ``markers=False`` (the default) keeps the lines crisp —
+# markers would overlap awkwardly with this many time points.
+
+rng = np.random.default_rng(11)
+t = np.linspace(0, 10, 40)
+_line_rows = []
+for panel in "ABCD":
+    for treatment, offset in [("Control", 0.0), ("Low", 0.8), ("High", 1.6)]:
+        for method, jitter in [("raw", 0.0), ("smoothed", 0.3)]:
+            for tt in t:
+                _line_rows.append({
+                    "panel": panel, "time": tt,
+                    "value": np.sin(tt) + offset + jitter + rng.normal(0, 0.15),
+                    "treatment": treatment, "method": method,
+                })
+line_df = pd.DataFrame(_line_rows)
+
+# Define the palette as a mapping BEFORE the loop so each treatment
+# keeps the same color across every panel — otherwise a panel that
+# only saw a subset of treatments would hand out colors positionally
+# and the merged legend would render inconsistent colors.
+treatment_palette = dict(zip(
+    ["Control", "Low", "High"],
+    pp.color_palette("pastel", 3),
+))
+
+fig, axes = pp.subplots(2, 2, axes_size=(50, 30))
+pp.legend_group(side="bottom")
+for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
+    pp.lineplot(
+        data=line_df[line_df["panel"] == panel], x="time", y="value",
+        hue="treatment", style="method", palette=treatment_palette,
+        dashes={"raw": (1, 0), "smoothed": (4, 2)},
+        title=f"Panel {panel}", ax=axes[r, c],
+    )
+pp.show()
+
+# %%
+# 9. Multi-kind legends: barplot (hue + hatch)
+# --------------------------------------------
+# Barplots with both ``hue=`` (color) and ``hatch=`` (pattern) stash
+# two entries per panel — ``pp.legend_group`` places them side-by-side
+# on the bottom band. Three hue levels × two hatch levels = five
+# handles across two legends, exercising horizontal layout with
+# non-trivial widths.
+
+rng = np.random.default_rng(17)
+bar_df = pd.DataFrame({
+    "cat": np.tile(["A", "B", "C"], 160),
+    "val": rng.normal(size=480) + np.tile([0, 1, 2], 160),
+    "group": np.repeat(["low", "mid", "high"], 160),
+    "time": np.tile(np.repeat(["24h", "48h"], 80), 3),
+    "panel": np.repeat(list("ABCD"), 120),
+})
+
+# Pin each group level to a specific color by passing the palette as a
+# mapping. Without this, each panel would resolve its palette from
+# whatever subset of levels it contains, producing color drift across
+# panels (e.g., 'mid' → second color in a low+mid panel but first
+# color in a mid+high panel).
+group_palette = dict(zip(
+    ["low", "mid", "high"],
+    pp.color_palette("pastel", 3),
+))
+
+fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
+pp.legend_group(side="bottom")
+for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
+    pp.barplot(
+        data=bar_df[bar_df["panel"] == panel], x="cat", y="val",
+        hue="group", hatch="time",
+        palette=group_palette, hatch_map={"24h": "", "48h": "///"},
+        errorbar="se", title=f"Panel {panel}", ax=axes[r, c],
+    )
+pp.show()

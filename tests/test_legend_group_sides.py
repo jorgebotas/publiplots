@@ -378,6 +378,51 @@ def test_right_side_legend_top_aligned_with_axes_top(anchor_kind):
     )
 
 
+def test_materialize_merges_entries_with_subset_labels_across_axes():
+    """When each axes stashes a subset of a hue's levels,
+    ``legend_group`` should render the UNION of labels (first-seen
+    order), not just the first axes' subset. A single warning should
+    fire announcing the merge."""
+    import warnings as _w
+    from publiplots.utils.legend_entries import LegendEntry, stash_entry
+    fig, axes = pp.subplots(1, 3, axes_size=(40, 30))
+    for ax in axes:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    # Panel 0: only 'A', panel 1: 'A' + 'B', panel 2: 'B' + 'C'.
+    # Union should be A, B, C.
+    palette_full = list(pp.color_palette("pastel", 3))
+    subsets = [
+        (["A"], palette_full[:1]),
+        (["A", "B"], palette_full[:2]),
+        (["B", "C"], palette_full[1:3]),
+    ]
+    for ax, (labels, colors) in zip(axes, subsets):
+        stash_entry(
+            ax,
+            LegendEntry.build(
+                name="group", kind="hue",
+                handles=pp.create_legend_handles(
+                    labels=labels, colors=colors, alpha=0.2, linewidth=1.0,
+                ),
+                labels=labels,
+            ),
+        )
+    group = pp.legend_group(anchor=axes[-1])
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        group._materialize()
+    labels_rendered = [
+        t.get_text() for t in group._builder.elements[0][1].get_texts()
+    ]
+    assert labels_rendered == ["A", "B", "C"], (
+        f"expected union of labels; got {labels_rendered}"
+    )
+    merge_warnings = [w for w in caught if "merged across" in str(w.message)]
+    assert len(merge_warnings) == 1, (
+        f"expected one merge warning; got {[str(w.message) for w in caught]}"
+    )
+
+
 def test_per_axis_outside_right_legend_top_aligned_with_axes():
     """Regression: ``pp.scatterplot(..., title=...)`` with the default
     outside-right legend used to sit 5 mm below the axes top because
