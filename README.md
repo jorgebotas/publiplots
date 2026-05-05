@@ -106,6 +106,25 @@ ax = pp.scatterplot(
 pp.savefig('figure.pdf')
 ```
 
+## Matplotlib backends
+
+publiplots is **backend-agnostic** — every plot works under any
+matplotlib backend (PNG/JPG via Agg, PDF, SVG, PS, interactive
+Jupyter `inline` / `widget`, desktop GUIs). The library never calls
+`matplotlib.use(...)` implicitly, so it won't override a backend you've
+already picked.
+
+For headless rendering (scripts, CI, notebooks without displays) the
+common pattern is to set Agg in your own code **before** importing
+pyplot:
+
+```python
+import matplotlib
+matplotlib.use("Agg")        # must come before pyplot touches the GUI
+import matplotlib.pyplot as plt
+import publiplots as pp
+```
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues or pull requests.

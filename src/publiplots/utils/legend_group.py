@@ -129,6 +129,17 @@ class MultiAxesLegendGroup:
     its POSITION is always computed against the anchor's chosen edge
     regardless of which axes owns the artist.
 
+    The group can be attached **before or after** the plot calls.
+    Before is marginally more efficient — each plot sees the group,
+    skips its own per-axis legend render, and stashes the entry for
+    the group to collect. After is seamless: the group walks every
+    axes on construction and removes per-axis legend artists whose
+    titles match entries it will claim, then renders the shared
+    legend and lets ``SubplotsAutoLayout`` shrink the per-column /
+    per-row reservations to match. Inside legends for entries the
+    group does NOT claim (different kind, or excluded via ``collect=``)
+    survive the eviction.
+
     Parameters
     ----------
     anchor : Axes, optional
@@ -262,6 +273,14 @@ class MultiAxesLegendGroup:
         # Register on the figure so plot functions can check claims.
         self.anchor.get_figure()._publiplots_legend_group = self
 
+        # Seamless "after" support: if the user attached the group AFTER
+        # calling plot functions, each axes may already carry a
+        # per-axis Legend artist that the group is about to render as a
+        # shared one. Evict those to avoid duplicate (and stale) legend
+        # rendering. Legends for entries NOT claimed by this group (e.g.,
+        # inside legends for a different kind) stay untouched.
+        self._evict_claimed_per_axis_legends()
+
         # Alignment runs on each draw via the reactor hook so it uses
         # the current (possibly still-settling) figure geometry.
         # Absolute positioning → idempotent as geometry converges.
@@ -269,6 +288,64 @@ class MultiAxesLegendGroup:
         # user calls add_legend() directly or relies on auto-collect.
         if self._align != "start":
             self._connect_align_hook()
+
+    def _evict_claimed_per_axis_legends(self) -> None:
+        """Remove per-axis Legend artists that the group will render itself.
+
+        Walks every axes in ``fig._publiplots_axes``. For each stashed
+        LegendEntry this group claims, matches the axes' Legend
+        children by title text and removes them — plus unregisters
+        their ``LayoutReactor`` registrations so the reactor stops
+        repositioning ghost artists and ``SubplotsAutoLayout`` shrinks
+        the per-column/row reservation on the next settle pass.
+        """
+        from matplotlib.legend import Legend
+
+        fig = self.anchor.get_figure()
+        matrix = getattr(fig, "_publiplots_axes", None)
+        if matrix is None:
+            return
+        reactor = self._builder._reactor
+        claimed_names = set()
+        for row in matrix:
+            for ax in row:
+                for entry in get_entries(ax):
+                    if self.claims(entry.name):
+                        claimed_names.add(entry.name)
+
+        if not claimed_names:
+            return
+
+        to_unregister = []
+        for row in matrix:
+            for ax in row:
+                for child in list(ax.get_children()):
+                    if not isinstance(child, Legend):
+                        continue
+                    title = child.get_title().get_text()
+                    if title not in claimed_names:
+                        continue
+                    child.remove()
+                    if ax.legend_ is child:
+                        ax.legend_ = None
+                    to_unregister.append(child)
+
+        if to_unregister:
+            ids = {id(a) for a in to_unregister}
+            reactor._registrations = [
+                r for r in reactor._registrations if id(r.artist) not in ids
+            ]
+            # Also purge from the builders' elements lists (per-axis
+            # builders stored on ax._legend_builder) so duplicate
+            # re-adds don't resurrect them.
+            for row in matrix:
+                for ax in row:
+                    builder = getattr(ax, "_legend_builder", None)
+                    if builder is None:
+                        continue
+                    builder.elements = [
+                        (k, a) for (k, a) in builder.elements if id(a) not in ids
+                    ]
 
     def _connect_align_hook(self) -> None:
         """Wrap LayoutReactor._refresh_all so our alignment callback
