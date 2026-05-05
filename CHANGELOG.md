@@ -5,6 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-05-05
+
+### Added
+- Per-axis inside legend placement via `legend_kws={"inside": True,
+  "loc": "upper right"}`. Drops the legend inside the axes using
+  matplotlib's native corner-based placement instead of the default
+  outside-right column; reactor skips registration so the legend
+  doesn't snap back outward on redraw. Works across every plot
+  function that forwards `legend_kws` (bar, scatter, line, point,
+  strip, swarm, heatmap, ...) (PR #112).
+- `pp.legend_group(side=...)` — the shared-legend band now supports
+  all four sides: `'right'` (default, unchanged), `'bottom'`,
+  `'left'`, `'top'`. `FigureLayout` gains `legend_band_bottom`,
+  `legend_band_top`, `legend_band_left` scalars alongside the
+  existing `legend_column` so the figure grows on the correct side
+  to accommodate the legend (PR #113).
+- `pp.legend_group(anchor=None)` — when no anchor is passed the group
+  is **figure-anchored** and spans the full subplot grid on the
+  chosen side. Passing `anchor=axes[r, c]` pins the band to a single
+  cell and its reservation absorbs into that column's/row's
+  per-cell tuple instead of the figure-level band (PR #113).
+- `pp.legend_group(orientation=, align=)` — horizontal-layout mode
+  for top/bottom bands with per-side auto defaults: bottom/top pick
+  `orientation='horizontal'` + `align='center'`; right/left keep
+  `'vertical'` + `'start'`. Defaults to `ncol=len(handles)` on
+  horizontal legends (user-passed `ncol=` still wins). Alignment
+  supports `'start' | 'center' | 'end'` (PR #113).
+
+### Changed
+- `pp.legend_group(anchor=axes[-1])` now grows that column's per-cell
+  `right[-1]` instead of the figure-level `legend_column`. Visually
+  identical on a 1×N grid; cleaner semantics on 2×2+ grids where a
+  single-cell anchor shouldn't grow the figure's whole right side
+  (PR #113).
+- `LegendLayout` cursor fields renamed to orientation-neutral names
+  (`current_outward`, `current_along`, `advance_along`,
+  `start_new_band`, ...) so horizontal and vertical share one code
+  path. Internal API, no user-visible change unless you were calling
+  `LegendLayout` directly (PR #113).
+
+### Fixed
+- `pp.barplot(color=<hex>, hatch=<col>, hatch_map=...)` with no `hue=`
+  no longer renders black bars. Rewrote the face/hatch/edge paint flow
+  as a single deterministic pass driven by `BarSplitSpec.iter_draw_order`
+  instead of the prior four-pass "seaborn `fill=False` puts palette on
+  edge, copy edge to face later" chain that drifted across matplotlib
+  versions. Closes #105 (PR #108).
+- Top padding of legends attached to a real Axes (per-axis
+  `pp.scatterplot(...)` default and axes-anchored `pp.legend_group(...)`)
+  used to sit 5 mm below the axes rectangle top because `vpad` always
+  defaulted to 5 regardless of anchor kind. `LegendBuilder` now
+  resolves `vpad=None` to 0 for real-Axes anchors (legend top flush
+  with axes) and to 5 for `_GridAnchor` (figure-anchored groups,
+  unchanged). User-passed `vpad=...` still wins (PR #113).
+- Figure-anchored `pp.legend_group(side='bottom'|'left'|'top')` used
+  to crowd axis decorations because `_GridAnchor.get_position()`
+  returned the raw axes-rectangle union. Now returns the
+  **decorated-grid** bbox (axes rectangles plus their per-axis
+  `xlabel_space`/`ylabel_space`/`title_space` reservations), so
+  bottom/left/top bands start past every panel's tick labels and
+  titles (PR #113).
+- `pp.legend_group` now preserves pre-existing Legend children on its
+  anchor axes when `_materialize` runs. Previously, if an inside
+  legend was attached to the same axes as a `legend_group`'s anchor,
+  one of the two legends would be evicted by matplotlib's
+  `ax.legend()` call. Both now survive (PR #112).
+
+### Refactor
+- 5 plot modules (`scatter`, `line`, `point`, `strip`, `swarm`) each
+  inlined the same seven-line render loop over stashed legend
+  entries. Consolidated into `render_entries(ax, flags=,
+  legend_kws=)` with a `_BUILDER_FORWARD_KEYS` allowlist. Net −60 LOC
+  and `legend_kws` now actually flows through to `LegendBuilder`
+  (PR #112).
+
+### Docs
+- New `examples/plots/plot_17_legend_placement.py` — seven sections
+  walking through every placement mode: default outside-right,
+  per-axis inside, figure-anchored on each of the four sides,
+  axes-anchored single-cell, and the inside + group coexistence
+  pattern (PR #113).
+- `examples/plots/plot_01_bar_plots.py` gains three new panels
+  covering `color=` + `hatch=` combinations missed by the previous
+  gallery: fixed color with hatch on a separate column (the exact
+  case from #105), `hue == hatch` merged legend, and `edgecolor=`
+  override alongside `hatch=` (PR #108).
+
+[0.9.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.9.0
+
 ## [0.8.4] - 2026-05-04
 
 ### Added
