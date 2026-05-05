@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-05-05
+
+### Fixed
+- `pp.lineplot` and `pp.pointplot` legend markers now honor the
+  `edgecolor` override (both the explicit argument and
+  `pp.rcParams['edgecolor']`). `HandlerLineMarker.create_artists`
+  extracted the handle's edgecolor but reused the face color for the
+  marker ring, so `edgecolor='black'` had no visible effect on the
+  legend swatch. `pp.scatterplot` was unaffected (it goes through
+  `HandlerMarker`, which already routed `edgecolor` correctly)
+  (PR #118).
+
+[0.9.2]: https://github.com/jorgebotas/publiplots/releases/tag/v0.9.2
+
 ## [0.9.1] - 2026-05-05
 
 ### Added
