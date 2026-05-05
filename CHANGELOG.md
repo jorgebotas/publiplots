@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supports `'start' | 'center' | 'end'` (PR #113).
 
 ### Changed
+- `pp.legend_group` now **merges** label sets across axes when a
+  single name/kind entry appears on multiple panels. Previously it
+  kept first-occurrence only, which meant a hue with levels
+  distributed across panels (e.g., Panel A: `low`, Panel B: `mid`,
+  Panel C: `high`) rendered as a legend with just the first panel's
+  subset. The merged legend now shows the union of labels in
+  first-seen order; a single `UserWarning` fires announcing the
+  merge. When two axes disagree on the *handle* for the same label
+  (different color, marker, etc.), first occurrence wins and a
+  different `UserWarning` calls out the conflict. Continuous-hue
+  (ScalarMappable) entries still fall back to first-occurrence
+  because merging colormaps is ill-defined (PR #114).
 - `pp.legend_group(anchor=axes[-1])` now grows that column's per-cell
   `right[-1]` instead of the figure-level `legend_column`. Visually
   identical on a 1×N grid; cleaner semantics on 2×2+ grids where a

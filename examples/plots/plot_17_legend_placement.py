@@ -249,20 +249,13 @@ pp.show()
 # non-trivial widths.
 
 rng = np.random.default_rng(17)
-# Build the frame so every panel carries all 3 group × 2 time levels —
-# otherwise the group's "merge by first occurrence" pass would only
-# surface whatever subset the first panel happened to contain.
-_bar_rows = []
-for panel in "ABCD":
-    for group, base in [("low", 0.0), ("mid", 1.0), ("high", 2.0)]:
-        for time_val in ["24h", "48h"]:
-            for cat in ["A", "B", "C"]:
-                for _ in range(10):
-                    _bar_rows.append({
-                        "panel": panel, "cat": cat, "group": group,
-                        "time": time_val, "val": base + rng.normal(0, 0.5),
-                    })
-bar_df = pd.DataFrame(_bar_rows)
+bar_df = pd.DataFrame({
+    "cat": np.tile(["A", "B", "C"], 160),
+    "val": rng.normal(size=480) + np.tile([0, 1, 2], 160),
+    "group": np.repeat(["low", "mid", "high"], 160),
+    "time": np.tile(np.repeat(["24h", "48h"], 80), 3),
+    "panel": np.repeat(list("ABCD"), 120),
+})
 
 fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
 pp.legend_group(side="bottom")

@@ -130,7 +130,7 @@ def test_materialize_mismatched_signature_warns_once():
     _stash_on_axes(axes[1], "treatment", "hue", color="blue")   # different palette
     _stash_on_axes(axes[2], "treatment", "hue", color="green")  # yet another
     group = pp.legend_group(anchor=axes[-1])
-    with pytest.warns(UserWarning, match="differs between axes"):
+    with pytest.warns(UserWarning, match="inconsistent handles"):
         group._materialize()
     # Warn-once: calling _materialize again should not re-warn.
     import warnings

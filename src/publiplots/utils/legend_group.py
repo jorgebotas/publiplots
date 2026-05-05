@@ -26,6 +26,27 @@ from publiplots.utils.legend_entries import (
 )
 
 
+def _handle_repr(handle) -> str:
+    """Cheap fingerprint of a matplotlib handle's key visual props.
+
+    Used by ``MultiAxesLegendGroup._merge_entries`` to detect when
+    two axes stashed the same label with a visually different handle
+    (mismatched color / marker / linewidth). Implementation mirrors
+    ``legend_entries._hash_handles`` but for a single handle so we
+    can compare label-by-label without rehashing the whole entry.
+    """
+    parts = [type(handle).__name__]
+    for attr in ("get_facecolor", "get_marker", "get_markersize",
+                 "get_linewidth"):
+        fn = getattr(handle, attr, None)
+        if fn is not None:
+            try:
+                parts.append(repr(fn()))
+            except Exception:
+                pass
+    return "|".join(parts)
+
+
 class _GridAnchor:
     """Virtual Axes proxy spanning the whole publiplots subplot grid
     **including its decorations** (tick labels, axis labels, titles).
@@ -241,6 +262,36 @@ class MultiAxesLegendGroup:
         # Register on the figure so plot functions can check claims.
         self.anchor.get_figure()._publiplots_legend_group = self
 
+        # Alignment runs on each draw via the reactor hook so it uses
+        # the current (possibly still-settling) figure geometry.
+        # Absolute positioning → idempotent as geometry converges.
+        # Connected here (not in _materialize) so it works whether the
+        # user calls add_legend() directly or relies on auto-collect.
+        if self._align != "start":
+            self._connect_align_hook()
+
+    def _connect_align_hook(self) -> None:
+        """Wrap LayoutReactor._refresh_all so our alignment callback
+        runs after every reactor refresh. One wrap per reactor even
+        when multiple groups share it; each group appends its own
+        callback."""
+        if self._align_connected:
+            return
+        reactor = self._builder._reactor
+        if not hasattr(reactor, "_align_callbacks"):
+            reactor._align_callbacks = []
+            _orig_refresh = reactor._refresh_all
+
+            def _refresh_then_align():
+                result = _orig_refresh()
+                for cb in reactor._align_callbacks:
+                    cb()
+                return result
+
+            reactor._refresh_all = _refresh_then_align
+        reactor._align_callbacks.append(self._on_draw_align_cb)
+        self._align_connected = True
+
     def _pick_builder_ax(self) -> Axes:
         """Pick a real axes from the figure to attach Legend artists to.
 
@@ -283,26 +334,19 @@ class MultiAxesLegendGroup:
         if axes_matrix is None:
             return
 
-        seen = {}  # (name, kind) -> LegendEntry
-        order = []  # list of (name, kind) in collection order
+        # Gather all entries per (name, kind) across the grid.
+        by_key = {}   # (name, kind) -> list[LegendEntry]
+        order = []    # (name, kind) in collection order (first-seen)
         for row in axes_matrix:
             for ax in row:
                 for entry in get_entries(ax):
                     if self._collect is not None and entry.name not in self._collect:
                         continue
                     key = (entry.name, entry.kind)
-                    if key in seen:
-                        if seen[key].signature != entry.signature and not self._warned_mismatch:
-                            warnings.warn(
-                                f"legend entry {entry.name!r} ({entry.kind}) "
-                                "differs between axes; group uses first occurrence",
-                                UserWarning,
-                                stacklevel=2,
-                            )
-                            self._warned_mismatch = True
-                        continue
-                    seen[key] = entry
-                    order.append(key)
+                    if key not in by_key:
+                        by_key[key] = []
+                        order.append(key)
+                    by_key[key].append(entry)
 
         if self._collect is not None:
             # Stable sort by the user's collect order; ties (same name with
@@ -310,30 +354,86 @@ class MultiAxesLegendGroup:
             order.sort(key=lambda k: (self._collect.index(k[0]), 0))
 
         for key in order:
-            self._render_entry(seen[key])
+            merged = self._merge_entries(key, by_key[key])
+            self._render_entry(merged)
 
-        # Align pass runs on each draw via the reactor hook so it uses
-        # the current (possibly still-settling) figure geometry.
-        # Absolute positioning → idempotent as geometry converges.
-        if self._align != "start" and not self._align_connected:
-            # Wrap the reactor's _refresh_all to run alignment AFTER it
-            # repositions every registration. That way align sees the
-            # post-refresh anchor position but can still override the
-            # along-edge offsets before matplotlib renders.
-            reactor = self._builder._reactor
-            if not hasattr(reactor, "_align_callbacks"):
-                reactor._align_callbacks = []
-                _orig_refresh = reactor._refresh_all
+    def _merge_entries(self, key, entries):
+        """Merge a list of same-(name, kind) entries into one.
 
-                def _refresh_then_align():
-                    result = _orig_refresh()
-                    for cb in reactor._align_callbacks:
-                        cb()
-                    return result
+        For categorical entries, the union of labels across axes is
+        preserved in first-seen order; handles come from whichever
+        axes stashed each label first. A mismatched signature on
+        shared labels triggers a single warning (first-occurrence
+        wins on conflict, but the merge itself is additive — no
+        labels are dropped).
 
-                reactor._refresh_all = _refresh_then_align
-            reactor._align_callbacks.append(self._on_draw_align_cb)
-            self._align_connected = True
+        Continuous-hue entries (ScalarMappable) cannot be meaningfully
+        merged; first-occurrence wins and we warn if subsequent
+        entries differ.
+        """
+        if len(entries) == 1:
+            return entries[0]
+
+        first = entries[0]
+        # Continuous hue: merging a ScalarMappable is ill-defined
+        # (different cmaps / norms don't concatenate). Keep the first
+        # and warn if anyone else disagrees.
+        if is_continuous_hue(first.handles):
+            for other in entries[1:]:
+                if other.signature != first.signature and not self._warned_mismatch:
+                    warnings.warn(
+                        f"continuous legend entry {first.name!r} differs "
+                        "between axes; group uses first occurrence",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    self._warned_mismatch = True
+                    break
+            return first
+
+        # Categorical: union of (label, handle) pairs, first-seen wins
+        # for each label. Track whether any axes had a different handle
+        # for a label we already have — that's the "signature mismatch"
+        # case where we warn but keep the first handle.
+        merged_labels = []
+        merged_handles = []
+        label_to_handle_repr = {}
+        additive_merge = False
+        conflict = False
+        for entry in entries:
+            for lab, hand in zip(entry.labels, entry.handles):
+                if lab not in label_to_handle_repr:
+                    merged_labels.append(lab)
+                    merged_handles.append(hand)
+                    label_to_handle_repr[lab] = _handle_repr(hand)
+                elif label_to_handle_repr[lab] != _handle_repr(hand):
+                    conflict = True
+            if len(merged_labels) > len(entry.labels):
+                additive_merge = True
+
+        if additive_merge and not self._warned_mismatch:
+            warnings.warn(
+                f"legend entry {first.name!r} ({first.kind}) merged across "
+                f"axes with different label sets; union rendered.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self._warned_mismatch = True
+        if conflict and not self._warned_mismatch:
+            warnings.warn(
+                f"legend entry {first.name!r} ({first.kind}) has inconsistent "
+                "handles for the same label across axes; first occurrence used.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self._warned_mismatch = True
+
+        return LegendEntry.build(
+            name=first.name,
+            kind=first.kind,
+            handles=merged_handles,
+            labels=merged_labels,
+        )
 
     def _on_draw_align_cb(self) -> None:
         """Post-reactor-refresh alignment hook. Runs inside each draw
