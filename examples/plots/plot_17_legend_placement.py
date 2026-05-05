@@ -203,29 +203,30 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
 pp.show()
 
 # %%
-# 8. Multi-kind legends: lineplot (hue + markers/dashes)
-# ------------------------------------------------------
+# 8. Multi-kind legends: lineplot (hue + linestyle)
+# -------------------------------------------------
 # When a plot exposes several orthogonal legend kinds — e.g., a
-# lineplot with both ``hue=`` (3 colored lines) and ``style=`` (2 line
-# styles with dashes and markers) — ``pp.legend_group`` collects each
-# kind as its own legend entry. On a bottom/top horizontal band they
-# sit side-by-side along the edge, centered as a block; the two-kind
-# layout is a good stress test for the along-edge cursor advancing
-# between successive legends.
+# lineplot with both ``hue=`` (3 colored lines) and ``style=`` (2
+# dash styles) — ``pp.legend_group`` collects each kind as its own
+# legend entry. On a bottom/top horizontal band they sit side-by-side
+# along the edge, centered as a block; the two-kind layout is a good
+# stress test for the along-edge cursor advancing between successive
+# legends. ``markers=False`` (the default) keeps the lines crisp —
+# markers would overlap awkwardly with this many time points.
 
 rng = np.random.default_rng(11)
 t = np.linspace(0, 10, 40)
-_rows = []
-for treatment, offset in [("Control", 0.0), ("Low", 0.8), ("High", 1.6)]:
-    for method, jitter in [("raw", 0.0), ("smoothed", 0.3)]:
-        for panel in "ABCD":
+_line_rows = []
+for panel in "ABCD":
+    for treatment, offset in [("Control", 0.0), ("Low", 0.8), ("High", 1.6)]:
+        for method, jitter in [("raw", 0.0), ("smoothed", 0.3)]:
             for tt in t:
-                _rows.append({
+                _line_rows.append({
                     "panel": panel, "time": tt,
                     "value": np.sin(tt) + offset + jitter + rng.normal(0, 0.15),
                     "treatment": treatment, "method": method,
                 })
-line_df = pd.DataFrame(_rows)
+line_df = pd.DataFrame(_line_rows)
 
 fig, axes = pp.subplots(2, 2, axes_size=(50, 30))
 pp.legend_group(side="bottom")
@@ -234,7 +235,6 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
         data=line_df[line_df["panel"] == panel], x="time", y="value",
         hue="treatment", style="method", palette="pastel",
         dashes={"raw": (1, 0), "smoothed": (4, 2)},
-        markers=True,
         title=f"Panel {panel}", ax=axes[r, c],
     )
 pp.show()
@@ -249,13 +249,20 @@ pp.show()
 # non-trivial widths.
 
 rng = np.random.default_rng(17)
-bar_df = pd.DataFrame({
-    "cat": np.tile(["A", "B", "C"], 160),
-    "val": rng.normal(size=480) + np.tile([0, 1, 2], 160),
-    "group": np.repeat(["low", "mid", "high"], 160),
-    "time": np.tile(np.repeat(["24h", "48h"], 80), 3),
-    "panel": np.repeat(list("ABCD"), 120),
-})
+# Build the frame so every panel carries all 3 group × 2 time levels —
+# otherwise the group's "merge by first occurrence" pass would only
+# surface whatever subset the first panel happened to contain.
+_bar_rows = []
+for panel in "ABCD":
+    for group, base in [("low", 0.0), ("mid", 1.0), ("high", 2.0)]:
+        for time_val in ["24h", "48h"]:
+            for cat in ["A", "B", "C"]:
+                for _ in range(10):
+                    _bar_rows.append({
+                        "panel": panel, "cat": cat, "group": group,
+                        "time": time_val, "val": base + rng.normal(0, 0.5),
+                    })
+bar_df = pd.DataFrame(_bar_rows)
 
 fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
 pp.legend_group(side="bottom")
