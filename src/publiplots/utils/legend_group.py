@@ -497,16 +497,12 @@ class MultiAxesLegendGroup:
     def _materialize(self) -> None:
         """Collect stashed entries from every grid axes and render them.
 
-        Called by SubplotsAutoLayout during the settle pass. The first
-        call that finds at least one matching entry renders them and
-        marks the group materialized; earlier calls that see nothing
-        (the group was constructed before its scope's plots ran) are
-        no-ops so the group can materialize on a later draw once
-        entries exist. Once materialized, subsequent calls short-circuit
-        — rendering is a one-shot operation.
+        Called by SubplotsAutoLayout during the settle pass (Task 5).
+        Idempotent — subsequent calls after the first return immediately.
         """
         if self._materialized:
             return
+        self._materialized = True
 
         # Gather all entries per (name, kind) across the group's scope.
         by_key = {}   # (name, kind) -> list[LegendEntry]
@@ -520,13 +516,6 @@ class MultiAxesLegendGroup:
                     by_key[key] = []
                     order.append(key)
                 by_key[key].append(entry)
-
-        if not by_key:
-            # Nothing to render yet — the plot functions haven't stashed
-            # anything in this group's scope. Leave _materialized=False so
-            # a future draw (after the stashing) can try again.
-            return
-        self._materialized = True
 
         if self._collect is not None:
             # Stable sort by the user's collect order; ties (same name with
