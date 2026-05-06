@@ -253,16 +253,26 @@ class SubplotsAutoLayout:
     }
 
     def _apply_legend_band_measurement(self, measured: dict, axes_matrix) -> None:
-        """Measure the figure's pp.legend_group overhang and write it
-        into the correct FigureLayout reservation based on the group's
-        ``side`` and anchor kind."""
-        group = getattr(self._fig, "_publiplots_legend_group", None)
-        if group is None:
+        """Measure every pp.legend_group's overhang and write it into
+        the correct FigureLayout reservation based on each group's
+        ``side`` and anchor kind.
+
+        Multiple groups may coexist on the same figure (each scoped via
+        ``axes=``); each contributes its own measurement. Per-cell
+        reservations accumulate via ``max()`` so two axes-anchored
+        groups targeting different cells both get room.
+        """
+        groups = getattr(self._fig, "_publiplots_legend_groups", None)
+        if not groups:
             return
         dpi = self._fig.dpi
         if dpi <= 0:
             return
 
+        for group in groups:
+            self._measure_one_group(group, measured, axes_matrix, dpi)
+
+    def _measure_one_group(self, group, measured, axes_matrix, dpi) -> None:
         # Force materialization so artists exist to measure.
         group._materialize()
         if not group._builder.elements:
@@ -286,7 +296,10 @@ class SubplotsAutoLayout:
         if group._anchor_kind == "figure":
             if figure_field in self._locked:
                 return
-            measured[figure_field] = overhang_mm
+            # Multiple figure-anchored groups on the same side compete
+            # for the same band; take the tallest so neither clips.
+            existing_scalar = measured.get(figure_field, 0.0)
+            measured[figure_field] = max(existing_scalar, overhang_mm)
             return
 
         # Axes-anchored: grow the per-cell reservation for the anchor's

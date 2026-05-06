@@ -286,3 +286,37 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
         errorbar="se", title=f"Panel {panel}", ax=axes[r, c],
     )
 pp.show()
+
+# %%
+# 10. Scoped legend groups: two independent bands on one figure
+# -------------------------------------------------------------
+# ``pp.legend_group(axes=[...])`` scopes collection to a subset of the
+# grid — the group only gathers entries stashed on those axes, and only
+# evicts per-axis legends on those axes. Multiple scoped groups can
+# coexist on the same figure, each rendering its own band.
+#
+# Below, the top row shares one ``side='top'`` band (treatment colors)
+# and the bottom row shares a separate ``side='bottom'`` band (method
+# markers). Because the scopes are disjoint, no overlap warning fires.
+
+fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
+top_row = list(axes[0])
+bottom_row = list(axes[1])
+# Axes-anchored groups (anchor= → per-cell reservation on the anchor's
+# row). Two independent bands cohabit without stepping on each other's
+# figure-level reservations.
+pp.legend_group(
+    anchor=axes[0, -1], side="top", axes=top_row, collect=["treatment"],
+)
+pp.legend_group(
+    anchor=axes[1, -1], side="bottom", axes=bottom_row, collect=["method"],
+)
+for r, row in enumerate(axes):
+    for c, ax in enumerate(row):
+        pp.lineplot(
+            data=line_df, x="time", y="value",
+            hue="treatment", style="method", palette=treatment_palette,
+            dashes={"raw": (1, 0), "smoothed": (4, 2)},
+            title=f"Panel {(r, c)}", ax=ax,
+        )
+pp.show()

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `pp.legend_group(axes=...)` scopes collection to a subset of the
+  figure's axes. Multiple scoped groups can coexist on the same
+  figure — each collects stashed entries only from its listed axes
+  and evicts per-axis legends only from those axes. Enables
+  independent bands for different subplot regions (e.g. a
+  `side='top'` band for the top row and a `side='bottom'` band for
+  the bottom row, each rendering its own entries). The check also
+  warns when two groups' scopes and `collect` filters overlap so
+  the user can make them disjoint. Figure-anchored groups (no
+  `anchor=`) remain one-per-figure; multi-group use requires
+  `anchor=<axes>` so each band uses a per-cell reservation.
+
 ## [0.9.2] - 2026-05-05
 
 ### Fixed
