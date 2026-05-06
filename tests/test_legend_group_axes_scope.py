@@ -139,14 +139,6 @@ def test_overlapping_axes_scope_warns():
         pp.legend_group(anchor=axes[1])
 
 
-def test_two_figure_anchored_groups_rejected():
-    """Two figure-anchored groups corrupt the settle pass; must raise."""
-    fig, axes = pp.subplots(2, 2, axes_size=(40, 30))
-    pp.legend_group(side="top")
-    with pytest.raises(ValueError, match="Only one figure-anchored"):
-        pp.legend_group(side="bottom")
-
-
 def test_overlapping_scope_disjoint_collect_emits_no_warning():
     """Overlapping axes but disjoint collect= means no entry-claim conflict."""
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))

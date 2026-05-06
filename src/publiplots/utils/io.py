@@ -17,7 +17,7 @@ def savefig(
     filepath: str,
     dpi: Optional[int] = None,
     format: Optional[str] = None,
-    bbox_inches: str = 'tight',
+    bbox_inches: Optional[str] = None,
     transparent: bool = True,
     facecolor: Optional[str] = None,
     edgecolor: Optional[str] = None,
@@ -42,8 +42,13 @@ def savefig(
     format : str, optional
         File format (e.g., 'png', 'pdf', 'svg', 'eps'). If None, inferred
         from filepath extension.
-    bbox_inches : str, default='tight'
-        Bounding box setting. 'tight' removes extra whitespace.
+    bbox_inches : str, optional
+        Bounding box setting. ``None`` (default) preserves publiplots'
+        mm-precise figure layout — the ``pp.subplots`` geometry and any
+        ``pp.legend_group`` bands are already measured exactly. Passing
+        ``'tight'`` re-crops the figure to the union of artist bboxes,
+        which shifts figure-anchored legend bands off-canvas for
+        ``side='top'``/``'bottom'`` setups (see issue #TBD).
     transparent : bool, default=False
         If True, make background transparent (PNG, PDF, SVG).
     facecolor : str, optional

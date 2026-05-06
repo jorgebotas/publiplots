@@ -303,25 +303,6 @@ class MultiAxesLegendGroup:
         if groups is None:
             groups = []
             fig._publiplots_legend_groups = groups
-        # Two figure-anchored groups compete for the figure's
-        # legend_band_* reservations and confuse the settle pass (the
-        # second group's legend position lags a frame behind the shared
-        # _GridAnchor). Require an anchor= (or axes=) for additional
-        # groups on the same figure.
-        if self._anchor_kind == "figure":
-            for other in groups:
-                if other._anchor_kind == "figure":
-                    raise ValueError(
-                        "Only one figure-anchored pp.legend_group is "
-                        "supported per figure. For multiple bands, pass "
-                        "``anchor=<axes>`` and/or ``axes=[...]`` so each "
-                        "group is axes-anchored. "
-                        "Example:\n"
-                        "    pp.legend_group(anchor=axes[0, -1], side='top', "
-                        "axes=list(axes[0]))\n"
-                        "    pp.legend_group(anchor=axes[1, -1], side='bottom', "
-                        "axes=list(axes[1]))"
-                    )
         # Warn if another group already claims any axes in this scope
         # for the same entry name — the later group still gets
         # registered but won't evict/collect from the overlapping axes.

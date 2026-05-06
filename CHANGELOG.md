@@ -14,11 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and evicts per-axis legends only from those axes. Enables
   independent bands for different subplot regions (e.g. a
   `side='top'` band for the top row and a `side='bottom'` band for
-  the bottom row, each rendering its own entries). The check also
-  warns when two groups' scopes and `collect` filters overlap so
-  the user can make them disjoint. Figure-anchored groups (no
-  `anchor=`) remain one-per-figure; multi-group use requires
-  `anchor=<axes>` so each band uses a per-cell reservation.
+  the bottom row, each rendering its own entries). Both
+  figure-anchored and axes-anchored multi-group configurations are
+  supported; a `UserWarning` fires when two groups' scopes and
+  `collect` filters overlap.
+
+### Fixed
+- `pp.savefig` used to force `bbox_inches='tight'`, which
+  re-cropped the figure to the union of artist bboxes. For figures
+  with figure-anchored `pp.legend_group` bands on
+  `side='top'`/`'bottom'`/`'left'`, the crop could place the legend
+  off-canvas and save a blank PNG. The default is now
+  `bbox_inches=None`, letting publiplots' mm-precise `FigureLayout`
+  control the canvas. Pass `bbox_inches='tight'` explicitly to opt
+  back in. The rcParam default `savefig.bbox` was also changed to
+  `'standard'` for consistency.
 
 ## [0.9.2] - 2026-05-05
 
