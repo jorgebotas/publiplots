@@ -988,6 +988,16 @@ class LegendBuilder:
         ax_pos = self._anchor_ax.get_position()
         fig_extent = self.fig.get_window_extent()
 
+        # For axes-anchored builders, step the band past the axes'
+        # decorations (title, tick labels, x/y labels) before adding
+        # the outward gap — ``ax_pos`` is the inner axes frame, not the
+        # outer decorated edge, so ``ax_pos.y1 + 2mm`` for side='top'
+        # would overlap the title. ``get_tightbbox`` returns the axes
+        # union with its decorations. Figure-anchored ``_GridAnchor``
+        # already returns the decorated-grid bbox, so the decoration
+        # offset is 0 for it (short-circuited).
+        decoration_frac = self._anchor_decoration_frac(fig_extent)
+
         # y_mm represents remaining along-edge space; position_from_start
         # is how far we've advanced from the corner where the cursor
         # began (top for right/left, left for bottom/top).
@@ -998,16 +1008,81 @@ class LegendBuilder:
             outward_frac = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.width
             along_frac = (position_from_start * self.MM2INCH * self.fig.dpi) / fig_extent.height
             y_fig = ax_pos.y1 - along_frac
-            x_fig = (ax_pos.x1 + outward_frac) if self._side == "right" \
-                    else (ax_pos.x0 - outward_frac)
+            if self._side == "right":
+                x_fig = ax_pos.x1 + decoration_frac + outward_frac
+            else:  # left
+                x_fig = ax_pos.x0 - decoration_frac - outward_frac
         else:  # bottom | top
             outward_frac = (x_mm * self.MM2INCH * self.fig.dpi) / fig_extent.height
             along_frac = (position_from_start * self.MM2INCH * self.fig.dpi) / fig_extent.width
             x_fig = ax_pos.x0 + along_frac
-            y_fig = (ax_pos.y0 - outward_frac) if self._side == "bottom" \
-                    else (ax_pos.y1 + outward_frac)
+            if self._side == "bottom":
+                y_fig = ax_pos.y0 - decoration_frac - outward_frac
+            else:  # top
+                y_fig = ax_pos.y1 + decoration_frac + outward_frac
 
         return x_fig, y_fig
+
+    def _anchor_decoration_frac(self, fig_extent) -> float:
+        """Distance (in figure-fraction) from ``ax_pos``'s outer edge
+        (on this builder's ``side``) to the anchor's tight-bbox edge,
+        excluding this builder's own registered legend/colorbar
+        artists.
+
+        Measures how much the axes' decorations (title, tick labels,
+        axis labels) extend past the raw axes rectangle on the chosen
+        side. Used by ``_mm_to_figure_coords`` and the LayoutReactor to
+        step the band past those decorations before applying the
+        outward gap.
+
+        Excluding this builder's own artists avoids a positive-feedback
+        loop: the legend is parented on the axes, so a naive
+        ``ax.get_tightbbox()`` would include the legend in the decoration
+        extent, each redraw would push the band further out, and the
+        block would creep across the figure draw-by-draw.
+
+        Returns 0 for figure-anchored (``_GridAnchor``) builders — the
+        grid anchor bbox already excludes the decorated bands.
+        """
+        # Figure-anchored: the _GridAnchor bbox is already past the
+        # decorations (see _GridAnchor.get_position for the math).
+        if self._anchor_ax.__class__.__name__ == "_GridAnchor":
+            return 0.0
+        if not hasattr(self._anchor_ax, "get_tightbbox"):
+            return 0.0
+        # Exclude our own artists from the tightbbox — get_tightbbox
+        # supports a ``bbox_extra_artists`` filter but not an exclusion
+        # list, so we temporarily mark them as not in layout.
+        own_artists = [a for (_, a) in self.elements]
+        prev_in_layout = [
+            (a, a.get_in_layout()) for a in own_artists
+            if hasattr(a, "get_in_layout") and hasattr(a, "set_in_layout")
+        ]
+        for a, _ in prev_in_layout:
+            a.set_in_layout(False)
+        try:
+            tight_px = self._anchor_ax.get_tightbbox()
+        except Exception:
+            tight_px = None
+        finally:
+            for a, prev in prev_in_layout:
+                a.set_in_layout(prev)
+        if tight_px is None:
+            return 0.0
+        ax_pos = self._anchor_ax.get_position()
+        if self._side == "top":
+            tight_frac_y1 = tight_px.y1 / fig_extent.height
+            return max(0.0, tight_frac_y1 - ax_pos.y1)
+        if self._side == "bottom":
+            tight_frac_y0 = tight_px.y0 / fig_extent.height
+            return max(0.0, ax_pos.y0 - tight_frac_y0)
+        if self._side == "right":
+            tight_frac_x1 = tight_px.x1 / fig_extent.width
+            return max(0.0, tight_frac_x1 - ax_pos.x1)
+        if self._side == "left":
+            tight_frac_x0 = tight_px.x0 / fig_extent.width
+            return max(0.0, ax_pos.x0 - tight_frac_x0)
+        return 0.0
 
     def _measure_object_dimensions(self, obj: Union[Legend, Colorbar, Any]) -> Tuple[float, float]:
         """
@@ -1365,6 +1440,10 @@ class LegendBuilder:
             self._layout.advance_along(height)
 
         # Register with the reactor so the anchor follows axes changes.
+        # For axes-anchored builders on sides with natural axes chrome
+        # (top/bottom/left), pass a decoration_frac_fn so the reactor
+        # keeps the band past tick labels / title / axis labels every
+        # draw, not just at initial placement.
         self._reactor.register(
             ax=self._anchor_ax,
             artist=legend,
@@ -1372,6 +1451,7 @@ class LegendBuilder:
             mm_y_from_top=mm_y_from_top,
             side=self._side,
             external_to_axis=self._external_to_axis,
+            decoration_frac_fn=self._anchor_decoration_frac,
         )
 
         # Store element
@@ -1502,6 +1582,7 @@ class LegendBuilder:
                 mm_y_from_top=title_mm_y_from_top,
                 side=self._side,
                 external_to_axis=self._external_to_axis,
+                decoration_frac_fn=self._anchor_decoration_frac,
             )
 
             # Position colorbar below measured title
@@ -1583,6 +1664,7 @@ class LegendBuilder:
             mm_height=cbar_height, # measured mm height (from _measure_object_dimensions)
             side=self._side,
             external_to_axis=self._external_to_axis,
+            decoration_frac_fn=self._anchor_decoration_frac,
         )
 
         # Store elements

@@ -54,6 +54,13 @@ class _Registration:
     # keeps this False — those legends ARE part of the axes' visual
     # footprint.
     external_to_axis: bool = False
+    # Optional callable returning extra distance (figure-fraction) between
+    # the axes' raw edge and the outer decoration boundary on the chosen
+    # side. Used by pp.legend_group(anchor=<axes>, side='top'|...) to
+    # step the band past tick labels / title / axis labels. Must take a
+    # ``fig_extent`` argument (the figure window extent) and return a
+    # non-negative float. None → no offset.
+    decoration_frac_fn: Optional[object] = None
 
 
 class LayoutReactor:
@@ -93,6 +100,7 @@ class LayoutReactor:
         mm_height: Optional[float] = None,
         side: str = "right",
         external_to_axis: bool = False,
+        decoration_frac_fn: Optional[object] = None,
     ) -> None:
         """Track this element; its bbox_to_anchor will be refreshed every draw.
 
@@ -119,6 +127,7 @@ class LayoutReactor:
             mm_height=mm_height,
             side=side,
             external_to_axis=external_to_axis,
+            decoration_frac_fn=decoration_frac_fn,
         ))
 
     def _on_draw(self, event) -> None:
@@ -163,18 +172,30 @@ class LayoutReactor:
         along_frac_x = (reg.mm_y_from_top * _MM2INCH * fig.dpi) / fig_extent.width
         along_frac_y = (reg.mm_y_from_top * _MM2INCH * fig.dpi) / fig_extent.height
 
+        # Decoration offset: distance (figure-fraction) from the raw
+        # axes edge to the outer decoration boundary (title, tick
+        # labels, etc.) on this side. Axes-anchored pp.legend_group uses
+        # it so the band sits past the decorations; most registrations
+        # pass None and this is 0.
+        deco_frac = 0.0
+        if reg.decoration_frac_fn is not None:
+            try:
+                deco_frac = float(reg.decoration_frac_fn(fig_extent)) or 0.0
+            except Exception:
+                deco_frac = 0.0
+
         if reg.side == "right":
-            new_x = ax_pos.x1 + outward_frac_x
+            new_x = ax_pos.x1 + deco_frac + outward_frac_x
             new_y = ax_pos.y1 - along_frac_y
         elif reg.side == "left":
-            new_x = ax_pos.x0 - outward_frac_x
+            new_x = ax_pos.x0 - deco_frac - outward_frac_x
             new_y = ax_pos.y1 - along_frac_y
         elif reg.side == "bottom":
             new_x = ax_pos.x0 + along_frac_x
-            new_y = ax_pos.y0 - outward_frac_y
+            new_y = ax_pos.y0 - deco_frac - outward_frac_y
         elif reg.side == "top":
             new_x = ax_pos.x0 + along_frac_x
-            new_y = ax_pos.y1 + outward_frac_y
+            new_y = ax_pos.y1 + deco_frac + outward_frac_y
         else:
             raise ValueError(f"unknown side: {reg.side!r}")
 

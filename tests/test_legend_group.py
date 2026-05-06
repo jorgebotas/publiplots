@@ -34,7 +34,7 @@ def _anchor_y_fig_frac(leg, fig):
 
 
 def test_legend_group_anchors_to_chosen_axes():
-    fig, axes = plt.subplots(1, 3, figsize=(12, 3))
+    fig, axes = pp.subplots(1, 3, axes_size=(40, 30))
     group = pp.legend_group(anchor=axes[0], x_offset=2)
     leg = group.add_legend(handles=_handles(), label="Treatment", ax=axes[0])
     fig.canvas.draw()
@@ -46,7 +46,7 @@ def test_legend_group_anchors_to_chosen_axes():
 
 
 def test_legend_group_stacks_elements_in_one_column():
-    fig, axes = plt.subplots(1, 3, figsize=(12, 3))
+    fig, axes = pp.subplots(1, 3, axes_size=(40, 60))
     group = pp.legend_group(anchor=axes[0], x_offset=2, gap=2)
     leg_a = group.add_legend(handles=_handles(), label="A", ax=axes[0])
     leg_b = group.add_legend(handles=_handles(), label="B", ax=axes[1])
