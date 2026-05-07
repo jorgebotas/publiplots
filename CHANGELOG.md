@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-05-07
+
+### Added
+
+- `pp.lineplot` now accepts `errorbar=('custom', (lower_col,
+  upper_col))` for rendering precomputed CI bands (e.g. from a LOESS
+  bootstrap, a GAM fit, or a Bayesian posterior) directly as
+  `err_style='band'` — no manual `fill_between` loop per group
+  required. Matches the existing `pp.pointplot` API. See
+  `examples/plots/plot_04_lineplot.py` for a full "raw scatter +
+  smooth + CI band" composition.
+- Shared `publiplots.utils.errorbar.format_for_custom_errorbar`
+  helper backing both `pp.lineplot` and `pp.pointplot`.
+
+### Fixed
+
+- `pp.pointplot` with `errorbar=('custom', ...)` no longer crashes
+  when both x and y are numeric and `orient` is left at the default
+  `None`. Previously the internal `_format_for_custom_errorbar`
+  helper called `orient.isin(...)` on a `str`/`None`, which only
+  avoided an `AttributeError` when one of the axes happened to be
+  categorical.
+
+[0.10.2]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.2
+
 ## [0.10.1] - 2026-05-07
 
 ### Added
