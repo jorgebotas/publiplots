@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/marketplace.schema.json",
+  "name": "publiplots",
+  "owner": { "name": "Jorge Botas" },
+  "plugins": [
+    {
+      "name": "publiplots",
+      "source": ".",
+      "description": "Skills for idiomatic publiplots usage — mm-units layout, rcParams, unified pp.legend scoping."
+    }
+  ]
+}

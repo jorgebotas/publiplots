@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/plugin.schema.json",
+  "name": "publiplots",
+  "version": "0.10.1",
+  "description": "Claude Code skills for the publiplots publication-ready plotting library.",
+  "author": {
+    "name": "Jorge Botas",
+    "email": "jorgebotas.github@gmail.com"
+  },
+  "homepage": "https://github.com/jorgebotas/publiplots",
+  "repository": "https://github.com/jorgebotas/publiplots",
+  "license": "MIT",
+  "keywords": ["plotting", "matplotlib", "seaborn", "publication", "data-visualization"]
+}
