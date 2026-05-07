@@ -100,3 +100,7 @@ To verify that PubliPlots is installed correctly:
    print(pp.__version__)
 
 This should print the installed version number.
+
+.. tip::
+   If you use `Claude Code <https://claude.com/claude-code>`_, check out the
+   :doc:`claude_code_plugin` for install instructions and usage examples.
