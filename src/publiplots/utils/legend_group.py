@@ -931,63 +931,6 @@ class MultiAxesLegendGroup:
         return cbar
 
 
-def legend_group(
-    anchor: Optional[Axes] = None,
-    *,
-    side: str = "right",
-    figure: Optional[Figure] = None,
-    orientation: str = "auto",
-    align: str = "auto",
-    collect: Optional[Sequence[str]] = None,
-    axes: Optional[Sequence[Axes]] = None,
-    x_offset: Optional[float] = None,
-    y_offset: Optional[float] = None,
-    gap: float = 2,
-    column_spacing: float = 5,
-    vpad: Optional[float] = None,
-    max_width: Optional[float] = None,
-) -> MultiAxesLegendGroup:
-    """Create a shared legend band.
-
-    Pass ``anchor=None`` (default) for a **figure-anchored** band that
-    spans the full subplot grid on the chosen side. Pass
-    ``anchor=axes[r, c]`` to pin the band to a single cell; the
-    corresponding per-cell reservation (``right[c]`` for ``side='right'``,
-    ``xlabel_space[r]`` for ``side='bottom'``, etc.) absorbs the band
-    width.
-
-    ``axes=`` scopes collection to a subset of the grid — only entries
-    stashed on those axes are gathered, and only per-axis legends on
-    those axes are evicted. Multiple groups on one figure (each with a
-    disjoint ``axes=``) let you render independent bands for different
-    subplots.
-
-    ``orientation`` defaults to ``'horizontal'`` for ``side='top'|'bottom'``
-    (entries run along the edge left-to-right, multiple legends sit
-    side-by-side, overflow spills outward in new rows) and
-    ``'vertical'`` for ``'right'|'left'`` (current behaviour).
-    ``align`` defaults to ``'center'`` for top/bottom and ``'start'``
-    for left/right.
-
-    See :class:`MultiAxesLegendGroup` for all parameter docs.
-    """
-    return MultiAxesLegendGroup(
-        anchor=anchor,
-        side=side,
-        figure=figure,
-        orientation=orientation,
-        align=align,
-        collect=collect,
-        axes=axes,
-        x_offset=x_offset,
-        y_offset=y_offset,
-        gap=gap,
-        column_spacing=column_spacing,
-        vpad=vpad,
-        max_width=max_width,
-    )
-
-
 def legend(
     axes=None,
     collect: Optional[Sequence[str]] = None,
@@ -1056,30 +999,39 @@ def legend(
     """
     # Resolve anchor + axes per the rules:
     #   axes=None, anchor=None  -> figure-level (whole grid)
-    #   axes=None, anchor=ax    -> scope=[ax]   (back-compat: old legend_group(anchor=ax))
+    #   axes=None, anchor=ax    -> scope=[ax]   (back-compat: old legend_group(anchor=ax),
+    #                                            preserves external-band semantics — no flip)
     #   axes=ax, anchor=None    -> scope=[ax]   (single-axes → sets external_to_axis=False)
     #   axes=list, anchor=None  -> list         (anchor defaults to list[0])
     #   axes=list, anchor=ax    -> list         (anchor as explicit override)
     resolved_anchor = anchor
     resolved_axes = axes
+    # Track whether the caller triggered single-axes scope via the new-API
+    # `axes=ax` form (which opts into the external_to_axis=False flip) vs.
+    # the legacy `anchor=ax` form (which preserves the pre-0.10 external
+    # band behaviour).
+    axes_triggered_single_scope = False
 
     if axes is None and anchor is None:
         # figure-level → anchor stays None, axes stays None
         pass
     elif axes is None and anchor is not None:
-        # Bare anchor=ax → treat as single-axes scope so the group picks up
-        # the external_to_axis=False path (legend lives inside tightbbox).
-        resolved_axes = [anchor]
+        # Bare anchor=ax → preserve legacy pp.legend_group(anchor=ax)
+        # external-band semantics. Scope stays figure-wide; the band pins
+        # to `anchor`'s edge and is measured as an overhang.
+        pass
     elif isinstance(axes, Axes) and anchor is None:
         # Single axes: anchor to that axes; leave resolved_axes=None so
         # MultiAxesLegendGroup.__init__ treats effective scope as [anchor]
         # and the single-axes external_to_axis=False rule fires.
         resolved_anchor = axes
         resolved_axes = None
+        axes_triggered_single_scope = True
     elif isinstance(axes, Axes) and anchor is not None:
         # axes=ax, anchor=other_ax → explicit anchor override, single-axes scope.
         resolved_axes = [axes]
         # resolved_anchor already equals anchor
+        axes_triggered_single_scope = True
     else:
         # axes is a list/array/tuple. anchor may be explicit or None.
         resolved_axes = list(axes)
@@ -1106,24 +1058,19 @@ def legend(
         max_width=max_width,
     )
 
-    # Flip external_to_axis for single-axes scope. The class default is
-    # True (preserving pre-0.10 pp.legend_group(anchor=ax) "external band"
-    # semantics); pp.legend(ax) wants the opposite — an in-frame legend
-    # that lives inside ax.tightbbox and is counted via _side_extent, not
-    # as an overhang. Must mutate BOTH the group attribute (read by
+    # Flip external_to_axis for single-axes scope triggered via the new
+    # `axes=ax` form. The class default is True (preserving pre-0.10
+    # pp.legend_group(anchor=ax) "external band" semantics — which the
+    # legacy `anchor=ax` kwarg form still opts into); pp.legend(ax) /
+    # pp.legend(axes=ax) want the opposite — an in-frame legend that
+    # lives inside ax.tightbbox and is counted via _side_extent, not as
+    # an overhang. Must mutate BOTH the group attribute (read by
     # SubplotsAutoLayout._measure_one_group's commit-3 guard) AND the
     # LegendBuilder's forwarded copy (read by every reactor registration
     # spawned from add_legend/add_colorbar). The factory returns the
     # group BEFORE any add_* / _materialize call, so every subsequent
     # registration picks up the False flag.
-    is_single_axes_scope = (
-        isinstance(resolved_anchor, Axes)
-        and (
-            resolved_axes is None
-            or (len(resolved_axes) == 1 and resolved_axes[0] is resolved_anchor)
-        )
-    )
-    if is_single_axes_scope:
+    if axes_triggered_single_scope:
         group._external_to_axis = False
         group._builder._external_to_axis = False
 

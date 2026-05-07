@@ -63,7 +63,6 @@ from publiplots.utils.legend import (
 )
 from publiplots.utils.legend_group import (
     MultiAxesLegendGroup,
-    legend_group,
     legend,
 )
 from publiplots.layout import subplots
@@ -136,7 +135,6 @@ __all__ = [
     "LegendBuilder",
     "legend",
     "MultiAxesLegendGroup",
-    "legend_group",
     # Layout functions
     "subplots",
     # Color/palette functions

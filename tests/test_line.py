@@ -161,7 +161,7 @@ def test_lineplot_legend_dict_suppresses_hue(line_df):
 def test_lineplot_in_group_suppresses_per_axis_render(line_df):
     from matplotlib.legend import Legend
     fig, axes = pp.subplots(1, 2, axes_size=(50, 40))
-    pp.legend_group(anchor=axes[-1])
+    pp.legend(anchor=axes[-1])
     pp.lineplot(data=line_df, x="t", y="y", hue="g",
                 palette="pastel", ax=axes[0])
     fig.canvas.draw()

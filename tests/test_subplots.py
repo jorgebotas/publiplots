@@ -541,14 +541,14 @@ def test_subplots_negative_tuple_element_raises():
 
 
 def test_auto_layout_figure_anchored_legend_group_uses_legend_column():
-    """Figure-anchored ``pp.legend_group()`` writes overhang into
+    """Figure-anchored ``pp.legend()`` writes overhang into
     ``legend_column`` (the far-right scalar reservation), leaving every
     per-column ``right[]`` at baseline."""
     from publiplots.utils.legend import create_legend_handles
     fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
     for ax in axes:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group()  # figure-anchored (no explicit anchor)
+    group = pp.legend()  # figure-anchored (no explicit anchor)
     group.add_legend(
         handles=create_legend_handles(
             labels=["A", "B", "C"],
@@ -572,14 +572,14 @@ def test_auto_layout_figure_anchored_legend_group_uses_legend_column():
 
 
 def test_auto_layout_axes_anchored_legend_group_grows_per_cell_right():
-    """Axes-anchored ``pp.legend_group(anchor=axes[r, c])`` grows the
+    """Axes-anchored ``pp.legend(anchor=axes[r, c])`` grows the
     anchor column's per-cell ``right[c]``, not the figure-level
     ``legend_column``."""
     from publiplots.utils.legend import create_legend_handles
     fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
     for ax in axes:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(anchor=axes[-1])  # axes-anchored, last column
+    group = pp.legend(anchor=axes[-1])  # axes-anchored, last column
     group.add_legend(
         handles=create_legend_handles(
             labels=["A", "B", "C"],
@@ -684,7 +684,7 @@ def test_legend_column_auto_grows_with_group():
             labels=("A", "B"),
         ),
     )
-    pp.legend_group()  # figure-anchored (no anchor=)
+    pp.legend()  # figure-anchored (no anchor=)
     fig.savefig("/tmp/test_legend_column_auto.png")
     layout = fig._publiplots_layout
     assert layout.legend_column > 5.0, (
@@ -696,7 +696,7 @@ def test_legend_column_stays_small_with_empty_group():
     """No stashed entries and no manual adds -> group has no artists ->
     legend_column stays near zero."""
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
-    pp.legend_group(anchor=axes[-1])
+    pp.legend(anchor=axes[-1])
     # No stashing, no manual add_legend calls.
     fig.savefig("/tmp/test_legend_column_empty.png")
     layout = fig._publiplots_layout

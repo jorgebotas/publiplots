@@ -8,11 +8,11 @@ publiplots offers three complementary legend-placement knobs:
    drops the legend inside the axes using matplotlib's corner-based
    placement. No reactor, no layout reservation — just a local legend.
 
-2. **Figure-anchored group**: ``pp.legend_group(side=...)`` (no anchor)
+2. **Figure-anchored group**: ``pp.legend(side=...)`` (no anchor)
    spans the full subplot grid on the chosen side. The figure grows on
    that side to accommodate the legend; panel sizes stay inviolate.
 
-3. **Axes-anchored group**: ``pp.legend_group(anchor=axes[r,c], side=...)``
+3. **Axes-anchored group**: ``pp.legend(anchor=axes[r,c], side=...)``
    pins the band to a single cell. The corresponding per-cell reservation
    (``right[c]`` for ``side='right'``, ``xlabel_space[r]`` for
    ``side='bottom'``, ...) absorbs the band width, pushing just that
@@ -76,12 +76,12 @@ pp.show()
 # %%
 # 3. Figure-anchored ``side='right'`` on a 2×2 grid
 # -------------------------------------------------
-# ``pp.legend_group()`` without an ``anchor=`` spans the full figure
+# ``pp.legend()`` without an ``anchor=`` spans the full figure
 # vertically, tucked past the rightmost column. Auto-collects every
 # stashed entry from every panel; dedupes by name.
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
-pp.legend_group(side="right")
+pp.legend(side="right")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=_df[_df["panel"] == panel], x="x", y="y",
@@ -100,7 +100,7 @@ pp.show()
 # balanced under the grid.
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
-pp.legend_group(side="bottom")
+pp.legend(side="bottom")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=_df[_df["panel"] == panel], x="x", y="y",
@@ -117,7 +117,7 @@ pp.show()
 # the first panel column rather than the figure midline.
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
-pp.legend_group(side="bottom", align="start")
+pp.legend(side="bottom", align="start")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=_df[_df["panel"] == panel], x="x", y="y",
@@ -133,7 +133,7 @@ pp.show()
 # figures with a strong vertical hierarchy or right-to-left reading order.
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
-pp.legend_group(side="top")
+pp.legend(side="top")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=_df[_df["panel"] == panel], x="x", y="y",
@@ -143,7 +143,7 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
 pp.show()
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
-pp.legend_group(side="left")
+pp.legend(side="left")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=_df[_df["panel"] == panel], x="x", y="y",
@@ -163,7 +163,7 @@ pp.show()
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
 # Anchor the band to the top-right panel only.
-pp.legend_group(anchor=axes[0, 1], side="right")
+pp.legend(anchor=axes[0, 1], side="right")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=_df[_df["panel"] == panel], x="x", y="y",
@@ -192,7 +192,7 @@ split_df = pd.DataFrame({
 })
 
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
-pp.legend_group(side="bottom", collect=["group"])
+pp.legend(side="bottom", collect=["group"])
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.scatterplot(
         data=split_df[split_df["panel"] == panel], x="x", y="y",
@@ -238,7 +238,7 @@ treatment_palette = dict(zip(
 ))
 
 fig, axes = pp.subplots(2, 2, axes_size=(50, 30))
-pp.legend_group(side="bottom")
+pp.legend(side="bottom")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.lineplot(
         data=line_df[line_df["panel"] == panel], x="time", y="value",
@@ -277,7 +277,7 @@ group_palette = dict(zip(
 ))
 
 fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
-pp.legend_group(side="bottom")
+pp.legend(side="bottom")
 for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
     pp.barplot(
         data=bar_df[bar_df["panel"] == panel], x="cat", y="val",
@@ -298,8 +298,8 @@ pp.show()
 # figure-anchored groups on the same grid.
 
 fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
-pp.legend_group(side="top", collect=["treatment"])
-pp.legend_group(side="bottom", collect=["method"])
+pp.legend(side="top", collect=["treatment"])
+pp.legend(side="bottom", collect=["method"])
 for r, row in enumerate(axes):
     for c, ax in enumerate(row):
         pp.lineplot(
@@ -322,10 +322,10 @@ pp.show()
 fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
 top_row = list(axes[0])
 bottom_row = list(axes[1])
-pp.legend_group(
+pp.legend(
     anchor=axes[0, -1], side="top", axes=top_row, collect=["treatment"],
 )
-pp.legend_group(
+pp.legend(
     anchor=axes[1, -1], side="bottom", axes=bottom_row, collect=["method"],
 )
 for r, row in enumerate(axes):

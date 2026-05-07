@@ -165,7 +165,7 @@ def test_bar_in_group_suppresses_per_axis_render():
     from matplotlib.legend import Legend
     df = _bar_df()
     fig, axes = pp.subplots(1, 2, axes_size=(50, 40))
-    pp.legend_group(anchor=axes[-1])
+    pp.legend(anchor=axes[-1])
     pp.barplot(
         data=df, x="cond", y="value",
         hue="treat", hatch="cond",

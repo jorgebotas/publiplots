@@ -73,7 +73,7 @@ def test_scatterplot_in_group_suppresses_per_axis_render():
     from matplotlib.legend import Legend
     df = _scatter_df()
     fig, axes = pp.subplots(1, 2, axes_size=(50, 40))
-    pp.legend_group(anchor=axes[-1])
+    pp.legend(anchor=axes[-1])
     pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=axes[0])
     fig.canvas.draw()
     per_axis_legends = [c for c in axes[0].get_children() if isinstance(c, Legend)]

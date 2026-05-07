@@ -405,7 +405,7 @@ pp.show()
 # Shared Legend Across Subplots
 # ------------------------------
 # When several bar subplots share the same ``hue`` and ``hatch`` variables,
-# attach ``pp.legend_group(anchor=...)`` before drawing. Each ``barplot``
+# attach ``pp.legend(anchor=...)`` before drawing. Each ``barplot``
 # stashes its hue + hatch entries on the corresponding axes; the group
 # collects them (deduped by name across subplots) and renders a single
 # legend on the right of the rightmost subplot — with both the hue swatches
@@ -420,7 +420,7 @@ shared_df = pd.DataFrame({
 })
 
 fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
-pp.legend_group(anchor=axes[-1])
+pp.legend(anchor=axes[-1])
 for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
     pp.barplot(
         data=shared_df, x="cat", y="val",
@@ -438,7 +438,7 @@ pp.show()
 # The two placement modes compose. When a genuine double-split bar
 # (``hue`` and ``hatch`` both distinct from the categorical axis) has
 # one dimension repeated across panels and another that's panel-local
-# information, ``pp.legend_group(collect=[...])`` lifts the shared
+# information, ``pp.legend(collect=[...])`` lifts the shared
 # entry into a single figure-level legend while ``legend_kws={"inside":
 # True, ...}`` keeps the non-collected entry inside each axes. Here the
 # ``group`` color palette is shared across the three samples (collected
@@ -446,7 +446,7 @@ pp.show()
 # into each axes' upper-left corner).
 
 fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
-pp.legend_group(anchor=axes[-1], collect=["group"])
+pp.legend(anchor=axes[-1], collect=["group"])
 for ax, title in zip(axes, ["Sample A", "Sample B", "Sample C"]):
     pp.barplot(
         data=shared_df, x="cat", y="val",

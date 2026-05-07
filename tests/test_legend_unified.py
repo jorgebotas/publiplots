@@ -55,12 +55,12 @@ def test_legend_multi_axes_scope_external_to_axis_is_true(df):
 
 def test_legend_matches_legend_group_for_side_right(df):
     """Unified pp.legend(side='right') should be byte-compatible with the
-    old pp.legend_group(side='right') for the common figure-level case."""
+    old pp.legend(side='right') for the common figure-level case."""
     import io
     fig1, axes1 = pp.subplots(1, 2)
     for ax in axes1.flat:
         pp.scatterplot(df, x='x', y='y', hue='g', ax=ax, legend=False)
-    pp.legend_group(side='right')
+    pp.legend(side='right')
     buf1 = io.BytesIO()
     fig1.savefig(buf1, format='png')
 

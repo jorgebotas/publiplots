@@ -92,7 +92,7 @@ mixed_data = pd.DataFrame({
 # column on the right whose width is auto-measured from the rendered
 # entries — no manual `legend_column=...` guess.
 #
-# `pp.legend_group(anchor=...)` attaches BEFORE the plot calls. Plotting
+# `pp.legend(anchor=...)` attaches BEFORE the plot calls. Plotting
 # functions that stash entries (scatterplot, stripplot, swarmplot,
 # pointplot in this release) see the group and skip their own per-axis
 # legend — the group claims and renders their entries instead.
@@ -101,7 +101,7 @@ mixed_data = pd.DataFrame({
 # scatterplot on the right anchors the shared "group" entry for the whole
 # row since all three panels share the same hue variable.
 fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
-pp.legend_group(anchor=axes[-1])
+pp.legend(anchor=axes[-1])
 
 pp.barplot(
     data=mixed_data, x='group', y='value', hue='group',
@@ -172,7 +172,7 @@ pp.raincloudplot(
 
 # Both panels share the same groups, so one legend to the right of the
 # rightmost axes serves both.
-group = pp.legend_group(anchor=axes[-1])
+group = pp.legend(anchor=axes[-1])
 group.add_legend(
     handles=pp.create_legend_handles(
         labels=['Control', 'Low Dose', 'High Dose'],

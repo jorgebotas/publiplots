@@ -60,7 +60,6 @@ from publiplots.utils.legend import (
 
 from publiplots.utils.legend_group import (
     MultiAxesLegendGroup,
-    legend_group,
     legend,
 )
 
@@ -119,7 +118,6 @@ __all__ = [
     "LegendBuilder",
     "legend",
     "MultiAxesLegendGroup",
-    "legend_group",
     # Transparency functions
     "apply_transparency",
     # Offset functions
