@@ -339,17 +339,23 @@ for r, row in enumerate(axes):
 pp.show()
 
 # %%
-# 11. Row band — ``pp.legend(axes[0], side='top')``
-# -------------------------------------------------
+# 11. Row bands — ``pp.legend(axes[0], side='top')`` + inter-row band
+# ------------------------------------------------------------------
 # New in 0.10: passing a **row of axes** as the positional scope creates
 # a band pinned to that row's top edge, centered on the row's width
-# only (not the full figure). Ideal for a 2xN grid where the top row
-# carries the hue you want to highlight and the bottom row shows
-# follow-up/derived views that don't need their own legend.
+# only (not the full figure). Ideal for a 2xN grid where each row
+# carries its own hue that deserves its own legend.
+#
+# Here we place **two** row bands on the same figure: one above row 0
+# (at the top of the figure) and one above row 1 (**between** the two
+# rows). The second band is the interesting case — it exercises the
+# auto-layout's ability to negotiate per-row reservations so the
+# inter-row band opens enough vertical space without colliding with
+# row 0's xlabels below.
 #
 # Contrast with ``pp.legend(side='top')`` (section 5, top case): that
-# variant spans the full grid width. Here the band sits over row 0
-# only, reserving vertical space inside that row's column block.
+# variant spans the full grid width as a single band. Here we get two
+# distinct bands, each scoped to its own row's width.
 #
 # Migration note: pre-0.10 this pattern required explicitly passing
 # ``anchor=`` AND ``axes=`` (see section 10b). With 0.10 the single
@@ -357,6 +363,7 @@ pp.show()
 
 fig, axes = pp.subplots(2, 3, axes_size=(35, 25))
 pp.legend(axes[0], side="top", collect=["group"])
+pp.legend(axes[1], side="top", collect=["group"])
 _panel_cycle = ["A", "B", "C", "D", "A", "B"]
 for r, row in enumerate(axes):
     for c, ax in enumerate(row):
