@@ -125,6 +125,22 @@ import matplotlib.pyplot as plt
 import publiplots as pp
 ```
 
+## Claude Code plugin
+
+publiplots ships a [Claude Code](https://claude.com/claude-code) plugin with skills that teach Claude to write idiomatic publiplots code (mm-units layout, `pp.subplots` over `plt.subplots`, unified `pp.legend` scoping). Install via the built-in marketplace:
+
+```
+/plugin marketplace add jorgebotas/publiplots
+/plugin install publiplots@publiplots
+```
+
+The plugin includes two skills:
+
+- `/publiplots:publiplots-guide` — core library conventions, full `pp.*` API, canonical idioms and gotchas.
+- `/publiplots:legend-placement` — `pp.legend` scoping decision tree (per-axes, row/column bands, figure-level bands) and the `pp.legend(ax)` vs `pp.legend(anchor=ax)` asymmetry.
+
+Both skills also auto-activate when Claude detects publiplots-related work. The plugin version tracks the library version — pin a specific release with `@v0.10.1` in the marketplace source.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
