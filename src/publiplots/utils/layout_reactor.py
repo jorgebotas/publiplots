@@ -54,6 +54,16 @@ class _Registration:
     # keeps this False — those legends ARE part of the axes' visual
     # footprint.
     external_to_axis: bool = False
+    # Extra outward mm the band must step past to clear axes decorations
+    # (title above ax.y1 on side='top', xlabel below ax.y0 on side='bottom',
+    # ylabel left of ax.x0 on side='left'). Baked in once by
+    # SubplotsAutoLayout._measure_one_group so the reactor's per-draw
+    # refresh stays free of ``get_tightbbox`` / ``set_in_layout`` calls
+    # (those inside the reactor were the source of the sphinx-gallery
+    # blank-PNG regression; see revert 582d754). For side='right' there
+    # is no decoration past the axes edge so the value stays 0 and the
+    # classic placement is preserved.
+    mm_outward_decoration_offset: float = 0.0
 
 
 class LayoutReactor:
@@ -158,8 +168,15 @@ class LayoutReactor:
         fig_extent = fig.get_window_extent()
         # Convert mm offsets to figure fractions. outward_frac is mm away
         # from the chosen edge; along_frac is mm into the edge's tangent.
-        outward_frac_x = (reg.mm_x_from_right * _MM2INCH * fig.dpi) / fig_extent.width
-        outward_frac_y = (reg.mm_x_from_right * _MM2INCH * fig.dpi) / fig_extent.height
+        # mm_outward_decoration_offset steps the band past the anchor's axes
+        # decorations (title / xlabel / ylabel) that live on the outward
+        # side of the axes rectangle. It is pre-computed once per settle
+        # cycle by SubplotsAutoLayout._measure_one_group (see that module
+        # for the measurement source — the reactor MUST NOT call
+        # get_tightbbox / set_in_layout during refresh).
+        outward_mm = reg.mm_x_from_right + reg.mm_outward_decoration_offset
+        outward_frac_x = (outward_mm * _MM2INCH * fig.dpi) / fig_extent.width
+        outward_frac_y = (outward_mm * _MM2INCH * fig.dpi) / fig_extent.height
         along_frac_x = (reg.mm_y_from_top * _MM2INCH * fig.dpi) / fig_extent.width
         along_frac_y = (reg.mm_y_from_top * _MM2INCH * fig.dpi) / fig_extent.height
 

@@ -275,6 +275,13 @@ class MultiAxesLegendGroup:
         self._warned_mismatch = False
         self._align_connected = False
         self._aligning = False  # re-entrancy guard for _on_draw_align
+        # Mm the band overhangs past the anchor's axes edge on the chosen
+        # side — written by SubplotsAutoLayout._measure_one_group on each
+        # settle iteration. We keep a local copy so the measurement pass
+        # can subtract our own contribution from the cell's reservation
+        # to derive the *pure* decoration base (title/xlabel/ylabel height
+        # without the band) without a separate tightbbox measurement.
+        self._band_contribution_mm: float = 0.0
         # anchor_ax=self.anchor pins position math/reactor to the anchor
         # regardless of self.ax swaps during add_* calls. For
         # figure-anchored groups anchor_ax is the _GridAnchor proxy,
@@ -497,12 +504,16 @@ class MultiAxesLegendGroup:
     def _materialize(self) -> None:
         """Collect stashed entries from every grid axes and render them.
 
-        Called by SubplotsAutoLayout during the settle pass (Task 5).
-        Idempotent — subsequent calls after the first return immediately.
+        Called by SubplotsAutoLayout during the settle pass. The first
+        call that finds at least one matching entry renders them and
+        marks the group materialized; earlier calls that see nothing
+        (the group was constructed BEFORE its scope's plots ran) are
+        no-ops so the group can materialize on a later draw once
+        entries exist. Once materialized, subsequent calls short-circuit
+        — rendering is a one-shot operation.
         """
         if self._materialized:
             return
-        self._materialized = True
 
         # Gather all entries per (name, kind) across the group's scope.
         by_key = {}   # (name, kind) -> list[LegendEntry]
@@ -516,6 +527,13 @@ class MultiAxesLegendGroup:
                     by_key[key] = []
                     order.append(key)
                 by_key[key].append(entry)
+
+        if not by_key:
+            # Nothing to render yet — the plot functions haven't stashed
+            # anything in this group's scope. Leave _materialized=False so
+            # a future draw (after the stashing) can try again.
+            return
+        self._materialized = True
 
         if self._collect is not None:
             # Stable sort by the user's collect order; ties (same name with
@@ -683,6 +701,24 @@ class MultiAxesLegendGroup:
                 cursor += extent + gap_mm
 
         reactor._refresh_all()
+
+    def _set_decoration_offset(self, mm: float) -> None:
+        """Bake ``mm`` into every reactor registration this group owns.
+
+        Called by ``SubplotsAutoLayout._measure_one_group`` inside the
+        layout measurement pass — a known-safe context (the reactor is
+        mid-refresh but this is not itself a reactor callback). The next
+        ``_update_artist_anchor`` call picks up the new value via
+        ``reg.mm_outward_decoration_offset`` and repositions the artist past the
+        anchor's decorations on the chosen side.
+        """
+        if not self._builder.elements:
+            return
+        reactor = self._builder._reactor
+        element_ids = {id(a) for _, a in self._builder.elements}
+        for reg in reactor._registrations:
+            if id(reg.artist) in element_ids:
+                reg.mm_outward_decoration_offset = mm
 
     def _render_entry(self, entry: LegendEntry) -> None:
         """Route to add_legend (categorical) or add_colorbar (continuous)."""

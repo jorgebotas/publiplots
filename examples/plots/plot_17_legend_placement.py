@@ -322,10 +322,12 @@ pp.show()
 fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
 top_row = list(axes[0])
 bottom_row = list(axes[1])
-# Attach the scoped groups AFTER the plot calls. On grids with
-# axes-anchored groups, attaching after is the tested path — the group
-# picks up each axes' stashed entries via ``_evict_claimed_per_axis_legends``
-# as soon as it's constructed.
+pp.legend_group(
+    anchor=axes[0, -1], side="top", axes=top_row, collect=["treatment"],
+)
+pp.legend_group(
+    anchor=axes[1, -1], side="bottom", axes=bottom_row, collect=["method"],
+)
 for r, row in enumerate(axes):
     for c, ax in enumerate(row):
         pp.lineplot(
@@ -334,10 +336,4 @@ for r, row in enumerate(axes):
             dashes={"raw": (1, 0), "smoothed": (4, 2)},
             title=f"Panel {(r, c)}", ax=ax,
         )
-pp.legend_group(
-    anchor=axes[0, -1], side="right", axes=top_row, collect=["treatment"],
-)
-pp.legend_group(
-    anchor=axes[1, -1], side="right", axes=bottom_row, collect=["method"],
-)
 pp.show()

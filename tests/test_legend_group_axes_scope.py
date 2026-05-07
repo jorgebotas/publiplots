@@ -189,3 +189,59 @@ def test_two_groups_materialize_independently_on_draw():
     assert len(ax1_legends) == 1
     assert ax0_legends[0].get_title().get_text() == "treatment"
     assert ax1_legends[0].get_title().get_text() == "dose"
+
+
+def test_measure_one_group_reads_pure_decoration_before_writing():
+    """Pin the load-bearing statement order in ``_measure_one_group``.
+
+    The decoration offset baked into each reactor registration must be
+    the *pure* decoration value ``_side_extent`` measured (our legend
+    excluded via ``set_in_layout(False)``), NOT the grown reservation
+    that includes the band's own overhang. If a future refactor
+    reorders the write before the read, ``pure_decoration_mm`` would
+    equal ``existing + overhang`` instead of ``existing`` — the band
+    would be placed progressively farther out each settle iteration,
+    blowing the figure open. This test fails immediately if that
+    ordering is broken.
+    """
+    fig, axes = pp.subplots(2, 2, axes_size=(40, 30))
+    _stash_hue(axes[0, 0], "treatment")
+    group = pp.legend_group(
+        anchor=axes[0, 0], axes=[axes[0, 0]], side="top", collect=["treatment"],
+    )
+    group._materialize()
+    assert group._builder.elements, "group must have rendered something"
+
+    # Capture every mm value _set_decoration_offset receives.
+    calls = []
+    original = group._set_decoration_offset
+    def spy(mm):
+        calls.append(mm)
+        return original(mm)
+    group._set_decoration_offset = spy
+
+    # Pre-populate measured[title_space][r] with a known pure-decoration
+    # value, then invoke _measure_one_group. The spy should see that
+    # exact value, not the post-write total (which would be decoration +
+    # overhang).
+    auto = fig._publiplots_auto_layout
+    nrows = len(auto._axes_matrix())
+    pure_decoration_mm = 4.0  # simulate a title of 4mm height
+    measured = {"title_space": tuple(pure_decoration_mm for _ in range(nrows))}
+    auto._measure_one_group(group, measured, auto._axes_matrix(), fig.dpi)
+
+    assert calls, "_measure_one_group must call _set_decoration_offset"
+    baked = calls[-1]
+    assert baked == pytest.approx(pure_decoration_mm, abs=0.01), (
+        f"expected decoration offset to equal pre-existing measurement "
+        f"({pure_decoration_mm}mm), got {baked}mm — this suggests the "
+        f"read-then-write ordering in _measure_one_group was violated."
+    )
+
+    # And the reservation itself must have grown to include both.
+    assert measured["title_space"][0] >= pure_decoration_mm, (
+        "reservation must cover the pure decoration at minimum"
+    )
+    assert measured["title_space"][0] > pure_decoration_mm, (
+        "reservation must also cover the band's overhang beyond decoration"
+    )
