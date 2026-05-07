@@ -64,9 +64,13 @@ def raincloudplot(
     """
     Create a publication-ready raincloud plot.
 
-    A raincloud plot combines a half-violin plot (cloud), a box plot (umbrella),
-    and a strip/swarm plot (rain) to show both the distribution and individual
-    data points.
+    A raincloud plot composes three publiplots primitives onto the same axes:
+    a half-violin (the "cloud", drawn by :func:`publiplots.violinplot` with
+    ``side=cloud_side``), a narrow box-and-whiskers (the "umbrella", drawn by
+    :func:`publiplots.boxplot`), and a strip or swarm of raw points (the
+    "rain", drawn by :func:`publiplots.stripplot` / :func:`publiplots.swarmplot`).
+    The box and rain layers are offset away from the cloud so each component
+    is legible.
 
     Parameters
     ----------
@@ -112,17 +116,23 @@ def raincloudplot(
         Width of the box plot.
     box_kws : dict, optional
         Additional keyword arguments for box plot.
-    rain : Literal["strip", "swarm"], default="strip"
-        Type of rain plot: "strip" or "swarm".
+    rain : {"strip", "swarm"}, default="strip"
+        Type of rain plot: ``"strip"`` (jittered) or ``"swarm"`` (beeswarm).
     rain_kws : dict, optional
-        Additional keyword arguments for rain plot.
-    box_offset : float, default=0.0
-        Offset for the box plot from center position.
-    rain_offset : float, default=-0.15
-        Offset for rain points from center position. Negative values move
-        points to the left (for vertical) or down (for horizontal).
+        Additional keyword arguments for rain plot. Default:
+        ``dict(alpha=0.5, linewidth=0)``.
+    box_offset : float, default=0.2
+        Offset for the box plot from the center position. Sign is flipped
+        automatically so that the box lands on the side opposite ``cloud_side``.
+    rain_offset : float, default=0.2
+        Offset for rain points from the center position. Sign is flipped
+        automatically so that the rain lands on the side opposite ``cloud_side``.
+    edgecolor : str, optional
+        Color for element edges. When None, resolved from
+        ``publiplots.rcParams["edgecolor"]``.
     linewidth : float, optional
-        Width of edges.
+        Width of edges. When None, resolved from
+        ``publiplots.rcParams["lines.linewidth"]``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -155,6 +165,20 @@ def raincloudplot(
     >>> ax = pp.raincloudplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
+
+    Raincloud with swarm "rain" layer and cloud on the left:
+
+    >>> ax = pp.raincloudplot(
+    ...     data=df, x="category", y="value",
+    ...     rain="swarm", cloud_side="left"
+    ... )
+
+    See Also
+    --------
+    publiplots.violinplot : The half-violin "cloud" component (``side=``).
+    publiplots.boxplot : The box "umbrella" component.
+    publiplots.stripplot : The jittered "rain" component (default).
+    publiplots.swarmplot : The beeswarm "rain" component (``rain="swarm"``).
     """
     # Read defaults from rcParams if not provided.
     linewidth = resolve_param("lines.linewidth", linewidth)
