@@ -113,11 +113,14 @@ def heatmap(
     size_norm : tuple or Normalize, optional
         Normalization for size values. If tuple, (vmin, vmax).
     alpha : float, optional
-        Transparency for markers in dot mode. Uses rcParams default.
+        Transparency for markers in dot mode. When None, resolved from
+        ``publiplots.rcParams["alpha"]``.
     linewidth : float, optional
-        Edge linewidth for markers in dot mode. Uses rcParams default.
+        Edge linewidth for markers in dot mode. When None, resolved from
+        ``publiplots.rcParams["lines.linewidth"]``.
     edgecolor : str, optional
         Edge color for markers in dot mode. If None, uses marker color.
+        Can also be set globally via ``publiplots.rcParams["edgecolor"]``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -169,6 +172,12 @@ def heatmap(
     Annotated heatmap:
 
     >>> ax = pp.heatmap(matrix, annot=True, fmt=".1f")
+
+    See Also
+    --------
+    publiplots.complex_heatmap : Heatmap with margin plots and dendrograms.
+    publiplots.dendrogram : Standalone dendrogram for clustered data.
+    publiplots.scatterplot : Underlies the dot-heatmap mode (when ``size`` is set).
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
@@ -564,9 +573,12 @@ def complex_heatmap(
     """
     Create a complex heatmap builder for adding margin plots.
 
-    This function returns a builder object that allows adding plots to the
-    margins of a heatmap using method chaining. Call `.build()` to render
-    the final figure.
+    This function returns a :class:`ComplexHeatmapBuilder` that composes a
+    main :func:`publiplots.heatmap` with aligned margin plots (any publiplots
+    or user function that accepts ``ax=``) and optional row/column
+    hierarchical clustering with dendrograms. Margin plots are attached via
+    ``.add_top()`` / ``.add_bottom()`` / ``.add_left()`` / ``.add_right()``
+    and the figure is rendered by ``.build()``.
 
     Parameters
     ----------
@@ -668,6 +680,11 @@ def complex_heatmap(
     >>> axes['main']      # Main heatmap
     >>> axes['top'][0]    # First top margin plot
     >>> axes['left'][0]   # First left margin plot
+
+    See Also
+    --------
+    publiplots.heatmap : Simple heatmap without margin plots.
+    publiplots.dendrogram : Dendrogram used by the clustering options.
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
@@ -1321,6 +1338,24 @@ def dendrogram(
     -------
     Axes
         The axes where the dendrogram was drawn.
+
+    Examples
+    --------
+    Dendrogram from raw data:
+
+    >>> ax = pp.dendrogram(data=df, method="ward", metric="euclidean")
+
+    Dendrogram from a precomputed linkage (e.g. sharing linkage with a heatmap):
+
+    >>> from scipy.cluster.hierarchy import linkage
+    >>> Z = linkage(df.values, method="ward")
+    >>> ax = pp.dendrogram(linkage=Z, orientation="left")
+
+    See Also
+    --------
+    publiplots.complex_heatmap : Automatically attaches dendrograms when
+        ``row_cluster=True`` or ``col_cluster=True``.
+    publiplots.heatmap : Standard heatmap primitive.
     """
     from scipy.cluster.hierarchy import dendrogram as scipy_dendrogram
     from scipy.cluster.hierarchy import linkage as compute_linkage
