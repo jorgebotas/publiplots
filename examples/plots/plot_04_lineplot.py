@@ -249,3 +249,47 @@ for ax, panel in zip(axes, ["Replicate A", "Replicate B", "Replicate C"]):
         ax=ax,
     )
 pp.show()
+
+# %%
+# Smooth Line with Precomputed CI Band
+# -------------------------------------
+# ``errorbar=('custom', (lo_col, hi_col))`` accepts precomputed lower
+# and upper bounds — e.g. from a LOESS bootstrap, a GAM fit, or a
+# Bayesian posterior — and renders them as a shaded band. No manual
+# ``ax.fill_between`` call per group needed. A full "raw scatter +
+# smooth line + CI band" panel now composes as two native ``pp.*``
+# calls.
+#
+# Here we synthesize a noisy sine wave, fit a rolling-mean smoother,
+# and take a rolling 2.5%/97.5% percentile envelope as a stand-in for
+# a bootstrap CI (keeping the example dependency-free — numpy only).
+
+np.random.seed(31)
+x = np.linspace(0, 10, 200)
+y_raw = np.sin(x) + np.random.normal(0, 0.35, size=x.size)
+raw_df = pd.DataFrame({"time": x, "value": y_raw})
+
+window = 25
+rolled = raw_df["value"].rolling(window, center=True, min_periods=1)
+smooth_df = pd.DataFrame({
+    "time": x,
+    "value": rolled.mean().to_numpy(),
+    "lo": rolled.quantile(0.025).to_numpy(),
+    "hi": rolled.quantile(0.975).to_numpy(),
+})
+
+fig, ax = pp.subplots(axes_size=(90, 45))
+pp.scatterplot(
+    data=raw_df, x="time", y="value",
+    color="#6565eb", alpha=0.35, ax=ax,
+)
+pp.lineplot(
+    data=smooth_df, x="time", y="value",
+    errorbar=("custom", ("lo", "hi")),
+    err_style="band", color="#1d1d8a",
+    title="Raw observations + smooth + 95% CI band",
+    xlabel="Time",
+    ylabel="Signal",
+    ax=ax,
+)
+pp.show()

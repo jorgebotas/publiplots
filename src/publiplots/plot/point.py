@@ -18,6 +18,7 @@ from typing import Optional, Tuple, Union, Dict, List
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import create_legend_handles
+from publiplots.utils.errorbar import format_for_custom_errorbar
 from publiplots.utils.legend_entries import (
     LegendEntry,
     stash_entry,
@@ -27,6 +28,18 @@ from publiplots.utils.legend_entries import (
     is_continuous_hue,
 )
 from publiplots.utils.plot_legend import render_entries, resolve_style_maps
+
+
+# Map seaborn's legacy orient tokens onto the modern {'x', 'y'} set used
+# by :func:`publiplots.utils.errorbar.format_for_custom_errorbar`.
+_MODERN_ORIENT = {
+    "h": "y",
+    "horizontal": "y",
+    "v": "x",
+    "vertical": "x",
+    "x": "x",
+    "y": "y",
+}
 
 
 def pointplot(
@@ -258,9 +271,13 @@ def pointplot(
     if 'linewidth' not in err_kws:
         err_kws['linewidth'] = linewidth
 
-    # Resolve errorbar if custom error values are provided
+    # Resolve errorbar if custom error values are provided. Translate
+    # seaborn's legacy orient tokens ('h'/'v') to the modern {'x','y'}
+    # set that the shared helper expects; pass None through so the
+    # helper can auto-detect from which axis is categorical.
     if isinstance(errorbar, tuple) and errorbar[0] == "custom":
-        data = _format_for_custom_errorbar(data, x, y, errorbar[1], orient)
+        modern_orient = _MODERN_ORIENT.get(orient) if orient is not None else None
+        data = format_for_custom_errorbar(data, x, y, errorbar[1], modern_orient)
         estimator = "median"   # middle value for estimator
         errorbar = ("pi", 100) # Use full range
 
@@ -354,42 +371,6 @@ def pointplot(
         _annotate_fn(ax, kind="point_values", **opts)
 
     return ax
-
-def _format_for_custom_errorbar(
-    data: pd.DataFrame,
-    x: str,
-    y: str,
-    custom_errorbar: Tuple[str, str],
-    orient: Optional[str] = None,
-) -> pd.DataFrame:
-    """"
-    Format data for custom errorbar.
-    """
-    # Figure out categorical variable
-    value_col = None
-    if is_categorical(data[y]) or orient.isin(["horizontal", "h", "x"]):
-        value_col = x
-    elif is_categorical(data[x]) or orient.isin(["vertical", "v", "y"]):
-        value_col = y
-    else:
-        raise ValueError(
-            "One of x or y must be categorical. "
-            "Or orient must be specified."
-        )
-
-    lower, upper = custom_errorbar
-    assert lower in data.columns and upper in data.columns, \
-        "Custom errorbar must be a tuple of column names."
-    
-    data = pd.concat([
-        data.assign(__value=data[lower]),
-        data.assign(__value=data[value_col]),
-        data.assign(__value=data[upper]),
-    ], ignore_index=True)
-    data[value_col] = data["__value"]
-    data.drop(columns=["__value"], inplace=True)
-    return data
-
 
 def _legend(
     ax: Axes,

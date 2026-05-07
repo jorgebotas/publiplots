@@ -18,6 +18,7 @@ from matplotlib.colors import Normalize
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical, is_numeric, create_legend_handles
+from publiplots.utils.errorbar import format_for_custom_errorbar
 from publiplots.utils.legend_entries import (
     LegendEntry,
     stash_entry,
@@ -277,6 +278,17 @@ def lineplot(
         size_map = resolve_size_map(
             size=size, data=data, size_order=size_order, sizes=sizes,
         )
+
+    # Support ``errorbar=('custom', (lo, hi))`` for precomputed CI bands.
+    # The shared helper triplicates rows so seaborn's 100% percentile
+    # interval over the expanded frame spans exactly ``[lo, hi]``; this
+    # lets callers pass LOESS / GAM / Bayesian posterior bounds directly
+    # without running a fresh bootstrap. ``lineplot`` already uses modern
+    # seaborn ``orient`` values ({'x','y'}), so pass through untranslated.
+    if isinstance(errorbar, tuple) and errorbar[0] == "custom":
+        data = format_for_custom_errorbar(data, x, y, errorbar[1], orient)
+        estimator = "median"
+        errorbar = ("pi", 100)
 
     # Prepare seaborn kwargs. publiplots handles the legend itself.
     sns_kwargs = {
