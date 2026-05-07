@@ -20,15 +20,31 @@ def reset_style() -> None:
     """
     Reset matplotlib rcParams to matplotlib's own defaults.
 
-    Useful when you want to revert to matplotlib's default styling
-    entirely (disabling publiplots' publication-grade rcParams). Does
-    not affect publiplots custom parameters (``pp.rcParams['alpha']``,
-    etc.).
+    publiplots applies its publication-grade rcParams (Arial font,
+    0.75 pt strokes, 600 savefig DPI, compact 8 pt labels, etc.)
+    during ``import publiplots``. Call :func:`reset_style` to revert
+    matplotlib rcParams to matplotlib's stock defaults — for example
+    when embedding a publiplots plot inside a larger figure that
+    should follow the host project's styling.
+
+    This does **not** affect publiplots-specific parameters accessed
+    via ``pp.rcParams`` (``'alpha'``, ``'palette'``,
+    ``'subplots.axes_size'``, etc.). Those continue to drive plot
+    functions regardless of the matplotlib rcParams state.
 
     Examples
     --------
     >>> import publiplots as pp
-    >>> pp.reset_style()
+    >>> pp.reset_style()  # revert to matplotlib's defaults
+
+    Restore publiplots' defaults afterwards:
+
+    >>> from publiplots.themes.rcparams import init_rcparams
+    >>> init_rcparams()
+
+    See Also
+    --------
+    publiplots.rcParams : Unified access to matplotlib and publiplots params.
     """
     plt.rcdefaults()
 

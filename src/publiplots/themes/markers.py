@@ -28,14 +28,15 @@ STANDARD_MARKERS: List[str] = [
 """
 Standard set of distinguishable markers for categorical data.
 
-Use case: When plotting multiple categories in scatter plots or line plots
-where shape needs to distinguish groups in addition to or instead of color.
+Use case: when plotting multiple categories in scatter or line plots
+where shape needs to distinguish groups in addition to (or instead of)
+color. Used as the default pool by :func:`resolve_markers` and
+:func:`resolve_marker_map`.
 
 Example:
     >>> import publiplots as pp
-    >>> markers = pp.STANDARD_MARKERS
-    >>> for i, category in enumerate(categories):
-    ...     pp.scatterplot(data[data.cat==category], marker=markers[i])
+    >>> pp.scatterplot(df, x='x', y='y', style='cat',
+    ...                markers=pp.STANDARD_MARKERS)
 """
 
 FILLED_UNFILLED_MARKERS: Dict[str, Tuple[str, str]] = {
@@ -94,47 +95,55 @@ def resolve_markers(
     """
     Resolve marker patterns for plotting.
 
-    This is a helper function that standardizes marker specifications
-    into a concrete list of markers. It handles marker cycling for arbitrary
-    numbers of categories and supports marker reversal.
+    Helper that standardises marker specifications into a concrete list.
+    Handles marker cycling for arbitrary category counts and supports
+    reversal.
 
     Parameters
     ----------
     markers : list of str, optional
-        List of marker symbols to use. If None, uses default STANDARD_MARKERS.
+        Marker symbols to use. If ``None``, uses
+        :data:`STANDARD_MARKERS`.
     n_markers : int, optional
-        Number of markers to return. If provided, markers will be
-        cycled to reach this count. If None, returns all markers.
-    reverse : bool, default=False
-        Whether to reverse the marker order. Useful for changing visual
-        hierarchy.
+        Number of markers to return. If provided, the source list is
+        cycled to reach this count. If ``None``, returns the full
+        source list.
+    reverse : bool, default ``False``
+        Whether to reverse the final marker order. Useful for changing
+        visual hierarchy.
 
     Returns
     -------
-    List[str]
-        List of resolved marker symbols.
+    list of str
+        Resolved marker symbols.
 
     Examples
     --------
     Get default markers:
-    >>> markers = resolve_markers()
+
+    >>> import publiplots as pp
+    >>> markers = pp.resolve_markers()
     >>> len(markers)
     10
 
     Get exactly 5 markers with cycling:
-    >>> markers = resolve_markers(n_markers=5)
+
+    >>> markers = pp.resolve_markers(n_markers=5)
     >>> len(markers)
     5
 
-    Use custom markers:
-    >>> markers = resolve_markers(markers=['o', '^', 's'], n_markers=7)
+    Use custom markers with cycling:
+
+    >>> markers = pp.resolve_markers(markers=['o', '^', 's'], n_markers=7)
 
     Get reversed markers:
-    >>> markers = resolve_markers(n_markers=4, reverse=True)
+
+    >>> markers = pp.resolve_markers(n_markers=4, reverse=True)
 
     See Also
     --------
-    resolve_marker_map : Create a mapping from values to markers
+    resolve_marker_map : Create a mapping from category values to markers.
+    STANDARD_MARKERS : Default marker pool.
     """
     # Get default markers if not provided
     if markers is None:
@@ -159,56 +168,64 @@ def resolve_marker_map(
     """
     Create a mapping from category values to marker symbols.
 
-    This function creates a dictionary that maps category names to specific
-    marker symbols, which is useful for categorical plots like scatterplots
-    with style parameter. It ensures consistent marker assignment across
-    multiple plots.
+    Returns a dictionary mapping category names to specific marker
+    symbols. Useful for categorical plots such as
+    :func:`publiplots.scatterplot` with a ``style=`` mapping — it
+    ensures consistent marker assignment across multiple plots.
 
     Parameters
     ----------
     values : list of str, optional
-        List of category values to map to markers. If None, returns empty dict.
-    marker_map : dict or list, optional
+        Category values to map to markers. If ``None``, returns an
+        empty dict.
+    marker_map : dict or list of str, optional
         Marker specification:
-        - dict: Explicit mapping from values to markers (returned as-is)
-        - list: List of markers to cycle through for values
-        - None: Uses default markers from STANDARD_MARKERS
-    reverse : bool, default=False
+
+        - ``dict`` — explicit mapping from values to markers; returned
+          as-is.
+        - ``list`` — markers cycled through the ``values`` list.
+        - ``None`` — defaults to :data:`STANDARD_MARKERS`.
+    reverse : bool, default ``False``
         Whether to reverse the marker assignment order. Only applicable
-        when marker_map is a list or None.
+        when ``marker_map`` is a list or ``None``.
 
     Returns
     -------
-    Dict[str, str]
+    dict of {str: str}
         Mapping from category values to marker symbols.
 
     Examples
     --------
-    Create mapping for categories:
+    Create a mapping for categories:
+
+    >>> import publiplots as pp
     >>> categories = ['A', 'B', 'C', 'D']
-    >>> mapping = resolve_marker_map(values=categories)
+    >>> mapping = pp.resolve_marker_map(values=categories)
     >>> mapping['A']
     'o'
     >>> mapping['B']
     's'
 
     Use custom markers:
-    >>> mapping = resolve_marker_map(
+
+    >>> mapping = pp.resolve_marker_map(
     ...     values=['cat', 'dog', 'bird'],
-    ...     marker_map=['o', '^', 's']
+    ...     marker_map=['o', '^', 's'],
     ... )
 
-    Use explicit mapping:
-    >>> mapping = resolve_marker_map(
+    Use an explicit mapping (returned unchanged):
+
+    >>> mapping = pp.resolve_marker_map(
     ...     values=['A', 'B'],
-    ...     marker_map={'A': 'o', 'B': '^'}
+    ...     marker_map={'A': 'o', 'B': '^'},
     ... )
     >>> mapping
     {'A': 'o', 'B': '^'}
 
     See Also
     --------
-    resolve_markers : Resolve markers without creating a mapping
+    resolve_markers : Resolve markers without creating a mapping.
+    STANDARD_MARKERS : Default marker pool.
     """
     # Return empty dict if no values provided
     if values is None:

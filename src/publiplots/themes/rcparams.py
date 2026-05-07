@@ -1,15 +1,38 @@
 """
 Default rcParams for publiplots.
 
-This module defines all default parameter values and provides the unified
-rcParams interface for accessing both matplotlib and publiplots parameters.
+This module defines all default parameter values and provides the
+unified rcParams interface for accessing both matplotlib and
+publiplots-specific parameters.
 
 Main components:
-- MATPLOTLIB_RCPARAMS: Base matplotlib parameter defaults
-- PUBLIPLOTS_RCPARAMS: Base publiplots custom parameter defaults
-- PubliplotsRcParams: Unified dict-like interface
-- rcParams: Global instance for parameter access
-- resolve_param(): Helper for parameter resolution
+
+- :data:`MATPLOTLIB_RCPARAMS` — matplotlib parameter overrides installed
+  when publiplots is imported.
+- :data:`PUBLIPLOTS_RCPARAMS` — custom publiplots parameters not in
+  matplotlib.
+- :class:`PubliplotsRcParams` — unified dict-like interface exposed as
+  :data:`publiplots.rcParams`.
+- :func:`resolve_param` — helper for ``value if value is not None else
+  default`` parameter resolution used throughout the plot functions.
+
+publiplots-specific keys (not in matplotlib) include:
+
+- ``edgecolor`` — global edge color for patches and marker outlines
+  (``None`` = each plot's default).
+- ``alpha`` — default fill transparency for bars (``0.1``).
+- ``palette`` — default qualitative palette name (``"pastel"``).
+- ``hatch_mode`` — global hatch density (``1`` – ``4``). Prefer
+  :func:`publiplots.set_hatch_mode` to mutate it.
+- ``scatter.size_min`` / ``scatter.size_max`` — size mapping bounds
+  for :func:`publiplots.scatterplot` (points^2).
+- ``subplots.axes_size`` — default ``(width_mm, height_mm)`` for
+  :func:`publiplots.subplots`.
+- ``subplots.title_space`` / ``xlabel_space`` / ``ylabel_space`` /
+  ``right`` — initial per-side reservations in mm (auto-measured on
+  first draw unless the user passes an explicit value).
+- ``subplots.hspace`` / ``wspace`` / ``outer_pad`` — gaps and outer
+  margin in mm (never auto-measured).
 """
 
 from typing import Dict, Any, Optional
@@ -193,37 +216,59 @@ def _get_default(key: str) -> Any:
 
 def resolve_param(key: str, value: Optional[Any] = None) -> Any:
     """
-    Resolve a parameter value: use provided value if not None, otherwise get default.
+    Resolve a parameter value: return ``value`` if not ``None``, else
+    the default for ``key``.
 
-    This helper eliminates the repetitive "if value is None: value = default" pattern
-    throughout the codebase.
+    This helper eliminates the repetitive ``if value is None: value =
+    default`` pattern in plot functions. Lookup checks publiplots
+    custom parameters first (e.g. ``"alpha"``, ``"palette"``,
+    ``"subplots.axes_size"``), then falls back to
+    :attr:`matplotlib.pyplot.rcParams`.
 
     Parameters
     ----------
     key : str
-        Parameter name
+        Parameter name to look up when ``value`` is ``None``.
     value : Any, optional
-        User-provided value. If None, the default will be used.
+        User-provided value. If not ``None``, it is returned
+        unchanged.
 
     Returns
     -------
     Any
-        The resolved parameter value (user value or default)
+        Either the user-provided ``value`` (if not ``None``) or the
+        default for ``key``.
+
+    Raises
+    ------
+    KeyError
+        If ``value`` is ``None`` and ``key`` is not defined in either
+        publiplots or matplotlib rcParams.
 
     Examples
     --------
-    In a plotting function:
-    >>> def barplot(color=None, alpha=None):
-    ...     color = resolve_param('color', color)  # Uses color if provided, else default
+    Typical use inside a plotting function:
+
+    >>> from publiplots.themes.rcparams import resolve_param
+    >>> def my_plot(color=None, alpha=None):
+    ...     color = resolve_param('color', color)
     ...     alpha = resolve_param('alpha', alpha)
-    ...     # Now color and alpha are guaranteed to have values
 
-    User provides value:
-    >>> color = resolve_param('color', '#ff0000')  # Returns '#ff0000'
+    Explicit user value passes through unchanged:
 
-    User doesn't provide value:
-    >>> color = resolve_param('color', None)  # Returns default color '#5d83c3'
-    >>> color = resolve_param('color')  # Same as above
+    >>> resolve_param('color', '#ff0000')
+    '#ff0000'
+
+    ``None`` falls back to the default:
+
+    >>> resolve_param('color', None)
+    '#5d83c3'
+    >>> resolve_param('color')
+    '#5d83c3'
+
+    See Also
+    --------
+    rcParams : Unified rcParams accessor for reading / writing defaults.
     """
     return value if value is not None else _get_default(key)
 
@@ -237,25 +282,41 @@ class PubliplotsRcParams:
     """
     Unified interface for publiplots parameters.
 
-    This class provides a dict-like interface for accessing both standard
-    matplotlib rcParams and custom publiplots parameters. It mimics the
-    behavior of matplotlib's rcParams but includes publiplots-specific
-    defaults.
+    Dict-like accessor for both standard matplotlib rcParams and
+    publiplots-specific parameters. Mimics matplotlib's rcParams but
+    also exposes the custom keys listed in this module's docstring
+    (``alpha``, ``edgecolor``, ``palette``, ``hatch_mode``,
+    ``scatter.size_*``, ``subplots.*``). Use the module-level
+    :data:`rcParams` instance — don't instantiate this class yourself.
+
+    Writes are routed automatically: publiplots keys update the
+    publiplots store; everything else is delegated to
+    :attr:`matplotlib.pyplot.rcParams`. Prefer
+    :func:`publiplots.set_hatch_mode` for mutating ``hatch_mode`` so
+    that validation runs.
 
     Examples
     --------
-    Access parameters:
-    >>> from publiplots.themes import rcParams
-    >>> axes_size = rcParams['subplots.axes_size']
-    >>> color = rcParams['color']  # Custom publiplots param
+    Read parameters:
+
+    >>> import publiplots as pp
+    >>> axes_size = pp.rcParams['subplots.axes_size']
+    >>> color = pp.rcParams['color']  # publiplots-specific key
 
     Set parameters:
-    >>> rcParams['subplots.axes_size'] = (80, 50)  # mm
-    >>> rcParams['color'] = '#ff0000'
 
-    Use in functions with resolve_param:
+    >>> pp.rcParams['subplots.axes_size'] = (80, 50)  # mm
+    >>> pp.rcParams['color'] = '#ff0000'
+
+    Use with :func:`resolve_param` in a plotting function:
+
     >>> from publiplots.themes.rcparams import resolve_param
-    >>> color = resolve_param('color', user_color)  # Uses user_color if not None
+    >>> color = resolve_param('color', user_color)
+
+    See Also
+    --------
+    resolve_param : Value-or-default helper used in plot signatures.
+    publiplots.set_hatch_mode : Validated setter for ``hatch_mode``.
     """
 
     def __getitem__(self, key: str) -> Any:
