@@ -78,6 +78,7 @@ Table of Contents
 
    installation
    quickstart
+   claude_code_plugin
 
 .. toctree::
    :maxdepth: 2

@@ -15,6 +15,41 @@ PubliPlots is a Python visualization library that provides beautiful, publicatio
 > [!IMPORTANT]
 > **Documentation**: Full documentation is available at [jorgebotas.github.io/publiplots](https://jorgebotas.github.io/publiplots/)
 
+## <img src="docs/images/claudecode-color.svg" width="28" alt="Claude Code" align="center"> Claude Code plugin
+
+> [!TIP]
+> <img src="docs/images/claudecode-color.svg" width="16" alt="Claude Code" align="center"> Using [Claude Code](https://claude.com/claude-code)? Install the publiplots plugin to teach Claude idiomatic publiplots (mm-units layout, `pp.subplots`, unified `pp.legend` scoping) in one command.
+
+```
+/plugin marketplace add jorgebotas/publiplots
+/plugin install publiplots@publiplots
+```
+
+The plugin ships two skills that auto-activate when Claude detects publiplots work:
+
+- **`/publiplots:publiplots-guide`** — library conventions, full `pp.*` API surface, canonical idioms, common gotchas.
+- **`/publiplots:legend-placement`** — decision tree for `pp.legend` scoping (per-axes, row/column bands, figure-level bands) plus the `pp.legend(ax)` vs `pp.legend(anchor=ax)` asymmetry.
+
+### Example usage
+
+Once installed, asking Claude natural-language questions produces idiomatic publiplots code:
+
+> *"Make a 2×3 scatter grid with a shared legend above the top row."*
+
+Claude will auto-invoke `legend-placement` and produce something like:
+
+```python
+import publiplots as pp
+
+fig, axes = pp.subplots(2, 3, axes_size=(35, 25))
+for ax in axes.flat:
+    pp.scatterplot(data=df, x='x', y='y', hue='group', ax=ax)
+pp.legend(axes[0], side='top')   # row-0 shared band
+pp.savefig('figure.pdf')
+```
+
+You can also invoke skills explicitly with `/publiplots:publiplots-guide` or `/publiplots:legend-placement` at any time. Plugin versions track library releases; pin a specific release with `@v0.10.1`.
+
 ## Gallery
 
 <p align="center" style="background-color: white">

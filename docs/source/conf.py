@@ -174,8 +174,11 @@ numpydoc_show_class_members = False
 numpydoc_show_inherited_class_members = False
 numpydoc_class_members_toctree = False
 
-# Suppress duplicate object warnings for autosummary-generated pages
-suppress_warnings = ['autodoc.duplicate_object']
+# Suppress known-benign build warnings:
+# - autodoc.duplicate_object: autosummary-generated pages
+# - config.cache: sphinx_gallery_conf contains function refs (scraper,
+#   reset hook) that Sphinx can't pickle for incremental-build cache
+suppress_warnings = ['autodoc.duplicate_object', 'config.cache']
 
 # Add stub role for matplotlib's :mpltype: to avoid errors from inherited docstrings
 def setup(app):

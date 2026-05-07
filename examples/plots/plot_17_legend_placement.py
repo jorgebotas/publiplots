@@ -339,8 +339,8 @@ for r, row in enumerate(axes):
 pp.show()
 
 # %%
-# 11. Row bands — ``pp.legend(axes[0], side='top')`` + inter-row band
-# ------------------------------------------------------------------
+# 11. Row bands (with inter-row band)
+# -----------------------------------
 # New in 0.10: passing a **row of axes** as the positional scope creates
 # a band pinned to that row's top edge, centered on the row's width
 # only (not the full figure). Ideal for a 2xN grid where each row
