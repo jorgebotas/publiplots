@@ -14,20 +14,21 @@ from matplotlib.text import Text
 def show(*args: Any, **kwargs: Any) -> None:
     """Display figures.
 
-    Thin wrapper around :func:`matplotlib.pyplot.show`. Behavior depends on
-    the active matplotlib backend: interactive backends block until the
-    window closes; inline / Agg backends return immediately.
+    Thin wrapper around :func:`matplotlib.pyplot.show`. Behaviour depends
+    on the active matplotlib backend: interactive backends block until
+    the window closes; inline / Agg backends return immediately.
 
     Parameters
     ----------
     *args, **kwargs
-        Forwarded to ``matplotlib.pyplot.show``. The most common kwarg is
-        ``block`` (``True`` by default in interactive mode).
+        Forwarded to :func:`matplotlib.pyplot.show`. The most common
+        kwarg is ``block`` (``True`` by default in interactive mode).
 
     Examples
     --------
     >>> import publiplots as pp
-    >>> ax = pp.barplot(data=df, x='category', y='value')
+    >>> fig, ax = pp.subplots()
+    >>> pp.barplot(data=df, x='category', y='value', ax=ax)
     >>> pp.show()
     """
     plt.show(*args, **kwargs)
@@ -37,15 +38,16 @@ def suptitle(text: str, **kwargs: Any) -> Text:
     """Add a figure-level title to the current figure.
 
     Thin wrapper around :func:`matplotlib.pyplot.suptitle`. Returns the
-    created :class:`~matplotlib.text.Text` artist.
+    created :class:`~matplotlib.text.Text` artist. Uses
+    ``matplotlib.pyplot.gcf()`` to locate the target figure.
 
     Parameters
     ----------
     text : str
         The title text.
     **kwargs
-        Forwarded to ``matplotlib.pyplot.suptitle`` (e.g., ``fontsize``,
-        ``y``, ``fontweight``).
+        Forwarded to :func:`matplotlib.pyplot.suptitle` (e.g.,
+        ``fontsize``, ``y``, ``fontweight``).
 
     Returns
     -------
