@@ -15,10 +15,10 @@ PubliPlots is a Python visualization library that provides beautiful, publicatio
 > [!IMPORTANT]
 > **Documentation**: Full documentation is available at [jorgebotas.github.io/publiplots](https://jorgebotas.github.io/publiplots/)
 
-## Claude Code plugin
+## <img src="docs/images/claudecode-color.svg" width="28" alt="Claude Code" align="center"> Claude Code plugin
 
 > [!TIP]
-> Using [Claude Code](https://claude.com/claude-code)? Install the publiplots plugin to teach Claude idiomatic publiplots (mm-units layout, `pp.subplots`, unified `pp.legend` scoping) in one command.
+> <img src="docs/images/claudecode-color.svg" width="16" alt="Claude Code" align="center"> Using [Claude Code](https://claude.com/claude-code)? Install the publiplots plugin to teach Claude idiomatic publiplots (mm-units layout, `pp.subplots`, unified `pp.legend` scoping) in one command.
 
 ```
 /plugin marketplace add jorgebotas/publiplots
