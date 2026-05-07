@@ -33,7 +33,7 @@ def test_legend_follows_axes_after_tight_layout():
         labels=["A", "B"], colors=["#5d83c3", "#c0392b"],
         alpha=0.2, linewidth=1.0,
     )
-    builder = pp.legend(ax, auto=False, x_offset=2, vpad=5)
+    builder = pp.legend(ax, collect=[], x_offset=2, vpad=5)
     leg = builder.add_legend(handles=handles, label="group")
     fig.canvas.draw()
 
@@ -67,16 +67,17 @@ def test_colorbar_title_follows_axes_after_tight_layout():
     ax.plot([0, 1], [0, 1])
 
     sm = ScalarMappable(cmap="viridis", norm=Normalize(0, 1))
-    builder = pp.legend(ax, auto=False, x_offset=2, vpad=5)
+    builder = pp.legend(ax, collect=[], x_offset=2, vpad=5)
     cbar = builder.add_colorbar(mappable=sm, label="Value", height=15, width=4.5)
     fig.canvas.draw()
 
-    # Find the title Text in builder.elements
+    # Find the title Text in builder.elements (the MultiAxesLegendGroup
+    # forwards add_* to an internal LegendBuilder; .elements lives there)
     title_obj = next(
-        (obj for kind, obj in builder.elements if kind == "text"),
+        (obj for kind, obj in builder._builder.elements if kind == "text"),
         None,
     )
-    assert title_obj is not None, "expected colorbar title in builder.elements"
+    assert title_obj is not None, "expected colorbar title in builder._builder.elements"
 
     initial_title_pos = title_obj.get_position()
     initial_cbar_x = cbar.ax.get_position().x0

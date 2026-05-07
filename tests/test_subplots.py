@@ -484,7 +484,7 @@ def test_subplots_works_with_legend_builder_after_auto_resize():
     ax.set_ylabel("y")
     handles = create_legend_handles(labels=["A"], colors=["#5d83c3"],
                                     alpha=0.2, linewidth=1.0)
-    builder = pp.legend(ax, auto=False)
+    builder = pp.legend(ax, collect=[])
     builder.add_legend(handles=handles, label="group")
     fig.canvas.draw()
     # Simple sanity: axes bbox in mm matches declared size within tolerance
@@ -611,7 +611,7 @@ def test_auto_layout_per_axis_pp_legend_is_counted():
     fig, axes = pp.subplots(1, 2, axes_size=(45, 30))
     for ax in axes:
         ax.plot([0, 1, 2], [0, 1, 0])
-    builder = pp.legend(axes[0], auto=False)
+    builder = pp.legend(axes[0], collect=[])
     builder.add_legend(
         handles=create_legend_handles(
             labels=["A", "B"],

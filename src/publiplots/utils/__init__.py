@@ -56,10 +56,13 @@ from publiplots.utils.legend import (
     get_legend_handler_map,
     create_legend_handles,
     LegendBuilder,
-    legend,
 )
 
-from publiplots.utils.legend_group import MultiAxesLegendGroup, legend_group
+from publiplots.utils.legend_group import (
+    MultiAxesLegendGroup,
+    legend_group,
+    legend,
+)
 
 from publiplots.utils.offset import (
     offset_lines,
