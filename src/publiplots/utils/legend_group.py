@@ -47,6 +47,100 @@ def _handle_repr(handle) -> str:
     return "|".join(parts)
 
 
+class _ScopeAnchor:
+    """Decoration-agnostic anchor over a scope of axes.
+
+    Duck-types the small slice of ``matplotlib.axes.Axes`` that
+    ``LegendBuilder`` and ``LayoutReactor`` use (``get_position()`` +
+    ``get_figure()`` + ``get_window_extent()``). Designed to become the
+    single master anchor class for ``pp.legend`` — handling single-axes,
+    sub-region (row/col), and full-grid scopes uniformly.
+
+    Key design invariant: ``get_position()`` returns the **bare**
+    bounding rect of the scope's axes (union of ``ax.get_position()``).
+    Decoration-awareness (tick labels, axis labels, titles, legend
+    bands) is applied one layer up by
+    ``SubplotsAutoLayout._measure_one_group``. This keeps the anchor
+    simple and testable while leaving geometric composition where the
+    rest of the layout pipeline already lives.
+
+    - Single axes → degenerate case: ``get_position()`` returns the
+      axes rect.
+    - Multi axes (incl. full grid) → bounding rect of the scope.
+
+    For commit 1 of the v0.10.0 legend unification this class is
+    introduced behind ``_GridAnchor``: ``_GridAnchor.__init__``
+    constructs a ``_ScopeAnchor`` for reference, but continues to use
+    its own decoration-aware ``get_position()`` logic for back-compat
+    until later commits route ``MultiAxesLegendGroup`` through
+    ``_ScopeAnchor`` directly.
+    """
+
+    def __init__(self, axes_list: List[Axes], fig: Figure) -> None:
+        self._axes_list: List[Axes] = list(axes_list)
+        self._fig = fig
+
+    def get_figure(self) -> Figure:
+        return self._fig
+
+    def get_position(self) -> Bbox:
+        """Bare union rect of the scope's axes, in figure fractions.
+
+        No decoration awareness — callers that need decoration-aware
+        placement must apply offsets externally (that logic lives in
+        ``SubplotsAutoLayout._measure_one_group``).
+        """
+        if not self._axes_list:
+            return Bbox.from_extents(0.0, 0.0, 1.0, 1.0)
+        x0 = y0 = 1.0
+        x1 = y1 = 0.0
+        for ax in self._axes_list:
+            pos = ax.get_position()
+            x0 = min(x0, pos.x0)
+            y0 = min(y0, pos.y0)
+            x1 = max(x1, pos.x1)
+            y1 = max(y1, pos.y1)
+        if x0 >= x1 or y0 >= y1:
+            return Bbox.from_extents(0.0, 0.0, 1.0, 1.0)
+        return Bbox.from_extents(x0, y0, x1, y1)
+
+    def get_window_extent(self, renderer=None) -> Bbox:
+        """Pixel-space bbox of ``get_position()`` against the figure."""
+        pos = self.get_position()
+        fig_w = self._fig.get_window_extent().width
+        fig_h = self._fig.get_window_extent().height
+        return Bbox.from_extents(
+            pos.x0 * fig_w, pos.y0 * fig_h,
+            pos.x1 * fig_w, pos.y1 * fig_h,
+        )
+
+    @property
+    def is_single(self) -> bool:
+        """True iff the scope is a single axes (degenerate case)."""
+        return len(self._axes_list) == 1
+
+    @property
+    def is_full_grid(self) -> bool:
+        """True iff the scope covers every axis in ``fig._publiplots_axes``.
+
+        Falls back to ``len(axes_list) == len(fig.axes)`` when the
+        figure was not constructed by publiplots and therefore carries
+        no ``_publiplots_axes`` matrix.
+        """
+        matrix = getattr(self._fig, "_publiplots_axes", None)
+        if matrix is None:
+            return len(self._axes_list) == len(self._fig.axes)
+        grid_ids = {id(ax) for row in matrix for ax in row}
+        if not grid_ids:
+            return len(self._axes_list) == len(self._fig.axes)
+        scope_ids = {id(ax) for ax in self._axes_list}
+        return scope_ids == grid_ids
+
+    def scope_axes(self) -> List[Axes]:
+        """Return the underlying list of axes in the scope."""
+        return self._axes_list
+
+
 class _GridAnchor:
     """Virtual Axes proxy spanning the whole publiplots subplot grid
     **including its decorations** (tick labels, axis labels, titles).
@@ -70,10 +164,32 @@ class _GridAnchor:
     that side='bottom' sits BELOW all xlabel_space, side='top' sits
     ABOVE all title_space, side='left' sits LEFT of all ylabel_space,
     etc. — i.e., the legend doesn't overlap with axis decorations.
+
+    .. deprecated::
+        Scheduled for removal in v0.10.0. Use :class:`_ScopeAnchor`
+        instead; decoration-awareness will move into
+        ``SubplotsAutoLayout._measure_one_group`` so the anchor itself
+        can stay decoration-agnostic.
     """
 
     def __init__(self, fig: Figure) -> None:
         self._fig = fig
+        # Delegate to _ScopeAnchor(full_grid_flat, fig) for the actual
+        # geometry. Kept as a separate class for now because its
+        # get_position() ALSO respects decorations (reads the
+        # FigureLayout directly), which _ScopeAnchor deliberately does
+        # NOT — decoration-awareness lives one layer up in
+        # SubplotsAutoLayout._measure_one_group. The shim preserves
+        # back-compat until commit 2 routes MultiAxesLegendGroup
+        # through _ScopeAnchor directly.
+        matrix = getattr(fig, "_publiplots_axes", None)
+        if matrix:
+            flat = [ax for row in matrix for ax in row]
+        else:
+            flat = list(fig.axes)
+        self._scope_anchor: Optional[_ScopeAnchor] = (
+            _ScopeAnchor(flat, fig) if flat else None
+        )
 
     def get_figure(self) -> Figure:
         return self._fig
