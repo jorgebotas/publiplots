@@ -105,3 +105,79 @@ def test_pointplot_custom_errorbar_categorical_y_still_works():
         errorbar=("custom", ("log2_lower", "log2_upper")),
         ax=ax,
     )
+
+
+# ---- Lineplot integration ----
+
+
+def test_lineplot_custom_errorbar_renders_band():
+    """A single-series lineplot with ``errorbar=('custom', ...)`` and
+    ``err_style='band'`` must render a shaded band.
+
+    Matplotlib 3.8+ represents the band as a ``FillBetweenPolyCollection``
+    (a ``PolyCollection`` subclass); older versions use a plain
+    ``PolyCollection``. ``isinstance`` covers both.
+    """
+    from matplotlib.collections import PolyCollection
+
+    df = pd.DataFrame(
+        {
+            "day": list(range(10)),
+            "y": list(range(10, 20)),
+            "lo": list(range(8, 18)),
+            "hi": list(range(12, 22)),
+        }
+    )
+    fig, ax = plt.subplots()
+    pp.lineplot(
+        data=df,
+        x="day",
+        y="y",
+        errorbar=("custom", ("lo", "hi")),
+        err_style="band",
+        ax=ax,
+    )
+    assert any(isinstance(coll, PolyCollection) for coll in ax.collections)
+
+
+def test_lineplot_custom_errorbar_with_hue():
+    """Custom errorbars must compose with ``hue`` — one band per group."""
+    from matplotlib.collections import PolyCollection
+
+    df = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "day": list(range(5)),
+                    "y": [1, 2, 3, 4, 5],
+                    "lo": [0.5] * 5,
+                    "hi": [1.5] * 5,
+                    "g": "a",
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "day": list(range(5)),
+                    "y": [2, 3, 4, 5, 6],
+                    "lo": [1.5] * 5,
+                    "hi": [2.5] * 5,
+                    "g": "b",
+                }
+            ),
+        ]
+    )
+    fig, ax = plt.subplots()
+    pp.lineplot(
+        data=df,
+        x="day",
+        y="y",
+        hue="g",
+        errorbar=("custom", ("lo", "hi")),
+        err_style="band",
+        ax=ax,
+    )
+    # One band per hue level.
+    bands = [
+        coll for coll in ax.collections if isinstance(coll, PolyCollection)
+    ]
+    assert len(bands) == 2
