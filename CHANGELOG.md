@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.3] - 2026-05-06
 
 ### Added
 - `pp.legend_group(axes=...)` scopes collection to a subset of the
@@ -17,9 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the bottom row, each rendering its own entries). Both
   figure-anchored and axes-anchored multi-group configurations are
   supported; a `UserWarning` fires when two groups' scopes and
-  `collect` filters overlap.
+  `collect` filters overlap. Gallery sections 10 and 10b in
+  `plot_17_legend_placement` showcase the two patterns (PR #120).
 
 ### Fixed
+- `pp.legend_group(anchor=axes[r,c], side='top'|'bottom'|'left')`
+  no longer places the band on top of the anchor axes'
+  title / xlabel / ylabel. The band steps past the decoration
+  via an ``mm_outward_decoration_offset`` baked onto each reactor
+  registration during `SubplotsAutoLayout._measure_one_group` —
+  no `get_tightbbox` / `set_in_layout` calls inside the reactor's
+  per-draw refresh, so sphinx-gallery builds stay deterministic.
+  `side='right'` is byte-identical to prior behavior. Both
+  group-before-plots and group-after-plots orderings work (PR #120).
 - `pp.savefig` used to force `bbox_inches='tight'`, which
   re-cropped the figure to the union of artist bboxes. For figures
   with figure-anchored `pp.legend_group` bands on
@@ -28,7 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bbox_inches=None`, letting publiplots' mm-precise `FigureLayout`
   control the canvas. Pass `bbox_inches='tight'` explicitly to opt
   back in. The rcParam default `savefig.bbox` was also changed to
-  `'standard'` for consistency.
+  `'standard'` for consistency (PR #120).
+
+[0.9.3]: https://github.com/jorgebotas/publiplots/releases/tag/v0.9.3
 
 ## [0.9.2] - 2026-05-05
 
