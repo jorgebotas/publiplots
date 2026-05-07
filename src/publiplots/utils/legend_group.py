@@ -160,6 +160,14 @@ class MultiAxesLegendGroup:
         ``LegendEntry`` objects. ``None`` (default) collects everything.
         A list filters and orders — e.g. ``collect=['treatment', 'dose']``
         renders only those two names, in that order.
+    axes : Axes or sequence of Axes, optional
+        Scope collection to a subset of the figure's axes. ``None``
+        (default) walks the full subplot grid. When set, the group
+        collects stashed entries only from those axes and evicts
+        per-axis legends only from those axes — letting multiple groups
+        on the same figure render independent bands (e.g. a
+        ``side='top'`` band for the top row and a ``side='right'``
+        band for the bottom row).
     x_offset, y_offset, gap, column_spacing, vpad, max_width
         Same meaning as :class:`LegendBuilder` — all in millimeters.
     """
@@ -195,6 +203,7 @@ class MultiAxesLegendGroup:
         figure: Optional[Figure] = None,
         orientation: str = "auto",
         align: str = "auto",
+        axes: Optional[Sequence[Axes]] = None,
         x_offset: Optional[float] = None,
         y_offset: Optional[float] = None,
         gap: float = 2,
@@ -247,10 +256,32 @@ class MultiAxesLegendGroup:
                 )
             collect = list(collect)
         self._collect = collect
+
+        # Normalize axes= into a list of real Axes or None (full grid).
+        # A single Axes is accepted for convenience: axes=ax.
+        if axes is None:
+            self._scope_axes = None
+        elif isinstance(axes, Axes):
+            self._scope_axes = [axes]
+        else:
+            self._scope_axes = list(axes)
+            for a in self._scope_axes:
+                if not isinstance(a, Axes):
+                    raise TypeError(
+                        f"axes must be an Axes or a sequence of Axes; "
+                        f"got {type(a).__name__}"
+                    )
         self._materialized = False
         self._warned_mismatch = False
         self._align_connected = False
         self._aligning = False  # re-entrancy guard for _on_draw_align
+        # Mm the band overhangs past the anchor's axes edge on the chosen
+        # side — written by SubplotsAutoLayout._measure_one_group on each
+        # settle iteration. We keep a local copy so the measurement pass
+        # can subtract our own contribution from the cell's reservation
+        # to derive the *pure* decoration base (title/xlabel/ylabel height
+        # without the band) without a separate tightbbox measurement.
+        self._band_contribution_mm: float = 0.0
         # anchor_ax=self.anchor pins position math/reactor to the anchor
         # regardless of self.ax swaps during add_* calls. For
         # figure-anchored groups anchor_ax is the _GridAnchor proxy,
@@ -271,7 +302,30 @@ class MultiAxesLegendGroup:
             orientation=self._orientation,
         )
         # Register on the figure so plot functions can check claims.
-        self.anchor.get_figure()._publiplots_legend_group = self
+        # Multiple groups can coexist on the same figure (each scoped to
+        # a subset of axes via ``axes=``); they live in a list and the
+        # "first to claim an axes/name pair" wins on conflict.
+        fig = self.anchor.get_figure()
+        groups = getattr(fig, "_publiplots_legend_groups", None)
+        if groups is None:
+            groups = []
+            fig._publiplots_legend_groups = groups
+        # Warn if another group already claims any axes in this scope
+        # for the same entry name — the later group still gets
+        # registered but won't evict/collect from the overlapping axes.
+        for other in groups:
+            overlap = self._scope_overlap(other)
+            if overlap and self._collect_overlap(other):
+                warnings.warn(
+                    "pp.legend_group scope overlaps with an existing "
+                    "group on this figure; the first group wins for "
+                    "overlapping axes/entries. Pass disjoint ``axes=`` "
+                    "or disjoint ``collect=`` to silence this warning.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+                break
+        groups.append(self)
 
         # Seamless "after" support: if the user attached the group AFTER
         # calling plot functions, each axes may already carry a
@@ -289,46 +343,80 @@ class MultiAxesLegendGroup:
         if self._align != "start":
             self._connect_align_hook()
 
-    def _evict_claimed_per_axis_legends(self) -> None:
-        """Remove per-axis Legend artists that the group will render itself.
+    def _iter_scope_axes(self):
+        """Yield the axes this group collects from.
 
-        Walks every axes in ``fig._publiplots_axes``. For each stashed
-        LegendEntry this group claims, matches the axes' Legend
-        children by title text and removes them — plus unregisters
-        their ``LayoutReactor`` registrations so the reactor stops
-        repositioning ghost artists and ``SubplotsAutoLayout`` shrinks
-        the per-column/row reservation on the next settle pass.
+        ``None`` scope ⇒ every axes in ``fig._publiplots_axes``. Explicit
+        ``axes=`` ⇒ just those.
         """
-        from matplotlib.legend import Legend
-
+        if self._scope_axes is not None:
+            for ax in self._scope_axes:
+                yield ax
+            return
         fig = self.anchor.get_figure()
         matrix = getattr(fig, "_publiplots_axes", None)
         if matrix is None:
             return
-        reactor = self._builder._reactor
-        claimed_names = set()
         for row in matrix:
             for ax in row:
-                for entry in get_entries(ax):
-                    if self.claims(entry.name):
-                        claimed_names.add(entry.name)
+                yield ax
+
+    def _scope_contains(self, ax) -> bool:
+        """True if this group collects from ``ax``."""
+        if self._scope_axes is None:
+            return True
+        return any(ax is a for a in self._scope_axes)
+
+    def _scope_overlap(self, other: "MultiAxesLegendGroup") -> bool:
+        """True if ``self`` and ``other`` share any axes."""
+        # Full-grid scope overlaps everything.
+        if self._scope_axes is None or other._scope_axes is None:
+            return True
+        self_ids = {id(a) for a in self._scope_axes}
+        return any(id(a) in self_ids for a in other._scope_axes)
+
+    def _collect_overlap(self, other: "MultiAxesLegendGroup") -> bool:
+        """True if ``self`` and ``other`` could claim the same entry name."""
+        if self._collect is None or other._collect is None:
+            return True
+        return bool(set(self._collect) & set(other._collect))
+
+    def _evict_claimed_per_axis_legends(self) -> None:
+        """Remove per-axis Legend artists that the group will render itself.
+
+        Walks every axes in this group's scope (``self._scope_axes`` or
+        the full grid when unset). For each stashed LegendEntry this
+        group claims, matches the axes' Legend children by title text
+        and removes them — plus unregisters their ``LayoutReactor``
+        registrations so the reactor stops repositioning ghost artists
+        and ``SubplotsAutoLayout`` shrinks the per-column/row
+        reservation on the next settle pass.
+        """
+        from matplotlib.legend import Legend
+
+        reactor = self._builder._reactor
+        claimed_names = set()
+        scope_axes = list(self._iter_scope_axes())
+        for ax in scope_axes:
+            for entry in get_entries(ax):
+                if self.claims(entry.name):
+                    claimed_names.add(entry.name)
 
         if not claimed_names:
             return
 
         to_unregister = []
-        for row in matrix:
-            for ax in row:
-                for child in list(ax.get_children()):
-                    if not isinstance(child, Legend):
-                        continue
-                    title = child.get_title().get_text()
-                    if title not in claimed_names:
-                        continue
-                    child.remove()
-                    if ax.legend_ is child:
-                        ax.legend_ = None
-                    to_unregister.append(child)
+        for ax in scope_axes:
+            for child in list(ax.get_children()):
+                if not isinstance(child, Legend):
+                    continue
+                title = child.get_title().get_text()
+                if title not in claimed_names:
+                    continue
+                child.remove()
+                if ax.legend_ is child:
+                    ax.legend_ = None
+                to_unregister.append(child)
 
         if to_unregister:
             ids = {id(a) for a in to_unregister}
@@ -338,31 +426,48 @@ class MultiAxesLegendGroup:
             # Also purge from the builders' elements lists (per-axis
             # builders stored on ax._legend_builder) so duplicate
             # re-adds don't resurrect them.
-            for row in matrix:
-                for ax in row:
-                    builder = getattr(ax, "_legend_builder", None)
-                    if builder is None:
-                        continue
-                    builder.elements = [
-                        (k, a) for (k, a) in builder.elements if id(a) not in ids
-                    ]
+            for ax in scope_axes:
+                builder = getattr(ax, "_legend_builder", None)
+                if builder is None:
+                    continue
+                builder.elements = [
+                    (k, a) for (k, a) in builder.elements if id(a) not in ids
+                ]
 
     def _connect_align_hook(self) -> None:
         """Wrap LayoutReactor._refresh_all so our alignment callback
         runs after every reactor refresh. One wrap per reactor even
         when multiple groups share it; each group appends its own
-        callback."""
+        callback.
+
+        The wrap skips the callback phase while already running one
+        (``reactor._aligning_in_progress``). Each callback's own
+        ``_apply_along_alignment`` call triggers a nested
+        ``_refresh_all`` to propagate the new mm offsets to matplotlib;
+        without the shared flag that nested call would re-enter every
+        *other* group's callback, so two figure-anchored groups would
+        cascade and mutate each other's registrations into a broken
+        state. The per-group ``self._aligning`` flag alone can't catch
+        this because each group is a different ``self``.
+        """
         if self._align_connected:
             return
         reactor = self._builder._reactor
         if not hasattr(reactor, "_align_callbacks"):
             reactor._align_callbacks = []
+            reactor._aligning_in_progress = False
             _orig_refresh = reactor._refresh_all
 
             def _refresh_then_align():
                 result = _orig_refresh()
-                for cb in reactor._align_callbacks:
-                    cb()
+                if reactor._aligning_in_progress:
+                    return result
+                reactor._aligning_in_progress = True
+                try:
+                    for cb in reactor._align_callbacks:
+                        cb()
+                finally:
+                    reactor._aligning_in_progress = False
                 return result
 
             reactor._refresh_all = _refresh_then_align
@@ -399,31 +504,36 @@ class MultiAxesLegendGroup:
     def _materialize(self) -> None:
         """Collect stashed entries from every grid axes and render them.
 
-        Called by SubplotsAutoLayout during the settle pass (Task 5).
-        Idempotent — subsequent calls after the first return immediately.
+        Called by SubplotsAutoLayout during the settle pass. The first
+        call that finds at least one matching entry renders them and
+        marks the group materialized; earlier calls that see nothing
+        (the group was constructed BEFORE its scope's plots ran) are
+        no-ops so the group can materialize on a later draw once
+        entries exist. Once materialized, subsequent calls short-circuit
+        — rendering is a one-shot operation.
         """
         if self._materialized:
             return
-        self._materialized = True
 
-        fig = self.anchor.get_figure()
-        axes_matrix = getattr(fig, "_publiplots_axes", None)
-        if axes_matrix is None:
-            return
-
-        # Gather all entries per (name, kind) across the grid.
+        # Gather all entries per (name, kind) across the group's scope.
         by_key = {}   # (name, kind) -> list[LegendEntry]
         order = []    # (name, kind) in collection order (first-seen)
-        for row in axes_matrix:
-            for ax in row:
-                for entry in get_entries(ax):
-                    if self._collect is not None and entry.name not in self._collect:
-                        continue
-                    key = (entry.name, entry.kind)
-                    if key not in by_key:
-                        by_key[key] = []
-                        order.append(key)
-                    by_key[key].append(entry)
+        for ax in self._iter_scope_axes():
+            for entry in get_entries(ax):
+                if self._collect is not None and entry.name not in self._collect:
+                    continue
+                key = (entry.name, entry.kind)
+                if key not in by_key:
+                    by_key[key] = []
+                    order.append(key)
+                by_key[key].append(entry)
+
+        if not by_key:
+            # Nothing to render yet — the plot functions haven't stashed
+            # anything in this group's scope. Leave _materialized=False so
+            # a future draw (after the stashing) can try again.
+            return
+        self._materialized = True
 
         if self._collect is not None:
             # Stable sort by the user's collect order; ties (same name with
@@ -592,6 +702,24 @@ class MultiAxesLegendGroup:
 
         reactor._refresh_all()
 
+    def _set_decoration_offset(self, mm: float) -> None:
+        """Bake ``mm`` into every reactor registration this group owns.
+
+        Called by ``SubplotsAutoLayout._measure_one_group`` inside the
+        layout measurement pass — a known-safe context (the reactor is
+        mid-refresh but this is not itself a reactor callback). The next
+        ``_update_artist_anchor`` call picks up the new value via
+        ``reg.mm_outward_decoration_offset`` and repositions the artist past the
+        anchor's decorations on the chosen side.
+        """
+        if not self._builder.elements:
+            return
+        reactor = self._builder._reactor
+        element_ids = {id(a) for _, a in self._builder.elements}
+        for reg in reactor._registrations:
+            if id(reg.artist) in element_ids:
+                reg.mm_outward_decoration_offset = mm
+
     def _render_entry(self, entry: LegendEntry) -> None:
         """Route to add_legend (categorical) or add_colorbar (continuous)."""
         if entry.kind == "hue" and is_continuous_hue(entry.handles):
@@ -663,6 +791,7 @@ def legend_group(
     orientation: str = "auto",
     align: str = "auto",
     collect: Optional[Sequence[str]] = None,
+    axes: Optional[Sequence[Axes]] = None,
     x_offset: Optional[float] = None,
     y_offset: Optional[float] = None,
     gap: float = 2,
@@ -678,6 +807,12 @@ def legend_group(
     corresponding per-cell reservation (``right[c]`` for ``side='right'``,
     ``xlabel_space[r]`` for ``side='bottom'``, etc.) absorbs the band
     width.
+
+    ``axes=`` scopes collection to a subset of the grid — only entries
+    stashed on those axes are gathered, and only per-axis legends on
+    those axes are evicted. Multiple groups on one figure (each with a
+    disjoint ``axes=``) let you render independent bands for different
+    subplots.
 
     ``orientation`` defaults to ``'horizontal'`` for ``side='top'|'bottom'``
     (entries run along the edge left-to-right, multiple legends sit
@@ -695,6 +830,7 @@ def legend_group(
         orientation=orientation,
         align=align,
         collect=collect,
+        axes=axes,
         x_offset=x_offset,
         y_offset=y_offset,
         gap=gap,

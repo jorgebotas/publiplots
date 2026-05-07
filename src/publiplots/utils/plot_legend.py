@@ -432,7 +432,7 @@ def render_entries(
     fig = ax.get_figure()
     to_render = [
         e for e in get_entries(ax)
-        if flags[e.kind] and not entry_is_in_group(fig, e)
+        if flags[e.kind] and not entry_is_in_group(fig, e, ax=ax)
     ]
     if not to_render:
         return

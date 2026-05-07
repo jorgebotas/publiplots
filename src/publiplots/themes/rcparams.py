@@ -88,7 +88,12 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
 
     # Save settings - high quality for publications
     "savefig.dpi": 600,
-    "savefig.bbox": "tight",
+    # publiplots figures are already laid out to mm-precise margins via
+    # FigureLayout; ``bbox='tight'`` would re-crop to the union of all
+    # artist bboxes, shifting legends and nuking figure-anchored bands
+    # (side='top'|'bottom'|'left'|'right' with no ``anchor=``). See the
+    # sphinx-gallery scraper override in docs/source/conf.py.
+    "savefig.bbox": "standard",
     "savefig.pad_inches": 0.1,
     "savefig.transparent": True,
     "savefig.facecolor": "none",

@@ -253,16 +253,26 @@ class SubplotsAutoLayout:
     }
 
     def _apply_legend_band_measurement(self, measured: dict, axes_matrix) -> None:
-        """Measure the figure's pp.legend_group overhang and write it
-        into the correct FigureLayout reservation based on the group's
-        ``side`` and anchor kind."""
-        group = getattr(self._fig, "_publiplots_legend_group", None)
-        if group is None:
+        """Measure every pp.legend_group's overhang and write it into
+        the correct FigureLayout reservation based on each group's
+        ``side`` and anchor kind.
+
+        Multiple groups may coexist on the same figure (each scoped via
+        ``axes=``); each contributes its own measurement. Per-cell
+        reservations accumulate via ``max()`` so two axes-anchored
+        groups targeting different cells both get room.
+        """
+        groups = getattr(self._fig, "_publiplots_legend_groups", None)
+        if not groups:
             return
         dpi = self._fig.dpi
         if dpi <= 0:
             return
 
+        for group in groups:
+            self._measure_one_group(group, measured, axes_matrix, dpi)
+
+    def _measure_one_group(self, group, measured, axes_matrix, dpi) -> None:
         # Force materialization so artists exist to measure.
         group._materialize()
         if not group._builder.elements:
@@ -280,13 +290,26 @@ class SubplotsAutoLayout:
                 continue
             max_overhang_px = max(max_overhang_px, overhang_fn(anchor_bb, extent))
         if max_overhang_px <= 0:
+            # Band doesn't overhang yet (first-draw before reactor has
+            # repositioned). Still re-bake the decoration offset so a
+            # group constructed BEFORE plots picks up the offset as soon
+            # as its entries materialize.
+            self._bake_decoration_offset(group, measured, axes_matrix)
             return
         overhang_mm = max_overhang_px / dpi * 25.4 + 1.0
 
         if group._anchor_kind == "figure":
             if figure_field in self._locked:
                 return
-            measured[figure_field] = overhang_mm
+            # Figure-anchored: _GridAnchor already places the band past
+            # all per-cell decorations, so no extra outward offset is
+            # needed. Clear any stale offset from a prior layout pass.
+            group._band_contribution_mm = overhang_mm
+            group._set_decoration_offset(0.0)
+            # Multiple figure-anchored groups on the same side compete
+            # for the same band; take the tallest so neither clips.
+            existing_scalar = measured.get(figure_field, 0.0)
+            measured[figure_field] = max(existing_scalar, overhang_mm)
             return
 
         # Axes-anchored: grow the per-cell reservation for the anchor's
@@ -296,14 +319,45 @@ class SubplotsAutoLayout:
             return
         ax = group.anchor
         r, c = self._find_ax_indices(ax, axes_matrix)
-        if axis_kind == "col":
-            existing = list(measured.get(cell_field, getattr(self._layout, cell_field)))
-            existing[c] = max(existing[c], overhang_mm)
-            measured[cell_field] = tuple(existing)
-        else:  # "row"
-            existing = list(measured.get(cell_field, getattr(self._layout, cell_field)))
-            existing[r] = max(existing[r], overhang_mm)
-            measured[cell_field] = tuple(existing)
+        # Read the pure-decoration reservation BEFORE we write our
+        # overhang into it. _measure() already filled ``measured[cell_field]``
+        # from _side_extent (which uses set_in_layout(False) on managed
+        # overlays, i.e., OUR legend, so the measured slot is the
+        # anchor's decoration size WITHOUT our band).
+        existing = list(measured.get(cell_field, getattr(self._layout, cell_field)))
+        idx = c if axis_kind == "col" else r
+        pure_decoration_mm = existing[idx]
+        # For side='right' there is no decoration past ax.x1 (tick labels
+        # live inside ax), so this is already 0. For side='top' it equals
+        # the title height above ax.y1; for 'bottom' the xlabel+ticks
+        # below ax.y0; for 'left' the ylabel+ticks left of ax.x0. The
+        # band must step past that amount to avoid overlap.
+        group._band_contribution_mm = overhang_mm
+        group._set_decoration_offset(pure_decoration_mm)
+        # Grow the reservation by overhang_mm (capped against prior value
+        # so multiple overlapping groups don't shrink it).
+        existing[idx] = max(existing[idx], overhang_mm + pure_decoration_mm)
+        measured[cell_field] = tuple(existing)
+
+    def _bake_decoration_offset(self, group, measured, axes_matrix) -> None:
+        """Write the decoration offset onto the group's registrations
+        without touching its reservation. Used on first draw when the
+        band hasn't rendered yet (no overhang to measure) but we still
+        want the band to land past decorations once it materializes.
+        """
+        if group._anchor_kind != "axes":
+            return
+        side = group._side
+        _, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
+        if cell_field in self._locked:
+            return
+        r, c = self._find_ax_indices(group.anchor, axes_matrix)
+        existing = measured.get(cell_field, getattr(self._layout, cell_field))
+        idx = c if axis_kind == "col" else r
+        pure_decoration_mm = existing[idx] - group._band_contribution_mm
+        if pure_decoration_mm < 0:
+            pure_decoration_mm = 0.0
+        group._set_decoration_offset(pure_decoration_mm)
 
     def _find_ax_indices(self, ax, axes_matrix):
         for r, row in enumerate(axes_matrix):

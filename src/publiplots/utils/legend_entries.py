@@ -108,12 +108,22 @@ def resolve_legend_flags(legend) -> dict:
     )
 
 
-def entry_is_in_group(fig, entry: LegendEntry) -> bool:
-    """True if the figure's legend_group (if any) claims this entry."""
-    group = getattr(fig, "_publiplots_legend_group", None)
-    if group is None:
+def entry_is_in_group(fig, entry: LegendEntry, ax=None) -> bool:
+    """True if any legend_group on ``fig`` claims this entry.
+
+    When ``ax`` is provided, the check is scoped: a group claims the
+    entry only if the entry name matches AND ``ax`` falls within the
+    group's ``axes=`` scope. First-registered wins on scope overlap.
+    """
+    groups = getattr(fig, "_publiplots_legend_groups", None)
+    if not groups:
         return False
-    return group.claims(entry.name)
+    for group in groups:
+        if not group.claims(entry.name):
+            continue
+        if ax is None or group._scope_contains(ax):
+            return True
+    return False
 
 
 def is_continuous_hue(handles) -> bool:

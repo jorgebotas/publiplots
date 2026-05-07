@@ -21,7 +21,7 @@ def _close_figures():
 def test_legend_group_registers_on_figure():
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
     group = pp.legend_group(anchor=axes[-1])
-    assert fig._publiplots_legend_group is group
+    assert group in fig._publiplots_legend_groups
 
 
 def test_legend_group_claims_collect_none_returns_true():

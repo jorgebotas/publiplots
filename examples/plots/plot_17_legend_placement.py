@@ -286,3 +286,54 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
         errorbar="se", title=f"Panel {panel}", ax=axes[r, c],
     )
 pp.show()
+
+# %%
+# 10. Two independent bands on one figure
+# ---------------------------------------
+# Multiple ``pp.legend_group`` calls can coexist on the same figure.
+# Each uses ``collect=[...]`` (and optionally ``axes=[...]``) to claim a
+# disjoint slice of the stashed legend entries, and each renders on its
+# own side. Below, the treatment palette shares a ``side='top'`` band
+# while the method linestyles share a ``side='bottom'`` band — two
+# figure-anchored groups on the same grid.
+
+fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
+pp.legend_group(side="top", collect=["treatment"])
+pp.legend_group(side="bottom", collect=["method"])
+for r, row in enumerate(axes):
+    for c, ax in enumerate(row):
+        pp.lineplot(
+            data=line_df, x="time", y="value",
+            hue="treatment", style="method", palette=treatment_palette,
+            dashes={"raw": (1, 0), "smoothed": (4, 2)},
+            title=f"Panel {(r, c)}", ax=ax,
+        )
+pp.show()
+
+# %%
+# 10b. Scoping a group to a subset of axes
+# ----------------------------------------
+# ``axes=[...]`` restricts which subplots a group collects from and
+# evicts per-axis legends from. The top-row band below only looks at
+# the top row of axes; the bottom-row band only at the bottom. Useful
+# when the subplot grid displays two independent stories that share a
+# figure.
+
+fig, axes = pp.subplots(2, 2, axes_size=(45, 30))
+top_row = list(axes[0])
+bottom_row = list(axes[1])
+pp.legend_group(
+    anchor=axes[0, -1], side="top", axes=top_row, collect=["treatment"],
+)
+pp.legend_group(
+    anchor=axes[1, -1], side="bottom", axes=bottom_row, collect=["method"],
+)
+for r, row in enumerate(axes):
+    for c, ax in enumerate(row):
+        pp.lineplot(
+            data=line_df, x="time", y="value",
+            hue="treatment", style="method", palette=treatment_palette,
+            dashes={"raw": (1, 0), "smoothed": (4, 2)},
+            title=f"Panel {(r, c)}", ax=ax,
+        )
+pp.show()

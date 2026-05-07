@@ -102,7 +102,10 @@ def test_entry_is_in_group_with_claim():
         def claims(self, name):
             return name == "treatment"
 
-    fig._publiplots_legend_group = _FakeGroup()
+        def _scope_contains(self, ax):
+            return True
+
+    fig._publiplots_legend_groups = [_FakeGroup()]
     assert entry_is_in_group(fig, entry) is True
 
     other = LegendEntry.build("other", "hue", [], [])
