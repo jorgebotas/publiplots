@@ -387,6 +387,29 @@ class MultiAxesLegendGroup:
                         f"axes must be an Axes or a sequence of Axes; "
                         f"got {type(a).__name__}"
                     )
+
+        # Commit 2: store a placeholder flag matching LegendBuilder's hardcoded
+        # external_to_axis=True. The real rule (False for single-axes scope,
+        # True otherwise) is applied in commit 4 atomically with the
+        # LegendBuilder argument flip. Keeping them in lockstep prevents
+        # _measure_one_group from skipping overhang while the reactor still
+        # treats the legend as external.
+        self._external_to_axis = True
+
+        # Construct a _ScopeAnchor mirror in every path. Commit 2 stores it
+        # for reference only — current geometry still flows through
+        # self.anchor (which is a _GridAnchor or direct Axes). Commit 4
+        # swaps consumers to read from self._scope_anchor uniformly.
+        if self._anchor_kind == "figure":
+            fig = self.anchor.get_figure()  # _GridAnchor has get_figure()
+            matrix = getattr(fig, "_publiplots_axes", None)
+            flat = [a for row in matrix for a in row] if matrix else list(fig.axes)
+            self._scope_anchor = _ScopeAnchor(flat, fig)
+        else:
+            scope_list = self._scope_axes if self._scope_axes is not None else [self.anchor]
+            fig = self.anchor.get_figure()
+            self._scope_anchor = _ScopeAnchor(scope_list, fig)
+
         self._materialized = False
         self._warned_mismatch = False
         self._align_connected = False
