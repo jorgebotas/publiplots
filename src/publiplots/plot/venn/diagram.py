@@ -208,8 +208,11 @@ def venn(
     """
     Create a Venn diagram for 2-5 sets.
 
-    This function creates true Venn diagrams that show all possible intersections.
-    Each region (petal) is labeled with the size of the intersection by default.
+    This function creates true Venn diagrams that show all possible intersections
+    using ellipses (2-5 sets supported). Each region (petal) is labeled with the
+    size of the intersection by default; use ``fmt`` to show logic strings or
+    percentages instead. For more than 5 sets, prefer
+    :func:`publiplots.upsetplot`.
 
     Parameters
     ----------
@@ -224,8 +227,9 @@ def venn(
         - List of color names/codes for each set
         - String name of a publiplots palette or seaborn palette
         - None (uses 'pastel' palette)
-    alpha : float, default=0.3
-        Transparency of set regions (0=transparent, 1=opaque).
+    alpha : float, optional
+        Transparency of set regions (0=transparent, 1=opaque). When None,
+        resolved from ``publiplots.rcParams["alpha"]``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     fmt : str, default='{size}'
@@ -273,6 +277,10 @@ def venn(
     ...     [set1, set2, set3, set4, set5],
     ...     fmt='{size} ({percentage:.1f}%)'
     ... )
+
+    See Also
+    --------
+    publiplots.upsetplot : UpSet plot, preferred for 6+ sets or complex intersections.
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
