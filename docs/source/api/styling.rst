@@ -50,3 +50,13 @@ Hatch Resolution Functions
 
    publiplots.resolve_hatches
    publiplots.resolve_hatch_map
+
+Constants
+---------
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   publiplots.STANDARD_MARKERS
+   publiplots.HATCH_PATTERNS
