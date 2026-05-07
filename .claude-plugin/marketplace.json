@@ -1,11 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/marketplace.schema.json",
   "name": "publiplots",
+  "description": "Claude Code skills for the publiplots publication-ready plotting library.",
   "owner": { "name": "Jorge Botas" },
   "plugins": [
     {
       "name": "publiplots",
-      "source": ".",
+      "source": "./",
       "description": "Skills for idiomatic publiplots usage — mm-units layout, rcParams, unified pp.legend scoping."
     }
   ]
