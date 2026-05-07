@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-05-07
+
+### BREAKING
+- `pp.legend_group` has been removed. Use `pp.legend(...)` instead —
+  the API is identical (all kwargs match), it is purely a rename:
+  - Before: `pp.legend_group(side='right')` →
+    After: `pp.legend(side='right')`
+  - Before: `pp.legend_group(anchor=axes[-1])` →
+    After: `pp.legend(anchor=axes[-1])`
+  - Before: `pp.legend_group(axes=top_row, side='top')` →
+    After: `pp.legend(axes=top_row, side='top')`
+- The old `pp.legend(ax, auto=False, ...)` per-axes API has been
+  removed. Use `pp.legend(ax)` (auto-collects stashed entries) or
+  `pp.legend(ax, collect=[])` (suppress auto-collection for manual
+  `.add_legend(...)` calls).
+
+### Added
+- Unified `pp.legend(axes=None, collect=None, *, side='right',
+  anchor=None, ...)` — single public legend API that handles
+  per-axes, multi-axes bands, and figure-level bands through one
+  mental model.
+- Single-axes scope (`pp.legend(ax)`) flips `external_to_axis=False`
+  so the legend is measured by `ax.get_tightbbox()`, matching
+  pre-0.10 `pp.legend(ax)` behavior.
+- Internal `_ScopeAnchor` abstraction for anchor geometry
+  (scaffolding — not yet user-facing).
+- `_get_or_create_per_axes_group(ax)` helper — `render_entries` now
+  routes all non-inside legends through a cached per-axes
+  `MultiAxesLegendGroup`, preserving cursor state across successive
+  plot calls.
+
+### Fixed
+- `_measure_one_group` early-returns for single-axes groups
+  (`external_to_axis=False`) to prevent double-counting against the
+  per-cell reservation (the axes tightbbox already counts the
+  legend).
+
+### Migration
+```
+sed -i 's/pp\.legend_group(/pp.legend(/g' your_file.py
+```
+No other changes needed — all kwargs (`side`, `anchor`, `axes`,
+`collect`, `orientation`, `align`, `x_offset`, etc.) are identical
+between the old `legend_group` and the new `legend`.
+
+### Note on `pp.legend(ax)` vs `pp.legend(anchor=ax)`
+These two forms now have subtly different meanings:
+- `pp.legend(ax)` (positional) — **internal** per-axes legend
+  (like pre-0.10 `pp.legend(ax)`), measured by axes tightbbox.
+- `pp.legend(anchor=ax)` (kwarg) — **external** band pinned to
+  that axes' edge (like pre-0.10 `pp.legend_group(anchor=ax)`),
+  measured as an overhang.
+
+The asymmetry preserves pre-0.10 `pp.legend_group(anchor=ax)`
+semantics across the mechanical rename. A future minor release
+may consolidate these.
+
+[0.10.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.0
+
 ## [0.9.3] - 2026-05-06
 
 ### Added
