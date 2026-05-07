@@ -278,6 +278,13 @@ class SubplotsAutoLayout:
         if not group._builder.elements:
             return
 
+        # Single-axes, in-frame groups (external_to_axis=False) are measured
+        # by ax.get_tightbbox() in _side_extent — no overhang write needed.
+        # This guard prevents double-counting against the per-cell reservation
+        # when commit 4 routes pp.legend(ax) through the same group machinery.
+        if not getattr(group, "_external_to_axis", True):
+            return
+
         side = group._side
         overhang_fn = self._OVERHANG_BY_SIDE[side]
         figure_field, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
@@ -365,6 +372,22 @@ class SubplotsAutoLayout:
                 if a is ax:
                     return r, c
         return 0, 0
+
+    def _find_scope_indices(self, scope_axes, axes_matrix):
+        """Return (row_indices, col_indices) touched by any axes in scope_axes.
+
+        scope_axes is a list of matplotlib Axes. Returns two sorted lists of
+        unique row/col indices within axes_matrix. Used by commit 4's
+        multi-axes scope path to aggregate per-cell reservations via max().
+        """
+        rows, cols = set(), set()
+        for ax in scope_axes:
+            for r, row in enumerate(axes_matrix):
+                for c, a in enumerate(row):
+                    if a is ax:
+                        rows.add(r)
+                        cols.add(c)
+        return sorted(rows), sorted(cols)
 
     def _artist_window_extent(self, obj):
         """Duck-typed tight-bbox accessor (Legend/Colorbar/Text).
