@@ -90,3 +90,41 @@ def test_legend_collect_empty_skips_auto(df):
         f"collect=[] must skip auto-collect; got {len(group._builder.elements)} elements"
     )
     plt.close(fig)
+
+
+def test_render_entries_inside_true_bypasses_group(df):
+    """inside=True legends must NOT register on the figure's legend group
+    list and must NOT attach a _legend_group to the axes."""
+    fig, ax = plt.subplots()
+    pp.scatterplot(
+        df, x='x', y='y', hue='g', ax=ax,
+        legend_kws={'inside': True, 'loc': 'upper right'},
+    )
+    # No per-axes group should have been created.
+    assert getattr(ax, '_legend_group', None) is None, (
+        "inside=True must bypass the per-axes group path"
+    )
+    # No reactor registrations either (inside legends are plain matplotlib).
+    fig.canvas.draw()  # force layout
+    reactor = getattr(fig, '_publiplots_layout_reactor', None)
+    if reactor is not None:
+        ax_regs = [r for r in reactor._registrations if r.ax is ax]
+        assert len(ax_regs) == 0, (
+            f"inside=True must not register with the reactor; got {len(ax_regs)} regs"
+        )
+    plt.close(fig)
+
+
+def test_render_entries_per_axes_stacks_into_same_group(df):
+    """Successive plot calls on the same axes should stack into the same
+    per-axes group (single LegendLayout cursor), not create separate groups."""
+    fig, ax = plt.subplots()
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=ax)
+    first_group = ax._legend_group
+    assert first_group is not None
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=ax)
+    second_group = ax._legend_group
+    assert first_group is second_group, (
+        "second plot call must reuse the first call's per-axes group"
+    )
+    plt.close(fig)

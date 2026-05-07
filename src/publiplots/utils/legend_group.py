@@ -1128,3 +1128,33 @@ def legend(
         group._builder._external_to_axis = False
 
     return group
+
+
+def _get_or_create_per_axes_group(ax: Axes) -> MultiAxesLegendGroup:
+    """Return (or create) the single-axes legend group cached on ``ax``.
+
+    Used by ``render_entries`` to funnel every plot function's legend
+    output through a per-axes ``MultiAxesLegendGroup``, so successive
+    plot calls stack their legend entries into the same layout cursor.
+    Flipped to ``external_to_axis=False`` so the legend is measured by
+    ``ax.get_tightbbox()`` (matches the pre-0.10 ``pp.legend(ax)``
+    behaviour).
+
+    ``collect=[]`` is passed so the group does NOT auto-collect stashed
+    entries during its ``_materialize`` pass — ``render_entries`` is the
+    sole producer of ``add_legend``/``add_colorbar`` calls on the
+    underlying builder. Without this, the group would scan the axes'
+    stashed entries during draw and re-add them on top of the ones
+    ``render_entries`` already added, producing duplicate legends.
+
+    Also preserves the ``ax._legend_builder`` alias so the existing
+    ``_evict_claimed_per_axis_legends`` read path keeps working.
+    """
+    existing = getattr(ax, "_legend_group", None)
+    if existing is not None:
+        return existing
+    # collect=[] — see docstring; render_entries owns the add_legend calls.
+    group = legend(ax, collect=[])
+    ax._legend_group = group
+    ax._legend_builder = group._builder  # back-compat alias
+    return group
