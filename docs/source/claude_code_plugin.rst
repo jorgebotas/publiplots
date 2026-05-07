@@ -1,6 +1,15 @@
 Claude Code Plugin
 ==================
 
+.. image:: _static/claudecode-color.svg
+   :width: 96
+   :align: center
+   :alt: Claude Code
+
+.. raw:: html
+
+   <p></p>
+
 PubliPlots ships an official `Claude Code <https://claude.com/claude-code>`_
 plugin that teaches the assistant how to use the library idiomatically. The
 plugin bundles two skills — ``publiplots-guide`` and ``legend-placement`` —
