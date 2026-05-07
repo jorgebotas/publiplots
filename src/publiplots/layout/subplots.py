@@ -272,6 +272,7 @@ def subplots(
         nrows=nrows, ncols=ncols,
         axes_size=axes_size_t,
         legend_column=0.0,
+        suptitle_space=0.0,
         **resolved,
     )
     W, H = layout.figure_size()

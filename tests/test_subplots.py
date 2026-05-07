@@ -703,3 +703,71 @@ def test_legend_column_stays_small_with_empty_group():
     assert layout.legend_column < 2.0, (
         f"legend_column should stay near 0; got {layout.legend_column}"
     )
+
+
+# ---------------------------------------------------------------------------
+# suptitle_space auto-measurement
+# ---------------------------------------------------------------------------
+
+
+def test_auto_layout_suptitle_space_is_zero_without_title():
+    """With no pp.suptitle attached, suptitle_space stays at 0 after draw."""
+    fig, ax = pp.subplots(axes_size=(50, 30))
+    fig.canvas.draw()
+    assert fig._publiplots_layout.suptitle_space == 0.0
+
+
+def test_auto_layout_grows_suptitle_space_for_title():
+    """A tall suptitle grows suptitle_space past a few mm."""
+    fig, ax = pp.subplots(axes_size=(50, 30))
+    pp.suptitle("A bold figure title", fontsize=40)
+    # pp.suptitle calls settle internally; one more draw for good measure.
+    fig.canvas.draw()
+    assert fig._publiplots_layout.suptitle_space > 5.0, (
+        f"suptitle_space should have grown past 5 mm with fontsize=40; "
+        f"got {fig._publiplots_layout.suptitle_space:.2f} mm"
+    )
+
+
+def test_auto_layout_suptitle_coexists_with_top_legend_band():
+    """Figure-anchored top legend group + pp.suptitle: suptitle must sit
+    above the top legend band (higher pixel y)."""
+    from publiplots.utils.legend import create_legend_handles
+    fig, axes = pp.subplots(1, 3, axes_size=(45, 30))
+    for ax in axes:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend(side="top")
+    group.add_legend(
+        handles=create_legend_handles(
+            labels=["A", "B", "C"],
+            colors=list(pp.color_palette("pastel", 3)),
+            alpha=0.2, linewidth=1.0,
+        ),
+        label="group",
+    )
+    artist = pp.suptitle("Figure-wide title", fontsize=16)
+    fig.canvas.draw()
+
+    # Collect every managed legend artist and find its window extent.
+    reactor = getattr(fig, "_publiplots_layout_reactor", None)
+    assert reactor is not None, "layout reactor should be attached"
+    legend_y1 = 0.0
+    saw_legend = False
+    for reg in reactor._registrations:
+        obj = reg.artist
+        extent = None
+        if hasattr(obj, "get_window_extent"):
+            try:
+                extent = obj.get_window_extent()
+            except TypeError:
+                extent = None
+        if extent is None:
+            continue
+        saw_legend = True
+        legend_y1 = max(legend_y1, extent.y1)
+    assert saw_legend, "expected at least one registered legend artist"
+    su_ext = artist.get_window_extent()
+    assert su_ext.y0 > legend_y1, (
+        f"suptitle should sit above top legend band; "
+        f"got suptitle.y0={su_ext.y0:.1f}, legend_top.y1={legend_y1:.1f}"
+    )

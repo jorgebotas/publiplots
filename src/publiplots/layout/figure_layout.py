@@ -44,6 +44,10 @@ class FigureLayout:
         grid. Used by figure-anchored ``pp.legend_group(side=...)``.
         Default ``0.0``. All four scalars only kick in when a
         figure-anchored legend group asks for space on that side.
+    suptitle_space : float
+        Extra mm above ``legend_band_top`` reserved for a figure-level
+        ``pp.suptitle``. Default ``0.0``; auto-measured by
+        :class:`SubplotsAutoLayout` when a suptitle is present.
     """
 
     nrows: int
@@ -60,6 +64,7 @@ class FigureLayout:
     legend_band_bottom: float = 0.0
     legend_band_top: float = 0.0
     legend_band_left: float = 0.0
+    suptitle_space: float = 0.0
 
     def __post_init__(self) -> None:
         for side in ("title_space", "xlabel_space", "ylabel_space", "right"):
@@ -101,6 +106,7 @@ class FigureLayout:
         )
         H = (
             self.outer_pad
+            + self.suptitle_space
             + self.legend_band_top
             + sum(self.title_space)
             + self.nrows * h_ax

@@ -24,6 +24,7 @@ _UPDATE_THRESHOLD_MM = 0.1
 _ALL_SIDES = {
     "title_space", "xlabel_space", "ylabel_space", "right",
     "legend_column", "legend_band_bottom", "legend_band_top", "legend_band_left",
+    "suptitle_space",
 }
 # Cap on settle() draws; 1-3 is typical.
 _MAX_CONVERGENCE_ITERS = 5
@@ -143,6 +144,11 @@ class SubplotsAutoLayout:
         # its overhang to the right reservation field based on (side,
         # anchor_kind).
         self._apply_legend_band_measurement(measured, axes_matrix)
+        # Measure pp.suptitle (if any) and write its mm height into
+        # ``measured["suptitle_space"]``. Ordering is irrelevant —
+        # suptitle_space is a dedicated scalar, independent of legend
+        # bands.
+        self._apply_suptitle_measurement(measured, dpi)
         return measured
 
     def _side_extent(self, ax, calc, managed_artist_ids) -> float:
@@ -217,6 +223,7 @@ class SubplotsAutoLayout:
 
     _SCALAR_SIDES = {
         "legend_column", "legend_band_bottom", "legend_band_top", "legend_band_left",
+        "suptitle_space",
     }
 
     def _needs_update(self, measured: Dict[str, Tuple[float, ...]]) -> bool:
@@ -251,6 +258,32 @@ class SubplotsAutoLayout:
         "bottom": ("legend_band_bottom",  "xlabel_space", "row"),
         "top":    ("legend_band_top",     "title_space",  "row"),
     }
+
+    def _apply_suptitle_measurement(self, measured: dict, dpi: float) -> None:
+        """Measure the pixel height of ``fig._publiplots_suptitle`` (if any)
+        and write it into ``measured["suptitle_space"]`` in mm.
+
+        A ``+1 mm`` safety margin is added (same convention as
+        :meth:`_measure_one_group` below at the
+        ``overhang_mm = max_overhang_px / dpi * 25.4 + 1.0`` line).
+        When there is no suptitle, writes ``0.0`` so the reservation
+        collapses back to zero.
+        """
+        if "suptitle_space" in self._locked:
+            return
+        artist = getattr(self._fig, "_publiplots_suptitle", None)
+        if artist is None:
+            measured["suptitle_space"] = 0.0
+            return
+        try:
+            extent = artist.get_window_extent()
+        except Exception:
+            measured["suptitle_space"] = 0.0
+            return
+        if extent is None or extent.height <= 0:
+            measured["suptitle_space"] = 0.0
+            return
+        measured["suptitle_space"] = extent.height / dpi * 25.4 + 1.0
 
     def _apply_legend_band_measurement(self, measured: dict, axes_matrix) -> None:
         """Measure every pp.legend_group's overhang and write it into
@@ -434,6 +467,17 @@ class SubplotsAutoLayout:
         for r, row in enumerate(self._axes_matrix()):
             for c, ax in enumerate(row):
                 ax.set_position(new_layout.axes_position(r, c))
+
+        # Reposition pp.suptitle (if any) to the vertical midpoint of
+        # its reserved band. Runs after set_size_inches so the figure's
+        # final height is known; the next draw renders the title at
+        # the fixed fraction inside the grown canvas.
+        suptitle = getattr(self._fig, "_publiplots_suptitle", None)
+        if suptitle is not None and new_layout.suptitle_space > 0:
+            y_mm = H - new_layout.outer_pad - new_layout.suptitle_space / 2
+            suptitle.set_position((0.5, y_mm / H))
+            suptitle.set_verticalalignment("center")
+            suptitle.set_horizontalalignment("center")
 
     def _axes_matrix(self):
         stored = getattr(self._fig, "_publiplots_axes", None)

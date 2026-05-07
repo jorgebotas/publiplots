@@ -37,8 +37,12 @@ def show(*args: Any, **kwargs: Any) -> None:
 def suptitle(text: str, **kwargs: Any) -> Text:
     """Add a figure-level title to the current figure.
 
-    Thin wrapper around :func:`matplotlib.pyplot.suptitle`. Returns the
-    created :class:`~matplotlib.text.Text` artist. Uses
+    Thin wrapper around :func:`matplotlib.pyplot.suptitle` that also
+    hooks into publiplots' auto-layout engine: the figure grows
+    vertically to reserve room for the title (no overlap with top-row
+    axis titles), and repeated calls replace the prior suptitle rather
+    than accumulating texts on the figure. Returns the created
+    :class:`~matplotlib.text.Text` artist. Uses
     ``matplotlib.pyplot.gcf()`` to locate the target figure.
 
     Parameters
@@ -62,4 +66,26 @@ def suptitle(text: str, **kwargs: Any) -> Text:
     >>> pp.barplot(data=df2, x='x', y='y', ax=axes[1])
     >>> pp.suptitle('Comparison of two experiments')
     """
-    return plt.suptitle(text, **kwargs)
+    fig = plt.gcf()
+    prior = getattr(fig, "_publiplots_suptitle", None)
+    if prior is not None:
+        try:
+            prior.remove()
+        except (NotImplementedError, ValueError):
+            # Already detached from the figure, or remove unsupported;
+            # proceed — the important invariant is that only the new
+            # artist ends up in fig._publiplots_suptitle.
+            pass
+        # Matplotlib caches the suptitle on ``fig._suptitle`` and
+        # re-uses it on subsequent ``plt.suptitle`` calls. After we
+        # remove the prior Text from ``fig.texts``, null the cache so
+        # the next ``plt.suptitle`` creates a fresh, attached artist
+        # rather than silently updating the detached one.
+        fig._suptitle = None
+    artist = plt.suptitle(text, **kwargs)
+    fig._publiplots_suptitle = artist
+    # Trigger a re-measure so the figure grows before the user sees it.
+    al = getattr(fig, "_publiplots_auto_layout", None)
+    if al is not None:
+        al.settle()
+    return artist
