@@ -413,26 +413,23 @@ pp.show()
 #   (see section 6). Matches pre-0.10 ``pp.legend_group(anchor=ax)``
 #   behaviour.
 #
-# A future minor release may consolidate these — for now the pair of
-# figures below shows the layout difference.
+# A future minor release may consolidate these — for now the 1x2
+# figure below shows both modes side by side, one per panel.
 
-# Internal — pp.legend(ax) counts in ax.tightbbox
-fig, ax = pp.subplots(1, 1, axes_size=(55, 35))
-pp.legend(ax)
+fig, axes = pp.subplots(1, 2, axes_size=(45, 35))
+# Left panel: internal legend pinned to axes[0].
+pp.legend(axes[0])
+# Right panel: external band pinned to axes[1]'s right edge.
+pp.legend(anchor=axes[1])
 pp.scatterplot(
     data=_df[_df["panel"] == "A"], x="x", y="y",
     hue="group", palette="pastel",
-    title="pp.legend(ax) — internal", ax=ax,
+    title="pp.legend(ax) — internal", ax=axes[0],
 )
-pp.show()
-
-# External — pp.legend(anchor=ax) lives past the right edge
-fig, ax = pp.subplots(1, 1, axes_size=(55, 35))
-pp.legend(anchor=ax)
 pp.scatterplot(
     data=_df[_df["panel"] == "B"], x="x", y="y",
     hue="group", palette="pastel",
-    title="pp.legend(anchor=ax) — external", ax=ax,
+    title="pp.legend(anchor=ax) — external", ax=axes[1],
 )
 pp.show()
 

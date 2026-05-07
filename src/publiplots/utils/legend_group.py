@@ -422,15 +422,29 @@ class MultiAxesLegendGroup:
         # to derive the *pure* decoration base (title/xlabel/ylabel height
         # without the band) without a separate tightbbox measurement.
         self._band_contribution_mm: float = 0.0
-        # anchor_ax=self.anchor pins position math/reactor to the anchor
-        # regardless of self.ax swaps during add_* calls. For
-        # figure-anchored groups anchor_ax is the _GridAnchor proxy,
-        # which exposes the same get_position()/get_figure() API.
+        # anchor_ax pins position math/reactor to the anchor regardless
+        # of self.ax swaps during add_* calls. For figure-anchored groups
+        # it's the _GridAnchor proxy (decoration-aware). For axes-anchored
+        # groups with a MULTI-axes scope (e.g. ``pp.legend(axes[0], side='top')``)
+        # we pass the scope's _ScopeAnchor so along-edge geometry (edge
+        # length, starting corner) comes from the scope's union — this is
+        # the whole reason _ScopeAnchor exists. Single-axes scope still
+        # uses the real Axes so vpad/interactions match pre-0.10 behaviour.
+        # self.anchor remains the real Axes so auto_layout's
+        # _find_ax_indices / per-cell reservation path keeps working.
         builder_ax = self.anchor if self._anchor_kind == "axes" \
                      else self._pick_builder_ax()
+        if (
+            self._anchor_kind == "axes"
+            and self._scope_axes is not None
+            and len(self._scope_axes) > 1
+        ):
+            builder_anchor_ax = self._scope_anchor
+        else:
+            builder_anchor_ax = self.anchor
         self._builder = LegendBuilder(
             ax=builder_ax,
-            anchor_ax=self.anchor,
+            anchor_ax=builder_anchor_ax,
             x_offset=x_offset,
             y_offset=y_offset,
             gap=gap,
@@ -508,12 +522,36 @@ class MultiAxesLegendGroup:
         return any(ax is a for a in self._scope_axes)
 
     def _scope_overlap(self, other: "MultiAxesLegendGroup") -> bool:
-        """True if ``self`` and ``other`` share any axes."""
-        # Full-grid scope overlaps everything.
-        if self._scope_axes is None or other._scope_axes is None:
+        """True if ``self`` and ``other`` share any axes.
+
+        Four cases:
+        - Both ``_scope_axes=None`` → both auto-collect from the full
+          grid, so they always compete.
+        - Both explicit → compare by id().
+        - One explicit, one ``_scope_axes=None`` (mixed):
+          * If the ``None`` side is figure-anchored, it truly covers the
+            whole grid → always overlap.
+          * If the ``None`` side is axes-anchored (legacy ``pp.legend(anchor=ax)``),
+            its physical region is just its anchor, so overlap only when
+            the explicit scope includes that anchor. This lets
+            ``pp.legend(axes[0])`` (scope=[axes[0]]) coexist with
+            ``pp.legend(anchor=axes[1])`` (scope=None but anchored to a
+            DIFFERENT axes) without a spurious overlap warning.
+        """
+        if self._scope_axes is None and other._scope_axes is None:
             return True
-        self_ids = {id(a) for a in self._scope_axes}
-        return any(id(a) in self_ids for a in other._scope_axes)
+        if self._scope_axes is not None and other._scope_axes is not None:
+            self_ids = {id(a) for a in self._scope_axes}
+            return any(id(a) in self_ids for a in other._scope_axes)
+        # Mixed: one has an explicit scope, the other is scope=None.
+        explicit, implicit = (
+            (self, other) if self._scope_axes is not None else (other, self)
+        )
+        if implicit._anchor_kind == "figure":
+            return True
+        # implicit is axes-anchored with scope=None → physical target
+        # is just the anchor cell.
+        return any(a is implicit.anchor for a in explicit._scope_axes)
 
     def _collect_overlap(self, other: "MultiAxesLegendGroup") -> bool:
         """True if ``self`` and ``other`` could claim the same entry name."""
@@ -1021,11 +1059,15 @@ def legend(
         # to `anchor`'s edge and is measured as an overhang.
         pass
     elif isinstance(axes, Axes) and anchor is None:
-        # Single axes: anchor to that axes; leave resolved_axes=None so
-        # MultiAxesLegendGroup.__init__ treats effective scope as [anchor]
-        # and the single-axes external_to_axis=False rule fires.
+        # Single axes: anchor to that axes; set resolved_axes=[axes] so
+        # the group has an EXPLICIT single-axes scope (not ``None``,
+        # which means "full grid"). The explicit scope is what lets
+        # _scope_overlap correctly see two per-axes legends on different
+        # axes as non-overlapping; with scope=None the overlap heuristic
+        # false-positives and spurious warnings fire when e.g.
+        # pp.legend(axes[0]) and pp.legend(anchor=axes[1]) coexist.
         resolved_anchor = axes
-        resolved_axes = None
+        resolved_axes = [axes]
         axes_triggered_single_scope = True
     elif isinstance(axes, Axes) and anchor is not None:
         # axes=ax, anchor=other_ax → explicit anchor override, single-axes scope.

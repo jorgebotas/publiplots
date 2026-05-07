@@ -128,3 +128,62 @@ def test_render_entries_per_axes_stacks_into_same_group(df):
         "second plot call must reuse the first call's per-axes group"
     )
     plt.close(fig)
+
+
+def test_row_band_centers_on_row_width(df):
+    """``pp.legend(axes[0], side='top')`` must center the band on the row's
+    width (union of all axes in the row), not the first axes' width.
+
+    Regression test for the v0.10 gallery showcase bug where the row-band
+    rendered anchored to ``axes[0,0].x0`` — i.e. along-edge geometry came
+    from the single-axes ``self.anchor`` instead of the scope's
+    ``_ScopeAnchor`` union.
+    """
+    fig, axes = pp.subplots(2, 3)
+    group = pp.legend(list(axes[0]), side='top')
+    for ax in axes.flat:
+        pp.scatterplot(df, x='x', y='y', hue='g', palette='pastel', ax=ax)
+    fig.canvas.draw()
+    row_x0 = axes[0, 0].get_position().x0
+    row_x1 = axes[0, -1].get_position().x1
+    row_midx = (row_x0 + row_x1) / 2
+    # Check the first rendered legend's bbox midpoint against the row
+    # midpoint (expressed in figure fractions).
+    _, artist = group._builder.elements[0]
+    legend_bbox = artist.get_window_extent()
+    fig_w = fig.get_window_extent().width
+    legend_midx_frac = (legend_bbox.x0 + legend_bbox.x1) / 2 / fig_w
+    assert abs(legend_midx_frac - row_midx) < 0.05, (
+        f"row-band midpoint {legend_midx_frac:.3f} should match row "
+        f"midpoint {row_midx:.3f}"
+    )
+    plt.close(fig)
+
+
+def test_per_axes_legend_and_external_band_coexist(df):
+    """``pp.legend(axes[0])`` (positional single-axes) and
+    ``pp.legend(anchor=axes[1])`` (keyword external band) on different
+    axes of the same figure must NOT warn about scope overlap.
+
+    Regression test for the v0.10 gallery showcase bug where the
+    positional single-axes form resolved to ``_scope_axes=None`` (meaning
+    "full grid"), triggering ``_scope_overlap``'s full-grid heuristic
+    against any other group on the figure.
+    """
+    import warnings
+    fig, axes = pp.subplots(1, 2)
+    for ax in axes.flat:
+        pp.scatterplot(df, x='x', y='y', hue='g', ax=ax, legend=False)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        pp.legend(axes[0])
+        pp.legend(anchor=axes[1])
+    overlap_warnings = [
+        x for x in w if "scope overlaps" in str(x.message)
+    ]
+    assert not overlap_warnings, (
+        f"single-axes per-axes and external-band groups on different "
+        f"axes should not warn about overlap; got "
+        f"{len(overlap_warnings)} warnings"
+    )
+    plt.close(fig)
