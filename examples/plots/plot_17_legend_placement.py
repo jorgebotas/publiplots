@@ -337,3 +337,131 @@ for r, row in enumerate(axes):
             title=f"Panel {(r, c)}", ax=ax,
         )
 pp.show()
+
+# %%
+# 11. Row band — ``pp.legend(axes[0], side='top')``
+# -------------------------------------------------
+# New in 0.10: passing a **row of axes** as the positional scope creates
+# a band pinned to that row's top edge, centered on the row's width
+# only (not the full figure). Ideal for a 2xN grid where the top row
+# carries the hue you want to highlight and the bottom row shows
+# follow-up/derived views that don't need their own legend.
+#
+# Contrast with ``pp.legend(side='top')`` (section 5, top case): that
+# variant spans the full grid width. Here the band sits over row 0
+# only, reserving vertical space inside that row's column block.
+#
+# Migration note: pre-0.10 this pattern required explicitly passing
+# ``anchor=`` AND ``axes=`` (see section 10b). With 0.10 the single
+# positional arg expresses both — the scope IS the anchor.
+
+fig, axes = pp.subplots(2, 3, axes_size=(35, 25))
+pp.legend(axes[0], side="top", collect=["group"])
+_panel_cycle = ["A", "B", "C", "D", "A", "B"]
+for r, row in enumerate(axes):
+    for c, ax in enumerate(row):
+        panel = _panel_cycle[r * 3 + c]
+        pp.scatterplot(
+            data=_df[_df["panel"] == panel], x="x", y="y",
+            hue="group", palette="pastel",
+            title=f"Panel {panel}", ax=ax,
+        )
+pp.show()
+
+# %%
+# 12. Column band — ``pp.legend(axes[:, 0], side='left')``
+# --------------------------------------------------------
+# The same idea, column-oriented. Passing a **column slice** as the
+# scope creates a band pinned to the left edge of that column,
+# centered on the column's height. Handy when a left-most column
+# shares a common legend that doesn't apply to other columns (e.g.,
+# a reference-distribution column next to per-condition panels).
+#
+# Default orientation for ``side='left'`` is vertical (entries stack
+# down the edge) and alignment defaults to ``'start'`` (top of the
+# column). Override either via ``orientation=`` / ``align=`` if the
+# defaults collide with the column's ylabels.
+
+fig, axes = pp.subplots(3, 2, axes_size=(35, 25))
+pp.legend(axes[:, 0], side="left", collect=["group"])
+for r, row in enumerate(axes):
+    for c, ax in enumerate(row):
+        panel = "ABCD"[(r * 2 + c) % 4]
+        pp.scatterplot(
+            data=_df[_df["panel"] == panel], x="x", y="y",
+            hue="group", palette="pastel",
+            title=f"Row {r} Col {c}", ax=ax,
+        )
+pp.show()
+
+# %%
+# 13. Internal vs external per-axes legend
+# ----------------------------------------
+# The positional and keyword forms of ``pp.legend`` now have subtly
+# different semantics when scoping to a single axes — an intentional
+# asymmetry that preserves pre-0.10 behaviour across the rename:
+#
+# - ``pp.legend(ax)`` (**positional**) — *internal* per-axes legend.
+#   The legend is measured by ``ax.get_tightbbox()``, so it counts as
+#   part of the axes' own decoration and the figure grows to
+#   accommodate it just like a tick label or title would. Matches
+#   pre-0.10 ``pp.legend(ax)`` behaviour.
+#
+# - ``pp.legend(anchor=ax)`` (**kwarg**) — *external* band pinned to
+#   that axes' right edge. The band is measured as an overhang past
+#   the axes rectangle and absorbs the per-cell ``right`` reservation
+#   (see section 6). Matches pre-0.10 ``pp.legend_group(anchor=ax)``
+#   behaviour.
+#
+# A future minor release may consolidate these — for now the pair of
+# figures below shows the layout difference.
+
+# Internal — pp.legend(ax) counts in ax.tightbbox
+fig, ax = pp.subplots(1, 1, axes_size=(55, 35))
+pp.legend(ax)
+pp.scatterplot(
+    data=_df[_df["panel"] == "A"], x="x", y="y",
+    hue="group", palette="pastel",
+    title="pp.legend(ax) — internal", ax=ax,
+)
+pp.show()
+
+# External — pp.legend(anchor=ax) lives past the right edge
+fig, ax = pp.subplots(1, 1, axes_size=(55, 35))
+pp.legend(anchor=ax)
+pp.scatterplot(
+    data=_df[_df["panel"] == "B"], x="x", y="y",
+    hue="group", palette="pastel",
+    title="pp.legend(anchor=ax) — external", ax=ax,
+)
+pp.show()
+
+# %%
+# 14. Sub-scope with an explicit ``anchor=`` override
+# ---------------------------------------------------
+# Advanced use: the ``axes=`` kwarg sets the **collection scope**
+# (which plots contribute entries) while ``anchor=`` independently
+# sets the **geometric pin** (where the band physically sits). By
+# default ``pp.legend(axes=top_row, side='top')`` anchors to the
+# row's bounding rect and centers the band. Pass ``anchor=`` to
+# override the pin — e.g., collect entries from the whole top row
+# but pin the band above the **top-right corner cell** specifically.
+#
+# Useful when the collection scope is one geometry (a full row) but
+# the aesthetic target is another (a single corner panel, typically
+# because it carries the richest hue stash).
+
+fig, axes = pp.subplots(2, 3, axes_size=(35, 25))
+top_row = list(axes[0])
+pp.legend(
+    axes=top_row, anchor=axes[0, -1], side="top", collect=["group"],
+)
+for r, row in enumerate(axes):
+    for c, ax in enumerate(row):
+        panel = "ABCD"[(r * 3 + c) % 4]
+        pp.scatterplot(
+            data=_df[_df["panel"] == panel], x="x", y="y",
+            hue="group", palette="pastel",
+            title=f"Panel {(r, c)}", ax=ax,
+        )
+pp.show()
