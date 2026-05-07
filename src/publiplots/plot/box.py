@@ -92,9 +92,11 @@ def boxplot(
     fliersize : float, optional
         Size of outlier markers.
     linewidth : float, optional
-        Width of box edges.
+        Width of box edges. When None, resolved from
+        ``publiplots.rcParams["lines.linewidth"]``.
     alpha : float, optional
-        Transparency of box fill (0-1).
+        Transparency of box fill (0-1). When None, resolved from
+        ``publiplots.rcParams["alpha"]``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -108,6 +110,10 @@ def boxplot(
         for per-kind control (e.g., ``legend={"hue": False}``).
     legend_kws : dict, optional
         Additional keyword arguments for legend.
+    annotate : bool or dict, optional
+        If truthy, run :func:`publiplots.annotate` with ``kind="box_stats"``
+        on the resulting axes. A dict is forwarded as keyword arguments to
+        the annotate call (e.g., ``annotate={"comparisons": [("A", "B")]}``).
     **kwargs
         Additional keyword arguments passed to seaborn.boxplot.
 
@@ -128,6 +134,19 @@ def boxplot(
     >>> ax = pp.boxplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
+
+    Box plot with statistical annotations between groups:
+
+    >>> ax = pp.boxplot(
+    ...     data=df, x="category", y="value",
+    ...     annotate={"comparisons": [("A", "B"), ("B", "C")]}
+    ... )
+
+    See Also
+    --------
+    publiplots.violinplot : Distribution-shape alternative with the same interface.
+    publiplots.raincloudplot : Box + half-violin + strip composite.
+    publiplots.annotate : Statistical annotations (used via ``annotate=``).
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
