@@ -166,7 +166,7 @@ def test_inside_coexists_with_legend_group():
 
     fig, axes = pp.subplots(1, 3, axes_size=(45, 35))
     # Collect only the shared hue across panels.
-    pp.legend_group(anchor=axes[-1], collect=["group"])
+    pp.legend(anchor=axes[-1], collect=["group"])
     for ax, panel in zip(axes, "ABC"):
         pp.lineplot(
             data=df_[df_["panel"] == panel], x="time", y="value",

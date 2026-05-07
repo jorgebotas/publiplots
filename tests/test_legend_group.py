@@ -35,7 +35,7 @@ def _anchor_y_fig_frac(leg, fig):
 
 def test_legend_group_anchors_to_chosen_axes():
     fig, axes = plt.subplots(1, 3, figsize=(12, 3))
-    group = pp.legend_group(anchor=axes[0], x_offset=2)
+    group = pp.legend(anchor=axes[0], x_offset=2)
     leg = group.add_legend(handles=_handles(), label="Treatment", ax=axes[0])
     fig.canvas.draw()
 
@@ -47,7 +47,7 @@ def test_legend_group_anchors_to_chosen_axes():
 
 def test_legend_group_stacks_elements_in_one_column():
     fig, axes = plt.subplots(1, 3, figsize=(12, 3))
-    group = pp.legend_group(anchor=axes[0], x_offset=2, gap=2)
+    group = pp.legend(anchor=axes[0], x_offset=2, gap=2)
     leg_a = group.add_legend(handles=_handles(), label="A", ax=axes[0])
     leg_b = group.add_legend(handles=_handles(), label="B", ax=axes[1])
     leg_c = group.add_legend(handles=_handles(), label="C", ax=axes[2])
@@ -67,7 +67,7 @@ def test_legend_group_stacks_elements_in_one_column():
 
 def test_legend_group_overflow_creates_new_column():
     fig, ax = plt.subplots(figsize=(5, 3))
-    group = pp.legend_group(anchor=ax, x_offset=2, gap=1, vpad=0)
+    group = pp.legend(anchor=ax, x_offset=2, gap=1, vpad=0)
     first = group.add_legend(handles=_handles(), label="0", ax=ax)
     others = [group.add_legend(handles=_handles(), label=str(i), ax=ax)
               for i in range(1, 25)]
@@ -81,7 +81,7 @@ def test_legend_group_overflow_creates_new_column():
 def test_legend_group_follows_axes_after_tight_layout():
     import warnings
     fig, axes = plt.subplots(1, 2, figsize=(8, 3))
-    group = pp.legend_group(anchor=axes[0], x_offset=2)
+    group = pp.legend(anchor=axes[0], x_offset=2)
     leg = group.add_legend(handles=_handles(), label="A", ax=axes[0])
     fig.canvas.draw()
 

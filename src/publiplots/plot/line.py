@@ -18,7 +18,6 @@ from matplotlib.colors import Normalize
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical, is_numeric, create_legend_handles
-from publiplots.utils.legend import legend as legend_fn
 from publiplots.utils.legend_entries import (
     LegendEntry,
     stash_entry,

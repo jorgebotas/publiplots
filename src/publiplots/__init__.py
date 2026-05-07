@@ -14,7 +14,7 @@ publiplots applies its publication-grade rcParams on import. Use
 :func:`publiplots.reset_style` to revert to matplotlib defaults.
 """
 
-__version__ = "0.9.3"
+__version__ = "0.10.0"
 __author__ = "Jorge Botas"
 __license__ = "MIT"
 __copyright__ = "Copyright 2025, Jorge Botas"
@@ -60,9 +60,11 @@ from publiplots.utils.legend import (
     get_legend_handler_map,
     create_legend_handles,
     LegendBuilder,
+)
+from publiplots.utils.legend_group import (
+    MultiAxesLegendGroup,
     legend,
 )
-from publiplots.utils.legend_group import MultiAxesLegendGroup, legend_group
 from publiplots.layout import subplots
 # Register custom fonts
 from publiplots.utils.fonts import _register_fonts
@@ -133,7 +135,6 @@ __all__ = [
     "LegendBuilder",
     "legend",
     "MultiAxesLegendGroup",
-    "legend_group",
     # Layout functions
     "subplots",
     # Color/palette functions

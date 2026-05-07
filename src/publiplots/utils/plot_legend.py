@@ -18,7 +18,6 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 from publiplots.utils import create_legend_handles
-from publiplots.utils.legend import legend as legend_fn
 from publiplots.utils.legend_entries import (
     LegendEntry,
     stash_entry,
@@ -437,7 +436,23 @@ def render_entries(
     if not to_render:
         return
     builder_kws = _builder_kwargs(legend_kws)
-    builder = legend_fn(ax=ax, auto=False)
+    # Route non-inside legends through a cached per-axes group. Entries
+    # already claimed by a figure-level or multi-axes group registered by
+    # the user are filtered out above via entry_is_in_group; what remains
+    # is this axes' own legend contribution.
+    #
+    # inside=True short-circuits to a plain LegendBuilder — those legends
+    # must not register with the reactor (tests pinned:
+    # test_inside_true_skips_reactor_registration,
+    # test_inside_coexists_with_legend_group).
+    inside_mode = bool(legend_kws and legend_kws.get('inside'))
+    if inside_mode:
+        from publiplots.utils.legend import LegendBuilder
+        builder = LegendBuilder(ax, external_to_axis=False)
+    else:
+        from publiplots.utils.legend_group import _get_or_create_per_axes_group
+        group = _get_or_create_per_axes_group(ax)
+        builder = group._builder
     for entry in to_render:
         if entry.kind == "hue" and is_continuous_hue(entry.handles):
             builder.add_colorbar(

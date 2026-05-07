@@ -222,7 +222,7 @@ pp.show()
 # Shared Legend Across Subplots
 # ------------------------------
 # When several line plots share the same ``hue`` variable, attach
-# ``pp.legend_group(anchor=...)`` before drawing. Each ``lineplot``
+# ``pp.legend(anchor=...)`` before drawing. Each ``lineplot``
 # stashes its hue entry on the corresponding axes; the group collects
 # them and renders one unified legend on the right.
 
@@ -237,7 +237,7 @@ for panel in ["Replicate A", "Replicate B", "Replicate C"]:
 shared = pd.DataFrame(rows)
 
 fig, axes = pp.subplots(1, 3, axes_size=(40, 30))
-pp.legend_group(anchor=axes[-1])
+pp.legend(anchor=axes[-1])
 for ax, panel in zip(axes, ["Replicate A", "Replicate B", "Replicate C"]):
     pp.lineplot(
         data=shared[shared["panel"] == panel],

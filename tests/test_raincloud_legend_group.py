@@ -31,7 +31,7 @@ def test_raincloud_in_group_stashes_via_violin():
     from matplotlib.legend import Legend
     df = _rain_df()
     fig, axes = pp.subplots(1, 2, axes_size=(50, 40))
-    pp.legend_group(anchor=axes[-1])
+    pp.legend(anchor=axes[-1])
     pp.raincloudplot(
         data=df, x="condition", y="response", hue="condition",
         palette="pastel", ax=axes[0],

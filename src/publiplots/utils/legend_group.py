@@ -47,6 +47,100 @@ def _handle_repr(handle) -> str:
     return "|".join(parts)
 
 
+class _ScopeAnchor:
+    """Decoration-agnostic anchor over a scope of axes.
+
+    Duck-types the small slice of ``matplotlib.axes.Axes`` that
+    ``LegendBuilder`` and ``LayoutReactor`` use (``get_position()`` +
+    ``get_figure()`` + ``get_window_extent()``). Designed to become the
+    single master anchor class for ``pp.legend`` — handling single-axes,
+    sub-region (row/col), and full-grid scopes uniformly.
+
+    Key design invariant: ``get_position()`` returns the **bare**
+    bounding rect of the scope's axes (union of ``ax.get_position()``).
+    Decoration-awareness (tick labels, axis labels, titles, legend
+    bands) is applied one layer up by
+    ``SubplotsAutoLayout._measure_one_group``. This keeps the anchor
+    simple and testable while leaving geometric composition where the
+    rest of the layout pipeline already lives.
+
+    - Single axes → degenerate case: ``get_position()`` returns the
+      axes rect.
+    - Multi axes (incl. full grid) → bounding rect of the scope.
+
+    For commit 1 of the v0.10.0 legend unification this class is
+    introduced behind ``_GridAnchor``: ``_GridAnchor.__init__``
+    constructs a ``_ScopeAnchor`` for reference, but continues to use
+    its own decoration-aware ``get_position()`` logic for back-compat
+    until later commits route ``MultiAxesLegendGroup`` through
+    ``_ScopeAnchor`` directly.
+    """
+
+    def __init__(self, axes_list: List[Axes], fig: Figure) -> None:
+        self._axes_list: List[Axes] = list(axes_list)
+        self._fig = fig
+
+    def get_figure(self) -> Figure:
+        return self._fig
+
+    def get_position(self) -> Bbox:
+        """Bare union rect of the scope's axes, in figure fractions.
+
+        No decoration awareness — callers that need decoration-aware
+        placement must apply offsets externally (that logic lives in
+        ``SubplotsAutoLayout._measure_one_group``).
+        """
+        if not self._axes_list:
+            return Bbox.from_extents(0.0, 0.0, 1.0, 1.0)
+        x0 = y0 = 1.0
+        x1 = y1 = 0.0
+        for ax in self._axes_list:
+            pos = ax.get_position()
+            x0 = min(x0, pos.x0)
+            y0 = min(y0, pos.y0)
+            x1 = max(x1, pos.x1)
+            y1 = max(y1, pos.y1)
+        if x0 >= x1 or y0 >= y1:
+            return Bbox.from_extents(0.0, 0.0, 1.0, 1.0)
+        return Bbox.from_extents(x0, y0, x1, y1)
+
+    def get_window_extent(self, renderer=None) -> Bbox:
+        """Pixel-space bbox of ``get_position()`` against the figure."""
+        pos = self.get_position()
+        fig_w = self._fig.get_window_extent().width
+        fig_h = self._fig.get_window_extent().height
+        return Bbox.from_extents(
+            pos.x0 * fig_w, pos.y0 * fig_h,
+            pos.x1 * fig_w, pos.y1 * fig_h,
+        )
+
+    @property
+    def is_single(self) -> bool:
+        """True iff the scope is a single axes (degenerate case)."""
+        return len(self._axes_list) == 1
+
+    @property
+    def is_full_grid(self) -> bool:
+        """True iff the scope covers every axis in ``fig._publiplots_axes``.
+
+        Falls back to ``len(axes_list) == len(fig.axes)`` when the
+        figure was not constructed by publiplots and therefore carries
+        no ``_publiplots_axes`` matrix.
+        """
+        matrix = getattr(self._fig, "_publiplots_axes", None)
+        if matrix is None:
+            return len(self._axes_list) == len(self._fig.axes)
+        grid_ids = {id(ax) for row in matrix for ax in row}
+        if not grid_ids:
+            return len(self._axes_list) == len(self._fig.axes)
+        scope_ids = {id(ax) for ax in self._axes_list}
+        return scope_ids == grid_ids
+
+    def scope_axes(self) -> List[Axes]:
+        """Return the underlying list of axes in the scope."""
+        return self._axes_list
+
+
 class _GridAnchor:
     """Virtual Axes proxy spanning the whole publiplots subplot grid
     **including its decorations** (tick labels, axis labels, titles).
@@ -70,10 +164,32 @@ class _GridAnchor:
     that side='bottom' sits BELOW all xlabel_space, side='top' sits
     ABOVE all title_space, side='left' sits LEFT of all ylabel_space,
     etc. — i.e., the legend doesn't overlap with axis decorations.
+
+    .. deprecated::
+        Scheduled for removal in v0.10.0. Use :class:`_ScopeAnchor`
+        instead; decoration-awareness will move into
+        ``SubplotsAutoLayout._measure_one_group`` so the anchor itself
+        can stay decoration-agnostic.
     """
 
     def __init__(self, fig: Figure) -> None:
         self._fig = fig
+        # Delegate to _ScopeAnchor(full_grid_flat, fig) for the actual
+        # geometry. Kept as a separate class for now because its
+        # get_position() ALSO respects decorations (reads the
+        # FigureLayout directly), which _ScopeAnchor deliberately does
+        # NOT — decoration-awareness lives one layer up in
+        # SubplotsAutoLayout._measure_one_group. The shim preserves
+        # back-compat until commit 2 routes MultiAxesLegendGroup
+        # through _ScopeAnchor directly.
+        matrix = getattr(fig, "_publiplots_axes", None)
+        if matrix:
+            flat = [ax for row in matrix for ax in row]
+        else:
+            flat = list(fig.axes)
+        self._scope_anchor: Optional[_ScopeAnchor] = (
+            _ScopeAnchor(flat, fig) if flat else None
+        )
 
     def get_figure(self) -> Figure:
         return self._fig
@@ -271,6 +387,30 @@ class MultiAxesLegendGroup:
                         f"axes must be an Axes or a sequence of Axes; "
                         f"got {type(a).__name__}"
                     )
+
+        # Commit 4: default to True to preserve pre-0.10
+        # ``pp.legend_group(anchor=ax)`` semantics (external band absorbs
+        # the axes' per-cell reservation). The unified ``pp.legend()``
+        # factory mutates this to False post-construction for its
+        # single-axes scope — keeping the class default backward-
+        # compatible while still activating _measure_one_group's
+        # commit-3 guard for per-axes legends created via ``pp.legend(ax)``.
+        self._external_to_axis = True
+
+        # Construct a _ScopeAnchor mirror in every path. Commit 2 stores it
+        # for reference only — current geometry still flows through
+        # self.anchor (which is a _GridAnchor or direct Axes). Commit 4
+        # swaps consumers to read from self._scope_anchor uniformly.
+        if self._anchor_kind == "figure":
+            fig = self.anchor.get_figure()  # _GridAnchor has get_figure()
+            matrix = getattr(fig, "_publiplots_axes", None)
+            flat = [a for row in matrix for a in row] if matrix else list(fig.axes)
+            self._scope_anchor = _ScopeAnchor(flat, fig)
+        else:
+            scope_list = self._scope_axes if self._scope_axes is not None else [self.anchor]
+            fig = self.anchor.get_figure()
+            self._scope_anchor = _ScopeAnchor(scope_list, fig)
+
         self._materialized = False
         self._warned_mismatch = False
         self._align_connected = False
@@ -282,22 +422,36 @@ class MultiAxesLegendGroup:
         # to derive the *pure* decoration base (title/xlabel/ylabel height
         # without the band) without a separate tightbbox measurement.
         self._band_contribution_mm: float = 0.0
-        # anchor_ax=self.anchor pins position math/reactor to the anchor
-        # regardless of self.ax swaps during add_* calls. For
-        # figure-anchored groups anchor_ax is the _GridAnchor proxy,
-        # which exposes the same get_position()/get_figure() API.
+        # anchor_ax pins position math/reactor to the anchor regardless
+        # of self.ax swaps during add_* calls. For figure-anchored groups
+        # it's the _GridAnchor proxy (decoration-aware). For axes-anchored
+        # groups with a MULTI-axes scope (e.g. ``pp.legend(axes[0], side='top')``)
+        # we pass the scope's _ScopeAnchor so along-edge geometry (edge
+        # length, starting corner) comes from the scope's union — this is
+        # the whole reason _ScopeAnchor exists. Single-axes scope still
+        # uses the real Axes so vpad/interactions match pre-0.10 behaviour.
+        # self.anchor remains the real Axes so auto_layout's
+        # _find_ax_indices / per-cell reservation path keeps working.
         builder_ax = self.anchor if self._anchor_kind == "axes" \
                      else self._pick_builder_ax()
+        if (
+            self._anchor_kind == "axes"
+            and self._scope_axes is not None
+            and len(self._scope_axes) > 1
+        ):
+            builder_anchor_ax = self._scope_anchor
+        else:
+            builder_anchor_ax = self.anchor
         self._builder = LegendBuilder(
             ax=builder_ax,
-            anchor_ax=self.anchor,
+            anchor_ax=builder_anchor_ax,
             x_offset=x_offset,
             y_offset=y_offset,
             gap=gap,
             column_spacing=column_spacing,
             vpad=vpad,
             max_width=max_width,
-            external_to_axis=True,
+            external_to_axis=self._external_to_axis,
             side=side,
             orientation=self._orientation,
         )
@@ -368,12 +522,36 @@ class MultiAxesLegendGroup:
         return any(ax is a for a in self._scope_axes)
 
     def _scope_overlap(self, other: "MultiAxesLegendGroup") -> bool:
-        """True if ``self`` and ``other`` share any axes."""
-        # Full-grid scope overlaps everything.
-        if self._scope_axes is None or other._scope_axes is None:
+        """True if ``self`` and ``other`` share any axes.
+
+        Four cases:
+        - Both ``_scope_axes=None`` → both auto-collect from the full
+          grid, so they always compete.
+        - Both explicit → compare by id().
+        - One explicit, one ``_scope_axes=None`` (mixed):
+          * If the ``None`` side is figure-anchored, it truly covers the
+            whole grid → always overlap.
+          * If the ``None`` side is axes-anchored (legacy ``pp.legend(anchor=ax)``),
+            its physical region is just its anchor, so overlap only when
+            the explicit scope includes that anchor. This lets
+            ``pp.legend(axes[0])`` (scope=[axes[0]]) coexist with
+            ``pp.legend(anchor=axes[1])`` (scope=None but anchored to a
+            DIFFERENT axes) without a spurious overlap warning.
+        """
+        if self._scope_axes is None and other._scope_axes is None:
             return True
-        self_ids = {id(a) for a in self._scope_axes}
-        return any(id(a) in self_ids for a in other._scope_axes)
+        if self._scope_axes is not None and other._scope_axes is not None:
+            self_ids = {id(a) for a in self._scope_axes}
+            return any(id(a) in self_ids for a in other._scope_axes)
+        # Mixed: one has an explicit scope, the other is scope=None.
+        explicit, implicit = (
+            (self, other) if self._scope_axes is not None else (other, self)
+        )
+        if implicit._anchor_kind == "figure":
+            return True
+        # implicit is axes-anchored with scope=None → physical target
+        # is just the anchor cell.
+        return any(a is implicit.anchor for a in explicit._scope_axes)
 
     def _collect_overlap(self, other: "MultiAxesLegendGroup") -> bool:
         """True if ``self`` and ``other`` could claim the same entry name."""
@@ -513,6 +691,14 @@ class MultiAxesLegendGroup:
         — rendering is a one-shot operation.
         """
         if self._materialized:
+            return
+
+        # collect=[] is the explicit "skip auto-collection" shortcut used
+        # by callers who want to add manual handles via add_legend() only
+        # (replaces the old pp.legend(ax, auto=False) idiom). Short-circuit
+        # here so repeated draws don't keep re-scanning the scope.
+        if self._collect is not None and len(self._collect) == 0:
+            self._materialized = True
             return
 
         # Gather all entries per (name, kind) across the group's scope.
@@ -783,15 +969,15 @@ class MultiAxesLegendGroup:
         return cbar
 
 
-def legend_group(
-    anchor: Optional[Axes] = None,
+def legend(
+    axes=None,
+    collect: Optional[Sequence[str]] = None,
     *,
     side: str = "right",
+    anchor: Optional[Axes] = None,
     figure: Optional[Figure] = None,
     orientation: str = "auto",
     align: str = "auto",
-    collect: Optional[Sequence[str]] = None,
-    axes: Optional[Sequence[Axes]] = None,
     x_offset: Optional[float] = None,
     y_offset: Optional[float] = None,
     gap: float = 2,
@@ -799,38 +985,113 @@ def legend_group(
     vpad: Optional[float] = None,
     max_width: Optional[float] = None,
 ) -> MultiAxesLegendGroup:
-    """Create a shared legend band.
+    """Create a publication-ready legend for one axes, a subset, or the full figure.
 
-    Pass ``anchor=None`` (default) for a **figure-anchored** band that
-    spans the full subplot grid on the chosen side. Pass
-    ``anchor=axes[r, c]`` to pin the band to a single cell; the
-    corresponding per-cell reservation (``right[c]`` for ``side='right'``,
-    ``xlabel_space[r]`` for ``side='bottom'``, etc.) absorbs the band
-    width.
+    Unified replacement for the legacy ``pp.legend_group`` API (pre-0.10).
+    The first positional is the **scope** — which axes to collect legend
+    entries from — and the anchor is derived automatically.
 
-    ``axes=`` scopes collection to a subset of the grid — only entries
-    stashed on those axes are gathered, and only per-axis legends on
-    those axes are evicted. Multiple groups on one figure (each with a
-    disjoint ``axes=``) let you render independent bands for different
-    subplots.
+    Parameters
+    ----------
+    axes : Axes, sequence of Axes, or None
+        Scope of the legend.
 
-    ``orientation`` defaults to ``'horizontal'`` for ``side='top'|'bottom'``
-    (entries run along the edge left-to-right, multiple legends sit
-    side-by-side, overflow spills outward in new rows) and
-    ``'vertical'`` for ``'right'|'left'`` (current behaviour).
-    ``align`` defaults to ``'center'`` for top/bottom and ``'start'``
-    for left/right.
+        - A single ``Axes``: per-axes legend pinned to that axes
+          (lives inside the axes tightbbox).
+        - A list/array of ``Axes``: shared band over the scope's
+          bounding rect (lives outside the axes, measured as an
+          overhang by ``SubplotsAutoLayout``).
+        - ``None`` (default): full-figure band over the whole
+          subplot grid.
+    collect : sequence of str, optional
+        Names of entries to collect from the scope's stashed
+        ``LegendEntry`` objects. ``None`` collects everything; an
+        empty list ``[]`` skips auto-collection entirely (equivalent
+        to the old ``pp.legend(ax, auto=False)`` idiom — use it when
+        adding manual handles via ``add_legend(...)``).
+    side : {"right", "bottom", "left", "top"}, default "right"
+        Which edge of the scope the band grows outward from.
+    anchor : Axes, optional
+        Advanced override: pin the band's geometry to a specific
+        axes' edge, while still collecting entries from the ``axes``
+        scope. Rarely needed — defaults to the scope's bounding rect.
+    figure : Figure, optional
+        Figure to attach a full-figure band to. Defaults to
+        ``plt.gcf()``.
+    orientation, align, x_offset, y_offset, gap, column_spacing, vpad, max_width
+        Same meaning as on :class:`MultiAxesLegendGroup`.
 
-    See :class:`MultiAxesLegendGroup` for all parameter docs.
+    Examples
+    --------
+    >>> pp.legend(ax)                          # per-axes legend
+    >>> pp.legend(axes[0])                     # row 0 band
+    >>> pp.legend(axes[:, 0], side='left')     # column-0 band
+    >>> pp.legend(side='right')                # full-figure right band
+    >>> pp.legend(side='bottom', collect=['group'])
+
+    Returns
+    -------
+    MultiAxesLegendGroup
+        The constructed group. Can be further customized via
+        ``group.add_legend(...)`` / ``group.add_colorbar(...)``.
     """
-    return MultiAxesLegendGroup(
-        anchor=anchor,
+    # Resolve anchor + axes per the rules:
+    #   axes=None, anchor=None  -> figure-level (whole grid)
+    #   axes=None, anchor=ax    -> scope=[ax]   (back-compat: old legend_group(anchor=ax),
+    #                                            preserves external-band semantics — no flip)
+    #   axes=ax, anchor=None    -> scope=[ax]   (single-axes → sets external_to_axis=False)
+    #   axes=list, anchor=None  -> list         (anchor defaults to list[0])
+    #   axes=list, anchor=ax    -> list         (anchor as explicit override)
+    resolved_anchor = anchor
+    resolved_axes = axes
+    # Track whether the caller triggered single-axes scope via the new-API
+    # `axes=ax` form (which opts into the external_to_axis=False flip) vs.
+    # the legacy `anchor=ax` form (which preserves the pre-0.10 external
+    # band behaviour).
+    axes_triggered_single_scope = False
+
+    if axes is None and anchor is None:
+        # figure-level → anchor stays None, axes stays None
+        pass
+    elif axes is None and anchor is not None:
+        # Bare anchor=ax → preserve legacy pp.legend_group(anchor=ax)
+        # external-band semantics. Scope stays figure-wide; the band pins
+        # to `anchor`'s edge and is measured as an overhang.
+        pass
+    elif isinstance(axes, Axes) and anchor is None:
+        # Single axes: anchor to that axes; set resolved_axes=[axes] so
+        # the group has an EXPLICIT single-axes scope (not ``None``,
+        # which means "full grid"). The explicit scope is what lets
+        # _scope_overlap correctly see two per-axes legends on different
+        # axes as non-overlapping; with scope=None the overlap heuristic
+        # false-positives and spurious warnings fire when e.g.
+        # pp.legend(axes[0]) and pp.legend(anchor=axes[1]) coexist.
+        resolved_anchor = axes
+        resolved_axes = [axes]
+        axes_triggered_single_scope = True
+    elif isinstance(axes, Axes) and anchor is not None:
+        # axes=ax, anchor=other_ax → explicit anchor override, single-axes scope.
+        resolved_axes = [axes]
+        # resolved_anchor already equals anchor
+        axes_triggered_single_scope = True
+    else:
+        # axes is a list/array/tuple. anchor may be explicit or None.
+        resolved_axes = list(axes)
+        if resolved_anchor is None and resolved_axes:
+            # Default the anchor to the first scoped axes so the band has
+            # a concrete edge to pin to. Matches the implicit choice the
+            # current MultiAxesLegendGroup makes when anchor=<Axes> is
+            # passed alongside a full axes= list.
+            resolved_anchor = resolved_axes[0]
+
+    group = MultiAxesLegendGroup(
+        anchor=resolved_anchor,
+        collect=collect,
         side=side,
         figure=figure,
         orientation=orientation,
         align=align,
-        collect=collect,
-        axes=axes,
+        axes=resolved_axes,
         x_offset=x_offset,
         y_offset=y_offset,
         gap=gap,
@@ -838,3 +1099,51 @@ def legend_group(
         vpad=vpad,
         max_width=max_width,
     )
+
+    # Flip external_to_axis for single-axes scope triggered via the new
+    # `axes=ax` form. The class default is True (preserving pre-0.10
+    # pp.legend_group(anchor=ax) "external band" semantics — which the
+    # legacy `anchor=ax` kwarg form still opts into); pp.legend(ax) /
+    # pp.legend(axes=ax) want the opposite — an in-frame legend that
+    # lives inside ax.tightbbox and is counted via _side_extent, not as
+    # an overhang. Must mutate BOTH the group attribute (read by
+    # SubplotsAutoLayout._measure_one_group's commit-3 guard) AND the
+    # LegendBuilder's forwarded copy (read by every reactor registration
+    # spawned from add_legend/add_colorbar). The factory returns the
+    # group BEFORE any add_* / _materialize call, so every subsequent
+    # registration picks up the False flag.
+    if axes_triggered_single_scope:
+        group._external_to_axis = False
+        group._builder._external_to_axis = False
+
+    return group
+
+
+def _get_or_create_per_axes_group(ax: Axes) -> MultiAxesLegendGroup:
+    """Return (or create) the single-axes legend group cached on ``ax``.
+
+    Used by ``render_entries`` to funnel every plot function's legend
+    output through a per-axes ``MultiAxesLegendGroup``, so successive
+    plot calls stack their legend entries into the same layout cursor.
+    Flipped to ``external_to_axis=False`` so the legend is measured by
+    ``ax.get_tightbbox()`` (matches the pre-0.10 ``pp.legend(ax)``
+    behaviour).
+
+    ``collect=[]`` is passed so the group does NOT auto-collect stashed
+    entries during its ``_materialize`` pass — ``render_entries`` is the
+    sole producer of ``add_legend``/``add_colorbar`` calls on the
+    underlying builder. Without this, the group would scan the axes'
+    stashed entries during draw and re-add them on top of the ones
+    ``render_entries`` already added, producing duplicate legends.
+
+    Also preserves the ``ax._legend_builder`` alias so the existing
+    ``_evict_claimed_per_axis_legends`` read path keeps working.
+    """
+    existing = getattr(ax, "_legend_group", None)
+    if existing is not None:
+        return existing
+    # collect=[] — see docstring; render_entries owns the add_legend calls.
+    group = legend(ax, collect=[])
+    ax._legend_group = group
+    ax._legend_builder = group._builder  # back-compat alias
+    return group

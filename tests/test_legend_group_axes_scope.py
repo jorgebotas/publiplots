@@ -1,4 +1,4 @@
-"""Tests for pp.legend_group(axes=...) scoping and multi-group figures.
+"""Tests for pp.legend(axes=...) scoping and multi-group figures.
 
 Two independent legend groups on a single figure, each scoped to a
 disjoint subset of axes via ``axes=``, should:
@@ -62,7 +62,7 @@ def test_axes_scope_single_axes_only_collects_from_that_axes():
     _stash_hue(axes[0], "treatment")
     _stash_hue(axes[1], "dose")
     _stash_hue(axes[2], "response")
-    group = pp.legend_group(anchor=axes[1], axes=[axes[1]])
+    group = pp.legend(anchor=axes[1], axes=[axes[1]])
     group._materialize()
     assert _legend_titles(group) == ["dose"]
 
@@ -72,7 +72,7 @@ def test_axes_scope_list_collects_only_from_listed_axes():
     _stash_hue(axes[0], "treatment")
     _stash_hue(axes[1], "dose")
     _stash_hue(axes[2], "response")
-    group = pp.legend_group(anchor=axes[-1], axes=[axes[0], axes[2]])
+    group = pp.legend(anchor=axes[-1], axes=[axes[0], axes[2]])
     group._materialize()
     assert sorted(_legend_titles(group)) == ["response", "treatment"]
 
@@ -82,7 +82,7 @@ def test_axes_scope_none_preserves_full_grid_collection():
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
     _stash_hue(axes[0], "treatment")
     _stash_hue(axes[1], "dose")
-    group = pp.legend_group(anchor=axes[-1])
+    group = pp.legend(anchor=axes[-1])
     group._materialize()
     assert sorted(_legend_titles(group)) == ["dose", "treatment"]
 
@@ -92,7 +92,7 @@ def test_axes_scope_accepts_bare_axes():
     _stash_hue(axes[0], "treatment")
     _stash_hue(axes[1], "dose")
     # Single Axes instead of a list
-    group = pp.legend_group(anchor=axes[0], axes=axes[0])
+    group = pp.legend(anchor=axes[0], axes=axes[0])
     group._materialize()
     assert _legend_titles(group) == ["treatment"]
 
@@ -100,13 +100,13 @@ def test_axes_scope_accepts_bare_axes():
 def test_axes_scope_rejects_non_axes():
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
     with pytest.raises(TypeError, match="sequence of Axes"):
-        pp.legend_group(anchor=axes[0], axes=["not an axes"])
+        pp.legend(anchor=axes[0], axes=["not an axes"])
 
 
 def test_multiple_groups_register_on_figure():
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
-    g1 = pp.legend_group(anchor=axes[0], axes=[axes[0]])
-    g2 = pp.legend_group(anchor=axes[1], axes=[axes[1]])
+    g1 = pp.legend(anchor=axes[0], axes=[axes[0]])
+    g2 = pp.legend(anchor=axes[1], axes=[axes[1]])
     assert fig._publiplots_legend_groups == [g1, g2]
 
 
@@ -114,8 +114,8 @@ def test_two_disjoint_groups_collect_independently():
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
     _stash_hue(axes[0], "treatment")
     _stash_hue(axes[1], "dose")
-    g1 = pp.legend_group(anchor=axes[0], axes=[axes[0]], side="top")
-    g2 = pp.legend_group(anchor=axes[1], axes=[axes[1]], side="top")
+    g1 = pp.legend(anchor=axes[0], axes=[axes[0]], side="top")
+    g2 = pp.legend(anchor=axes[1], axes=[axes[1]], side="top")
     g1._materialize()
     g2._materialize()
     assert _legend_titles(g1) == ["treatment"]
@@ -124,28 +124,28 @@ def test_two_disjoint_groups_collect_independently():
 
 def test_two_disjoint_groups_emit_no_overlap_warning():
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
-    pp.legend_group(anchor=axes[0], axes=[axes[0]])
+    pp.legend(anchor=axes[0], axes=[axes[0]])
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
         # Must not raise — axes scopes are disjoint.
-        pp.legend_group(anchor=axes[1], axes=[axes[1]])
+        pp.legend(anchor=axes[1], axes=[axes[1]])
 
 
 def test_overlapping_axes_scope_warns():
     """Two full-grid (axes=None) groups compete for every axes."""
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
-    pp.legend_group(anchor=axes[0])
+    pp.legend(anchor=axes[0])
     with pytest.warns(UserWarning, match="scope overlaps"):
-        pp.legend_group(anchor=axes[1])
+        pp.legend(anchor=axes[1])
 
 
 def test_overlapping_scope_disjoint_collect_emits_no_warning():
     """Overlapping axes but disjoint collect= means no entry-claim conflict."""
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
-    pp.legend_group(anchor=axes[0], collect=["treatment"])
+    pp.legend(anchor=axes[0], collect=["treatment"])
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
-        pp.legend_group(anchor=axes[1], collect=["dose"])
+        pp.legend(anchor=axes[1], collect=["dose"])
 
 
 def test_eviction_scoped_to_axes():
@@ -169,7 +169,7 @@ def test_eviction_scoped_to_axes():
     assert axes[1].legend_ is not None
 
     # Scope the group to axes[0] only — axes[1]'s legend must survive.
-    pp.legend_group(anchor=axes[0], axes=[axes[0]], side="top")
+    pp.legend(anchor=axes[0], axes=[axes[0]], side="top")
     assert axes[0].legend_ is None
     assert axes[1].legend_ is not None
 
@@ -179,8 +179,8 @@ def test_two_groups_materialize_independently_on_draw():
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
     _stash_hue(axes[0], "treatment")
     _stash_hue(axes[1], "dose")
-    pp.legend_group(anchor=axes[0], axes=[axes[0]], side="top")
-    pp.legend_group(anchor=axes[1], axes=[axes[1]], side="top")
+    pp.legend(anchor=axes[0], axes=[axes[0]], side="top")
+    pp.legend(anchor=axes[1], axes=[axes[1]], side="top")
     fig.canvas.draw()
     # Each axes should carry its group's Legend child after the settle pass.
     ax0_legends = [c for c in axes[0].get_children() if isinstance(c, Legend)]
@@ -206,7 +206,7 @@ def test_measure_one_group_reads_pure_decoration_before_writing():
     """
     fig, axes = pp.subplots(2, 2, axes_size=(40, 30))
     _stash_hue(axes[0, 0], "treatment")
-    group = pp.legend_group(
+    group = pp.legend(
         anchor=axes[0, 0], axes=[axes[0, 0]], side="top", collect=["treatment"],
     )
     group._materialize()

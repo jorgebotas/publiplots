@@ -256,7 +256,7 @@ pp.show()
 # Shared Legend Across Subplots
 # ------------------------------
 # When several subplots share the same ``hue`` variable, attach
-# ``pp.legend_group(anchor=...)`` to the figure BEFORE drawing. Every
+# ``pp.legend(anchor=...)`` to the figure BEFORE drawing. Every
 # plot function that stashes legend entries (scatter / strip / swarm /
 # point) sees the group, skips its own per-axis legend, and lets the
 # group render one unified legend on the right. The figure's
@@ -271,7 +271,7 @@ shared_df = pd.DataFrame({
 })
 
 fig, axes = pp.subplots(1, 3, axes_size=(40, 35))
-pp.legend_group(anchor=axes[-1])   # attach BEFORE plotting
+pp.legend(anchor=axes[-1])   # attach BEFORE plotting
 for ax, title in zip(axes, ['Sample A', 'Sample B', 'Sample C']):
     pp.scatterplot(
         data=shared_df, x='x', y='y', hue='g',
@@ -299,7 +299,7 @@ split_df = pd.DataFrame({
 })
 
 fig, axes = pp.subplots(1, 3, axes_size=(45, 40))
-pp.legend_group(anchor=axes[-1], collect=['treatment'])
+pp.legend(anchor=axes[-1], collect=['treatment'])
 for ax, sample in zip(axes, ['Sample A', 'Sample B', 'Sample C']):
     pp.scatterplot(
         data=split_df[split_df['sample'] == sample],

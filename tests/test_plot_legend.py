@@ -138,7 +138,7 @@ def test_render_entries_skips_entries_claimed_by_group():
     """When a legend_group claims an entry, render_entries does not attach a per-axis Legend."""
     from matplotlib.legend import Legend
     fig, axes = pp.subplots(1, 2, axes_size=(50, 40))
-    pp.legend_group(anchor=axes[-1])
+    pp.legend(anchor=axes[-1])
     from publiplots.utils import create_legend_handles
     handles = create_legend_handles(
         labels=["A", "B"], colors=["#ff0000", "#00ff00"],

@@ -56,10 +56,12 @@ from publiplots.utils.legend import (
     get_legend_handler_map,
     create_legend_handles,
     LegendBuilder,
-    legend,
 )
 
-from publiplots.utils.legend_group import MultiAxesLegendGroup, legend_group
+from publiplots.utils.legend_group import (
+    MultiAxesLegendGroup,
+    legend,
+)
 
 from publiplots.utils.offset import (
     offset_lines,
@@ -116,7 +118,6 @@ __all__ = [
     "LegendBuilder",
     "legend",
     "MultiAxesLegendGroup",
-    "legend_group",
     # Transparency functions
     "apply_transparency",
     # Offset functions

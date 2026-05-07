@@ -44,7 +44,7 @@ def test_figure_anchored_reserves_correct_field(side, field):
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side=side)
+    group = pp.legend(side=side)
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
     layout = fig._publiplots_layout
@@ -72,7 +72,7 @@ def test_axes_anchored_right_pins_to_column():
         ax.plot([0, 1, 2], [0, 1, 0])
     # Anchor to axes[0, 0] — column 0. The legend should push column 0
     # wider, not figure-level legend_column.
-    group = pp.legend_group(anchor=axes[0, 0], side="right")
+    group = pp.legend(anchor=axes[0, 0], side="right")
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
     layout = fig._publiplots_layout
@@ -93,7 +93,7 @@ def test_axes_anchored_bottom_pins_to_row():
         ax.plot([0, 1, 2], [0, 1, 0])
     # anchor=axes[0, 0] is in row 0. Bottom-anchored pushes xlabel_space[0]
     # wider (the row's bottom reservation), not legend_band_bottom.
-    group = pp.legend_group(anchor=axes[0, 0], side="bottom")
+    group = pp.legend(anchor=axes[0, 0], side="bottom")
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
     layout = fig._publiplots_layout
@@ -111,16 +111,16 @@ def test_axes_anchored_bottom_pins_to_row():
 def test_side_invalid_raises():
     fig, _ = pp.subplots(1, 1, axes_size=(40, 30))
     with pytest.raises(ValueError, match="side must be"):
-        pp.legend_group(side="diagonal")
+        pp.legend(side="diagonal")
 
 
 def test_back_compat_anchor_axes_defaults_to_side_right():
-    """The pre-0.9 signature pp.legend_group(anchor=axes[-1]) must keep
+    """The pre-0.9 signature pp.legend(anchor=axes[-1]) must keep
     working as axes-anchored side='right'."""
     fig, axes = pp.subplots(1, 3, axes_size=(40, 30))
     for ax in axes:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(anchor=axes[-1])
+    group = pp.legend(anchor=axes[-1])
     assert group._side == "right"
     assert group._anchor_kind == "axes"
     group.add_legend(handles=_sample_handles(), label="group")
@@ -132,7 +132,7 @@ def test_back_compat_anchor_axes_defaults_to_side_right():
 
 
 def test_figure_anchored_auto_collect_still_works():
-    """pp.legend_group() without anchor auto-collects stashed entries."""
+    """pp.legend() without anchor auto-collects stashed entries."""
     fig, axes = pp.subplots(1, 2, axes_size=(40, 30))
     stash_entry(
         axes[0],
@@ -142,7 +142,7 @@ def test_figure_anchored_auto_collect_still_works():
             labels=("A", "B", "C"),
         ),
     )
-    group = pp.legend_group()
+    group = pp.legend()
     fig.canvas.draw()
     assert group._materialized
     assert len(group._builder.elements) == 1
@@ -165,7 +165,7 @@ def test_figure_anchored_default_outward_gap_per_side(side, expected_gap_mm):
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side=side)
+    group = pp.legend(side=side)
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
 
@@ -195,7 +195,7 @@ def test_figure_anchored_grid_bbox_excludes_xlabel_space():
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side="bottom")
+    group = pp.legend(side="bottom")
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
 
@@ -236,7 +236,7 @@ def test_default_orientation_and_align_per_side(side, expected_orientation, expe
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side=side)
+    group = pp.legend(side=side)
     assert group._orientation == expected_orientation
     assert group._align == expected_align
 
@@ -247,7 +247,7 @@ def test_bottom_horizontal_legend_is_wider_than_tall():
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side="bottom")
+    group = pp.legend(side="bottom")
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
     bb = group._builder.elements[0][1].get_window_extent()
@@ -262,7 +262,7 @@ def test_right_vertical_legend_is_taller_than_wide():
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side="right")
+    group = pp.legend(side="right")
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
     bb = group._builder.elements[0][1].get_window_extent()
@@ -276,7 +276,7 @@ def test_bottom_center_align_places_legend_at_grid_midpoint():
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side="bottom")
+    group = pp.legend(side="bottom")
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
     anc = group.anchor.get_window_extent()
@@ -291,7 +291,7 @@ def test_explicit_align_end_on_bottom():
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side="bottom", align="end")
+    group = pp.legend(side="bottom", align="end")
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
     anc = group.anchor.get_window_extent()
@@ -312,7 +312,7 @@ def test_explicit_orientation_vertical_on_bottom():
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side="bottom", orientation="vertical")
+    group = pp.legend(side="bottom", orientation="vertical")
     assert group._orientation == "vertical"
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
@@ -331,7 +331,7 @@ def test_user_ncol_override_wins_on_horizontal():
     fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
     for ax in np.atleast_2d(axes).flat:
         ax.plot([0, 1, 2], [0, 1, 0])
-    group = pp.legend_group(side="bottom")
+    group = pp.legend(side="bottom")
     group.add_legend(handles=_sample_handles(), label="group", ncol=1)
     fig.canvas.draw()
     bb = group._builder.elements[0][1].get_window_extent()
@@ -343,12 +343,12 @@ def test_user_ncol_override_wins_on_horizontal():
 
 def test_orientation_invalid_raises():
     with pytest.raises(ValueError, match="orientation must be"):
-        pp.legend_group(orientation="diagonal")
+        pp.legend(orientation="diagonal")
 
 
 def test_align_invalid_raises():
     with pytest.raises(ValueError, match="align must be"):
-        pp.legend_group(align="middle")
+        pp.legend(align="middle")
 
 
 @pytest.mark.parametrize("anchor_kind", ["figure", "axes"])
@@ -363,9 +363,9 @@ def test_right_side_legend_top_aligned_with_axes_top(anchor_kind):
         ax.plot([0, 1, 2], [0, 1, 0])
         ax.set_title("title")
     if anchor_kind == "figure":
-        group = pp.legend_group(side="right")
+        group = pp.legend(side="right")
     else:
-        group = pp.legend_group(anchor=axes[-1], side="right")
+        group = pp.legend(anchor=axes[-1], side="right")
     group.add_legend(handles=_sample_handles(), label="group")
     fig.canvas.draw()
 
@@ -407,7 +407,7 @@ def test_materialize_merges_entries_with_subset_labels_across_axes():
                 labels=labels,
             ),
         )
-    group = pp.legend_group(anchor=axes[-1])
+    group = pp.legend(anchor=axes[-1])
     with _w.catch_warnings(record=True) as caught:
         _w.simplefilter("always")
         group._materialize()
@@ -473,7 +473,7 @@ def test_legend_group_attached_after_plots_evicts_per_axis_legends():
     pre = [sum(1 for c in ax.get_children() if isinstance(c, Legend)) for ax in axes]
     assert pre == [1, 1, 1], f"expected one per-axis legend each, got {pre}"
     # Attach the group AFTER the plots — should evict claimed entries.
-    group = pp.legend_group(side="right")
+    group = pp.legend(side="right")
     fig.canvas.draw()
     # Only the anchor axes should still carry a Legend (the group's own
     # shared legend); the other panels should have no Legend left.
@@ -504,7 +504,7 @@ def test_legend_group_after_plots_preserves_unclaimed_inside_legends():
             data=df, x="x", y="y", hue="g", style="r", palette="pastel", ax=ax,
             legend_kws={"inside": True, "loc": "upper right"},
         )
-    group = pp.legend_group(side="right", collect=["g"])
+    group = pp.legend(side="right", collect=["g"])
     fig.canvas.draw()
     for ax in axes[:-1]:
         titles = [
@@ -541,7 +541,7 @@ def test_legend_group_after_plots_shrinks_per_axis_reservation():
     # First draw with per-axis legends present → right[-1] inflated.
     fig.canvas.draw()
     # Now attach the group after the fact.
-    pp.legend_group(side="right")
+    pp.legend(side="right")
     fig.canvas.draw()
     layout = fig._publiplots_layout
     # All per-column right reservations should be near zero; the width
@@ -569,7 +569,7 @@ def test_legend_group_saves_to_pdf_without_renderer_error(tmp_path):
     for ax in axes:
         pp.lineplot(data=df, x="x", y="y", hue="m", ax=ax,
                     errorbar=None, legend=True)
-    pp.legend_group(figure=fig, side="bottom")
+    pp.legend(figure=fig, side="bottom")
     # Each of these triggers a _measure_object_dimensions call during
     # the align hook. Previously this crashed on non-AGG canvases.
     fig.savefig(tmp_path / "ok.pdf")
