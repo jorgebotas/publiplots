@@ -19,7 +19,7 @@ designed to generalize to any Rectangle-based primitive.
 from typing import Optional, Sequence, Tuple, Union
 
 from matplotlib.axes import Axes
-from matplotlib.patches import Patch, Rectangle
+from matplotlib.patches import Patch, PathPatch, Rectangle
 from matplotlib.path import Path
 from matplotlib.transforms import IdentityTransform
 
@@ -262,13 +262,14 @@ class _RoundedBarPatch(Patch):
 
 
 def apply_border_radius(
-    patches: Sequence[Rectangle],
+    patches: Sequence[Patch],
     radius_mm: Tuple[float, float],
     ax: Axes,
 ) -> None:
-    """Swap ``Rectangle`` bars for rounded-corner patches.
+    """Swap ``Rectangle`` / ``PathPatch`` bars for rounded-corner patches.
 
-    For each :class:`~matplotlib.patches.Rectangle` in ``patches``:
+    For each :class:`~matplotlib.patches.Rectangle` (or rectangular
+    :class:`~matplotlib.patches.PathPatch`) in ``patches``:
 
     1. Capture bounds, facecolor, edgecolor, linewidth, hatch, alpha,
        zorder, transform, clip_on, and label (plus publiplots-specific
@@ -285,15 +286,25 @@ def apply_border_radius(
     sides) — callers can use the same call site for the default flat
     case without paying the swap cost.
 
-    Non-``Rectangle`` patches in ``patches`` are skipped. This is
-    deliberate so callers don't have to pre-filter error-bar caps or
-    other artists that happen to live in ``ax.patches``.
+    :class:`~matplotlib.patches.PathPatch` inputs are also accepted:
+    seaborn 0.13+ draws ``boxplot`` IQR boxes as ``PathPatch`` with
+    rectangular vertex sets, so the helper derives ``(x, y, w, h)``
+    from ``patch.get_path().get_extents()`` (axis-aligned bounding
+    box) and swaps them for ``_RoundedBarPatch`` instances too.
+    Degenerate patches (zero or negative width/height) are skipped.
+
+    Non-``Rectangle``, non-``PathPatch`` patches in ``patches`` are
+    skipped. This is deliberate so callers don't have to pre-filter
+    error-bar caps or other artists that happen to live in
+    ``ax.patches``.
 
     Parameters
     ----------
-    patches : sequence of Rectangle
+    patches : sequence of Patch
         Patches to convert. Typically
-        ``ArtistTracker.get_new_patches()`` post-``sns.barplot``.
+        ``ArtistTracker.get_new_patches()`` post-``sns.barplot`` /
+        ``sns.boxplot``. Rectangle and rectangular PathPatch inputs
+        are handled; other types are skipped.
     radius_mm : tuple of float
         ``(top_mm, bottom_mm)`` — corner radii in millimeters. Use
         :func:`normalize_border_radius` to coerce user input to this
@@ -315,15 +326,26 @@ def apply_border_radius(
 
     # Iterate over a materialized copy — we mutate ax.patches via
     # rect.remove() + ax.add_patch() below.
-    for rect in list(patches):
-        if not isinstance(rect, Rectangle):
+    for patch in list(patches):
+        if isinstance(patch, Rectangle):
+            x, y = patch.get_xy()
+            w = patch.get_width()
+            h = patch.get_height()
+        elif isinstance(patch, PathPatch):
+            # Seaborn 0.13+ draws boxplot IQR boxes as PathPatch with a
+            # rectangular vertex set. Derive (x, y, w, h) from the path's
+            # axis-aligned bounding box.
+            bbox = patch.get_path().get_extents()
+            if bbox.width <= 0 or bbox.height <= 0:
+                # Degenerate; nothing to round.
+                continue
+            x, y = bbox.x0, bbox.y0
+            w, h = bbox.width, bbox.height
+        else:
+            # Unknown patch kind (e.g. error-bar caps); leave untouched.
             continue
 
-        x, y = rect.get_xy()
-        w = rect.get_width()
-        h = rect.get_height()
-
-        # NOTE: we deliberately do NOT copy rect.get_transform() here.
+        # NOTE: we deliberately do NOT copy patch.get_transform() here.
         # Rectangle.get_transform() returns `get_patch_transform() +
         # Artist.get_transform()` — a composite that includes the
         # Rectangle's bbox scaling (unit path [0,1]×[0,1] → bar bbox).
@@ -337,26 +359,26 @@ def apply_border_radius(
             height=h,
             top_pts=top_pts,
             bottom_pts=bottom_pts,
-            facecolor=rect.get_facecolor(),
-            edgecolor=rect.get_edgecolor(),
-            linewidth=rect.get_linewidth(),
-            hatch=rect.get_hatch(),
-            alpha=rect.get_alpha(),
-            zorder=rect.get_zorder(),
-            clip_on=rect.get_clip_on(),
-            label=rect.get_label(),
+            facecolor=patch.get_facecolor(),
+            edgecolor=patch.get_edgecolor(),
+            linewidth=patch.get_linewidth(),
+            hatch=patch.get_hatch(),
+            alpha=patch.get_alpha(),
+            zorder=patch.get_zorder(),
+            clip_on=patch.get_clip_on(),
+            label=patch.get_label(),
         )
         # Preserve publiplots-specific hatch linewidth when present.
-        if hasattr(rect, "get_hatch_linewidth") and hasattr(
+        if hasattr(patch, "get_hatch_linewidth") and hasattr(
             new, "set_hatch_linewidth"
         ):
             try:
-                new.set_hatch_linewidth(rect.get_hatch_linewidth())
+                new.set_hatch_linewidth(patch.get_hatch_linewidth())
             except Exception:
                 # Older mpl without the attr — harmless to skip.
                 pass
 
-        rect.remove()
+        patch.remove()
         ax.add_patch(new)
 
 

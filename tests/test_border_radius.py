@@ -189,3 +189,41 @@ def test_apply_border_radius_swaps_rectangle():
     assert new.get_width() == 1.0
     assert new.get_height() == 2.0
     plt.close(fig)
+
+
+def test_apply_border_radius_handles_pathpatch():
+    """Feeding a rectangular PathPatch produces a _RoundedBarPatch.
+
+    Mirrors the shape seaborn 0.13+ uses for boxplot IQR boxes — a
+    PathPatch with 5 vertices (MOVETO + 3 LINETO + CLOSEPOLY). The
+    helper should derive bounds from the path extents and swap.
+    """
+    from matplotlib.patches import PathPatch
+    from matplotlib.path import Path
+
+    fig, ax = plt.subplots()
+    pp_rect = PathPatch(
+        Path(
+            [(1, 1), (2, 1), (2, 3), (1, 3), (1, 1)],
+            [
+                Path.MOVETO,
+                Path.LINETO,
+                Path.LINETO,
+                Path.LINETO,
+                Path.CLOSEPOLY,
+            ],
+        ),
+        facecolor="#abc",
+    )
+    ax.add_patch(pp_rect)
+    apply_border_radius([pp_rect], (1.0, 1.0), ax)
+    assert any(isinstance(p, _RoundedBarPatch) for p in ax.patches)
+    # Swapped out — original PathPatch no longer in ax.patches.
+    assert pp_rect not in ax.patches
+    # Bounds derived from path extents.
+    new = [p for p in ax.patches if isinstance(p, _RoundedBarPatch)][0]
+    assert new.get_x() == 1.0
+    assert new.get_y() == 1.0
+    assert new.get_width() == 1.0
+    assert new.get_height() == 2.0
+    plt.close(fig)
