@@ -22,6 +22,7 @@ from publiplots.utils.legend_entries import (
     resolve_legend_flags,
 )
 from publiplots.utils.plot_legend import render_entries
+from publiplots.utils.rounding import apply_border_radius, normalize_border_radius
 from publiplots.utils.transparency import ArtistTracker
 from publiplots.annotate._builders import build_from_barplot_call
 
@@ -42,6 +43,7 @@ def barplot(
     linewidth: Optional[float] = None,
     capsize: Optional[float] = None,
     alpha: Optional[float] = None,
+    border_radius: Optional[Union[float, Tuple[float, float]]] = None,
     palette: Optional[Union[str, Dict, List]] = None,
     hatch_map: Optional[Dict[str, str]] = None,
     legend: Union[bool, Dict] = True,
@@ -101,6 +103,14 @@ def barplot(
         Width of error bar caps.
     alpha : float, default=0.1
         Transparency of bar fill (0-1). Use 0 for outlined bars only.
+    border_radius : float or (top_mm, bottom_mm) tuple, optional
+        Corner radius for the bars, in **millimeters** (print-consistent,
+        independent of data-axis range). A scalar rounds all four corners
+        symmetrically; a 2-tuple rounds the top and bottom independently,
+        enabling infographic-style bars with rounded tops and flat
+        baselines (``border_radius=(1.5, 0)``). Defaults to the
+        ``bar.border_radius`` rcParam (``(0, 0)`` = flat). Set globally
+        via ``pp.rcParams['bar.border_radius'] = 1.5``.
     palette : str, dict, or list, optional
         Color palette. Can be:
         - str: seaborn palette name or publiplots palette name
@@ -304,6 +314,17 @@ def barplot(
         palette=palette,
         hatch_map=hatch_map,
     )
+
+    # Round bar corners per rcParam / kwarg (no-op on (0, 0)). Runs AFTER
+    # _paint_bars so face/edge/hatch are already on each Rectangle and get
+    # copied over by apply_border_radius; runs BEFORE apply_transparency so
+    # transparency applies to the new FancyBboxPatches via tracker snapshot
+    # diff (swapped-in patches are not in the pre-plot snapshot and are
+    # picked up by get_new_patches).
+    radius = normalize_border_radius(
+        resolve_param("bar.border_radius", border_radius)
+    )
+    apply_border_radius(tracker.get_new_patches(), radius, ax)
 
     # Apply differential transparency to face vs edge
     tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
