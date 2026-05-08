@@ -159,6 +159,9 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     "scatter.size_min": 50,  # Minimum marker size for size mapping
     "scatter.size_max": 1000,  # Maximum marker size for size mapping
 
+    # Bar plot styling
+    "bar.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.barplot
+
     # Subplots layout (mm) — baseline is publication-grade; notebook style
     # overrides these in themes/styles.py.
     "subplots.axes_size": (70.0, 50.0),  # default (width, height) of each axes in pp.subplots
