@@ -475,3 +475,27 @@ ax = pp.barplot(
     title="annotate={'fmt': '.0f'}",
 )
 pp.show()
+
+# %%
+# Rounded bars — ``border_radius``
+# --------------------------------
+# New in 0.10.4: ``pp.barplot(..., border_radius=1.5)`` rounds all four
+# corners. Units are **millimeters** (print-consistent, independent of
+# the y-axis scale). Pass a ``(top_mm, bottom_mm)`` tuple for
+# asymmetric rounding — ``border_radius=(1.5, 0)`` rounds only the top
+# and keeps the baseline square, a common infographic look. Set
+# globally with ``pp.rcParams['bar.border_radius'] = 1.5``.
+
+rounded_df = pd.DataFrame({'x': ['A', 'B', 'C'], 'y': [1.2, 2.4, 1.8]})
+
+fig, axes = pp.subplots(1, 3, axes_size=(35, 35))
+pp.barplot(data=rounded_df, x='x', y='y', ax=axes[0], title='flat (default)')
+pp.barplot(
+    data=rounded_df, x='x', y='y', ax=axes[1],
+    border_radius=1.5, title='symmetric',
+)
+pp.barplot(
+    data=rounded_df, x='x', y='y', ax=axes[2],
+    border_radius=(1.5, 0), title='top only',
+)
+pp.show()
