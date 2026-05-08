@@ -162,3 +162,22 @@ ax = pp.boxplot(
     title="annotate={'stats': ['median', 'q1', 'q3']}",
 )
 pp.show()
+
+# %%
+# Rounded boxes — ``border_radius``
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# New in 0.10.6: ``pp.boxplot(..., border_radius=1.5)`` rounds all four
+# corners of the IQR box. Units are millimeters (print-consistent,
+# independent of the data-axis range). Pass a 2-tuple to round top and
+# bottom independently — ``border_radius=(1.5, 0)`` keeps the Q1 edge
+# square, useful when the box is visually paired with a density cloud
+# (e.g. inside :func:`publiplots.raincloudplot`).
+
+fig, axes = pp.subplots(1, 3, axes_size=(35, 35))
+pp.boxplot(data=box_data, x='category', y='value',
+           ax=axes[0], title='flat (default)')
+pp.boxplot(data=box_data, x='category', y='value',
+           ax=axes[1], border_radius=1.5, title='symmetric')
+pp.boxplot(data=box_data, x='category', y='value',
+           ax=axes[2], border_radius=(1.5, 0), title='top only')
+pp.show()
