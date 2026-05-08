@@ -142,6 +142,18 @@ class _RoundedBarPatch(Patch):
         """Return the height in data coords."""
         return self._rounded_height
 
+    def set_xy(self, xy: Tuple[float, float]) -> None:
+        """Set the lower-left ``(x, y)`` in data coords.
+
+        Mirrors :meth:`matplotlib.patches.Rectangle.set_xy`. Needed so
+        ``offset_patches`` (and any caller that shifts bar positions
+        post-hoc) can move a rounded patch — the path is rebuilt at
+        draw time from ``_rounded_xy``, so mutating the vertices of
+        the path returned by :meth:`get_path` would be a no-op.
+        """
+        self._rounded_xy = (float(xy[0]), float(xy[1]))
+        self.stale = True
+
     def get_patch_transform(self):
         """Return identity — :meth:`get_path` already emits data coords.
 

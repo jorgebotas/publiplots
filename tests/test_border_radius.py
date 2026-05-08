@@ -399,3 +399,83 @@ def test_apply_border_radius_handles_pathpatch():
     assert new.get_width() == 1.0
     assert new.get_height() == 2.0
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Raincloud offset — regression for the _RoundedBarPatch shift bug
+# ---------------------------------------------------------------------------
+# In v0.10.6 development, pp.raincloudplot was visibly shifting its IQR box
+# TOWARD the violin when box.border_radius was set — the box lost its
+# box_offset shift while the whiskers/caps/median (Line2D) kept it. Root
+# cause: offset_patches mutated patch.get_path().vertices in place, which
+# is a no-op for _RoundedBarPatch (path is rebuilt at draw time from
+# _rounded_xy). Fixed by type-dispatching in offset_patches to use
+# _RoundedBarPatch.set_xy().
+
+
+def test_raincloud_rounded_box_offset_survives_draw():
+    """pp.raincloudplot(box.border_radius=...) box must land at the same
+    x-coord as the flat baseline (i.e., same box_offset applied), and the
+    offset must persist across fig.canvas.draw().
+    """
+    from matplotlib.patches import PathPatch
+
+    df = pd.DataFrame({"g": ["a"] * 40, "y": list(range(40))})
+
+    # Baseline: flat raincloud — capture the IQR-box bbox x0.
+    fig, ax = plt.subplots()
+    pp.raincloudplot(data=df, x="g", y="y", ax=ax)
+    flat_x0 = [
+        p.get_path().get_extents().x0
+        for p in ax.patches
+        if isinstance(p, PathPatch)
+    ]
+    plt.close(fig)
+    assert flat_x0, "baseline raincloud produced no PathPatch box"
+
+    # Rounded raincloud: the _RoundedBarPatch xy must match the flat x0.
+    pp.rcParams["box.border_radius"] = 1.5
+    try:
+        fig, ax = plt.subplots()
+        pp.raincloudplot(data=df, x="g", y="y", ax=ax)
+        rounded = [p for p in ax.patches if isinstance(p, _RoundedBarPatch)]
+        assert rounded, "rounded raincloud produced no _RoundedBarPatch"
+        x_before = rounded[0].get_xy()[0]
+        assert abs(x_before - flat_x0[0]) < 1e-6, (
+            f"offset drifted: flat={flat_x0[0]}, rounded={x_before}"
+        )
+        # Draw the canvas — _RoundedBarPatch rebuilds its path on draw,
+        # so we need the set_xy mutation to persist.
+        fig.canvas.draw()
+        x_after = rounded[0].get_xy()[0]
+        assert abs(x_after - x_before) < 1e-6, (
+            f"offset lost on draw: before={x_before}, after={x_after}"
+        )
+        plt.close(fig)
+    finally:
+        pp.rcParams["box.border_radius"] = (0.0, 0.0)
+
+
+def test_offset_patches_handles_rounded_bar_patch():
+    """Unit test: offset_patches on a _RoundedBarPatch shifts via set_xy,
+    not path-vertex mutation.
+    """
+    from publiplots.utils.offset import offset_patches
+
+    fig, ax = plt.subplots()
+    rounded = _RoundedBarPatch(
+        xy=(1.0, 2.0),
+        width=1.0,
+        height=1.0,
+        top_pts=5.0,
+        bottom_pts=5.0,
+    )
+    ax.add_patch(rounded)
+    offset_patches([rounded], offset=0.3, orientation="vertical")
+    assert rounded.get_xy()[0] == pytest.approx(1.3)
+    assert rounded.get_xy()[1] == pytest.approx(2.0)
+    # Horizontal orientation shifts y, not x.
+    offset_patches([rounded], offset=-0.1, orientation="horizontal")
+    assert rounded.get_xy()[0] == pytest.approx(1.3)
+    assert rounded.get_xy()[1] == pytest.approx(1.9)
+    plt.close(fig)
