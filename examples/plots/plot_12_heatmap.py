@@ -152,7 +152,7 @@ axes = (
     )
     .build()
 )
-pp.suptitle('Clustered Heatmap with Dendrograms', y=1.02)
+pp.suptitle('Clustered Heatmap with Dendrograms')
 pp.show()
 
 # %%
@@ -202,7 +202,7 @@ axes = (
     )
     .build()
 )
-pp.suptitle('Complex Heatmap with Summary Bar Plot', y=1.02)
+pp.suptitle('Complex Heatmap with Summary Bar Plot')
 pp.show()
 
 # %%
@@ -292,5 +292,5 @@ axes = (
     )
     .build()
 )
-pp.suptitle('Clustered Heatmap (Dendrograms Hidden)', y=1.02)
+pp.suptitle('Clustered Heatmap (Dendrograms Hidden)')
 pp.show()
