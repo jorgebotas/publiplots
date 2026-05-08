@@ -143,7 +143,11 @@ def histplot(
     color : str, optional
         Fixed color used when ``hue`` is None.
     edgecolor : str, optional
-        Edge color for the bar/outline stroke. Falls back to rcParams.
+        Edge color for the bar/outline stroke. When ``None`` (the
+        default, also the default of ``rcParams["edgecolor"]``), the
+        edge matches the face color at full opacity — matching
+        publiplots' double-layer transparent-fill styling used by
+        :func:`barplot`.
     hatch : str, optional
         Column name for a secondary categorical dimension rendered with
         hatch patterns (v1: supported only when ``multiple == "layer"``
@@ -222,7 +226,7 @@ def histplot(
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
-    edgecolor_resolved = resolve_param("patch.edgecolor", edgecolor)
+    edgecolor_resolved = resolve_param("edgecolor", edgecolor)
 
     if (x is None) == (y is None):
         raise ValueError(
