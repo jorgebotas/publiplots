@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounding box. Degenerate patches (non-positive width/height) are
   skipped. `pp.barplot` behavior is unchanged.
 
+### Fixed
+
+- `pp.raincloudplot` box offset is preserved when
+  `box.border_radius` is set. Previously, `offset_patches` mutated
+  `patch.get_path().vertices` in place — a no-op for
+  `_RoundedBarPatch` because its path is rebuilt at draw time from
+  `_rounded_xy`. The IQR box snapped back toward the half-violin
+  while whiskers/caps/median (Line2D) kept the correct offset,
+  breaking alignment. `_RoundedBarPatch` now exposes `set_xy()`;
+  `offset_patches` type-dispatches to it for rounded patches.
+
 ### Notes
 
 - `pp.violinplot(inner='box')` stays flat. A dedicated
