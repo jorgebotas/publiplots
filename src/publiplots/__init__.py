@@ -14,7 +14,7 @@ publiplots applies its publication-grade rcParams on import. Use
 :func:`publiplots.reset_style` to revert to matplotlib defaults.
 """
 
-__version__ = "0.10.6"
+__version__ = "0.10.7"
 __author__ = "Jorge Botas"
 __license__ = "MIT"
 __copyright__ = "Copyright 2025, Jorge Botas"
@@ -24,6 +24,7 @@ __description__ = "Publication-ready plotting with a clean, modular API"
 
 # Plotting functions
 from publiplots.plot.bar import barplot
+from publiplots.plot.hist import histplot
 from publiplots.plot.scatter import scatterplot
 from publiplots.plot.point import pointplot
 from publiplots.plot.line import lineplot
@@ -96,6 +97,7 @@ __all__ = [
     "__author__",
     # Plots
     "barplot",
+    "histplot",
     "scatterplot",
     "pointplot",
     "lineplot",

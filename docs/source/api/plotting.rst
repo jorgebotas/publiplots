@@ -26,6 +26,15 @@ Relational
    publiplots.scatterplot
    publiplots.lineplot
 
+Distribution
+------------
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   publiplots.histplot
+
 Matrix
 ------
 

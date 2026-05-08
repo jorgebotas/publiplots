@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.7] - 2026-05-08
+
+### Added
+
+- `pp.histplot` — publication-ready histograms with seaborn-parity API
+  and the full publiplots styling pipeline.
+  - Univariate `x=` or `y=`; counts, densities, probability, percent,
+    and frequency stats; `bins=`, `binwidth=`, `binrange=`, `discrete=`,
+    `cumulative=`, `log_scale=`; full `multiple=` support (`layer`,
+    `dodge`, `stack`, `fill`); `element=` for `bars`, `step`, or `poly`;
+    `kde=True` overlay with per-hue colors; `weights=` for weighted
+    histograms.
+  - Palette resolution via `pp.color_palette` / dict / hue_order,
+    matching `barplot` / `lineplot` conventions.
+  - Optional `hatch=` + `hatch_map=` for B&W-print-friendly overlays
+    under `multiple="layer"`. Raises `NotImplementedError` when `hatch`
+    is combined with `hue` + `multiple="dodge"` (v1 scope).
+  - Full legend-stash integration: `pp.legend_group` can claim the
+    legend entries across axes exactly as it does for `barplot` and
+    `lineplot`. `legend=False` and `legend={"hue": False}` supported.
+  - `annotate=True` (or a dict of options) adds count/height labels
+    per bar via the shared `annotate(ax, kind="bar_values", ...)`
+    strategy. `element="bars"` only in v1.
+  - Returns `Axes`, matching every other `pp.*plot` function.
+
 ## [0.10.6] - 2026-05-08
 
 ### Added
