@@ -27,14 +27,33 @@ def offset_patches(
 ) -> None:
     """
     Offset patches by a given amount.
+
+    Dispatches on patch type because :class:`_RoundedBarPatch` rebuilds
+    its path at draw time from ``(_rounded_xy, width, height)``, so
+    mutating the vertices of the path returned by ``get_path()`` would
+    be silently dropped on the next render. For rounded patches we shift
+    via :meth:`_RoundedBarPatch.set_xy`; for plain ``Rectangle`` /
+    ``PathPatch`` we keep the in-place vertex mutation (unchanged).
     """
+    # Lazy import to avoid a cycle: utils.rounding may itself import
+    # utilities from this package.
+    from publiplots.utils.rounding import _RoundedBarPatch
+
     for patch in patches:
+        if isinstance(patch, _RoundedBarPatch):
+            x, y = patch.get_xy()
+            if orientation == "vertical":
+                patch.set_xy((x + offset, y))
+            else:
+                patch.set_xy((x, y + offset))
+            continue
         path = patch.get_path()
         if orientation == "vertical":
             path.vertices[:, 0] += offset
         else:
             path.vertices[:, 1] += offset
-        
+
+
 def offset_collections(
     collections: List[PathCollection],
     offset: float,

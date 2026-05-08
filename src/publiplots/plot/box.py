@@ -17,6 +17,7 @@ import pandas as pd
 import numpy as np
 
 from publiplots.themes.colors import resolve_palette_map
+from publiplots.utils.rounding import apply_border_radius, normalize_border_radius
 from publiplots.utils.transparency import ArtistTracker
 from publiplots.utils import is_categorical
 from publiplots.utils.plot_legend import stash_hue_legend
@@ -41,6 +42,7 @@ def boxplot(
     fliersize: Optional[float] = None,
     linewidth: Optional[float] = None,
     alpha: Optional[float] = None,
+    border_radius: Optional[Union[float, Tuple[float, float]]] = None,
     ax: Optional[Axes] = None,
     title: str = "",
     xlabel: str = "",
@@ -97,6 +99,15 @@ def boxplot(
     alpha : float, optional
         Transparency of box fill (0-1). When None, resolved from
         ``publiplots.rcParams["alpha"]``.
+    border_radius : float or (top_mm, bottom_mm) tuple, optional
+        Corner radius for the IQR box, in **millimeters** (print-consistent,
+        independent of the data-axis range). A scalar rounds all four corners
+        symmetrically; a 2-tuple rounds top and bottom independently
+        (e.g. ``border_radius=(1.5, 0)`` keeps the Q1 edge square — useful
+        when the box is visually paired with a density cloud in
+        ``pp.raincloudplot``). Defaults to the ``box.border_radius`` rcParam
+        (``(0, 0)`` = flat). Set globally via
+        ``pp.rcParams['box.border_radius'] = 1.5``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -264,6 +275,17 @@ def boxplot(
     # Set edge colors on box patches
     for patch in new_patches:
         patch.set_edgecolor(resolved_edgecolor if resolved_edgecolor else patch.get_facecolor())
+
+    # Round the IQR-box corners per rcParam / kwarg. No-op when (0, 0).
+    # Runs AFTER the edgecolor loop so face/edge are copied onto the new
+    # patch, and BEFORE apply_transparency so the tracker snapshot diff
+    # picks up the swapped-in _RoundedBarPatch(es). Mirrors bar.py.
+    # Non-PathPatch artists (whisker/cap Line2Ds) are not in ax.patches
+    # and are silently ignored by apply_border_radius.
+    radius = normalize_border_radius(
+        resolve_param("box.border_radius", border_radius)
+    )
+    apply_border_radius(tracker.get_new_patches(), radius, ax)
 
     # Apply transparency to box patch faces
     tracker.apply_transparency(on="patches", face_alpha=alpha)

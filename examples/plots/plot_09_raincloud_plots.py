@@ -172,3 +172,27 @@ ax = pp.raincloudplot(
     rain_offset=0.1,
 )
 pp.show()
+
+# %%
+# Rounded inner-box via ``box.border_radius``
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# New in 0.10.6: ``pp.raincloudplot`` composes violin + box + strip, and
+# the box component is drawn by ``pp.boxplot`` internally. Setting the
+# ``box.border_radius`` rcParam rounds the raincloud's IQR box
+# automatically — no special wiring. The rcParam is restored after the
+# demo so downstream gallery sections see the default flat box.
+
+pp.rcParams["box.border_radius"] = 1.5
+try:
+    ax = pp.raincloudplot(
+        data=raincloud_data,
+        x='time',
+        y='measurement',
+        title='Rounded Box Component',
+        xlabel='Time',
+        ylabel='Measurement',
+        cloud_alpha=0.6,
+    )
+    pp.show()
+finally:
+    pp.rcParams["box.border_radius"] = (0.0, 0.0)

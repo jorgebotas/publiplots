@@ -14,7 +14,7 @@ publiplots applies its publication-grade rcParams on import. Use
 :func:`publiplots.reset_style` to revert to matplotlib defaults.
 """
 
-__version__ = "0.10.5"
+__version__ = "0.10.6"
 __author__ = "Jorge Botas"
 __license__ = "MIT"
 __copyright__ = "Copyright 2025, Jorge Botas"

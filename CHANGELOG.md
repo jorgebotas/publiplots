@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.6] - 2026-05-08
+
+### Added
+
+- `pp.boxplot(border_radius=...)` — rounded corners for the IQR box.
+  - Same shape as `pp.barplot(border_radius=...)` from 0.10.5: a
+    scalar rounds all four corners symmetrically; a
+    `(top_mm, bottom_mm)` tuple rounds top and bottom independently
+    (e.g. `border_radius=(1.5, 0)` keeps the Q1 edge square — useful
+    when the box is visually paired with a density cloud).
+  - Radii are specified in **millimeters**, print-consistent and
+    independent of the data-axis range. Horizontal-orient boxplots
+    round cleanly too.
+  - Global control via the new `box.border_radius` rcParam.
+  - Whiskers, caps, medians, and outlier markers are untouched —
+    only the IQR box body is rounded.
+- `pp.raincloudplot` — rounded inner-box via auto-propagation. The
+  raincloud's box component is drawn by `pp.boxplot` internally, so
+  setting `pp.rcParams['box.border_radius'] = 1.5` (or passing
+  `box_kws={'border_radius': ...}` on a single call) rounds the
+  raincloud's IQR box with no additional wiring.
+
+### Changed
+
+- `publiplots.utils.rounding.apply_border_radius` now accepts
+  `PathPatch` inputs in addition to `Rectangle`. Seaborn 0.13+ draws
+  boxplot IQR boxes as `PathPatch`, so the helper dispatches on patch
+  type and derives `(x, y, w, h)` from the path's axis-aligned
+  bounding box. Degenerate patches (non-positive width/height) are
+  skipped. `pp.barplot` behavior is unchanged.
+
+### Notes
+
+- `pp.violinplot(inner='box')` stays flat. A dedicated
+  `violin.inner_box.border_radius` knob is a future-work candidate.
+- Notched boxplots are not rounded specially — the path's bounding
+  box is used, which effectively ignores the notch geometry. Flat
+  notches remain the recommended combination.
+
 ## [0.10.5] - 2026-05-08
 
 ### Added

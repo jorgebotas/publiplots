@@ -189,3 +189,293 @@ def test_apply_border_radius_swaps_rectangle():
     assert new.get_width() == 1.0
     assert new.get_height() == 2.0
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# pp.boxplot integration — border_radius kwarg, rcParam, invariants
+# ---------------------------------------------------------------------------
+
+
+def _box_pathpatches(ax):
+    """Return IQR box PathPatches seaborn added to ax."""
+    from matplotlib.patches import PathPatch
+    return [p for p in ax.patches if isinstance(p, PathPatch)]
+
+
+def test_boxplot_no_radius_keeps_pathpatches():
+    """Default pp.boxplot leaves seaborn's PathPatches in place."""
+    df = pd.DataFrame(
+        {"g": ["a"] * 20 + ["b"] * 20, "y": list(range(40))}
+    )
+    fig, ax = plt.subplots()
+    pp.boxplot(data=df, x="g", y="y", ax=ax)
+    # No rounded patches when border_radius is unset (default (0, 0)).
+    assert not any(isinstance(p, _RoundedBarPatch) for p in ax.patches)
+    # Seaborn drew one PathPatch per group.
+    assert len(_box_pathpatches(ax)) == 2
+    plt.close(fig)
+
+
+def test_boxplot_symmetric_radius_produces_rounded_patches():
+    """border_radius=1.5 swaps IQR PathPatches for _RoundedBarPatches."""
+    df = pd.DataFrame(
+        {"g": ["a"] * 20 + ["b"] * 20, "y": list(range(40))}
+    )
+    fig, ax = plt.subplots()
+    pp.boxplot(data=df, x="g", y="y", ax=ax, border_radius=1.5)
+    rounded = [p for p in ax.patches if isinstance(p, _RoundedBarPatch)]
+    assert len(rounded) == 2
+    # Original PathPatches removed.
+    assert len(_box_pathpatches(ax)) == 0
+    plt.close(fig)
+
+
+def test_boxplot_asymmetric_radius():
+    """(top, bottom) = (1.5, 0) — top rounded, bottom flat, draws cleanly."""
+    df = pd.DataFrame({"g": ["a"] * 20, "y": list(range(20))})
+    fig, ax = plt.subplots()
+    pp.boxplot(data=df, x="g", y="y", ax=ax, border_radius=(1.5, 0))
+    # Force draw so get_path() runs — catches vert/code mismatches.
+    fig.canvas.draw()
+    rounded = [p for p in ax.patches if isinstance(p, _RoundedBarPatch)]
+    assert len(rounded) == 1
+    plt.close(fig)
+
+
+def test_boxplot_rcparam_applies_globally():
+    """pp.rcParams['box.border_radius'] affects boxes without kwarg."""
+    df = pd.DataFrame({"g": ["a"] * 20, "y": list(range(20))})
+    pp.rcParams["box.border_radius"] = 2.0
+    try:
+        fig, ax = plt.subplots()
+        pp.boxplot(data=df, x="g", y="y", ax=ax)
+        assert any(isinstance(p, _RoundedBarPatch) for p in ax.patches)
+        plt.close(fig)
+    finally:
+        pp.rcParams["box.border_radius"] = (0.0, 0.0)
+
+
+def test_boxplot_kwarg_overrides_rcparam_with_zero():
+    """border_radius=0 forces flat boxes even when rcParam is nonzero."""
+    df = pd.DataFrame({"g": ["a"] * 20, "y": list(range(20))})
+    pp.rcParams["box.border_radius"] = 2.0
+    try:
+        fig, ax = plt.subplots()
+        pp.boxplot(data=df, x="g", y="y", ax=ax, border_radius=0)
+        rounded = [
+            p for p in ax.patches if isinstance(p, _RoundedBarPatch)
+        ]
+        assert len(rounded) == 0
+        plt.close(fig)
+    finally:
+        pp.rcParams["box.border_radius"] = (0.0, 0.0)
+
+
+def test_boxplot_whiskers_untouched():
+    """Whiskers/caps/medians are Line2Ds; rounding must not touch them."""
+    df = pd.DataFrame({"g": ["a"] * 20, "y": list(range(20))})
+    fig, ax = plt.subplots()
+    pp.boxplot(data=df, x="g", y="y", ax=ax, border_radius=1.5)
+    # Boxplot line family still present (whiskers + caps + median).
+    assert len(ax.lines) >= 4
+    plt.close(fig)
+
+
+def test_boxplot_horizontal_orient_radius():
+    """Horizontal orient boxplot draws and rounds without transform errors."""
+    df = pd.DataFrame({"g": ["a"] * 20, "y": list(range(20))})
+    fig, ax = plt.subplots()
+    # Categorical on y, value on x → horizontal boxplot.
+    pp.boxplot(data=df, x="y", y="g", ax=ax, border_radius=1.5)
+    fig.canvas.draw()
+    rounded = [p for p in ax.patches if isinstance(p, _RoundedBarPatch)]
+    assert len(rounded) == 1
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# pp.raincloudplot — auto-propagation via the internal pp.boxplot call
+# ---------------------------------------------------------------------------
+
+
+def test_raincloud_picks_up_box_border_radius_via_rcparam():
+    """rcParam propagates through pp.raincloudplot's internal pp.boxplot."""
+    df = pd.DataFrame({"g": ["a"] * 40, "y": list(range(40))})
+    pp.rcParams["box.border_radius"] = 1.5
+    try:
+        fig, ax = plt.subplots()
+        pp.raincloudplot(data=df, x="g", y="y", ax=ax)
+        assert any(
+            isinstance(p, _RoundedBarPatch) for p in ax.patches
+        ), (
+            "raincloud should auto-propagate box.border_radius via "
+            "its internal pp.boxplot call"
+        )
+        plt.close(fig)
+    finally:
+        pp.rcParams["box.border_radius"] = (0.0, 0.0)
+
+
+def test_raincloud_box_kws_override():
+    """Per-call box_kws={'border_radius': ...} works via box_kws passthrough."""
+    df = pd.DataFrame({"g": ["a"] * 40, "y": list(range(40))})
+    fig, ax = plt.subplots()
+    pp.raincloudplot(
+        data=df,
+        x="g",
+        y="y",
+        ax=ax,
+        box_kws={"border_radius": 2.0},
+    )
+    assert any(isinstance(p, _RoundedBarPatch) for p in ax.patches)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# tracker-scoping invariants — pre-existing patches must NOT be rounded
+# ---------------------------------------------------------------------------
+
+
+def test_barplot_border_radius_leaves_preexisting_patches_untouched():
+    """Pre-existing non-bar patches must NOT be rounded by pp.barplot."""
+    fig, ax = plt.subplots()
+    pre = Rectangle((0, 5), 0.5, 1, facecolor="red")
+    ax.add_patch(pre)
+    df = pd.DataFrame({"x": ["A", "B"], "y": [1, 2]})
+    pp.barplot(data=df, x="x", y="y", ax=ax, border_radius=1.5)
+    # Pre-existing Rectangle survived the barplot call.
+    assert pre in ax.patches
+    assert type(pre) is Rectangle
+    assert not isinstance(pre, _RoundedBarPatch)
+    plt.close(fig)
+
+
+def test_boxplot_border_radius_leaves_preexisting_patches_untouched():
+    """Pre-existing non-box patches must NOT be rounded by pp.boxplot."""
+    fig, ax = plt.subplots()
+    pre = Rectangle((0, 0.5), 0.1, 0.1, facecolor="green")
+    ax.add_patch(pre)
+    df = pd.DataFrame({"g": ["a"] * 20, "y": list(range(20))})
+    pp.boxplot(data=df, x="g", y="y", ax=ax, border_radius=1.5)
+    assert pre in ax.patches
+    assert type(pre) is Rectangle
+    assert not isinstance(pre, _RoundedBarPatch)
+    plt.close(fig)
+
+
+def test_apply_border_radius_handles_pathpatch():
+    """Feeding a rectangular PathPatch produces a _RoundedBarPatch.
+
+    Mirrors the shape seaborn 0.13+ uses for boxplot IQR boxes — a
+    PathPatch with 5 vertices (MOVETO + 3 LINETO + CLOSEPOLY). The
+    helper should derive bounds from the path extents and swap.
+    """
+    from matplotlib.patches import PathPatch
+    from matplotlib.path import Path
+
+    fig, ax = plt.subplots()
+    pp_rect = PathPatch(
+        Path(
+            [(1, 1), (2, 1), (2, 3), (1, 3), (1, 1)],
+            [
+                Path.MOVETO,
+                Path.LINETO,
+                Path.LINETO,
+                Path.LINETO,
+                Path.CLOSEPOLY,
+            ],
+        ),
+        facecolor="#abc",
+    )
+    ax.add_patch(pp_rect)
+    apply_border_radius([pp_rect], (1.0, 1.0), ax)
+    assert any(isinstance(p, _RoundedBarPatch) for p in ax.patches)
+    # Swapped out — original PathPatch no longer in ax.patches.
+    assert pp_rect not in ax.patches
+    # Bounds derived from path extents.
+    new = [p for p in ax.patches if isinstance(p, _RoundedBarPatch)][0]
+    assert new.get_x() == 1.0
+    assert new.get_y() == 1.0
+    assert new.get_width() == 1.0
+    assert new.get_height() == 2.0
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Raincloud offset — regression for the _RoundedBarPatch shift bug
+# ---------------------------------------------------------------------------
+# In v0.10.6 development, pp.raincloudplot was visibly shifting its IQR box
+# TOWARD the violin when box.border_radius was set — the box lost its
+# box_offset shift while the whiskers/caps/median (Line2D) kept it. Root
+# cause: offset_patches mutated patch.get_path().vertices in place, which
+# is a no-op for _RoundedBarPatch (path is rebuilt at draw time from
+# _rounded_xy). Fixed by type-dispatching in offset_patches to use
+# _RoundedBarPatch.set_xy().
+
+
+def test_raincloud_rounded_box_offset_survives_draw():
+    """pp.raincloudplot(box.border_radius=...) box must land at the same
+    x-coord as the flat baseline (i.e., same box_offset applied), and the
+    offset must persist across fig.canvas.draw().
+    """
+    from matplotlib.patches import PathPatch
+
+    df = pd.DataFrame({"g": ["a"] * 40, "y": list(range(40))})
+
+    # Baseline: flat raincloud — capture the IQR-box bbox x0.
+    fig, ax = plt.subplots()
+    pp.raincloudplot(data=df, x="g", y="y", ax=ax)
+    flat_x0 = [
+        p.get_path().get_extents().x0
+        for p in ax.patches
+        if isinstance(p, PathPatch)
+    ]
+    plt.close(fig)
+    assert flat_x0, "baseline raincloud produced no PathPatch box"
+
+    # Rounded raincloud: the _RoundedBarPatch xy must match the flat x0.
+    pp.rcParams["box.border_radius"] = 1.5
+    try:
+        fig, ax = plt.subplots()
+        pp.raincloudplot(data=df, x="g", y="y", ax=ax)
+        rounded = [p for p in ax.patches if isinstance(p, _RoundedBarPatch)]
+        assert rounded, "rounded raincloud produced no _RoundedBarPatch"
+        x_before = rounded[0].get_xy()[0]
+        assert abs(x_before - flat_x0[0]) < 1e-6, (
+            f"offset drifted: flat={flat_x0[0]}, rounded={x_before}"
+        )
+        # Draw the canvas — _RoundedBarPatch rebuilds its path on draw,
+        # so we need the set_xy mutation to persist.
+        fig.canvas.draw()
+        x_after = rounded[0].get_xy()[0]
+        assert abs(x_after - x_before) < 1e-6, (
+            f"offset lost on draw: before={x_before}, after={x_after}"
+        )
+        plt.close(fig)
+    finally:
+        pp.rcParams["box.border_radius"] = (0.0, 0.0)
+
+
+def test_offset_patches_handles_rounded_bar_patch():
+    """Unit test: offset_patches on a _RoundedBarPatch shifts via set_xy,
+    not path-vertex mutation.
+    """
+    from publiplots.utils.offset import offset_patches
+
+    fig, ax = plt.subplots()
+    rounded = _RoundedBarPatch(
+        xy=(1.0, 2.0),
+        width=1.0,
+        height=1.0,
+        top_pts=5.0,
+        bottom_pts=5.0,
+    )
+    ax.add_patch(rounded)
+    offset_patches([rounded], offset=0.3, orientation="vertical")
+    assert rounded.get_xy()[0] == pytest.approx(1.3)
+    assert rounded.get_xy()[1] == pytest.approx(2.0)
+    # Horizontal orientation shifts y, not x.
+    offset_patches([rounded], offset=-0.1, orientation="horizontal")
+    assert rounded.get_xy()[0] == pytest.approx(1.3)
+    assert rounded.get_xy()[1] == pytest.approx(1.9)
+    plt.close(fig)
