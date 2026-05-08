@@ -161,6 +161,7 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
 
     # Bar plot styling
     "bar.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.barplot
+    "box.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.boxplot IQR boxes (auto-propagates to pp.raincloudplot)
 
     # Subplots layout (mm) — baseline is publication-grade; notebook style
     # overrides these in themes/styles.py.
