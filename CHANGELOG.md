@@ -5,15 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.4] - 2026-05-08
 
 ### Added
 
-- feat(suptitle): `pp.suptitle` now reserves space via the auto-layout engine — no more overlap with top-row axes.
+- `pp.suptitle` now reserves vertical space via the auto-layout engine:
+  the figure grows to fit the title instead of overlapping the top row
+  of axes. New `FigureLayout.suptitle_space` scalar sits between
+  `outer_pad` and `legend_band_top` in the figure H formula; auto-measured
+  from the Text's tight bbox on `draw_event`. Repeated `pp.suptitle`
+  calls replace the prior title rather than stacking. A `side="top"`
+  figure-anchored `pp.legend` band now sits below the reserved suptitle
+  band — both coexist cleanly (PR #128).
 
 ### Changed
 
-- `figure.titlesize` default is now `11` (was matplotlib's `"large"`, which resolves to 9.6pt at publiplots' 8pt base — smaller than the 10pt panel titles, a flipped hierarchy). `figure.titleweight` stays `"normal"`. The figure-level suptitle now reads as the outermost heading.
+- `figure.titlesize` default bumped to `11` (was matplotlib's `"large"`,
+  which resolves to 9.6pt at publiplots' 8pt base — smaller than the
+  10pt panel titles, a flipped hierarchy). `figure.titleweight` stays
+  `"normal"`. The figure-level suptitle now reads as the outermost
+  heading in the type stack (PR #128).
+- Dropped the now-stale `y=1.02` nudge from the three `pp.suptitle`
+  calls in `examples/plots/plot_12_heatmap.py` — auto-layout positions
+  the title correctly regardless (PR #128).
+
+[0.10.4]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.4
 
 ## [0.10.3] - 2026-05-08
 
