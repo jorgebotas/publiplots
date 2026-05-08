@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat(suptitle): `pp.suptitle` now reserves space via the auto-layout engine — no more overlap with top-row axes.
 
+### Changed
+
+- `figure.titlesize` default is now `11` (was matplotlib's `"large"`, which resolves to 9.6pt at publiplots' 8pt base — smaller than the 10pt panel titles, a flipped hierarchy). `figure.titleweight` stays `"normal"`. The figure-level suptitle now reads as the outermost heading.
+
 ## [0.10.3] - 2026-05-08
 
 ### Changed

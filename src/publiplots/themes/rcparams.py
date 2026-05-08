@@ -52,6 +52,12 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     "figure.edgecolor": "none",
     "figure.subplot.hspace": 0.05,
     "figure.subplot.wspace": 0.05,
+    # Figure-level suptitle: one notch above axes.titlesize (10) so the
+    # figure title reads as the outermost heading in the type hierarchy
+    # (matplotlib's default 'large' resolves to 9.6pt, which is smaller
+    # than the panel titles — flipped hierarchy).
+    "figure.titlesize": 11,
+    "figure.titleweight": "normal",
 
     # Font settings - optimized for readability
     "font.size": 8,
