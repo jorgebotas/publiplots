@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.5] - 2026-05-08
+
+### Added
+
+- `pp.barplot(border_radius=...)` — rounded corners for bar plots.
+  - Scalar `float` rounds all four corners symmetrically; a
+    `(top_mm, bottom_mm)` tuple rounds top and bottom independently
+    (e.g. `border_radius=(1.5, 0)` for infographic-style bars with
+    rounded tops and a flat baseline).
+  - Radii are specified in **millimeters** — print-consistent and
+    independent of the y-axis data range. Draw-time conversion to
+    data coordinates handles non-square aspect ratios cleanly, so
+    corners stay visually circular on any plot.
+  - Global control via the new `bar.border_radius` rcParam — set
+    `pp.rcParams['bar.border_radius'] = 1.5` once and every
+    subsequent `pp.barplot` call picks it up (passing
+    `border_radius=0` on an individual call opts out).
+  - Preserves face color, edge color, hatch, hatch linewidth, alpha,
+    zorder, and label on the swap from `Rectangle` to the internal
+    `_RoundedBarPatch`.
+  - Gallery: see the new "Rounded bars" section in
+    `plot_01_bar_plots.py`.
+- `publiplots.utils.rounding` — new module with
+  `apply_border_radius(patches, radius_mm, ax)` and
+  `normalize_border_radius(value)`, designed to generalize to other
+  `Rectangle`-based plot primitives in future releases.
+
 ## [0.10.4] - 2026-05-08
 
 ### Added
