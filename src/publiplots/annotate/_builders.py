@@ -232,6 +232,65 @@ def build_from_barplot_call(
     )
 
 
+def build_from_histplot_call(
+    ax: Axes,
+    data,
+    x: Optional[str],
+    y: Optional[str],
+    hue: Optional[str],
+    palette: Optional[Dict],
+    stat: str,
+    hue_order: Optional[List],
+) -> BarValueMeta:
+    """Build a ``BarValueMeta`` paired with the histplot's Rectangles.
+
+    Histogram bars have no errorbars and the "value" of each bar is its
+    height (or width, for horizontal). Hue assignment is inferred from
+    each Rectangle's facecolor against the resolved palette map, same
+    strategy the paint pass uses — ordering-agnostic under
+    ``multiple="dodge"`` / ``"stack"``.
+    """
+    orient = "v" if x is not None else "h"
+
+    rects = [
+        p for p in ax.patches
+        if isinstance(p, Rectangle) and p.get_width() > 0 and p.get_height() > 0
+    ]
+
+    bars: List[BarRecord] = []
+    for rect in rects:
+        value = rect.get_height() if orient == "v" else rect.get_width()
+        hue_color: Optional[Tuple[float, float, float, float]] = None
+        if palette is not None and palette:
+            face = tuple(rect.get_facecolor())[:3]
+            best_level = None
+            best_dist = float("inf")
+            for level, col in palette.items():
+                target = to_rgba(col)[:3]
+                dist = sum((a - b) ** 2 for a, b in zip(face, target))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_level = level
+            if best_level is not None:
+                hue_color = to_rgba(palette[best_level])
+        if hue_color is None:
+            hue_color = tuple(rect.get_facecolor())
+        bars.append(BarRecord(
+            patch=rect,
+            value=float(value),
+            err_low=None,
+            err_high=None,
+            hue_color=hue_color,
+        ))
+    return BarValueMeta(
+        orient=orient,
+        bars=bars,
+        errorbar_kind=None,
+        hue_active=hue is not None,
+        owner_is_publiplots=True,
+    )
+
+
 VALID_BOX_STATS = {"median", "q1", "q3", "whisker_low", "whisker_high", "mean"}
 
 
