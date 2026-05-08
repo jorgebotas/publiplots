@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2026-05-08
+
+### Changed
+
+- Docstring overhaul across every public `pp.*` function and the
+  Sphinx API reference:
+  - Completed the API-reference toctrees — every name in
+    `publiplots.__all__` now has an entry (previously missing:
+    `lineplot`, `pointplot`, `violinplot`, `raincloudplot`, `heatmap`,
+    `complex_heatmap`, `dendrogram`, `subplots`, `show`, `suptitle`,
+    `rotate`, `invert_axis`, `MultiAxesLegendGroup`,
+    `HandlerLineMarker`, `LineMarkerPatch`, `STANDARD_MARKERS`,
+    `HATCH_PATTERNS`).
+  - Documented publiplots-specific features that differentiate from
+    seaborn: `errorbar=('custom', (lo, hi))` on `pp.lineplot` /
+    `pp.pointplot`, `pp.subplots` mm-units + `reject_figsize`,
+    `pp.savefig` `bbox_inches=None` default (0.9.3+),
+    `pp.scatterplot` `background_marker`, `pp.raincloudplot`
+    composite (half-violin + box + strip), `pp.heatmap` /
+    `pp.complex_heatmap` clustering + dot-heatmap mode.
+  - Added a **Notes** section to `pp.legend` documenting the
+    flagship 0.10 asymmetry: `pp.legend(ax)` positional (internal
+    per-axes legend) vs `pp.legend(anchor=ax)` keyword (external
+    band overhang).
+  - Rewrote `pp.barplot` `hatch` / `hatch_map` params with the
+    "second categorical via texture" mental model; cross-references
+    to `pp.set_hatch_mode`, `pp.list_hatch_patterns`,
+    `pp.HATCH_PATTERNS`.
+  - Aligned docstring defaults with actual signatures (drift fixes
+    in `pp.raincloudplot`, `pp.venn`, `pp.scatterplot`, `pp.savefig`
+    `transparent`, DPI).
+  - Fixed broken `See Also` blocks (e.g. removed phantom
+    `barplot_enrichment` reference).
+  - Removed stale references to 0.10-removed API (`pp.legend_group`,
+    `pp.legend(ax, auto=False)`).
+
+### Fixed
+
+- Several Sphinx-rendering issues in docstrings:
+  `pp.pointplot` `errorbar` nested-bullet indentation,
+  `pp.barplot` `hatch_map` malformed escape example, single-backtick
+  inline literals throughout.
+
 ## [0.10.2] - 2026-05-07
 
 ### Added
