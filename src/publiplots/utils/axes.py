@@ -22,35 +22,47 @@ def adjust_spines(
 
     Parameters
     ----------
-    ax : Axes
-        Matplotlib axes object.
-    spines : str or List[str], default='left-bottom'
-        Which spines to show. Can be:
-        - 'all': Show all spines
-        - 'none': Hide all spines
-        - 'left-bottom': Show only left and bottom (default for publiplots)
-        - 'box': Show all four spines (box around plot)
-        - List of spine names: ['left', 'bottom', 'right', 'top']
-    color : str, default='0.2'
+    ax : matplotlib.axes.Axes
+        Axes to modify in place.
+    spines : str or list of str, default ``'left-bottom'``
+        Which spines to show. Accepted values:
+
+        - ``'all'`` — show all four spines.
+        - ``'none'`` — hide all spines.
+        - ``'left-bottom'`` — show only left and bottom (publiplots default).
+        - ``'box'`` — equivalent to ``'all'``.
+        - A list of spine names (subset of
+          ``['left', 'bottom', 'right', 'top']``).
+    color : str, default ``'0.2'``
         Color of visible spines.
-    linewidth : float, default=1.5
-        Width of visible spines.
+    linewidth : float, default ``1.5``
+        Width of visible spines (points).
     offset : float, optional
-        Offset spines from data by this amount in points.
+        Offset visible spines outward from the data by this many points.
+        ``None`` leaves the spine position alone.
+
+    Returns
+    -------
+    None
+        ``ax`` is modified in place.
 
     Examples
     --------
     Show only left and bottom spines (publication style):
+
     >>> pp.adjust_spines(ax, spines='left-bottom')
 
     Show all spines:
+
     >>> pp.adjust_spines(ax, spines='all')
 
     Hide all spines:
+
     >>> pp.adjust_spines(ax, spines='none')
 
-    Custom spine selection:
-    >>> pp.adjust_spines(ax, spines=['left', 'right'])
+    Custom spine selection with an outward offset:
+
+    >>> pp.adjust_spines(ax, spines=['left', 'bottom'], offset=3)
     """
     # Parse spines parameter
     if spines == 'all':
@@ -101,35 +113,41 @@ def add_grid(
     """
     Add customizable gridlines to axes.
 
+    Also sets ``ax.set_axisbelow(True)`` so the grid renders beneath
+    data artists.
+
     Parameters
     ----------
-    ax : Axes
-        Matplotlib axes object.
-    which : str, default='major'
-        Which gridlines to show: 'major', 'minor', or 'both'.
-    axis : str, default='both'
-        Which axis to add grid: 'x', 'y', or 'both'.
-    alpha : float, default=0.3
-        Transparency of gridlines (0-1).
-    linestyle : str, default='--'
-        Style of gridlines.
-    linewidth : float, default=0.5
-        Width of gridlines.
-    color : str, default='0.8'
-        Color of gridlines.
-    zorder : int, default=0
-        Z-order of gridlines (lower values are behind other elements).
+    ax : matplotlib.axes.Axes
+        Axes to modify in place.
+    which : {'major', 'minor', 'both'}, default ``'major'``
+        Which tick gridlines to show.
+    axis : {'x', 'y', 'both'}, default ``'both'``
+        Which axis to add gridlines to.
+    alpha : float, default ``0.3``
+        Gridline transparency in ``[0, 1]``.
+    linestyle : str, default ``'--'``
+        Matplotlib linestyle spec.
+    linewidth : float, default ``0.5``
+        Gridline width (points).
+    color : str, default ``'0.8'``
+        Gridline color.
+    zorder : int, default ``0``
+        Gridline z-order (lower values render behind other elements).
 
     Examples
     --------
     Add default gridlines:
+
     >>> pp.add_grid(ax)
 
     Add only horizontal gridlines:
+
     >>> pp.add_grid(ax, axis='y')
 
     Customize grid appearance:
-    >>> pp.add_grid(ax, alpha=0.5, linestyle=':', color='blue')
+
+    >>> pp.add_grid(ax, alpha=0.5, linestyle=':', color='steelblue')
     """
     ax.grid(
         True,
@@ -173,24 +191,29 @@ def set_axis_labels(
     """
     Set axis labels and title with consistent formatting.
 
+    Only labels that are explicitly provided are set; ``None`` values
+    leave the existing label / title untouched.
+
     Parameters
     ----------
-    ax : Axes
-        Matplotlib axes object.
+    ax : matplotlib.axes.Axes
+        Axes to modify in place.
     xlabel : str, optional
-        X-axis label.
+        X-axis label. ``None`` leaves it unchanged.
     ylabel : str, optional
-        Y-axis label.
+        Y-axis label. ``None`` leaves it unchanged.
     title : str, optional
-        Plot title.
+        Plot title. ``None`` leaves it unchanged.
     fontsize : float, optional
-        Font size for labels. If None, uses current rcParams.
-    fontweight : str, default='normal'
-        Font weight: 'normal', 'bold', 'light', etc.
+        Font size (points) for labels and title. ``None`` uses the
+        active rcParams.
+    fontweight : str, default ``'normal'``
+        Font weight — e.g. ``'normal'``, ``'bold'``, ``'light'``.
 
     Examples
     --------
-    >>> pp.set_axis_labels(ax, xlabel='Time (s)', ylabel='Signal', title='Results')
+    >>> pp.set_axis_labels(ax, xlabel='Time (s)', ylabel='Signal',
+    ...                    title='Results')
     """
     if xlabel is not None:
         ax.set_xlabel(xlabel, fontsize=fontsize, fontweight=fontweight)
@@ -256,24 +279,36 @@ def rotate(
     """
     Rotate axis tick labels.
 
-    Commonly used when labels are long or numerous.
+    Commonly used when category labels are long or numerous.
 
     Parameters
     ----------
-    ax : Axes
-        Matplotlib axes object.
-    axis : Literal['x', 'y'], default='x'
-        Axis to rotate tick labels for: 'x', 'y'.
-    rotation : float, default=45
-        Rotation angle in degrees.
-    ha : Literal['left', 'center', 'right'], default=None
-        Horizontal alignment: 'left', 'center', 'right'.
-    va : Literal['top', 'center', 'bottom', 'baseline'], default=None
-        Vertical alignment: 'top', 'center', 'bottom', 'baseline'.
+    ax : matplotlib.axes.Axes
+        Axes to modify in place.
+    axis : {'x', 'y'}, default ``'x'``
+        Which axis's tick labels to rotate.
+    rotation : float, default ``45``
+        Rotation angle in degrees, counter-clockwise.
+    ha : {'left', 'center', 'right'}, optional
+        Horizontal alignment of tick labels. ``None`` leaves the
+        existing alignment.
+    va : {'top', 'center', 'bottom', 'baseline'}, optional
+        Vertical alignment of tick labels. ``None`` leaves the existing
+        alignment.
+
+    Raises
+    ------
+    AssertionError
+        If ``axis`` is not ``'x'`` or ``'y'``.
 
     Examples
     --------
+    Rotate x-tick labels 45 degrees:
+
     >>> pp.rotate(ax, axis='x', rotation=45)
+
+    Rotate y-tick labels 90 degrees with right-alignment:
+
     >>> pp.rotate(ax, axis='y', rotation=90, ha='right')
     """
     assert axis in ["x", "y"], ValueError(f"Invalid axis: {axis}. Use 'x' or 'y'.")
@@ -289,22 +324,29 @@ def invert_axis(ax: Axes, axis: str = 'y') -> None:
     """
     Invert an axis direction.
 
-    Useful for heatmaps or other visualizations where reversed order
-    is more intuitive.
+    Useful for heatmaps or other visualisations where reversed order is
+    more intuitive (e.g., placing the origin at the top-left).
 
     Parameters
     ----------
-    ax : Axes
-        Matplotlib axes object.
-    axis : str, default='y'
-        Which axis to invert: 'x' or 'y'.
+    ax : matplotlib.axes.Axes
+        Axes to modify in place.
+    axis : {'x', 'y'}, default ``'y'``
+        Which axis to invert.
+
+    Raises
+    ------
+    ValueError
+        If ``axis`` is not ``'x'`` or ``'y'``.
 
     Examples
     --------
     Invert y-axis (common for heatmaps):
+
     >>> pp.invert_axis(ax, axis='y')
 
     Invert x-axis:
+
     >>> pp.invert_axis(ax, axis='x')
     """
     if axis == 'y':
@@ -330,35 +372,46 @@ def add_reference_line(
     Add a reference line to the plot.
 
     Useful for showing thresholds, means, or other reference values.
+    Internally calls :meth:`~matplotlib.axes.Axes.axhline` (for
+    ``axis='y'``) or :meth:`~matplotlib.axes.Axes.axvline` (for
+    ``axis='x'``).
 
     Parameters
     ----------
-    ax : Axes
-        Matplotlib axes object.
+    ax : matplotlib.axes.Axes
+        Axes to modify in place.
     value : float
-        Position of the reference line.
-    axis : str, default='y'
-        Which axis to add line to: 'x' (vertical) or 'y' (horizontal).
-    color : str, default='red'
+        Position of the reference line in data coordinates.
+    axis : {'x', 'y'}, default ``'y'``
+        Which axis to add the line to: ``'x'`` draws a vertical line at
+        ``x=value``; ``'y'`` draws a horizontal line at ``y=value``.
+    color : str, default ``'red'``
         Line color.
-    linestyle : str, default='--'
-        Line style.
-    linewidth : float, default=1.5
-        Line width.
-    alpha : float, default=0.7
-        Line transparency (0-1).
+    linestyle : str, default ``'--'``
+        Matplotlib linestyle spec.
+    linewidth : float, default ``1.5``
+        Line width (points).
+    alpha : float, default ``0.7``
+        Line transparency in ``[0, 1]``.
     label : str, optional
-        Label for legend.
-    zorder : int, default=1
-        Z-order (higher values are on top).
+        Label for the legend. ``None`` leaves the line unlabelled.
+    zorder : int, default ``1``
+        Line z-order (higher values render on top).
+
+    Raises
+    ------
+    ValueError
+        If ``axis`` is not ``'x'`` or ``'y'``.
 
     Examples
     --------
-    Add horizontal reference line at y=0:
+    Add horizontal reference line at ``y=0``:
+
     >>> pp.add_reference_line(ax, value=0, axis='y', label='Baseline')
 
-    Add vertical line at x=5:
-    >>> pp.add_reference_line(ax, value=5, axis='x', color='blue')
+    Add vertical line at ``x=5``:
+
+    >>> pp.add_reference_line(ax, value=5, axis='x', color='steelblue')
     """
     if axis == 'y':
         ax.axhline(

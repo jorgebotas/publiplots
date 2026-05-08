@@ -72,8 +72,18 @@ def barplot(
     hue : str, optional
         Column name for color grouping (typically same as x for hatched bars).
     hatch : str, optional
-        Column name for splitting bars side-by-side with hatch patterns.
-        When specified, creates grouped bars within each x category.
+        Column name that drives a **second categorical dimension**, rendered
+        via hatch textures instead of color. Think of it as a texture-based
+        analogue of ``hue``: bars split side-by-side within each x category,
+        each assigned a distinct hatch pattern. Frequently combined with
+        ``hue`` to encode two categoricals at once (e.g. ``hue='condition'``
+        + ``hatch='treatment'``).
+
+        Patterns are drawn from :data:`publiplots.HATCH_PATTERNS` by default;
+        density is controlled globally via :func:`publiplots.set_hatch_mode`
+        (``"dense"``, ``"sparse"``, or ``"off"``) or overridden per-plot with
+        ``hatch_map``. Call :func:`publiplots.list_hatch_patterns` to see the
+        catalog.
     color : str, optional
         Fixed color for all bars (only used when hue is None).
         Overrides default color. Example: "#ff0000" or "red".
@@ -97,8 +107,18 @@ def barplot(
         - dict: mapping from hue values to colors
         - list: list of colors
     hatch_map : dict, optional
-        Mapping from hatch values to hatch patterns.
-        Example: {"group1": "", "group2": "///", "group3": "\\\\\\"}
+        Mapping from hatch-column values to matplotlib hatch-pattern strings,
+        overriding the per-``hatch_mode`` defaults. Matplotlib hatches
+        interpret: ``/`` ``\\`` ``|`` ``-`` ``+`` ``x`` ``o`` ``O`` ``.`` ``*``;
+        repeating a glyph increases density (e.g. ``"///"``).
+
+        Example (two-level hatch with a plain control group)::
+
+            hatch_map={"control": "", "treated": "///"}
+
+        :data:`publiplots.HATCH_PATTERNS` lists the built-in patterns the
+        ``hatch_mode`` resolver picks from; call
+        :func:`publiplots.list_hatch_patterns` to print them.
     legend : bool or dict, default=True
         Whether to show the legend. Accepts ``bool`` or
         ``dict[kind, bool]`` for per-kind control (e.g.,
@@ -146,7 +166,9 @@ def barplot(
 
     See Also
     --------
-    barplot_enrichment : Specialized bar plot for enrichment analysis
+    publiplots.set_hatch_mode : Set the global hatch-density mode.
+    publiplots.list_hatch_patterns : Print the built-in hatch patterns.
+    publiplots.annotate : Add value labels to bars (see ``annotate=`` above).
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)

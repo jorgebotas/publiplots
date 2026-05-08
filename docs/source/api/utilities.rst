@@ -1,6 +1,15 @@
 Utilities
 =========
 
+Layout
+------
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   publiplots.subplots
+
 I/O Utilities
 -------------
 
@@ -11,6 +20,16 @@ I/O Utilities
    publiplots.savefig
    publiplots.save_multiple
    publiplots.close_all
+
+Display Utilities
+-----------------
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   publiplots.show
+   publiplots.suptitle
 
 Axes Utilities
 --------------
@@ -23,3 +42,5 @@ Axes Utilities
    publiplots.add_grid
    publiplots.set_axis_labels
    publiplots.add_reference_line
+   publiplots.rotate
+   publiplots.invert_axis

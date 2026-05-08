@@ -105,16 +105,23 @@ def pointplot(
         Statistical function to estimate within each categorical bin.
         Options: "mean", "median", etc.
     errorbar : str or tuple, default=("ci", 95)
-        Method for computing error bars. Options include:
-        - ("ci", confidence_level): Confidence interval
-        - ("pi", confidence_level): Prediction interval
-        - ("se", multiplier): Standard error with optional multiplier
-        - "sd": Standard deviation
-        - ("custom", (lower, upper)): Custom error values. Define precomputed
-          lower and upper error bounds in the data.
-          NOTE: If custom error values are provided, errorbar and estimator
-          parameters are ignored.
-        - None: No error bars
+        Error-bar specification. Accepts every seaborn-native form — see
+        :func:`seaborn.pointplot` for the full list: ``("ci", level)``,
+        ``("pi", level)``, ``("se", mult)``, ``"sd"``, ``None``.
+
+        publiplots additionally supports ``("custom", (lower_col, upper_col))``
+        to draw whisker endpoints at **precomputed** lower/upper bounds
+        stored on the data (e.g. odds-ratio CIs, effect sizes with
+        externally-computed bootstrap intervals). When this form is used,
+        ``estimator`` is forced to ``"median"`` and any ``n_boot`` / ``seed``
+        arguments are ignored.
+
+        Example::
+
+            pp.pointplot(
+                data=df, x='gene', y='log2_or',
+                errorbar=('custom', ('log2_lower', 'log2_upper')),
+            )
     n_boot : int, default=1000
         Number of bootstrap iterations for computing confidence intervals.
     seed : int, optional

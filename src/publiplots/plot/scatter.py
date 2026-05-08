@@ -107,17 +107,21 @@ def scatterplot(
     hue_norm : tuple of float, optional
         (vmin, vmax) for continuous hue normalization. If None, computed from data.
         Providing this enables continuous color mapping.
-    alpha : float, default=0.1
-        Transparency level for marker fill (0-1).
-    linewidth : float, default=2.0
-        Width of marker edges.
+    alpha : float, optional
+        Transparency level for marker fill (0-1). When None, resolved from
+        ``publiplots.rcParams["alpha"]``.
+    linewidth : float, optional
+        Width of marker edges. When None, resolved from
+        ``publiplots.rcParams["lines.linewidth"]``.
     edgecolor : str, optional
-        Color for marker edges. If None, uses same color as fill.
+        Color for marker edges. If None, uses same color as fill. Can also be
+        set globally via ``publiplots.rcParams["edgecolor"]``.
     background_marker : bool or str, default=False
-        If truthy, draws a solid background-colored marker behind each point
-        to hide overlap. ``True`` uses white; a color string (e.g. ``"#eeeeee"``)
-        overrides the background color. Off by default because duplicating
-        every point doubles artist count and overlap is often informative.
+        Publiplots-specific: draw a solid background-colored marker behind
+        each point to hide overlap. ``True`` uses white; a color string
+        (e.g. ``"#eeeeee"``) overrides the background color. Off by default
+        because duplicating every point doubles artist count and overlap is
+        often informative.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -177,6 +181,15 @@ def scatterplot(
     Categorical scatterplot (positions on grid):
     >>> ax = pp.scatterplot(data=df, x="category", y="condition",
     ...                      size="pvalue", hue="log2fc")
+
+    Dense overlapping data with background markers for visual contrast:
+    >>> ax = pp.scatterplot(data=df, x="umap1", y="umap2",
+    ...                      hue="cluster", background_marker=True)
+
+    See Also
+    --------
+    publiplots.heatmap : Dot/bubble heatmap mode uses scatterplot internally.
+    publiplots.pointplot : Aggregated point estimates with error bars.
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)

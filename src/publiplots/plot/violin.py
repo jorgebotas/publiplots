@@ -83,8 +83,8 @@ def violinplot(
     hue_order : list, optional
         Order for the hue levels.
     orient : str, optional
-        Orientation of the plot ('v' or 'h').
-        Deprecated: use x and y instead.
+        Deprecated. Orientation is inferred from which of ``x`` / ``y`` is
+        categorical; passing a non-None value raises ``DeprecationWarning``.
     color : str, optional
         Fixed color for all violins (only used when hue is None).
     edgecolor : str, optional
@@ -110,9 +110,11 @@ def violinplot(
     gap : float, default=0
         Gap between violins when using hue.
     linewidth : float, optional
-        Width of violin edges.
+        Width of violin edges. When None, resolved from
+        ``publiplots.rcParams["lines.linewidth"]``.
     linecolor : str, default="auto"
-        Color of violin edges.
+        Deprecated. Use ``edgecolor`` instead. Kept for backward
+        compatibility; when ``edgecolor`` is also set, ``edgecolor`` wins.
     cut : float, default=2
         Distance past extreme data points to extend density estimate.
     gridsize : int, default=100
@@ -126,7 +128,8 @@ def violinplot(
     common_norm : bool, default=False
         When True, normalize across the entire dataset.
     alpha : float, optional
-        Transparency of violin fill (0-1).
+        Transparency of violin fill (0-1). When None, resolved from
+        ``publiplots.rcParams["alpha"]``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -140,12 +143,17 @@ def violinplot(
         for per-kind control (e.g., ``legend={"hue": False}``).
     legend_kws : dict, optional
         Additional keyword arguments for legend.
+    annotate : bool or dict, optional
+        If truthy, run :func:`publiplots.annotate` with ``kind="box_stats"``
+        on the resulting axes. A dict is forwarded as keyword arguments to
+        the annotate call (e.g., ``annotate={"comparisons": [("A", "B")]}``).
     side : str, default="both"
-        Which side to draw the violin on. Options: "both", "left", "right".
-        When "left" or "right", draws only half of the violin. This is useful
-        for creating raincloud plots. Note: when side is not "both" and hue
-        is specified, the hue coloring will be applied but split behavior
-        is controlled by the side parameter.
+        Publiplots-specific: which side of the categorical position to draw
+        the violin on. Options: ``"both"``, ``"left"``, ``"right"``. When
+        ``"left"`` or ``"right"``, draws only half of the violin — this is
+        what :func:`publiplots.raincloudplot` uses to build its "cloud".
+        Note: when ``side`` is not ``"both"`` and ``hue`` is specified, the
+        hue coloring is applied but split behavior is controlled by ``side``.
     **kwargs
         Additional keyword arguments passed to seaborn.violinplot.
 
@@ -166,6 +174,16 @@ def violinplot(
     >>> ax = pp.violinplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
+
+    Half-violin (used internally by raincloudplot):
+
+    >>> ax = pp.violinplot(data=df, x="category", y="value", side="right")
+
+    See Also
+    --------
+    publiplots.boxplot : Box-and-whisker alternative with the same interface.
+    publiplots.raincloudplot : Composite of half-violin + box + strip.
+    publiplots.annotate : Statistical annotations (used via ``annotate=``).
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)

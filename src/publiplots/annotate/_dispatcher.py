@@ -34,39 +34,95 @@ def annotate(
     pad: Optional[float] = None,
     **text_kws,
 ) -> List[Text]:
-    """Add value labels to plot marks on `ax`.
+    """Add value labels to plot marks on ``ax``.
+
+    publiplots' flagship annotation API. Dispatches to a strategy
+    selected by ``kind`` and labels each mark on ``ax`` (bars, boxes,
+    or points) in place. Offsets are specified in millimetres so labels
+    sit at consistent distances regardless of axes scale.
 
     Parameters
     ----------
-    ax : Axes
-        The axes to annotate. Must already have marks drawn on it.
-    kind : str, default="bar_values"
-        Which strategy to use. Each strategy defines its own anchor vocabulary
-        (e.g. bar_values takes {"outside", "inside", "base", "center"};
-        point_values takes {"top", "bottom", "left", "right", "center"}).
-    fmt : str, default=".2f"
-        Either a bare format spec (e.g. ".2f") or a format-string template
-        containing {} (e.g. "{:,.1f}%").
+    ax : matplotlib.axes.Axes
+        The axes to annotate. Must already have marks drawn on it
+        (e.g. via :func:`publiplots.barplot`, :func:`publiplots.boxplot`,
+        :func:`publiplots.pointplot`, or :func:`publiplots.lineplot`).
+    kind : {'bar_values', 'box_stats', 'point_values'}, default ``'bar_values'``
+        Annotation strategy to use:
+
+        - ``'bar_values'`` — label bars with their values; anchor
+          vocabulary ``{"outside", "inside", "base", "center"}``.
+        - ``'box_stats'`` — label box plots with distributional
+          summary statistics.
+        - ``'point_values'`` — label scatter or line-plot points;
+          anchor vocabulary
+          ``{"top", "bottom", "left", "right", "center"}``.
+    fmt : str, default ``'.2f'``
+        Either a bare format spec (e.g. ``".2f"``, ``",.0f"``) or a
+        format-string template containing ``{}`` (e.g.
+        ``"{:,.1f}%"``).
     anchor : str, optional
-        Where to place the label relative to the mark. Strategy-specific;
-        each strategy picks its own default when None is passed.
-    offset : float, default=1.0
-        Gap in millimeters between the mark (or errorbar cap) and the label,
-        applied in the outward direction of the anchor.
-    color : str or tuple, default="auto"
-        "auto" = contrast-aware (compositing for translucent fills); "hue" =
-        use the mark's palette color; any matplotlib color passes through.
+        Where to place the label relative to the mark.
+        Strategy-specific — see ``kind`` above. If ``None``, each
+        strategy picks its own default.
+    offset : float, default ``1.0``
+        Gap in millimetres between the mark (or errorbar cap, when
+        present) and the label, applied outward in the anchor
+        direction.
+    color : str or tuple, default ``'auto'``
+        Label color. Accepted values:
+
+        - ``'auto'`` — contrast-aware (composites against translucent
+          fills for legibility).
+        - ``'hue'`` — inherit the mark's palette color.
+        - Any matplotlib color spec — used verbatim.
     pad : float, optional
-        Extra margin in millimeters between the label and the axis edge when
-        auto-expanding limits. Defaults to `offset` so the geometry reads
-        mark → offset → label → pad → axis edge.
+        Extra margin in millimetres between the label and the axis
+        edge when auto-expanding axis limits. Defaults to ``offset``
+        so the geometry reads:
+
+        ``mark → offset → label → pad → axis edge``.
     **text_kws
-        Forwarded to `ax.text` (fontsize, fontweight, etc.).
+        Forwarded to :meth:`matplotlib.axes.Axes.text` (e.g.
+        ``fontsize``, ``fontweight``, ``rotation``).
 
     Returns
     -------
-    list of Text
+    list of matplotlib.text.Text
         The Text artists created, in mark order.
+
+    Raises
+    ------
+    ValueError
+        If ``kind`` is not one of the registered strategies, or if
+        ``offset`` / ``pad`` is negative.
+
+    Examples
+    --------
+    Label bars outside the top edge:
+
+    >>> import publiplots as pp
+    >>> fig, ax = pp.subplots()
+    >>> pp.barplot(data=df, x='category', y='value', ax=ax)
+    >>> pp.annotate(ax, kind='bar_values', anchor='outside', fmt='.1f')
+
+    Label bars inside, near the base, with a percent template:
+
+    >>> pp.annotate(ax, kind='bar_values',
+    ...             anchor='base', fmt='{:,.1f}%')
+
+    Label box-plot statistics:
+
+    >>> fig, ax = pp.subplots()
+    >>> pp.boxplot(data=df, x='group', y='value', ax=ax)
+    >>> pp.annotate(ax, kind='box_stats')
+
+    Label scatter points to the right, inheriting the palette color:
+
+    >>> fig, ax = pp.subplots()
+    >>> pp.scatterplot(data=df, x='x', y='y', hue='group', ax=ax)
+    >>> pp.annotate(ax, kind='point_values',
+    ...             anchor='right', color='hue')
     """
     if kind not in _STRATEGIES:
         raise ValueError(

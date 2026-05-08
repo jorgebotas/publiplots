@@ -99,54 +99,73 @@ def _sample_divergent(colors: List[str], n_colors: int) -> List[str]:
 
 def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False, divergent=None):
     """
-    Return a color palette as a list of hex colors or colormap.
+    Return a color palette as a list of hex colors or a colormap.
 
-    Integrates with seaborn - custom publiplots palettes override seaborn defaults.
+    Integrates with seaborn — custom publiplots palettes (see
+    :data:`PALETTES`) take precedence over seaborn palette names.
 
     Parameters
     ----------
-    palette : str, list, or None
-        Palette name (checks publiplots first, then seaborn) or list of colors.
-        If None, uses the default palette from rcParams.
-        Append "_r" suffix to reverse any palette (e.g., "coolwarm_r", "viridis_r").
+    palette : str or list, optional
+        Palette name or explicit list of colors. Name resolution
+        checks publiplots palettes first, then seaborn. If ``None``,
+        uses ``pp.rcParams["palette"]`` (default ``"pastel"``). Append
+        ``"_r"`` to reverse any named palette (e.g. ``"coolwarm_r"``,
+        ``"viridis_r"``).
     n_colors : int, optional
-        Number of colors in the palette.
+        Number of colors to return. If ``None``, returns the full
+        palette.
     desat : float, optional
-        Proportion to desaturate each color.
-    as_cmap : bool, default=False
-        If True, return a matplotlib colormap instead of a list.
+        Proportion to desaturate each color, in ``[0, 1]``.
+    as_cmap : bool, default ``False``
+        If ``True``, return a :class:`matplotlib.colors.ListedColormap`
+        instead of a list.
     divergent : bool, optional
-        If True, sample colors to preserve extremes (for divergent palettes).
-        If None (default), automatically detected for known divergent palettes.
-        Set to False to disable divergent sampling even for known divergent palettes.
+        If ``True``, sample colors to preserve extremes (first / last
+        / evenly spaced) — appropriate for diverging palettes. If
+        ``None``, auto-detected for palettes listed in
+        :data:`DIVERGENT_PALETTES`. Set ``False`` to disable sampling
+        even for known divergent palettes.
 
     Returns
     -------
-    list or matplotlib.colors.ListedColormap
-        List of hex color codes or colormap if as_cmap=True.
+    list of str or matplotlib.colors.ListedColormap
+        List of hex color codes, or a colormap when
+        ``as_cmap=True``.
 
     Examples
     --------
     Get custom pastel palette:
+
     >>> colors = color_palette("pastel")
     >>> len(colors)
     12
 
     Get seaborn palette:
+
     >>> colors = color_palette("viridis", n_colors=5)
 
     Get as colormap:
+
     >>> cmap = color_palette("pastel", as_cmap=True)
 
-    Get divergent palette with 3 colors (first, middle, last):
-    >>> colors = color_palette("coolwarm", n_colors=3)
+    Divergent palette sampled at 3 colors (first, middle, last):
+
+    >>> colors = color_palette("RdBu", n_colors=3)
 
     Force divergent sampling on any palette:
+
     >>> colors = color_palette("viridis", n_colors=5, divergent=True)
 
-    Reverse any palette with "_r" suffix (seaborn convention):
-    >>> colors = color_palette("coolwarm_r", n_colors=3)
+    Reverse any palette with the ``"_r"`` suffix (seaborn convention):
+
+    >>> colors = color_palette("RdBu_r", n_colors=3)
     >>> colors = color_palette("viridis_r", n_colors=5)
+
+    See Also
+    --------
+    PALETTES : Dictionary of built-in publiplots palettes.
+    DIVERGENT_PALETTES : Names auto-detected as divergent.
     """
     import seaborn as sns
 

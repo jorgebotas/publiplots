@@ -1034,6 +1034,24 @@ def legend(
     MultiAxesLegendGroup
         The constructed group. Can be further customized via
         ``group.add_legend(...)`` / ``group.add_colorbar(...)``.
+
+    Notes
+    -----
+    **Positional vs. keyword asymmetry on a single axes.**  There is a
+    deliberate semantic split between the two spellings of "legend for
+    one axes":
+
+    - ``pp.legend(ax)`` (positional) — **internal** per-axes legend;
+      the legend counts against ``ax.get_tightbbox()`` and the axes
+      reserves its own space (like pre-0.10 ``pp.legend(ax)``).
+    - ``pp.legend(anchor=ax)`` (keyword) — **external** band pinned to
+      that axes' edge; the legend is measured as an overhang by
+      :class:`SubplotsAutoLayout` and grows the figure's per-cell
+      reservation (like pre-0.10 ``pp.legend_group(anchor=ax)``).
+
+    Both render the same visually for a single isolated axes. They
+    differ under ``pp.subplots`` where the distinction controls which
+    reservation the layout reactor grows.
     """
     # Resolve anchor + axes per the rules:
     #   axes=None, anchor=None  -> figure-level (whole grid)

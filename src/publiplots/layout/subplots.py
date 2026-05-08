@@ -1,9 +1,20 @@
 """
 Public API: pp.subplots() — fixed-axes, flexible-canvas subplot factory.
 
-Declared axes dimensions (in mm) are inviolate; the figure grows to
-accommodate auto-measured decorations. Follow-up PR(s) will add
-legend-width awareness and a Composer for cross-figure page layout.
+publiplots' flagship 0.10 layout API. Declared axes dimensions are in
+**millimeters** and are inviolate; the figure canvas grows to
+accommodate auto-measured decorations (titles, labels, tick labels) on
+the first draw. This is the opposite mental model from
+:func:`matplotlib.pyplot.subplots`, which fixes the figure and lets
+axes shrink to fit.
+
+Users coming from seaborn / matplotlib should note:
+
+- ``axes_size=(w_mm, h_mm)`` is in **mm**, not inches.
+- ``figsize=`` is not accepted — publiplots owns the figure geometry.
+  See :func:`reject_figsize` for the rationale.
+
+Follow-up PR(s) will add a Composer for cross-figure page layout.
 """
 
 import warnings
@@ -26,11 +37,30 @@ _LAYOUT_ENGINE_KWARGS = ("layout", "constrained_layout", "tight_layout")
 
 
 def reject_figsize(kwargs: dict) -> None:
-    """Raise TypeError if ``figsize`` appears in ``kwargs``.
+    """Raise :class:`TypeError` if ``figsize`` appears in ``kwargs``.
 
-    publiplots plot functions no longer accept ``figsize=``. To customize
-    axes dimensions, compose with ``pp.subplots(axes_size=(w_mm, h_mm))``
-    and pass ``ax=``.
+    publiplots plot functions no longer accept ``figsize=`` (removed in
+    0.10). The figure canvas is owned by :func:`subplots`, which sizes
+    it from ``axes_size`` (mm) plus auto-measured decoration
+    reservations. To customize axes dimensions, compose with
+    :func:`subplots` and pass ``ax=``.
+
+    Parameters
+    ----------
+    kwargs : dict
+        The ``**kwargs`` dict passed into a plot function. Mutated only
+        by raising; not modified otherwise.
+
+    Raises
+    ------
+    TypeError
+        If ``"figsize"`` is a key in ``kwargs``.
+
+    Examples
+    --------
+    >>> import publiplots as pp
+    >>> fig, ax = pp.subplots(axes_size=(80, 50))  # 80 mm x 50 mm
+    >>> pp.barplot(data=df, x='x', y='y', ax=ax)
     """
     if "figsize" in kwargs:
         raise TypeError(
@@ -59,44 +89,92 @@ def subplots(
     """
     Create a figure and a grid of axes with deterministic axes dimensions.
 
-    Every axes in the grid has exactly ``axes_size`` mm as its spine
-    bounding box. The figure size is computed to accommodate decorations
-    (titles, axis labels, tick labels) which are auto-measured on first
-    draw. Any per-side reservation passed explicitly is locked and never
-    remeasured.
+    publiplots' flagship 0.10 layout API. Every axes in the grid has
+    exactly ``axes_size`` **millimeters** as its spine bounding box —
+    this is the inviolate quantity. The figure canvas is sized to fit
+    the grid plus auto-measured decorations (titles, axis labels, tick
+    labels), which are remeasured on first draw. Any per-side
+    reservation passed explicitly is locked and never remeasured.
+
+    This is the opposite mental model from
+    :func:`matplotlib.pyplot.subplots`, which fixes the figure and lets
+    axes shrink. When comparing to matplotlib/seaborn code, note that
+    ``axes_size`` is in **mm** (not inches) and ``figsize=`` is
+    rejected — publiplots owns the figure geometry. See
+    :func:`reject_figsize` for the rationale.
 
     Parameters
     ----------
     nrows, ncols : int, default 1
         Grid shape (must be >= 1).
     axes_size : (float, float) or float, in mm, optional
-        Declared axes bbox. Scalar is coerced to ``(s, s)``. If ``None``,
-        falls back to ``pp.rcParams["subplots.axes_size"]`` (50×30 mm
-        under publication style, 100×65 mm under notebook style).
-    sharex, sharey : bool or {"all", "row", "col", "none"}
-        Axis-sharing semantics, matching ``plt.subplots``.
+        Declared axes bounding box, in **millimeters**. A scalar is
+        coerced to ``(s, s)``. If ``None``, falls back to
+        ``pp.rcParams["subplots.axes_size"]`` — the baseline publication
+        default is ``(70, 50)`` mm.
+    sharex, sharey : bool or {"all", "row", "col", "none"}, default False
+        Axis-sharing semantics, matching :func:`matplotlib.pyplot.subplots`.
     title_space, xlabel_space, ylabel_space, right : float, optional
-        Per-cell reservations in mm. ``None`` means: initial value from
-        rcParams, then auto-measured on first draw. A float locks the
-        value.
+        Per-cell reservations, in millimeters. ``None`` means: take the
+        initial value from ``pp.rcParams["subplots.<name>"]``, then
+        auto-measure on first draw. Passing a float locks the value and
+        disables auto-measurement for that side.
     hspace, wspace, outer_pad : float, optional
-        Gaps and outer margin in mm. ``None`` falls back to rcParams.
-        Never auto-measured.
+        Gaps between rows/cols and outer margin, in millimeters.
+        ``None`` falls back to ``pp.rcParams["subplots.<name>"]``. These
+        are never auto-measured.
     **fig_kw
-        Forwarded to ``plt.figure``. ``figsize`` is rejected; layout-
-        engine kwargs are ignored with a warning.
-
-    Notes
-    -----
-    Extra width for a ``pp.legend_group`` anchored to the rightmost axes
-    is auto-computed on first draw from the rendered group width; there
-    is no ``legend_column`` kwarg to set by hand.
+        Forwarded to :func:`matplotlib.pyplot.figure`. ``figsize=`` is
+        rejected (see :func:`reject_figsize`); matplotlib layout-engine
+        kwargs (``layout``, ``constrained_layout``, ``tight_layout``)
+        are ignored with a :class:`UserWarning`.
 
     Returns
     -------
     fig : matplotlib.figure.Figure
+        The created figure.
     axes : matplotlib.axes.Axes or numpy.ndarray of Axes
-        Shape matches ``plt.subplots(squeeze=True)``.
+        Shape matches :func:`matplotlib.pyplot.subplots` with
+        ``squeeze=True``.
+
+    Notes
+    -----
+    **Auto-growing canvas.** The figure starts at the size computed from
+    ``axes_size`` plus initial rcParams reservations. On first draw,
+    decorations (titles, axis labels, tick labels) are measured and the
+    reservations for unlocked sides are expanded to fit. The axes bbox
+    itself never changes — only the canvas around it grows.
+
+    **Legend overhangs.** If you attach a :func:`publiplots.legend` band
+    with ``side="right"``/``"bottom"``/``"left"``/``"top"``, the extra
+    space for the legend is auto-computed on first draw from the
+    rendered group's width/height. There is no ``legend_column`` kwarg
+    to set by hand.
+
+    Examples
+    --------
+    Single axes (defaults):
+
+    >>> import publiplots as pp
+    >>> fig, ax = pp.subplots()
+    >>> pp.barplot(data=df, x='category', y='value', ax=ax)
+
+    Explicit mm axes size:
+
+    >>> fig, ax = pp.subplots(axes_size=(80, 50))  # 80 mm x 50 mm
+
+    Grid of axes with row-shared y-axis:
+
+    >>> fig, axes = pp.subplots(2, 3, axes_size=(40, 30), sharey='row')
+
+    Locked title reservation (no auto-measurement for this side):
+
+    >>> fig, ax = pp.subplots(axes_size=(60, 40), title_space=8)
+
+    See Also
+    --------
+    reject_figsize : Guard used by plot functions to reject ``figsize=``.
+    publiplots.rcParams : Where the ``subplots.*`` defaults live.
     """
     # --- validation ---------------------------------------------------------
     if nrows < 1:
@@ -129,7 +207,7 @@ def subplots(
     if "legend_column" in fig_kw:
         raise TypeError(
             "pp.subplots() no longer accepts legend_column. Attach a "
-            "pp.legend_group(anchor=...) to the figure; the column is "
+            "pp.legend(side=...) band to the figure; the column is "
             "auto-sized based on the rendered group width."
         )
     for k in _LAYOUT_ENGINE_KWARGS:

@@ -83,13 +83,16 @@ def swarmplot(
     size : float, default=5
         Size of the markers.
     edgecolor : str, optional
-        Color for marker edges. If None, uses face color.
+        Color for marker edges. If None, uses face color. Can also be set
+        globally via ``publiplots.rcParams["edgecolor"]``.
     linewidth : float, optional
-        Width of marker edges.
+        Width of marker edges. When None, resolved from
+        ``publiplots.rcParams["lines.linewidth"]``.
     hue_norm : tuple or Normalize, optional
         Normalization for continuous hue variable.
     alpha : float, optional
-        Transparency of marker fill (0-1).
+        Transparency of marker fill (0-1). When None, resolved from
+        ``publiplots.rcParams["alpha"]``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -98,8 +101,9 @@ def swarmplot(
         X-axis label.
     ylabel : str, default=""
         Y-axis label.
-    legend : bool, default=True
-        Whether to show the legend.
+    legend : bool or dict, default=True
+        Whether to show the legend. Accepts ``bool`` or ``dict[kind, bool]``
+        for per-kind control (e.g., ``legend={"hue": False}``).
     legend_kws : dict, optional
         Additional keyword arguments for legend.
     **kwargs
@@ -122,6 +126,12 @@ def swarmplot(
     >>> ax = pp.swarmplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
+
+    See Also
+    --------
+    publiplots.stripplot : Jittered variant, better for large N (no overlap rejection).
+    publiplots.raincloudplot : Strip/swarm as the "rain" layer.
+    publiplots.boxplot : Summary statistics alternative.
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)

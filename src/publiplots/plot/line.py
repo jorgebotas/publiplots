@@ -135,9 +135,24 @@ def lineplot(
         Aggregator applied within each x group. ``None`` disables
         aggregation (one line per observation).
     errorbar : str or tuple, default=("ci", 95)
-        Error-bar specification. See :func:`seaborn.lineplot` for the
-        full list: ``("ci", level)``, ``("pi", level)``, ``("se", mult)``,
-        ``"sd"``, ``None``.
+        Error-bar / band specification. Accepts every seaborn-native form
+        — see :func:`seaborn.lineplot` for the full list: ``("ci", level)``,
+        ``("pi", level)``, ``("se", mult)``, ``"sd"``, ``None``.
+
+        publiplots additionally supports ``("custom", (lower_col, upper_col))``
+        to render a shaded band from **precomputed** lower/upper bounds
+        stored on the data (e.g. from a LOESS / GAM / spline fit, a
+        Bayesian posterior, or a bootstrap CI you already computed).
+        When this form is used, ``estimator`` is forced to ``"median"``
+        and any ``n_boot`` / ``seed`` arguments are ignored.
+
+        Example::
+
+            pp.lineplot(
+                data=smooth_df, x='day', y='y', hue='group',
+                errorbar=('custom', ('ci_lo', 'ci_hi')),
+                err_style='band',
+            )
     n_boot : int, default=1000
         Number of bootstrap iterations for CI computation.
     seed : int, optional
