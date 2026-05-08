@@ -206,7 +206,12 @@ class _GridAnchor:
                 x0 = (layout.outer_pad + layout.legend_band_left) / W
                 x1 = (W - layout.outer_pad - layout.legend_column) / W
                 y0 = (layout.outer_pad + layout.legend_band_bottom) / H
-                y1 = (H - layout.outer_pad - layout.legend_band_top) / H
+                y1 = (
+                    H
+                    - layout.outer_pad
+                    - layout.suptitle_space
+                    - layout.legend_band_top
+                ) / H
                 return Bbox.from_extents(x0, y0, x1, y1)
         # Fallback when no publiplots layout is installed (figure built
         # by raw matplotlib): union the axes rectangles only.

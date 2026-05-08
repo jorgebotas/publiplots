@@ -153,6 +153,27 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
 pp.show()
 
 # %%
+# 5b. Figure title (``pp.suptitle``) above a ``side='top'`` band
+# --------------------------------------------------------------
+# ``pp.suptitle`` hooks into the same auto-layout engine as the legend
+# bands: it measures the text's height and grows the figure to reserve
+# a dedicated ``suptitle_space`` band above everything else. No
+# manual ``y=...`` nudge, no overlap with the top row of axis titles —
+# and a ``side='top'`` legend band slots in cleanly between the
+# suptitle and the axes.
+
+fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+pp.legend(side="top")
+for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
+    pp.scatterplot(
+        data=_df[_df["panel"] == panel], x="x", y="y",
+        hue="group", palette="pastel",
+        title=f"Panel {panel}", ax=axes[r, c],
+    )
+pp.suptitle("Experiment 42")
+pp.show()
+
+# %%
 # 6. Axes-anchored: pin the band to a single cell
 # -----------------------------------------------
 # Pass ``anchor=axes[r, c]`` to pin the band to one cell. The
