@@ -261,11 +261,19 @@ def _expand_box_axis(
     cur_lo, cur_hi = get_lim()
     pad_data = mm_to_data(pad_mm, ax, axis=axis)
 
+    inverted = cur_lo > cur_hi
+    cur_min = min(cur_lo, cur_hi)
+    cur_max = max(cur_lo, cur_hi)
+
     if should_expand:
-        set_lim(min(cur_lo, need_min - pad_data),
-                max(cur_hi, need_max + pad_data))
+        new_min = min(cur_min, need_min - pad_data)
+        new_max = max(cur_max, need_max + pad_data)
+        if inverted:
+            set_lim(new_max, new_min)
+        else:
+            set_lim(new_min, new_max)
     else:
-        if need_min < cur_lo or need_max > cur_hi:
+        if need_min < cur_min or need_max > cur_max:
             warnings.warn(
                 "pp.annotate: labels clipped; autoscale is off on this axis",
                 UserWarning,

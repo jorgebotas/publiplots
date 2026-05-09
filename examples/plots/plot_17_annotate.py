@@ -162,3 +162,73 @@ ax = pp.violinplot(
     title="pp.violinplot(annotate=True)",
 )
 pp.show()
+
+# %%
+# Vertical labels for narrow bars
+# -------------------------------
+# ``annotate={"rotation": 90}`` rotates each label 90° counter-clockwise.
+# For right-angle rotations (0/90/180/270) publiplots auto-remaps the
+# ``(ha, va)`` alignment so the rotated label's visible edge still sits
+# at ``offset_mm`` from the bar — no manual tuning required. The
+# categorical axis is also expanded so labels don't clip neighbors.
+narrow_df = pd.DataFrame({
+    "category": list("ABCDEFGHIJKL"),
+    "value": rng.integers(10, 100, 12),
+})
+
+ax = pp.barplot(
+    data=narrow_df, x="category", y="value",
+    annotate={"rotation": 90, "fmt": ".0f"},
+    title="annotate={'rotation': 90} — vertical labels on narrow bars",
+    xlabel="Category", ylabel="Value",
+)
+pp.show()
+
+# %%
+# Rotation tour: 0° / 90° / 180° / 270°
+# -------------------------------------
+# Each right-angle rotation gets an alignment remap appropriate to the
+# anchor. Here all four panels use the default ``anchor="outside"``:
+# the label always sits just above the bar top, regardless of rotation.
+fig, axes = pp.subplots(1, 4, axes_size=(45, 40))
+for ax, deg in zip(axes, (0, 90, 180, 270)):
+    pp.barplot(
+        data=df, x="category", y="value", ax=ax,
+        annotate={"rotation": deg, "fmt": ".1f"},
+        title=f"rotation={deg}°",
+    )
+pp.show()
+
+# %%
+# Rotation on horizontal bars
+# ---------------------------
+# For horizontal bars the default anchor is still "outside" (to the
+# right of the bar). ``rotation=90`` rotates the label 90° CCW —
+# publiplots remaps ``(left, center)`` → ``(center, top)`` so the
+# rotated label still sits just outside the bar end.
+ax = pp.barplot(
+    data=df, y="category", x="value",
+    annotate={"rotation": 90, "fmt": ".1f"},
+    title="horizontal bars + rotation=90°",
+    xlabel="Value", ylabel="Category",
+)
+pp.show()
+
+# %%
+# Rotation on point and box plots
+# -------------------------------
+# All three annotate strategies (bar_values, point_values, box_stats)
+# share the ``rotation`` kwarg with the same auto-alignment behavior.
+fig, axes = pp.subplots(1, 2, axes_size=(60, 40))
+pp.pointplot(
+    data=point_df, x="time", y="v", ax=axes[0],
+    errorbar="se",
+    annotate={"rotation": 90, "fmt": ".1f"},
+    title="pointplot + rotation=90°",
+)
+pp.boxplot(
+    data=box_df, x="g", y="y", ax=axes[1],
+    annotate={"stats": ["median"], "rotation": 90, "fmt": ".2f"},
+    title="boxplot + rotation=90°",
+)
+pp.show()

@@ -279,6 +279,29 @@ def test_barplot_annotate_rotation_horizontal_bar():
         assert t.get_va() == "top"
 
 
+def test_barplot_annotate_rotation_preserves_inverted_yaxis():
+    # Seaborn draws horizontal barplots with an inverted y-axis
+    # (ylim[0] > ylim[1]) so category 0 sits at the top. Rotation-triggered
+    # categorical-axis expansion must not flip that orientation or clip
+    # existing bars out of view.
+    df = _simple_hbar_df()
+    ax = pp.barplot(data=df, x="value", y="category",
+                    annotate={"rotation": 90})
+    lo, hi = ax.get_ylim()
+    assert lo > hi, (
+        "horizontal barplot ylim lost its seaborn-default inversion after "
+        f"rotation expansion; got ({lo}, {hi})"
+    )
+    # All text anchor y-coords (0, 1, 2, 3) must lie inside the final ylim
+    # range, otherwise bar A (y=0) renders below the axis frame.
+    y_min, y_max = min(lo, hi), max(lo, hi)
+    for t in ax.texts:
+        _, ty = t.get_position()
+        assert y_min <= ty <= y_max, (
+            f"text anchor y={ty} falls outside ylim=({lo}, {hi})"
+        )
+
+
 def _owned_meta_axes(xlim, ylim, figsize=(4, 4)):
     """Build a fresh publiplots-owned bar meta on a clean axes.
 
