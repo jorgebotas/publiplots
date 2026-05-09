@@ -14,7 +14,6 @@ from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
     fit_check,
     mm_to_data,
-    remap_alignment_for_rotation,
     resolve_anchor,
 )
 
@@ -82,7 +81,6 @@ def _bar_values_strategy(
         if math.isnan(bar.value):
             continue
         x, y, ha, va = resolve_anchor(bar, anchor, meta.orient, offset, ax)
-        ha, va = remap_alignment_for_rotation(ha, va, rotation)
         rgba = resolve_color(bar, color, anchor, ax, hue_active=meta.hue_active)
         label = _format_value(bar.value, fmt)
         t = ax.text(x, y, label, ha=ha, va=va, color=rgba,
@@ -92,7 +90,6 @@ def _bar_values_strategy(
             bbox = bar.patch.get_window_extent(renderer)
             if fit_check(t, bbox, meta.orient, anchor, renderer) == "reanchor_outside":
                 x2, y2, ha2, va2 = resolve_anchor(bar, "outside", meta.orient, offset, ax)
-                ha2, va2 = remap_alignment_for_rotation(ha2, va2, rotation)
                 rgba2 = resolve_color(bar, color, "outside", ax, hue_active=meta.hue_active)
                 t.set_position((x2, y2))
                 t.set_ha(ha2)

@@ -18,7 +18,6 @@ from publiplots.annotate._cache import BoxStatsMeta, BoxStatsRecord
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
     mm_to_data,
-    remap_alignment_for_rotation,
 )
 
 
@@ -150,7 +149,6 @@ def _box_stats_strategy(
             x, y, ha, va = _resolve_box_anchor(
                 box, stat_name, stat_value, anchor, meta.orient, offset, ax,
             )
-            ha, va = remap_alignment_for_rotation(ha, va, rotation)
             rgba = resolve_color(
                 _BoxStandIn(box),
                 color, "outside", ax,

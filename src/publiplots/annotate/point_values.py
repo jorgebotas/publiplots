@@ -19,7 +19,6 @@ from publiplots.annotate._cache import PointRecord, PointValueMeta
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
     mm_to_data,
-    remap_alignment_for_rotation,
 )
 
 
@@ -129,7 +128,6 @@ def _point_values_strategy(
         if math.isnan(point.value):
             continue
         x, y, ha, va = _resolve_point_anchor(point, anchor, offset, ax)
-        ha, va = remap_alignment_for_rotation(ha, va, rotation)
         # Color resolution: pointplot has no "bar fill" to composite onto,
         # so auto → rcParams text color; hue → palette color (as for bars).
         rgba = resolve_color(

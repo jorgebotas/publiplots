@@ -167,10 +167,11 @@ pp.show()
 # Vertical labels for narrow bars
 # -------------------------------
 # ``annotate={"rotation": 90}`` rotates each label 90° counter-clockwise.
-# For right-angle rotations (0/90/180/270) publiplots auto-remaps the
-# ``(ha, va)`` alignment so the rotated label's visible edge still sits
-# at ``offset_mm`` from the bar — no manual tuning required. The
-# categorical axis is also expanded so labels don't clip neighbors.
+# matplotlib applies ``(ha, va)`` to the *post-rotation* bbox, so the
+# default ``anchor="outside"`` alignment (``ha="center", va="bottom"``)
+# still anchors the label just above the bar top at any rotation — no
+# alignment remap needed. publiplots expands the categorical axis so
+# rotated labels don't clip their neighbors.
 narrow_df = pd.DataFrame({
     "category": list("ABCDEFGHIJKL"),
     "value": rng.integers(10, 100, 12),
@@ -187,9 +188,9 @@ pp.show()
 # %%
 # Rotation tour: 0° / 90° / 180° / 270°
 # -------------------------------------
-# Each right-angle rotation gets an alignment remap appropriate to the
-# anchor. Here all four panels use the default ``anchor="outside"``:
-# the label always sits just above the bar top, regardless of rotation.
+# Because matplotlib applies ``(ha, va)`` to the post-rotation bbox,
+# the default ``anchor="outside"`` alignment keeps the label above the
+# bar top at every rotation — the text just rotates in place.
 fig, axes = pp.subplots(1, 4, axes_size=(45, 40))
 for ax, deg in zip(axes, (0, 90, 180, 270)):
     pp.barplot(
@@ -202,10 +203,10 @@ pp.show()
 # %%
 # Rotation on horizontal bars
 # ---------------------------
-# For horizontal bars the default anchor is still "outside" (to the
-# right of the bar). ``rotation=90`` rotates the label 90° CCW —
-# publiplots remaps ``(left, center)`` → ``(center, top)`` so the
-# rotated label still sits just outside the bar end.
+# For horizontal bars the default anchor is still "outside" — to the
+# right of the bar, with ``(ha="left", va="center")``. Because
+# matplotlib aligns the post-rotation bbox, the rotated label still
+# sits just outside the bar end without any alignment remap.
 ax = pp.barplot(
     data=df, y="category", x="value",
     annotate={"rotation": 90, "fmt": ".1f"},
@@ -218,7 +219,8 @@ pp.show()
 # Rotation on point and box plots
 # -------------------------------
 # All three annotate strategies (bar_values, point_values, box_stats)
-# share the ``rotation`` kwarg with the same auto-alignment behavior.
+# accept the ``rotation`` kwarg and inherit the same post-rotation-bbox
+# alignment behavior from matplotlib.
 fig, axes = pp.subplots(1, 2, axes_size=(60, 40))
 pp.pointplot(
     data=point_df, x="time", y="v", ax=axes[0],
