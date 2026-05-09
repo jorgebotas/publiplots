@@ -120,6 +120,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls in `examples/plots/plot_12_heatmap.py` — auto-layout positions
   the title correctly regardless (PR #128).
 
+[0.10.7]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.7
+[0.10.6]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.6
+[0.10.5]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.5
 [0.10.4]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.4
 
 ## [0.10.3] - 2026-05-08
