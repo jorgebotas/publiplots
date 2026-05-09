@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `pp.annotate(rotation=...)` — first-class text rotation on bar-value,
+  box-stat, and point-value annotations.
+  - `rotation` is now a promoted kwarg on `pp.annotate(...)` alongside
+    `fmt`, `anchor`, `offset`, `color`, `pad`. Validated via
+    `math.isfinite`. Default is `0.0` (fully backward compatible).
+  - For right-angle rotations (0°/90°/180°/270°, within a 1e-6
+    tolerance), the strategies remap the `(ha, va)` computed by
+    `resolve_anchor` so the rotated text's visible edge still sits at
+    the expected `offset_mm` from the bar. Non-right-angle rotations
+    (e.g. 45°) pass through unchanged — the caller is responsible for
+    visual fine-tuning.
+  - Under rotation, the limit-expansion helpers in `bar_values`,
+    `box_stats`, and `point_values` now expand **both** the value and
+    categorical axes (previously only the value axis). Prevents
+    rotated labels on narrow bars from clipping neighboring bars.
+  - New public helper
+    `publiplots.annotate._positioning.remap_alignment_for_rotation(ha, va, rotation)`
+    used internally; handles `va="baseline"` normalization and negative
+    / > 360 rotation wrap-around.
+  - Primary use case: narrow vertical bars where the horizontal label
+    doesn't fit. `pp.barplot(..., annotate={"rotation": 90})` now
+    renders clean vertical labels without manual `ha`/`va` overrides.
+
 ## [0.10.7] - 2026-05-08
 
 ### Added

@@ -16,7 +16,10 @@ from matplotlib.text import Text
 
 from publiplots.annotate._cache import BoxStatsMeta, BoxStatsRecord
 from publiplots.annotate._color import resolve_color
-from publiplots.annotate._positioning import mm_to_data
+from publiplots.annotate._positioning import (
+    mm_to_data,
+    remap_alignment_for_rotation,
+)
 
 
 _VALID_ANCHORS = {"top", "bottom", "left", "right", "center"}
@@ -97,10 +100,13 @@ def _box_stats_strategy(
     offset: float,
     color,
     pad: float,
+    rotation: float = 0.0,
     **text_kws,
 ) -> List[Text]:
     # Pop strategy-specific opts before forwarding the rest to ax.text.
     stats_opt = text_kws.pop("stats", None)
+    # Top-level `rotation` wins over one smuggled via text_kws; pop silently.
+    text_kws.pop("rotation", None)
 
     if anchor is None:
         anchor = _DEFAULT_ANCHOR
@@ -144,17 +150,20 @@ def _box_stats_strategy(
             x, y, ha, va = _resolve_box_anchor(
                 box, stat_name, stat_value, anchor, meta.orient, offset, ax,
             )
+            ha, va = remap_alignment_for_rotation(ha, va, rotation)
             rgba = resolve_color(
                 _BoxStandIn(box),
                 color, "outside", ax,
                 hue_active=meta.hue_active,
             )
             label = _format_value(stat_value, fmt)
-            t = ax.text(x, y, label, ha=ha, va=va, color=rgba, **text_kws)
+            t = ax.text(x, y, label, ha=ha, va=va, color=rgba,
+                        rotation=rotation, **text_kws)
             texts.append(t)
 
     _maybe_expand_box_limits(ax, texts, anchor, meta.orient, pad_mm=pad,
-                             owner_is_publiplots=meta.owner_is_publiplots)
+                             owner_is_publiplots=meta.owner_is_publiplots,
+                             rotation=rotation)
     return texts
 
 
@@ -186,29 +195,61 @@ def _maybe_expand_box_limits(
     orient: str,
     pad_mm: float,
     owner_is_publiplots: bool,
+    rotation: float = 0.0,
 ) -> None:
     if not texts:
         return
 
-    # Which axis may need expansion?
-    # top/bottom on orient='v' → y; left/right on orient='v' → x
-    # top/bottom on orient='h' → y; left/right on orient='h' → x
+    # Which axis matches the unrotated anchor direction?
+    # top/bottom → y; left/right → x; center → neither.
     if anchor in ("top", "bottom"):
-        value_axis = "y"
+        primary_axis = "y"
     elif anchor in ("left", "right"):
-        value_axis = "x"
+        primary_axis = "x"
     else:
-        return
+        primary_axis = None
 
-    autoscale_on = (ax.get_autoscaley_on() if value_axis == "y"
-                    else ax.get_autoscalex_on())
-    should_expand = owner_is_publiplots or autoscale_on
+    rotated = rotation % 360.0 != 0.0
+
+    # Under rotation, a rotated label can spill onto either axis regardless of
+    # anchor direction; compute extents once and expand both sides.
+    if primary_axis is None and not rotated:
+        return
 
     ax.figure.canvas.draw()
     renderer = _ensure_renderer(ax)
     inv = ax.transData.inverted()
     extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]
-    if value_axis == "y":
+
+    axes_to_expand = []
+    if primary_axis is not None:
+        axes_to_expand.append(primary_axis)
+    if rotated:
+        other = "x" if primary_axis == "y" else "y"
+        if primary_axis is None:
+            axes_to_expand.extend(["x", "y"])
+        elif other not in axes_to_expand:
+            axes_to_expand.append(other)
+
+    for ax_name in axes_to_expand:
+        _expand_box_axis(
+            ax, extents, axis=ax_name, pad_mm=pad_mm,
+            owner_is_publiplots=owner_is_publiplots,
+        )
+
+
+def _expand_box_axis(
+    ax: Axes,
+    extents: list,
+    axis: str,
+    pad_mm: float,
+    owner_is_publiplots: bool,
+) -> None:
+    autoscale_on = (ax.get_autoscaley_on() if axis == "y"
+                    else ax.get_autoscalex_on())
+    should_expand = owner_is_publiplots or autoscale_on
+
+    if axis == "y":
         need_min = min(e.y0 for e in extents)
         need_max = max(e.y1 for e in extents)
         get_lim, set_lim = ax.get_ylim, ax.set_ylim
@@ -218,7 +259,7 @@ def _maybe_expand_box_limits(
         get_lim, set_lim = ax.get_xlim, ax.set_xlim
 
     cur_lo, cur_hi = get_lim()
-    pad_data = mm_to_data(pad_mm, ax, axis=value_axis)
+    pad_data = mm_to_data(pad_mm, ax, axis=axis)
 
     if should_expand:
         set_lim(min(cur_lo, need_min - pad_data),

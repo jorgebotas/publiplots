@@ -62,6 +62,14 @@ def test_text_kws_forwarded():
     assert texts[0].get_fontweight() == "bold"
 
 
+def test_rotation_param_forwarded():
+    fig, ax = plt.subplots()
+    ax.bar([0], [1.0])
+    fig.canvas.draw()
+    texts = annotate(ax, kind="bar_values", rotation=45)
+    assert texts[0].get_rotation() == 45.0
+
+
 def test_annotate_is_exposed_on_pp():
     import publiplots as pp
     assert pp.annotate is annotate
