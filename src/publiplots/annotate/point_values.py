@@ -167,6 +167,9 @@ class _PatchShim:
         return self._rgba
 
 
+_MAX_EXPAND_ITERS = 4
+
+
 def _maybe_expand_point_limits(
     ax: Axes,
     texts: List[Text],
@@ -192,11 +195,6 @@ def _maybe_expand_point_limits(
     if primary_axis is None and not rotated:
         return
 
-    ax.figure.canvas.draw()
-    renderer = _ensure_renderer(ax)
-    inv = ax.transData.inverted()
-    extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]
-
     axes_to_expand = []
     if primary_axis is not None:
         axes_to_expand.append(primary_axis)
@@ -207,11 +205,21 @@ def _maybe_expand_point_limits(
         elif other not in axes_to_expand:
             axes_to_expand.append(other)
 
-    for ax_name in axes_to_expand:
-        _expand_point_axis(
-            ax, extents, axis=ax_name, pad_mm=pad_mm,
-            owner_is_publiplots=owner_is_publiplots,
-        )
+    renderer = _ensure_renderer(ax)
+    for _ in range(_MAX_EXPAND_ITERS):
+        # Re-fetch inverted transform each iter — set_xlim/ylim invalidates it.
+        ax.figure.canvas.draw()
+        inv = ax.transData.inverted()
+        extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]
+        any_changed = False
+        for ax_name in axes_to_expand:
+            if _expand_point_axis(
+                ax, extents, axis=ax_name, pad_mm=pad_mm,
+                owner_is_publiplots=owner_is_publiplots,
+            ):
+                any_changed = True
+        if not any_changed:
+            break
 
 
 def _expand_point_axis(
@@ -220,7 +228,8 @@ def _expand_point_axis(
     axis: str,
     pad_mm: float,
     owner_is_publiplots: bool,
-) -> None:
+) -> bool:
+    """Expand one axis to fit extents. Return True if limits changed."""
     autoscale_on = (ax.get_autoscaley_on() if axis == "y"
                     else ax.get_autoscalex_on())
     should_expand = owner_is_publiplots or autoscale_on
@@ -244,10 +253,13 @@ def _expand_point_axis(
     if should_expand:
         new_min = min(cur_min, need_min - pad_data)
         new_max = max(cur_max, need_max + pad_data)
+        if new_min == cur_min and new_max == cur_max:
+            return False
         if inverted:
             set_lim(new_max, new_min)
         else:
             set_lim(new_min, new_max)
+        return True
     else:
         if need_min < cur_min or need_max > cur_max:
             warnings.warn(
@@ -255,3 +267,4 @@ def _expand_point_axis(
                 UserWarning,
                 stacklevel=3,
             )
+        return False

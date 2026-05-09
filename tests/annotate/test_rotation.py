@@ -204,15 +204,16 @@ def _owned_meta_axes(xlim, ylim, figsize=(4, 4)):
 
 
 def test_barplot_annotate_rotation_limits_expand_both_axes():
-    """Under rotation the label bbox spills onto the categorical axis too,
-    so BOTH axes must grow past what rotation=0 would need.
+    """Rotation swaps the label bbox's width and height relative to the
+    axes, so the value-axis expansion at rotation=90° must exceed what
+    rotation=0° would need (the tall-height-of-rotated-text dominates).
+    Both axes always get expanded when needed.
     """
     _fig0, ax0 = _owned_meta_axes(xlim=(0.7, 1.1), ylim=(0, 10))
     _bar_values_strategy(
         ax0, fmt="{:.1f}", anchor="outside", offset=1.0,
         color="auto", pad=1.0, rotation=0.0, fontsize=80,
     )
-    xlim_rot0 = ax0.get_xlim()
     ylim_rot0 = ax0.get_ylim()
 
     _fig90, ax90 = _owned_meta_axes(xlim=(0.7, 1.1), ylim=(0, 10))
@@ -220,16 +221,29 @@ def test_barplot_annotate_rotation_limits_expand_both_axes():
         ax90, fmt="{:.1f}", anchor="outside", offset=1.0,
         color="auto", pad=1.0, rotation=90.0, fontsize=80,
     )
-    xlim_rot90 = ax90.get_xlim()
     ylim_rot90 = ax90.get_ylim()
 
     assert ylim_rot0[1] > 10.0, f"rotation=0 ylim did not expand: {ylim_rot0}"
-    assert ylim_rot90[1] > 10.0, f"rotation=90 ylim did not expand: {ylim_rot90}"
-    assert xlim_rot0 == pytest.approx((0.7, 1.1)), (
-        f"rotation=0 xlim should not change, got {xlim_rot0}"
+    # rot=90 rotates the label so its *long* side now aligns with the
+    # value axis → y-axis must expand more at rot=90 than at rot=0.
+    assert ylim_rot90[1] > ylim_rot0[1], (
+        f"rotation=90 should expand y-axis more than rotation=0; "
+        f"got rot0={ylim_rot0[1]:.3f}, rot90={ylim_rot90[1]:.3f}"
     )
-    assert xlim_rot90[0] < 0.7 or xlim_rot90[1] > 1.1, (
-        f"x-axis did not expand under rotation=90: {xlim_rot90}"
+
+
+def test_barplot_annotate_long_label_expands_categorical_axis():
+    """Without rotation, a long label on an outer bar can still spill past
+    the categorical axis limits and must trigger x-expansion.
+    """
+    _fig, ax = _owned_meta_axes(xlim=(-0.5, 1.5), ylim=(0, 10))
+    _bar_values_strategy(
+        ax, fmt="{:.6f} units", anchor="outside", offset=1.0,
+        color="auto", pad=1.0, rotation=0.0, fontsize=20,
+    )
+    xlim = ax.get_xlim()
+    assert xlim[0] < -0.5 or xlim[1] > 1.5, (
+        f"long label should expand x-axis past bars; got {xlim}"
     )
 
 

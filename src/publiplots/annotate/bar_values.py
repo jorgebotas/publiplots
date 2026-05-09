@@ -107,6 +107,13 @@ def _bar_values_strategy(
     return texts
 
 
+# Expanding a limit changes the data→display scale, which shifts every text
+# artist's bbox in data coords even though its pixel extent is unchanged.
+# One pass always undershoots by a bounded geometric factor; 4 iterations
+# is overkill in practice — most plots converge in 2.
+_MAX_EXPAND_ITERS = 4
+
+
 def _maybe_expand_limits(
     ax: Axes,
     texts: List[Text],
@@ -121,28 +128,29 @@ def _maybe_expand_limits(
     value_axis = "y" if orient == "v" else "x"
     cat_axis = "x" if value_axis == "y" else "y"
 
-    # Force a fresh draw so the just-created Text artists have accurate
-    # window extents; without this, get_window_extent returns a stale bbox
-    # based on the pre-layout state, which undershoots `need_max` and leaves
-    # labels clipping the axis frame on already-drawn figures.
-    ax.figure.canvas.draw()
-    renderer = _ensure_renderer(ax)
-    inv = ax.transData.inverted()
-    extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]
+    # Wide labels (long text at rotation=0, tall text at rotation=90) can
+    # spill onto the categorical axis too. `_expand_axis` is a no-op when
+    # labels already fit, so we always check both axes.
+    axes_to_expand = [value_axis, cat_axis]
 
-    _expand_axis(
-        ax, extents, axis=value_axis, pad_mm=pad_mm,
-        owner_is_publiplots=owner_is_publiplots,
-    )
-    # Rotated labels can extend beyond the categorical axis too. Only touch
-    # that axis when rotation actually changes the bbox shape; at rotation=0
-    # the bbox width is the text width, which is usually much smaller than a
-    # bar's categorical slot — expanding would be noise.
-    if rotation % 360.0 != 0.0:
-        _expand_axis(
-            ax, extents, axis=cat_axis, pad_mm=pad_mm,
-            owner_is_publiplots=owner_is_publiplots,
-        )
+    renderer = _ensure_renderer(ax)
+    for _ in range(_MAX_EXPAND_ITERS):
+        # Force a fresh draw so get_window_extent returns a bbox consistent
+        # with the most recent limits; without this we'd loop on stale data.
+        # Re-fetch `inv` every iteration: set_xlim/ylim invalidates transData,
+        # and a cached inverted transform silently returns wrong data coords.
+        ax.figure.canvas.draw()
+        inv = ax.transData.inverted()
+        extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]
+        any_changed = False
+        for ax_name in axes_to_expand:
+            if _expand_axis(
+                ax, extents, axis=ax_name, pad_mm=pad_mm,
+                owner_is_publiplots=owner_is_publiplots,
+            ):
+                any_changed = True
+        if not any_changed:
+            break
 
 
 def _expand_axis(
@@ -151,7 +159,8 @@ def _expand_axis(
     axis: str,
     pad_mm: float,
     owner_is_publiplots: bool,
-) -> None:
+) -> bool:
+    """Expand one axis to fit the given extents. Return True if limits changed."""
     autoscale_on = (ax.get_autoscaley_on() if axis == "y"
                     else ax.get_autoscalex_on())
     should_expand = owner_is_publiplots or autoscale_on
@@ -175,10 +184,13 @@ def _expand_axis(
     if should_expand:
         new_min = min(cur_min, need_min - pad_data)
         new_max = max(cur_max, need_max + pad_data)
+        if new_min == cur_min and new_max == cur_max:
+            return False
         if inverted:
             set_lim(new_max, new_min)
         else:
             set_lim(new_min, new_max)
+        return True
     else:
         if need_min < cur_min or need_max > cur_max:
             warnings.warn(
@@ -186,3 +198,4 @@ def _expand_axis(
                 UserWarning,
                 stacklevel=3,
             )
+        return False
