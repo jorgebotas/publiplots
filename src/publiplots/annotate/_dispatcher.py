@@ -6,6 +6,7 @@ register it in `_STRATEGIES` below.
 """
 from __future__ import annotations
 
+import math
 from typing import Callable, List, Optional, Union
 
 from matplotlib.axes import Axes
@@ -32,6 +33,7 @@ def annotate(
     offset: float = 1.0,
     color: Union[str, tuple] = "auto",
     pad: Optional[float] = None,
+    rotation: float = 0.0,
     **text_kws,
 ) -> List[Text]:
     """Add value labels to plot marks on ``ax``.
@@ -82,9 +84,17 @@ def annotate(
         so the geometry reads:
 
         ``mark → offset → label → pad → axis edge``.
+    rotation : float, default ``0.0``
+        Label rotation in degrees, counter-clockwise. For right-angle
+        multiples (0, 90, 180, 270) the ``(ha, va)`` alignment is
+        auto-remapped so the rotated label still sits at the expected
+        offset from the mark, and the categorical axis is also expanded
+        so rotated labels do not clip neighbouring marks. Non-right-angle
+        rotations are passed through to matplotlib as-is; fine-tuning
+        alignment is the caller's responsibility in that case.
     **text_kws
         Forwarded to :meth:`matplotlib.axes.Axes.text` (e.g.
-        ``fontsize``, ``fontweight``, ``rotation``).
+        ``fontsize``, ``fontweight``).
 
     Returns
     -------
@@ -134,8 +144,10 @@ def annotate(
         pad = offset
     if pad < 0:
         raise ValueError("pad must be >= 0")
+    if not math.isfinite(rotation):
+        raise ValueError("rotation must be a finite number of degrees")
 
     return _STRATEGIES[kind](
         ax, fmt=fmt, anchor=anchor, offset=offset, color=color, pad=pad,
-        **text_kws,
+        rotation=rotation, **text_kws,
     )

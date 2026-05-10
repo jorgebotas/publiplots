@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `pp.annotate(rotation=...)` — first-class text rotation on bar-value,
+  box-stat, and point-value annotations.
+  - `rotation` is a promoted kwarg on `pp.annotate(...)` alongside
+    `fmt`, `anchor`, `offset`, `color`, `pad`. Validated via
+    `math.isfinite`. Default `0.0` — fully backward compatible.
+  - matplotlib applies `(ha, va)` to the **post-rotation** bbox, so the
+    alignment that `resolve_anchor` returns for a given anchor kind
+    already positions the rotated text correctly (`va='bottom'` at
+    rotation=90° still anchors the text at its bbox's lower edge in
+    screen space). No alignment remap is performed.
+  - Under rotation, the limit-expansion helpers in `bar_values`,
+    `box_stats`, and `point_values` now expand **both** the value and
+    categorical axes (previously only the value axis). Prevents
+    rotated labels from clipping neighbors on narrow bars or from
+    overflowing the frame.
+  - `_expand_axis` now handles matplotlib's inverted-axis convention
+    (seaborn draws horizontal barplots with `ylim[0] > ylim[1]`) so
+    expansion preserves the original axis direction instead of
+    flipping it.
+  - Primary use case: narrow vertical bars where the horizontal label
+    doesn't fit. `pp.barplot(..., annotate={"rotation": 90})` now
+    renders clean vertical labels without manual `ha`/`va` overrides.
+
 ## [0.10.7] - 2026-05-08
 
 ### Added

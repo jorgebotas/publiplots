@@ -147,3 +147,5 @@ def fit_check(
         return "fits" if tbb.height + 2 * margin_px <= bar_bbox_display.height else "reanchor_outside"
     else:
         return "fits" if tbb.width + 2 * margin_px <= bar_bbox_display.width else "reanchor_outside"
+
+

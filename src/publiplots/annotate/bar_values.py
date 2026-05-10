@@ -55,6 +55,7 @@ def _bar_values_strategy(
     offset: float,
     color,
     pad: float,
+    rotation: float = 0.0,
     **text_kws,
 ) -> List[Text]:
     if anchor is None:
@@ -64,6 +65,9 @@ def _bar_values_strategy(
             f"bar_values anchor must be one of {sorted(_VALID_ANCHORS)}; "
             f"got {anchor!r}"
         )
+
+    # Top-level `rotation` wins over one smuggled via text_kws; pop silently.
+    text_kws.pop("rotation", None)
 
     meta = _get_or_introspect(ax)
     if not meta.bars:
@@ -79,7 +83,8 @@ def _bar_values_strategy(
         x, y, ha, va = resolve_anchor(bar, anchor, meta.orient, offset, ax)
         rgba = resolve_color(bar, color, anchor, ax, hue_active=meta.hue_active)
         label = _format_value(bar.value, fmt)
-        t = ax.text(x, y, label, ha=ha, va=va, color=rgba, **text_kws)
+        t = ax.text(x, y, label, ha=ha, va=va, color=rgba,
+                    rotation=rotation, **text_kws)
 
         if anchor != "outside":
             bbox = bar.patch.get_window_extent(renderer)
@@ -97,8 +102,16 @@ def _bar_values_strategy(
         texts.append(t)
 
     _maybe_expand_limits(ax, texts, meta.orient, pad_mm=pad,
-                        owner_is_publiplots=meta.owner_is_publiplots)
+                        owner_is_publiplots=meta.owner_is_publiplots,
+                        rotation=rotation)
     return texts
+
+
+# Expanding a limit changes the data→display scale, which shifts every text
+# artist's bbox in data coords even though its pixel extent is unchanged.
+# One pass always undershoots by a bounded geometric factor; 4 iterations
+# is overkill in practice — most plots converge in 2.
+_MAX_EXPAND_ITERS = 4
 
 
 def _maybe_expand_limits(
@@ -107,24 +120,52 @@ def _maybe_expand_limits(
     orient: str,
     pad_mm: float,
     owner_is_publiplots: bool,
+    rotation: float = 0.0,
 ) -> None:
     if not texts:
         return
 
     value_axis = "y" if orient == "v" else "x"
-    autoscale_on = (ax.get_autoscaley_on() if value_axis == "y"
+    cat_axis = "x" if value_axis == "y" else "y"
+
+    # Wide labels (long text at rotation=0, tall text at rotation=90) can
+    # spill onto the categorical axis too. `_expand_axis` is a no-op when
+    # labels already fit, so we always check both axes.
+    axes_to_expand = [value_axis, cat_axis]
+
+    renderer = _ensure_renderer(ax)
+    for _ in range(_MAX_EXPAND_ITERS):
+        # Force a fresh draw so get_window_extent returns a bbox consistent
+        # with the most recent limits; without this we'd loop on stale data.
+        # Re-fetch `inv` every iteration: set_xlim/ylim invalidates transData,
+        # and a cached inverted transform silently returns wrong data coords.
+        ax.figure.canvas.draw()
+        inv = ax.transData.inverted()
+        extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]
+        any_changed = False
+        for ax_name in axes_to_expand:
+            if _expand_axis(
+                ax, extents, axis=ax_name, pad_mm=pad_mm,
+                owner_is_publiplots=owner_is_publiplots,
+            ):
+                any_changed = True
+        if not any_changed:
+            break
+
+
+def _expand_axis(
+    ax: Axes,
+    extents: list,
+    axis: str,
+    pad_mm: float,
+    owner_is_publiplots: bool,
+) -> bool:
+    """Expand one axis to fit the given extents. Return True if limits changed."""
+    autoscale_on = (ax.get_autoscaley_on() if axis == "y"
                     else ax.get_autoscalex_on())
     should_expand = owner_is_publiplots or autoscale_on
 
-    # Force a fresh draw so the just-created Text artists have accurate
-    # window extents; without this, get_window_extent returns a stale bbox
-    # based on the pre-layout state, which undershoots `need_max` and leaves
-    # labels clipping the axis frame on already-drawn figures.
-    ax.figure.canvas.draw()
-    renderer = _ensure_renderer(ax)
-    inv = ax.transData.inverted()
-    extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]
-    if value_axis == "y":
+    if axis == "y":
         need_min = min(e.y0 for e in extents)
         need_max = max(e.y1 for e in extents)
         get_lim, set_lim = ax.get_ylim, ax.set_ylim
@@ -134,15 +175,27 @@ def _maybe_expand_limits(
         get_lim, set_lim = ax.get_xlim, ax.set_xlim
 
     cur_lo, cur_hi = get_lim()
-    pad_data = mm_to_data(pad_mm, ax, axis=value_axis)
+    pad_data = mm_to_data(pad_mm, ax, axis=axis)
+
+    inverted = cur_lo > cur_hi
+    cur_min = min(cur_lo, cur_hi)
+    cur_max = max(cur_lo, cur_hi)
 
     if should_expand:
-        set_lim(min(cur_lo, need_min - pad_data),
-                max(cur_hi, need_max + pad_data))
+        new_min = min(cur_min, need_min - pad_data)
+        new_max = max(cur_max, need_max + pad_data)
+        if new_min == cur_min and new_max == cur_max:
+            return False
+        if inverted:
+            set_lim(new_max, new_min)
+        else:
+            set_lim(new_min, new_max)
+        return True
     else:
-        if need_min < cur_lo or need_max > cur_hi:
+        if need_min < cur_min or need_max > cur_max:
             warnings.warn(
                 "pp.annotate: labels clipped; autoscale is off on this axis",
                 UserWarning,
                 stacklevel=3,
             )
+        return False
