@@ -60,6 +60,7 @@ def barplot(
     hue_order: Optional[List[str]] = None,
     hatch_order: Optional[List[str]] = None,
     multiple: Literal["dodge", "stack", "fill"] = "dodge",
+    stack_by: Optional[Literal["hue", "hatch"]] = None,
     **kwargs
 ) -> Axes:
     """
@@ -100,10 +101,12 @@ def barplot(
         ``hue``-and-hatch double-split in the bar gallery). Under
         ``multiple="stack"`` / ``"fill"``: ``hatch`` can drive the stack
         on its own (leave ``hue`` unset) — useful for B&W-friendly
-        stacks — or can share the column with ``hue`` (``hatch=hue``)
-        to pattern each stack segment by its hue level; passing two
-        *different* non-categorical columns for ``hue`` and ``hatch``
-        with stack/fill raises :class:`NotImplementedError`.
+        stacks — or share the column with ``hue`` (``hatch=hue``) to
+        pattern each stack segment by its hue level. When both ``hue``
+        and ``hatch`` are distinct non-categorical columns, pass
+        ``stack_by="hue"`` or ``stack_by="hatch"`` to pick which
+        dimension stacks; the other is dodged side-by-side within each
+        category.
 
         Patterns are drawn from :data:`publiplots.HATCH_PATTERNS` by
         default; density is controlled globally via
@@ -233,13 +236,22 @@ def barplot(
           1.0 (100%-stacked bars — good for showing proportions whose
           totals differ across categories).
 
-        Stacking requires exactly one of ``hue`` / ``hatch`` to be set
-        and distinct from the categorical axis (the "stack column").
-        If *neither* is set, raises :class:`ValueError`; if both are
-        set as *different* non-categorical columns, raises
-        :class:`NotImplementedError` (stacks-within-stacks is out of
-        scope for this release). ``hue == hatch`` (both drive the stack,
-        patterns overlaid on colored swatches) is allowed.
+        Stacking requires at least one of ``hue`` / ``hatch`` to be set
+        and distinct from the categorical axis. If *neither* is set,
+        raises :class:`ValueError`. When *both* are distinct
+        non-categorical columns, use ``stack_by=`` (below) to pick the
+        stack dimension — the other is dodged side-by-side within each
+        category. ``hue == hatch`` (both drive a single stack, patterns
+        overlaid on colored swatches) is allowed.
+    stack_by : {"hue", "hatch"}, optional
+        Required when ``multiple in {"stack", "fill"}`` *and* both
+        ``hue`` and ``hatch`` are distinct non-categorical columns.
+        Picks which dimension accumulates along the value axis; the
+        other dimension dodges side-by-side within each category (so
+        each category shows ``N_other`` dodged stacks, each of
+        ``N_stack_by`` segments). Ignored when only one of
+        ``hue`` / ``hatch`` is active. Pass ``None`` in the single-dim
+        case — the sole split dimension becomes the stack.
     **kwargs
         Additional keyword arguments passed to :func:`seaborn.barplot`
         in the dodge path. Ignored in the stack/fill path. ``figsize``
@@ -258,10 +270,9 @@ def barplot(
         If neither ``x`` nor ``y`` is categorical; if ``multiple`` is
         not one of ``"dodge"``, ``"stack"``, ``"fill"``; if
         ``multiple="stack"|"fill"`` is requested without a stack column
-        (``hue`` / ``hatch``).
-    NotImplementedError
-        If ``multiple="stack"|"fill"`` is requested with both ``hue``
-        and ``hatch`` set as distinct non-categorical columns.
+        (``hue`` / ``hatch``); if ``multiple="stack"|"fill"`` is
+        requested with both ``hue`` and ``hatch`` set as distinct
+        non-categorical columns but no ``stack_by=`` was provided.
     TypeError
         If ``figsize`` is passed (publiplots owns figure geometry via
         :func:`publiplots.subplots`).
@@ -341,6 +352,16 @@ def barplot(
     ...     multiple="stack", errorbar=None,
     ... )
 
+    Two categoricals: stack one, dodge the other (``stack_by``):
+
+    >>> ax = pp.barplot(
+    ...     data=df, x="cell_type", y="viability",
+    ...     hue="treatment", hatch="time",
+    ...     multiple="stack", stack_by="hue", errorbar=None,
+    ...     palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
+    ...     hatch_map={"24h": "", "48h": "///"},
+    ... )
+
     See Also
     --------
     publiplots.histplot : Histogram plot (also supports
@@ -397,6 +418,16 @@ def barplot(
         hatch_map=hatch_map,
     )
 
+    # Honor hue_order / hatch_order in the resolved dict key order — the
+    # legend dispatcher iterates these dicts in insertion order, so an
+    # unordered dict ignores the user's request. Missing levels pass
+    # through unchanged; extra levels (beyond the dict keys) are tolerated
+    # but warn-worthy behavior we defer to resolve_palette_map.
+    if hue_order is not None and palette:
+        palette = {k: palette[k] for k in hue_order if k in palette}
+    if hatch_order is not None and hatch_map:
+        hatch_map = {k: hatch_map[k] for k in hatch_order if k in hatch_map}
+
 
     prepareA = hue is not None and (hue != categorical_axis)
     prepareB = hatch is not None and (hatch != categorical_axis)
@@ -429,7 +460,8 @@ def barplot(
         _draw_stacked(
             ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
             categorical_axis=categorical_axis, split=_split,
-            multiple=multiple, palette=palette, hatch_map=hatch_map,
+            multiple=multiple, stack_by=stack_by,
+            palette=palette, hatch_map=hatch_map,
             color=color, edgecolor=edgecolor, linewidth=linewidth,
             errorbar=errorbar, gap=gap,
         )
@@ -438,12 +470,15 @@ def barplot(
         )
         apply_border_radius(tracker.get_new_patches(), radius, ax)
         tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
-        _stacked_legend(
-            ax=ax, split=_split, hue=hue, hatch=hatch,
+        # Reuse the dodge path's four-case legend dispatcher — the legend
+        # treatment is identical whether bars are dodged or stacked.
+        _legend(
+            ax=ax,
+            hue=hue, hatch=hatch, categorical_axis=categorical_axis,
+            alpha=alpha, linewidth=linewidth,
+            color=color, edgecolor=edgecolor,
             palette=palette, hatch_map=hatch_map,
-            hue_order=hue_order, hatch_order=hatch_order,
-            alpha=alpha, linewidth=linewidth, color=color, edgecolor=edgecolor,
-            legend=legend, legend_kws=legend_kws,
+            kwargs=legend_kws, legend=legend,
         )
         if xlabel is not None: ax.set_xlabel(xlabel)
         if ylabel is not None: ax.set_ylabel(ylabel)
@@ -882,6 +917,7 @@ def _draw_stacked(
     categorical_axis: str,
     split: BarSplitSpec,
     multiple: str,
+    stack_by: Optional[str],
     palette: Dict[str, str],
     hatch_map: Dict[str, str],
     color: Optional[str],
@@ -892,23 +928,40 @@ def _draw_stacked(
 ) -> None:
     """Draw stacked (``multiple="stack"``) or 100%-stacked (``multiple="fill"``)
     bars via raw ``ax.bar`` / ``ax.barh`` with cumulative bottom / left per
-    category.
+    stack position.
 
-    Exactly one of ``split.split_hue`` / ``split.split_hatch`` must drive the
-    stack. Errorbars are not drawn: per-segment errors aren't additive without
+    Three cases based on which split dimensions are active:
+
+    - **Single-dim stack** (only ``hue`` XOR ``hatch`` distinct from cat):
+      one stack per cat position.
+    - **Dual-dim with stack_by** (both ``hue`` and ``hatch`` distinct): the
+      dimension named in ``stack_by`` stacks; the *other* dimension dodges
+      side-by-side within each cat position, producing ``N_other``
+      dodged stacks per cat. ``stack_by`` is required here.
+    - **``hue == hatch``**: single stack per cat; hatches are overlaid on
+      colored swatches (same resolution rules as the dodge path).
+
+    Errorbars are never drawn: per-segment errors aren't additive without
     covariance info and visually collide with the stacked segments above.
     """
-    if split.split_hue is not None and split.split_hatch is not None:
-        raise NotImplementedError(
-            "barplot: multiple='stack'|'fill' does not support hue and hatch "
-            "as two distinct non-categorical columns in this release; use "
-            "one of them (or set one equal to the categorical axis)."
-        )
     if split.split_hue is None and split.split_hatch is None:
         raise ValueError(
             "barplot: multiple='stack'|'fill' requires either hue= or hatch= "
             "(distinct from the categorical axis) to define the stack "
             "dimension."
+        )
+
+    both_active = split.split_hue is not None and split.split_hatch is not None
+    if both_active and stack_by not in ("hue", "hatch"):
+        raise ValueError(
+            "barplot: multiple='stack'|'fill' with distinct hue= and hatch= "
+            "columns requires stack_by='hue' or stack_by='hatch' to choose "
+            "which dimension stacks (the other will be dodged side-by-side "
+            "within each category)."
+        )
+    if stack_by is not None and stack_by not in ("hue", "hatch"):
+        raise ValueError(
+            f"barplot: stack_by must be 'hue' or 'hatch'; got {stack_by!r}"
         )
 
     if errorbar not in (None, False):
@@ -920,57 +973,96 @@ def _draw_stacked(
             stacklevel=3,
         )
 
-    stack_col = split.split_hue if split.split_hue is not None else split.split_hatch
-    level_is_hue = split.split_hue is not None
+    # Decide stack vs dodge dimension. The stack dimension is the one that
+    # accumulates along the value axis; the dodge dimension is the one that
+    # sub-divides the cat position.
+    if both_active:
+        stack_is_hue = (stack_by == "hue")
+    else:
+        stack_is_hue = split.split_hue is not None
+    stack_col = split.split_hue if stack_is_hue else split.split_hatch
+    dodge_col = split.split_hatch if stack_is_hue else split.split_hue
 
+    stack_levels = _categories_in_draw_order(data[stack_col])
+    dodge_levels = (
+        _categories_in_draw_order(data[dodge_col]) if dodge_col is not None else [None]
+    )
     cats = _categories_in_draw_order(data[categorical_axis])
     cat_to_pos = {c: i for i, c in enumerate(cats)}
     value_col = y if categorical_axis == x else x
 
-    # Aggregate per (cat, level) once; missing combinations become 0 so the
-    # stack totals across categories line up.
-    means: Dict[Tuple[object, object], float] = {}
-    for cat, h_val, ht_val in split.iter_draw_order(data):
-        parts = [data[categorical_axis] == cat]
-        if split.split_hue is not None:
-            parts.append(data[split.split_hue] == h_val)
-        if split.split_hatch is not None:
-            parts.append(data[split.split_hatch] == ht_val)
-        mask = parts[0]
-        for p in parts[1:]:
-            mask = mask & p
-        level = h_val if level_is_hue else ht_val
-        vals = data.loc[mask, value_col].to_numpy()
-        if len(vals):
-            means[(cat, level)] = float(vals.mean())
+    # Aggregate mean per (cat, dodge_level, stack_level). A missing
+    # combination is omitted — zero-height stubs would still consume a
+    # seg in iter order but drawn with height 0 for alignment.
+    means: Dict[Tuple[object, Optional[object], object], float] = {}
+    for cat in cats:
+        for d_lv in dodge_levels:
+            for s_lv in stack_levels:
+                mask = data[categorical_axis] == cat
+                mask = mask & (data[stack_col] == s_lv)
+                if dodge_col is not None:
+                    mask = mask & (data[dodge_col] == d_lv)
+                vals = data.loc[mask, value_col].to_numpy()
+                if len(vals):
+                    means[(cat, d_lv, s_lv)] = float(vals.mean())
 
-    # Normalize to 100% stacks for multiple="fill".
+    # Normalize to 100% stacks for multiple="fill" — per dodged stack.
     if multiple == "fill":
-        totals: Dict[object, float] = {}
-        for (cat, _level), m in means.items():
-            totals[cat] = totals.get(cat, 0.0) + m
+        totals: Dict[Tuple[object, Optional[object]], float] = {}
+        for (cat, d_lv, _s_lv), m in means.items():
+            totals[(cat, d_lv)] = totals.get((cat, d_lv), 0.0) + m
         means = {
-            (cat, level): (m / totals[cat]) if totals.get(cat) else 0.0
-            for (cat, level), m in means.items()
+            (cat, d_lv, s_lv): (m / totals[(cat, d_lv)]) if totals.get((cat, d_lv)) else 0.0
+            for (cat, d_lv, s_lv), m in means.items()
         }
 
-    width = max(1.0 - gap, 0.0)
-    cum: Dict[object, float] = {c: 0.0 for c in cats}
+    # Geometry: the cat slot has width 1. Without a dodge dim, one stack
+    # of width (1 - gap) centered at the cat position. With a dodge dim of
+    # cardinality k, k sub-stacks each of width ((1 - gap) / k) tiled with
+    # no inter-sub gap (matches seaborn's dodge layout).
+    k = len(dodge_levels)
+    slot = max(1.0 - gap, 0.0)
+    sub_width = slot / k
 
+    cum: Dict[Tuple[object, Optional[object]], float] = {}
+
+    # Iteration order for double-dim matches the dodge path's draw order
+    # (split.iter_draw_order) so the annotate builder pairs patches to
+    # aggregates identically. That order is:
+    #   hue-outer, hatch-middle, cat-inner
+    # ...which for a dodged-stack figure means we draw all segments of
+    # a given cat-position at once when possible (this still works for
+    # annotate pairing because we compare patch-by-patch against agg
+    # rows in the same order).
     for cat, h_val, ht_val in split.iter_draw_order(data):
-        level = h_val if level_is_hue else ht_val
-        value = means.get((cat, level))
+        if stack_is_hue:
+            s_lv, d_lv = h_val, ht_val
+        else:
+            s_lv, d_lv = ht_val, h_val
+        key = (cat, d_lv, s_lv)
+        value = means.get(key)
         if value is None:
             continue
-        pos = cat_to_pos[cat]
 
-        face_color = palette.get(level, color) if palette else color
-        edge = edgecolor if edgecolor is not None else face_color
+        cum_key = (cat, d_lv)
+        base = cum.get(cum_key, 0.0)
+        pos_cat = cat_to_pos[cat]
 
-        # hatch resolution mirrors _paint_bars: split_hatch value is
-        # authoritative; hue == hatch uses the hue value; hatch == cat
-        # would use the category label (split_hatch is None in that case so
-        # it does not reach here — the stack column would be hue).
+        # Sub-position within the cat slot: same ordering as dodge (the
+        # dodge dim's first level is leftmost).
+        if dodge_col is not None:
+            d_idx = dodge_levels.index(d_lv)
+            d_offset = -slot / 2 + sub_width / 2 + d_idx * sub_width
+        else:
+            d_offset = 0.0
+        pos = pos_cat + d_offset
+
+        face_color = palette.get(h_val, color) if palette and h_val is not None else color
+
+        # Hatch resolution (mirrors _paint_bars in the dodge path):
+        # - split_hatch active → hatch_value authoritative
+        # - hue == hatch (single-dim case, split_hatch None) → hue value
+        # - otherwise no hatch (or hatch==cat)
         hatch_key: Optional[object] = None
         if split.split_hatch is not None:
             hatch_key = ht_val
@@ -978,15 +1070,17 @@ def _draw_stacked(
             hatch_key = h_val
         hatch_pat = hatch_map.get(hatch_key, "") if hatch_map and hatch_key is not None else ""
 
+        edge = edgecolor if edgecolor is not None else face_color
+
         if split.orient == "v":
             artists = ax.bar(
-                pos, value, bottom=cum[cat], width=width,
+                pos, value, bottom=base, width=sub_width,
                 color=face_color, edgecolor=edge,
                 linewidth=linewidth, hatch=hatch_pat,
             )
         else:
             artists = ax.barh(
-                pos, value, left=cum[cat], height=width,
+                pos, value, left=base, height=sub_width,
                 color=face_color, edgecolor=edge,
                 linewidth=linewidth, hatch=hatch_pat,
             )
@@ -994,7 +1088,7 @@ def _draw_stacked(
             for patch in artists:
                 patch.set_hatch_linewidth(linewidth)
 
-        cum[cat] += value
+        cum[cum_key] = base + value
 
     if split.orient == "v":
         ax.set_xticks(list(range(len(cats))))
@@ -1002,88 +1096,7 @@ def _draw_stacked(
     else:
         ax.set_yticks(list(range(len(cats))))
         ax.set_yticklabels([str(c) for c in cats])
-        # Match seaborn horizontal convention: category 0 at top.
         if ax.get_ylim()[0] < ax.get_ylim()[1]:
             ax.invert_yaxis()
 
 
-def _stacked_legend(
-    *,
-    ax: Axes,
-    split: BarSplitSpec,
-    hue: Optional[str],
-    hatch: Optional[str],
-    palette: Dict[str, str],
-    hatch_map: Dict[str, str],
-    hue_order: Optional[List[str]],
-    hatch_order: Optional[List[str]],
-    alpha: float,
-    linewidth: float,
-    color: Optional[str],
-    edgecolor: Optional[str],
-    legend: Union[bool, Dict],
-    legend_kws: Optional[Dict],
-) -> None:
-    """Stash a single ``LegendEntry`` for the stack dimension and render.
-
-    Shape mirrors the ``_legend`` cases of the dodge path: a hue-kind entry
-    when hue drives the stack, a hatch-kind entry when hatch drives it.
-    """
-    if legend is False:
-        return
-
-    flags = resolve_legend_flags(legend)
-    kwargs = dict(legend_kws or {})
-    handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="rectangle")
-
-    if split.split_hue is not None:
-        if not flags["hue"]:
-            render_entries(ax, flags=flags, legend_kws=kwargs)
-            return
-        hue_label = kwargs.pop("hue_label", hue)
-        labels = list(hue_order) if hue_order is not None else list(palette.keys())
-        labels = [lv for lv in labels if lv in palette]
-        colors = [palette[v] for v in labels]
-        hatches = None
-        if hatch is not None and hatch_map:
-            # hue == hatch case: palette + hatches on the same swatch.
-            hatches = [hatch_map.get(v, "") for v in labels]
-        handles = create_legend_handles(
-            labels=labels,
-            colors=colors,
-            edgecolors=[edgecolor] * len(labels) if edgecolor else None,
-            hatches=hatches,
-            **handle_kwargs,
-        )
-        stash_entry(
-            ax,
-            LegendEntry.build(
-                name=hue_label, kind="hue",
-                handles=handles, labels=labels,
-            ),
-        )
-    else:
-        # split_hatch drives the stack.
-        if not flags["hatch"]:
-            render_entries(ax, flags=flags, legend_kws=kwargs)
-            return
-        hatch_label = kwargs.pop("hatch_label", hatch)
-        labels = list(hatch_order) if hatch_order is not None else list(hatch_map.keys())
-        labels = [lv for lv in labels if lv in hatch_map]
-        hatch_color = resolve_param("color", color)
-        handles = create_legend_handles(
-            labels=labels,
-            colors=[hatch_color] * len(labels),
-            edgecolors=[edgecolor] * len(labels) if edgecolor else None,
-            hatches=[hatch_map[v] for v in labels],
-            **handle_kwargs,
-        )
-        stash_entry(
-            ax,
-            LegendEntry.build(
-                name=hatch_label, kind="hatch",
-                handles=handles, labels=labels,
-            ),
-        )
-
-    render_entries(ax, flags=flags, legend_kws=kwargs)

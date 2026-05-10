@@ -635,3 +635,71 @@ ax = pp.barplot(
     ylabel="Cohort",
 )
 pp.show()
+
+# %%
+# Two Categoricals: Stack One, Dodge the Other — ``stack_by``
+# ------------------------------------------------------------
+# When both ``hue`` and ``hatch`` point at different non-categorical
+# columns, stacking is ambiguous: either dimension could define the
+# segments summed along the value axis. ``stack_by="hue"`` (or
+# ``"hatch"``) picks one — the chosen dimension stacks; the other is
+# dodged side-by-side within each category. So each cohort below gets
+# two dodged stacks (one per ``time`` level), each composed of three
+# stacked ``stage`` segments. The legend carries *both* a color entry
+# (``stage``) and a hatch entry (``time``), matching the double-split
+# dodge legend.
+
+np.random.seed(2027)
+dual_df = pd.DataFrame({
+    "cohort": np.tile(np.repeat(["A", "B", "C"], 10), 6),
+    "stage": np.tile(np.repeat(["Early", "Mid", "Late"], 30), 2),
+    "time": np.repeat(["24h", "48h"], 90),
+    "count": np.concatenate([
+        np.random.normal(20, 3, 30), np.random.normal(40, 5, 30), np.random.normal(25, 4, 30),
+        np.random.normal(25, 3, 30), np.random.normal(50, 5, 30), np.random.normal(30, 4, 30),
+    ]),
+})
+
+ax = pp.barplot(
+    data=dual_df,
+    x="cohort",
+    y="count",
+    hue="stage",
+    hatch="time",
+    multiple="stack",
+    stack_by="hue",
+    errorbar=None,
+    palette="pastel",
+    hatch_map={"24h": "", "48h": "///"},
+    hue_order=["Early", "Mid", "Late"],
+    title='stack_by="hue": stage stacks, time dodges',
+    xlabel="Cohort",
+    ylabel="Count (summed)",
+)
+pp.show()
+
+# %%
+# Flip the Stack Dimension
+# ------------------------
+# Same data, ``stack_by="hatch"`` instead — now *time* stacks (24h on
+# the bottom, 48h on top) while *stage* dodges (three sub-stacks per
+# cohort). Useful when your primary contrast is along the dimension
+# you want the eye to sum naturally.
+
+ax = pp.barplot(
+    data=dual_df,
+    x="cohort",
+    y="count",
+    hue="stage",
+    hatch="time",
+    multiple="stack",
+    stack_by="hatch",
+    errorbar=None,
+    palette="pastel",
+    hatch_map={"24h": "", "48h": "///"},
+    hue_order=["Early", "Mid", "Late"],
+    title='stack_by="hatch": time stacks, stage dodges',
+    xlabel="Cohort",
+    ylabel="Count (summed)",
+)
+pp.show()

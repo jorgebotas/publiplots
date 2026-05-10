@@ -257,10 +257,11 @@ def build_from_stacked_barplot_call(
         data, x=x, y=y, hue=hue, hatch=hatch,
         categorical_axis=categorical_axis,
     )
-    rects = [
-        p for p in ax.patches
-        if isinstance(p, Rectangle) and p.get_width() > 0 and abs(p.get_height()) > 0
-    ]
+    # No > 0 filter on height / width: the stacked path emits one
+    # Rectangle per aggregated row via ax.bar, including legitimate
+    # zero-valued segments (e.g. a group mean that happens to be 0).
+    # Pairing with agg is 1:1 in deterministic draw order.
+    rects = [p for p in ax.patches if isinstance(p, Rectangle)]
 
     bars: List[BarRecord] = []
     for rect, row in zip(rects, agg):

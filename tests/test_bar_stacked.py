@@ -232,20 +232,36 @@ def test_horizontal_stack_widths_and_inverted_y():
 # -----------------------------------------------------------------------------
 
 
-def test_stack_with_hue_and_distinct_hatch_raises():
-    # hue + hatch as two different non-cat columns.
+def _dual_dim_df():
+    """3 cats × 3 hue × 2 hatch, all distinct non-cat columns."""
     rows = []
-    for cat in ("A", "B"):
-        for grp in ("P", "Q"):
-            for trt in ("ctrl", "trt"):
-                rows.append({"cat": cat, "grp": grp, "trt": trt, "val": 1.0})
+    for cat, base in zip(("A", "B", "C"), (0.0, 1.0, 2.0)):
+        for grp, grp_add in zip(("low", "mid", "high"), (0.0, 1.0, 2.0)):
+            for trt, trt_add in zip(("ctrl", "drug"), (0.0, 0.5)):
+                mean = base + grp_add + trt_add
+                for _ in range(5):
+                    rows.append({"cat": cat, "grp": grp, "trt": trt, "val": float(mean)})
     df = pd.DataFrame(rows)
-    df["cat"] = pd.Categorical(df["cat"])
-    df["grp"] = pd.Categorical(df["grp"])
-    df["trt"] = pd.Categorical(df["trt"])
-    with pytest.raises(NotImplementedError, match="stack"):
-        pp.barplot(data=df, x="cat", y="val", hue="grp", hatch="trt",
+    df["cat"] = pd.Categorical(df["cat"], categories=["A", "B", "C"])
+    df["grp"] = pd.Categorical(df["grp"], categories=["low", "mid", "high"])
+    df["trt"] = pd.Categorical(df["trt"], categories=["ctrl", "drug"])
+    return df
+
+
+def test_dual_dim_without_stack_by_raises():
+    df = _dual_dim_df()
+    with pytest.raises(ValueError, match="stack_by"):
+        pp.barplot(data=df, x="cat", y="val",
+                   hue="grp", hatch="trt",
                    multiple="stack", errorbar=None)
+
+
+def test_invalid_stack_by_raises():
+    df = _dual_dim_df()
+    with pytest.raises(ValueError, match="stack_by"):
+        pp.barplot(data=df, x="cat", y="val",
+                   hue="grp", hatch="trt",
+                   multiple="stack", stack_by="bogus", errorbar=None)
 
 
 def test_stack_without_hue_or_hatch_raises():
@@ -375,3 +391,112 @@ def test_stack_legend_false_does_not_stash():
     ax = pp.barplot(data=df, x="cat", y="val", hue="grp",
                     multiple="stack", errorbar=None, legend=False)
     assert get_entries(ax) == []
+
+
+# -----------------------------------------------------------------------------
+# Dual-dimension (stack one, dodge the other) via stack_by
+# -----------------------------------------------------------------------------
+
+
+def _cat_centers(ax):
+    """Tick positions on the categorical axis."""
+    return [t for t in ax.get_xticks()]
+
+
+def test_stack_by_hue_produces_cat_x_hue_x_hatch_rects():
+    df = _dual_dim_df()
+    ax = pp.barplot(data=df, x="cat", y="val",
+                    hue="grp", hatch="trt",
+                    multiple="stack", stack_by="hue", errorbar=None)
+    # 3 cats × 3 hue × 2 hatch = 18 rects
+    assert len(_bars(ax)) == 3 * 3 * 2
+
+
+def test_stack_by_hue_dodges_hatch_within_cat():
+    df = _dual_dim_df()
+    ax = pp.barplot(data=df, x="cat", y="val",
+                    hue="grp", hatch="trt",
+                    multiple="stack", stack_by="hue", errorbar=None)
+    # For cat position 0, we expect 2 distinct sub-positions (one per hatch
+    # level), each carrying 3 stacked hue segments.
+    cat0_xs = sorted({
+        round(r.get_x() + r.get_width() / 2, 3)
+        for r in _bars(ax)
+        if -0.5 < r.get_x() + r.get_width() / 2 < 0.5
+    })
+    assert len(cat0_xs) == 2
+
+
+def test_stack_by_hue_cumulative_bottoms_within_sub_stack():
+    df = _dual_dim_df()
+    ax = pp.barplot(data=df, x="cat", y="val",
+                    hue="grp", hatch="trt",
+                    multiple="stack", stack_by="hue", errorbar=None,
+                    hue_order=["low", "mid", "high"])
+    # Group bars by their x-center; each group should have 3 segments with
+    # cumulative bottoms.
+    groups = {}
+    for r in _bars(ax):
+        k = round(r.get_x() + r.get_width() / 2, 3)
+        groups.setdefault(k, []).append(r)
+    assert len(groups) == 3 * 2  # 3 cats × 2 hatches
+    for k, segs in groups.items():
+        segs.sort(key=lambda r: r.get_y())
+        assert len(segs) == 3
+        assert segs[0].get_y() == pytest.approx(0.0)
+        assert segs[1].get_y() == pytest.approx(segs[0].get_height())
+        assert segs[2].get_y() == pytest.approx(
+            segs[0].get_height() + segs[1].get_height()
+        )
+
+
+def test_stack_by_hatch_flips_roles():
+    df = _dual_dim_df()
+    ax = pp.barplot(data=df, x="cat", y="val",
+                    hue="grp", hatch="trt",
+                    multiple="stack", stack_by="hatch", errorbar=None)
+    # Now hatch (2 levels) stacks; hue (3 levels) dodges → 3 sub-positions
+    # per cat, each carrying 2 stacked segments.
+    cat0_xs = sorted({
+        round(r.get_x() + r.get_width() / 2, 3)
+        for r in _bars(ax)
+        if -0.5 < r.get_x() + r.get_width() / 2 < 0.5
+    })
+    assert len(cat0_xs) == 3
+    # Total rects = 3 cats × 3 hue-dodge × 2 hatch-stack = 18
+    assert len(_bars(ax)) == 18
+
+
+def test_stack_by_hue_stashes_both_legend_entries():
+    df = _dual_dim_df()
+    ax = pp.barplot(data=df, x="cat", y="val",
+                    hue="grp", hatch="trt",
+                    multiple="stack", stack_by="hue", errorbar=None)
+    entries = get_entries(ax)
+    kinds = [(e.name, e.kind) for e in entries]
+    assert ("grp", "hue") in kinds
+    assert ("trt", "hatch") in kinds
+
+
+def test_stack_by_hue_annotate_label_per_segment():
+    df = _dual_dim_df()
+    ax = pp.barplot(data=df, x="cat", y="val",
+                    hue="grp", hatch="trt",
+                    multiple="stack", stack_by="hue", errorbar=None,
+                    annotate=True)
+    # One label per drawn segment = N_cat × N_hue × N_hatch = 18.
+    assert len(ax.texts) == 18
+
+
+def test_stack_by_hue_fill_normalizes_per_sub_stack():
+    df = _dual_dim_df()
+    ax = pp.barplot(data=df, x="cat", y="val",
+                    hue="grp", hatch="trt",
+                    multiple="fill", stack_by="hue", errorbar=None)
+    # Each dodged sub-stack (3 segments) must sum to 1.
+    groups = {}
+    for r in _bars(ax):
+        k = round(r.get_x() + r.get_width() / 2, 3)
+        groups.setdefault(k, []).append(r)
+    for k, segs in groups.items():
+        assert sum(r.get_height() for r in segs) == pytest.approx(1.0, abs=1e-9)

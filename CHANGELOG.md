@@ -9,28 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `pp.barplot(multiple="stack"|"fill")` — stacked and 100%-stacked bar
-  plots with publiplots styling, palette/hatch handling, legend stash,
-  and per-segment annotate labels.
+- `pp.barplot(multiple="stack"|"fill", stack_by=...)` — stacked and
+  100%-stacked bar plots with publiplots styling, palette/hatch
+  handling, legend stash, and per-segment annotate labels.
   - Default `multiple="dodge"` preserves current seaborn-backed
     behavior exactly. `"stack"` and `"fill"` take a parallel code path
     that draws with raw `ax.bar` / `ax.barh` at integer category
     positions with cumulative `bottom=` (or `left=` for horizontal)
     — seaborn's `barplot` has no stacked mode.
-  - Stacking is driven by whichever of `hue` / `hatch` is set and is
-    distinct from the categorical axis. Passing both as different
-    non-categorical columns raises `NotImplementedError`
-    (stacks-within-stacks is out of scope for this release); passing
-    neither raises `ValueError`.
+  - **Single-dimension stacking**: driven by whichever of `hue` / `hatch`
+    is set and distinct from the categorical axis. `hue == hatch`
+    (patterns overlaid on colored swatches) is allowed.
+  - **Dual-dimension stacking** (`hue` + `hatch` as distinct columns):
+    pass `stack_by="hue"` or `stack_by="hatch"` to pick the stack
+    dimension — the other is dodged side-by-side within each category.
+    Each category then shows `N_dodge` sub-stacks of `N_stack` segments.
+    `stack_by` is required in this case; missing it raises `ValueError`.
   - Errorbars are dropped with a `UserWarning` — per-segment errors
     aren't additive without covariance info.
-  - `annotate=True` defaults to `anchor="inside"` on stacked bars and
-    produces one label per drawn segment. Override with
+  - `annotate=True` defaults to `anchor="inside"` and produces one
+    label per drawn segment (including the dual-dim case, which emits
+    `N_cat × N_hue × N_hatch` labels). Override with
     `annotate={"anchor": "outside"}` for per-segment top-edge labels.
-  - Legend stashing mirrors the dodge path: a single `LegendEntry`
-    with `kind="hue"` when hue drives the stack, `kind="hatch"` when
-    hatch drives it. `hue_order` / `hatch_order` control both visual
-    stacking order (bottom-to-top) and legend entry order.
+  - Legend stashing reuses the dodge path's four-case dispatcher: one
+    hue entry (single-dim hue or `hue == hatch`), one hatch entry
+    (hatch-only), or both (dual-dim + `stack_by`).
+  - `hue_order` / `hatch_order` now correctly drive **both** the stack
+    order (bottom-to-top) *and* the legend entry order on both the
+    dodge and stacked paths — previously the legend ignored the
+    ordering kwargs in favor of palette-resolution order.
 
 ## [0.10.8] - 2026-05-10
 
