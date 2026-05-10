@@ -18,6 +18,7 @@ from matplotlib.text import Text
 from publiplots.annotate._cache import PointRecord, PointValueMeta
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
+    make_offset_transform,
     mm_to_data,
 )
 
@@ -35,34 +36,35 @@ def _resolve_point_anchor(
     anchor: str,
     offset_mm: float,
     ax: Axes,
-) -> Tuple[float, float, str, str]:
-    """Return (x, y, ha, va) for a label on a point.
+) -> Tuple[float, float, float, float, str, str]:
+    """Return (x, y, dx_mm, dy_mm, ha, va) for a label on a point.
 
-    For top/bottom: base y on the vertical errorbar cap (err_high/err_low)
-    if present; otherwise the marker y plus marker clearance.
-    For left/right: same logic on the x axis.
-    For center: on the marker.
+    (x, y) lives in data coords on the marker (or its errorbar cap) — no
+    offset applied. (dx_mm, dy_mm) is the mm displacement that keeps the
+    label clear of the marker regardless of later axis-limit changes.
+
+    For top/bottom: y-anchor is the vertical errorbar cap if present,
+    otherwise the marker y itself and the marker-clearance is folded
+    into dy_mm. For left/right: same idea on x. For center: on the marker.
     """
     px, py = point.xy
-    offset_y = mm_to_data(offset_mm, ax, axis="y") if anchor in ("top", "bottom") else 0.0
-    offset_x = mm_to_data(offset_mm, ax, axis="x") if anchor in ("left", "right") else 0.0
-    clearance_y = mm_to_data(_MARKER_CLEARANCE_MM, ax, axis="y")
-    clearance_x = mm_to_data(_MARKER_CLEARANCE_MM, ax, axis="x")
 
     if anchor == "top":
-        edge = point.err_high if point.err_high is not None else py + clearance_y
-        return px, edge + offset_y, "center", "bottom"
+        if point.err_high is not None:
+            return px, point.err_high, 0.0, +offset_mm, "center", "bottom"
+        return px, py, 0.0, +_MARKER_CLEARANCE_MM + offset_mm, "center", "bottom"
     if anchor == "bottom":
-        edge = point.err_low if point.err_low is not None else py - clearance_y
-        return px, edge - offset_y, "center", "top"
+        if point.err_low is not None:
+            return px, point.err_low, 0.0, -offset_mm, "center", "top"
+        return px, py, 0.0, -_MARKER_CLEARANCE_MM - offset_mm, "center", "top"
     if anchor == "right":
         # For vertical pointplots (value on y), err_high/err_low live on y,
-        # so they're irrelevant for a right-anchor; use marker clearance.
-        return px + clearance_x + offset_x, py, "left", "center"
+        # so they're irrelevant for a right-anchor; always use marker clearance.
+        return px, py, +_MARKER_CLEARANCE_MM + offset_mm, 0.0, "left", "center"
     if anchor == "left":
-        return px - clearance_x - offset_x, py, "right", "center"
+        return px, py, -_MARKER_CLEARANCE_MM - offset_mm, 0.0, "right", "center"
     if anchor == "center":
-        return px, py, "center", "center"
+        return px, py, 0.0, 0.0, "center", "center"
     raise ValueError(f"unreachable: unknown anchor {anchor!r}")
 
 
@@ -127,7 +129,9 @@ def _point_values_strategy(
     for point in meta.points:
         if math.isnan(point.value):
             continue
-        x, y, ha, va = _resolve_point_anchor(point, anchor, offset, ax)
+        x, y, dx_mm, dy_mm, ha, va = _resolve_point_anchor(
+            point, anchor, offset, ax,
+        )
         # Color resolution: pointplot has no "bar fill" to composite onto,
         # so auto → rcParams text color; hue → palette color (as for bars).
         rgba = resolve_color(
@@ -135,8 +139,12 @@ def _point_values_strategy(
             hue_active=meta.hue_active,
         )
         label = _format_value(point.value, fmt)
-        t = ax.text(x, y, label, ha=ha, va=va, color=rgba,
-                    rotation=rotation, zorder=default_zorder, **text_kws)
+        t = ax.text(
+            x, y, label, ha=ha, va=va, color=rgba,
+            rotation=rotation, zorder=default_zorder,
+            transform=make_offset_transform(ax, dx_mm, dy_mm),
+            **text_kws,
+        )
         texts.append(t)
 
     _maybe_expand_point_limits(ax, texts, anchor, pad_mm=pad,

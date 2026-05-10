@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `pp.annotate` label positions now stay stable when the axis limits
+  change after annotation — e.g. an explicit `ax.set_xlim/ylim`, or the
+  implicit relim triggered by `pp.subplots(..., sharex=True)` /
+  `sharey=True` when a neighboring axes has a wider value range.
+  - Previously, the `offset_mm` was converted to a data-coord delta at
+    annotate time using the *current* transform and baked into the
+    text's (x, y). When the limits later expanded (commonly via a bigger
+    sharey neighbor), the visual pixel gap between label and bar edge
+    shrank — on tall neighbors the shorter pane's labels could drift so
+    close that they touched the bar tops.
+  - Labels are now placed at the bar edge in data coords and the mm
+    offset is applied through a `ScaledTranslation(dx_mm, dy_mm)`
+    display-space transform. The gap is constant in physical units
+    across any downstream transform change (including dpi).
+  - `resolve_anchor` / `_resolve_box_anchor` / `_resolve_point_anchor`
+    now return `(x, y, dx_mm, dy_mm, ha, va)` instead of `(x, y, ha, va)`
+    — callers use the new `make_offset_transform(ax, dx_mm, dy_mm)`
+    helper to build the text's transform.
+
 ### Added
 
 - `pp.annotate(rotation=...)` — first-class text rotation on bar-value,
