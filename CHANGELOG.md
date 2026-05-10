@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.8] - 2026-05-10
+
 ### Fixed
 
 - `pp.annotate` label positions now stay stable when the axis limits
@@ -168,6 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls in `examples/plots/plot_12_heatmap.py` — auto-layout positions
   the title correctly regardless (PR #128).
 
+[0.10.8]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.8
 [0.10.7]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.7
 [0.10.6]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.6
 [0.10.5]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.5
