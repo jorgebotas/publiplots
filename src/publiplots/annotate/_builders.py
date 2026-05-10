@@ -11,7 +11,7 @@ inputs (data, column names, palette map, errorbar spec) and returns a
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 from matplotlib.axes import Axes
@@ -227,6 +227,62 @@ def build_from_barplot_call(
         orient=orient,
         bars=bars,
         errorbar_kind=errorbar,
+        hue_active=hue is not None,
+        owner_is_publiplots=True,
+    )
+
+
+def build_from_stacked_barplot_call(
+    ax: Axes,
+    data,
+    x: str,
+    y: str,
+    hue: Optional[str],
+    categorical_axis: str,
+    palette: Optional[Dict],
+    hatch: Optional[str] = None,
+) -> BarValueMeta:
+    """Build a ``BarValueMeta`` paired with a stacked bar plot's Rectangles.
+
+    The stacked path draws with ``ax.bar(bottom=cum)`` (or ``ax.barh(left=cum)``)
+    so each Rectangle's ``get_height()`` / ``get_width()`` is the per-segment
+    value — not the cumulative total. We pair each drawn patch with an
+    aggregate row yielded by ``BarSplitSpec.iter_draw_order`` in the same order
+    the plotter painted them, so hue color resolution is deterministic and
+    does not rely on color-matching heuristics.
+    """
+    orient: Literal["v", "h"] = "v" if categorical_axis == x else "h"
+
+    agg = _aggregate_means(
+        data, x=x, y=y, hue=hue, hatch=hatch,
+        categorical_axis=categorical_axis,
+    )
+    rects = [
+        p for p in ax.patches
+        if isinstance(p, Rectangle) and p.get_width() > 0 and abs(p.get_height()) > 0
+    ]
+
+    bars: List[BarRecord] = []
+    for rect, row in zip(rects, agg):
+        value = rect.get_height() if orient == "v" else rect.get_width()
+        hue_color: Optional[Tuple[float, float, float, float]] = None
+        if palette is not None:
+            key = row.get("hue_value")
+            if key is not None and key in palette:
+                hue_color = to_rgba(palette[key])
+        if hue_color is None:
+            hue_color = tuple(rect.get_facecolor())
+        bars.append(BarRecord(
+            patch=rect,
+            value=float(value),
+            err_low=None,
+            err_high=None,
+            hue_color=hue_color,
+        ))
+    return BarValueMeta(
+        orient=orient,
+        bars=bars,
+        errorbar_kind=None,
         hue_active=hue is not None,
         owner_is_publiplots=True,
     )

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pp.barplot(multiple="stack"|"fill")` — stacked and 100%-stacked bar
+  plots with publiplots styling, palette/hatch handling, legend stash,
+  and per-segment annotate labels.
+  - Default `multiple="dodge"` preserves current seaborn-backed
+    behavior exactly. `"stack"` and `"fill"` take a parallel code path
+    that draws with raw `ax.bar` / `ax.barh` at integer category
+    positions with cumulative `bottom=` (or `left=` for horizontal)
+    — seaborn's `barplot` has no stacked mode.
+  - Stacking is driven by whichever of `hue` / `hatch` is set and is
+    distinct from the categorical axis. Passing both as different
+    non-categorical columns raises `NotImplementedError`
+    (stacks-within-stacks is out of scope for this release); passing
+    neither raises `ValueError`.
+  - Errorbars are dropped with a `UserWarning` — per-segment errors
+    aren't additive without covariance info.
+  - `annotate=True` defaults to `anchor="inside"` on stacked bars and
+    produces one label per drawn segment. Override with
+    `annotate={"anchor": "outside"}` for per-segment top-edge labels.
+  - Legend stashing mirrors the dodge path: a single `LegendEntry`
+    with `kind="hue"` when hue drives the stack, `kind="hatch"` when
+    hatch drives it. `hue_order` / `hatch_order` control both visual
+    stacking order (bottom-to-top) and legend entry order.
+
 ## [0.10.8] - 2026-05-10
 
 ### Fixed

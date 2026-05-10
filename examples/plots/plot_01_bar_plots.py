@@ -499,3 +499,139 @@ pp.barplot(
     border_radius=(1.5, 0), title='top only',
 )
 pp.show()
+
+# %%
+# Stacked Bars — ``multiple="stack"``
+# -----------------------------------
+# ``pp.barplot(multiple="stack")`` draws each hue level on top of the
+# previous one rather than side-by-side. The stacking column is whichever
+# of ``hue`` or ``hatch`` is distinct from the categorical axis; segment
+# order (bottom-to-top) follows ``hue_order`` / ``hatch_order`` or the
+# palette / ``hatch_map`` key order. Stacked bars use the same palette
+# and legend pipeline as dodged bars, so ``pp.legend_group`` and
+# ``legend_kws={"inside": True}`` work unchanged.
+#
+# Errorbars are dropped on stacked bars — per-segment errors are not
+# additive without covariance info. Pass ``errorbar=None`` to silence
+# the warning when you explicitly don't want them.
+
+np.random.seed(2026)
+stack_df = pd.DataFrame({
+    "cohort": np.tile(np.repeat(["Cohort A", "Cohort B", "Cohort C"], 15), 3),
+    "stage": np.repeat(["Early", "Mid", "Late"], 45),
+    "count": np.concatenate([
+        np.random.normal(20, 3, 15), np.random.normal(35, 5, 15), np.random.normal(30, 4, 15),
+        np.random.normal(45, 5, 15), np.random.normal(40, 6, 15), np.random.normal(55, 7, 15),
+        np.random.normal(15, 3, 15), np.random.normal(25, 4, 15), np.random.normal(35, 5, 15),
+    ]),
+})
+
+ax = pp.barplot(
+    data=stack_df,
+    x="cohort",
+    y="count",
+    hue="stage",
+    multiple="stack",
+    errorbar=None,
+    palette="pastel",
+    hue_order=["Early", "Mid", "Late"],
+    title='multiple="stack" — stage contributions per cohort',
+    xlabel="Cohort",
+    ylabel="Count (summed)",
+)
+pp.show()
+
+# %%
+# 100%-Stacked Bars — ``multiple="fill"``
+# ---------------------------------------
+# ``multiple="fill"`` normalizes every stack to 1.0, making proportions
+# comparable across categories with different totals. Combine with
+# ``annotate={"fmt": ".0%"}`` for per-segment percentage labels.
+
+ax = pp.barplot(
+    data=stack_df,
+    x="cohort",
+    y="count",
+    hue="stage",
+    multiple="fill",
+    errorbar=None,
+    palette="pastel",
+    hue_order=["Early", "Mid", "Late"],
+    annotate={"fmt": ".0%"},
+    title='multiple="fill" — proportion within each cohort',
+    xlabel="Cohort",
+    ylabel="Proportion",
+)
+pp.show()
+
+# %%
+# Stacked Bars with Per-Segment Annotations
+# ------------------------------------------
+# ``annotate=True`` on stacked bars defaults to ``anchor="inside"``:
+# one label per drawn segment, centered within it. Override via
+# ``annotate={"anchor": "outside"}`` to place labels on each segment's
+# top edge instead.
+
+ax = pp.barplot(
+    data=stack_df,
+    x="cohort",
+    y="count",
+    hue="stage",
+    multiple="stack",
+    errorbar=None,
+    palette="pastel",
+    hue_order=["Early", "Mid", "Late"],
+    annotate={"fmt": ".0f"},
+    title='Per-segment labels (anchor="inside" by default)',
+    xlabel="Cohort",
+    ylabel="Count",
+)
+pp.show()
+
+# %%
+# Stacked Bars with Hatch (B&W-friendly)
+# ---------------------------------------
+# Hatch patterns can drive the stack dimension on their own, keeping the
+# figure legible in black-and-white print. Use ``hatch=`` (leave ``hue``
+# unset) and supply a ``hatch_map`` if you want specific patterns per
+# level.
+
+ax = pp.barplot(
+    data=stack_df,
+    x="cohort",
+    y="count",
+    hatch="stage",
+    multiple="stack",
+    errorbar=None,
+    color="#5D83C3",
+    hatch_map={"Early": "", "Mid": "//", "Late": "xx"},
+    hatch_order=["Early", "Mid", "Late"],
+    title='multiple="stack" + hatch — B&W print style',
+    xlabel="Cohort",
+    ylabel="Count (summed)",
+    alpha=0.3,
+)
+pp.show()
+
+# %%
+# Horizontal Stacked Bars
+# -----------------------
+# Swap ``x`` and ``y`` to stack horizontally — widths accumulate along
+# the value axis and the categorical axis is inverted (category 0 at
+# top), matching publiplots' convention for horizontal dodged bars.
+
+ax = pp.barplot(
+    data=stack_df,
+    x="count",
+    y="cohort",
+    hue="stage",
+    multiple="stack",
+    errorbar=None,
+    palette="pastel",
+    hue_order=["Early", "Mid", "Late"],
+    annotate={"fmt": ".0f"},
+    title='Horizontal multiple="stack"',
+    xlabel="Count (summed)",
+    ylabel="Cohort",
+)
+pp.show()
