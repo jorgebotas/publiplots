@@ -17,6 +17,7 @@ from matplotlib.text import Text
 from publiplots.annotate._cache import BoxStatsMeta, BoxStatsRecord
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
+    make_offset_transform,
     mm_to_data,
 )
 
@@ -50,44 +51,44 @@ def _resolve_box_anchor(
     orient: str,
     offset_mm: float,
     ax: Axes,
-) -> Tuple[float, float, str, str]:
-    """Return (x, y, ha, va) for a label on a single box statistic.
+) -> Tuple[float, float, float, float, str, str]:
+    """Return (x, y, dx_mm, dy_mm, ha, va) for a label on one box statistic.
 
-    The stat lives on the value axis at `stat_value`; the box lives at
-    `box.center_pos` on the categorical axis, with half-width
-    `box.cat_half_width`. Anchors steer the label outward from the stat.
+    (x, y) lives in data coords on the box edge or at the stat line —
+    no offset applied. (dx_mm, dy_mm) is the mm displacement the caller
+    should apply via `make_offset_transform`, so the pixel gap survives
+    later limit changes. ``box.cat_half_width`` stays in data coords
+    because the categorical axis uses integer category positions that
+    don't rescale with ``sharey=True`` — only the mm padding needs to
+    live in display space.
     """
     if orient == "v":
         px = box.center_pos
         py = stat_value
-        offset_x = mm_to_data(offset_mm, ax, axis="x") if anchor in ("left", "right") else 0.0
-        offset_y = mm_to_data(offset_mm, ax, axis="y") if anchor in ("top", "bottom") else 0.0
         if anchor == "top":
-            return px, py + offset_y, "center", "bottom"
+            return px, py, 0.0, +offset_mm, "center", "bottom"
         if anchor == "bottom":
-            return px, py - offset_y, "center", "top"
+            return px, py, 0.0, -offset_mm, "center", "top"
         if anchor == "right":
-            return px + box.cat_half_width + offset_x, py, "left", "center"
+            return px + box.cat_half_width, py, +offset_mm, 0.0, "left", "center"
         if anchor == "left":
-            return px - box.cat_half_width - offset_x, py, "right", "center"
+            return px - box.cat_half_width, py, -offset_mm, 0.0, "right", "center"
         if anchor == "center":
-            return px, py, "center", "center"
+            return px, py, 0.0, 0.0, "center", "center"
     else:
         # orient == "h": value on x, categorical on y
         px = stat_value
         py = box.center_pos
-        offset_x = mm_to_data(offset_mm, ax, axis="x") if anchor in ("left", "right") else 0.0
-        offset_y = mm_to_data(offset_mm, ax, axis="y") if anchor in ("top", "bottom") else 0.0
         if anchor == "top":
-            return px, py + box.cat_half_width + offset_y, "center", "bottom"
+            return px, py + box.cat_half_width, 0.0, +offset_mm, "center", "bottom"
         if anchor == "bottom":
-            return px, py - box.cat_half_width - offset_y, "center", "top"
+            return px, py - box.cat_half_width, 0.0, -offset_mm, "center", "top"
         if anchor == "right":
-            return px + offset_x, py, "left", "center"
+            return px, py, +offset_mm, 0.0, "left", "center"
         if anchor == "left":
-            return px - offset_x, py, "right", "center"
+            return px, py, -offset_mm, 0.0, "right", "center"
         if anchor == "center":
-            return px, py, "center", "center"
+            return px, py, 0.0, 0.0, "center", "center"
     raise ValueError(f"unreachable: unknown anchor {anchor!r}")
 
 
@@ -146,7 +147,7 @@ def _box_stats_strategy(
             if stat_name not in box.stats:
                 continue
             stat_value = box.stats[stat_name]
-            x, y, ha, va = _resolve_box_anchor(
+            x, y, dx_mm, dy_mm, ha, va = _resolve_box_anchor(
                 box, stat_name, stat_value, anchor, meta.orient, offset, ax,
             )
             rgba = resolve_color(
@@ -155,8 +156,12 @@ def _box_stats_strategy(
                 hue_active=meta.hue_active,
             )
             label = _format_value(stat_value, fmt)
-            t = ax.text(x, y, label, ha=ha, va=va, color=rgba,
-                        rotation=rotation, **text_kws)
+            t = ax.text(
+                x, y, label, ha=ha, va=va, color=rgba,
+                rotation=rotation,
+                transform=make_offset_transform(ax, dx_mm, dy_mm),
+                **text_kws,
+            )
             texts.append(t)
 
     _maybe_expand_box_limits(ax, texts, anchor, meta.orient, pad_mm=pad,

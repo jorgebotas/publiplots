@@ -96,10 +96,16 @@ def test_boxplot_annotate_anchor_right_default():
 def test_boxplot_annotate_anchor_top():
     ax = pp.boxplot(data=_box_df(), x="g", y="y",
                          annotate={"anchor": "top"})
+    ax.figure.canvas.draw()
+    renderer = ax.figure.canvas.get_renderer()
     meta = ax._publiplots_box_meta
     for t, box in zip(ax.texts, meta.boxes):
+        # Anchor lives at the median in data coords; the label's rendered
+        # bbox sits above the median once the offset transform is applied.
         _, y = t.get_position()
-        assert y > box.stats["median"]
+        assert y == pytest.approx(box.stats["median"])
+        bb = t.get_window_extent(renderer).transformed(ax.transData.inverted())
+        assert bb.y0 > box.stats["median"]
         assert t.get_va() == "bottom"
 
 

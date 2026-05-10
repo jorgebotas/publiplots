@@ -13,6 +13,7 @@ from publiplots.annotate._cache import BarValueMeta, _introspect
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
     fit_check,
+    make_offset_transform,
     mm_to_data,
     resolve_anchor,
 )
@@ -80,18 +81,27 @@ def _bar_values_strategy(
     for bar in meta.bars:
         if math.isnan(bar.value):
             continue
-        x, y, ha, va = resolve_anchor(bar, anchor, meta.orient, offset, ax)
+        x, y, dx_mm, dy_mm, ha, va = resolve_anchor(
+            bar, anchor, meta.orient, offset, ax,
+        )
         rgba = resolve_color(bar, color, anchor, ax, hue_active=meta.hue_active)
         label = _format_value(bar.value, fmt)
-        t = ax.text(x, y, label, ha=ha, va=va, color=rgba,
-                    rotation=rotation, **text_kws)
+        t = ax.text(
+            x, y, label, ha=ha, va=va, color=rgba,
+            rotation=rotation,
+            transform=make_offset_transform(ax, dx_mm, dy_mm),
+            **text_kws,
+        )
 
         if anchor != "outside":
             bbox = bar.patch.get_window_extent(renderer)
             if fit_check(t, bbox, meta.orient, anchor, renderer) == "reanchor_outside":
-                x2, y2, ha2, va2 = resolve_anchor(bar, "outside", meta.orient, offset, ax)
+                x2, y2, dx2, dy2, ha2, va2 = resolve_anchor(
+                    bar, "outside", meta.orient, offset, ax,
+                )
                 rgba2 = resolve_color(bar, color, "outside", ax, hue_active=meta.hue_active)
                 t.set_position((x2, y2))
+                t.set_transform(make_offset_transform(ax, dx2, dy2))
                 t.set_ha(ha2)
                 t.set_va(va2)
                 t.set_color(rgba2)
