@@ -5,7 +5,8 @@ This module provides publication-ready bar plot visualizations with
 flexible styling and grouping options.
 """
 
-from typing import Optional, List, Dict, Tuple, Union
+import warnings
+from typing import Literal, Optional, List, Dict, Tuple, Union
 
 from publiplots.themes.rcparams import resolve_param
 import matplotlib.pyplot as plt
@@ -24,7 +25,11 @@ from publiplots.utils.legend_entries import (
 from publiplots.utils.plot_legend import render_entries
 from publiplots.utils.rounding import apply_border_radius, normalize_border_radius
 from publiplots.utils.transparency import ArtistTracker
-from publiplots.annotate._builders import build_from_barplot_call
+from publiplots.annotate._builders import (
+    build_from_barplot_call,
+    build_from_stacked_barplot_call,
+)
+from publiplots.annotate._splits import BarSplitSpec, _categories_in_draw_order
 
 _SPLIT_SEPARATOR = "---"
 
@@ -54,55 +59,90 @@ def barplot(
     order: Optional[List[str]] = None,
     hue_order: Optional[List[str]] = None,
     hatch_order: Optional[List[str]] = None,
+    multiple: Literal["dodge", "stack", "fill"] = "dodge",
+    stack_by: Optional[Literal["hue", "hatch"]] = None,
     **kwargs
 ) -> Axes:
     """
     Create a publication-ready bar plot.
 
-    This function creates bar plots with optional grouping, error bars,
-    and hatch patterns. Supports both simple and complex bar plots with
-    side-by-side grouped bars.
+    Aggregates long-form data by a categorical axis (``x`` or ``y``) and
+    draws one bar per group, with optional color / hatch grouping and
+    optional stacking. Under the hood ``multiple="dodge"`` (the default)
+    wraps :func:`seaborn.barplot` and applies publiplots' palette, hatch,
+    transparency, and legend-stash styling in a post-draw pass;
+    ``multiple="stack"`` / ``"fill"`` bypasses seaborn (which has no
+    stacked mode) and draws segments directly with ``ax.bar`` /
+    ``ax.barh`` at integer category positions with cumulative
+    ``bottom=`` / ``left=``.
 
     Parameters
     ----------
     data : DataFrame
-        Input data.
-    x : str
-        Column name for x-axis categories.
-    y : str
-        Column name for y-axis values.
+        Input data in long form — one row per observation.
+    x, y : str
+        Column names for the two axes. Exactly one must be categorical
+        (category dtype, object, or string) and the other numeric.
+        ``x`` categorical + ``y`` numeric → vertical bars;
+        ``y`` categorical + ``x`` numeric → horizontal bars. If neither
+        column is categorical, raises :class:`ValueError`.
     hue : str, optional
-        Column name for color grouping (typically same as x for hatched bars).
+        Column name for color grouping. When distinct from the
+        categorical axis, bars split within each category — side-by-side
+        under ``multiple="dodge"``, stacked under ``multiple="stack"`` /
+        ``"fill"``. When equal to the categorical axis, hue collapses to
+        per-category coloring (no splitting).
     hatch : str, optional
-        Column name that drives a **second categorical dimension**, rendered
-        via hatch textures instead of color. Think of it as a texture-based
-        analogue of ``hue``: bars split side-by-side within each x category,
-        each assigned a distinct hatch pattern. Frequently combined with
-        ``hue`` to encode two categoricals at once (e.g. ``hue='condition'``
-        + ``hatch='treatment'``).
+        Column name driving a **second categorical dimension** encoded
+        via hatch textures — the texture-based analogue of ``hue``.
+        Under ``multiple="dodge"``: when ``hatch`` is distinct from both
+        ``hue`` and the categorical axis, bars split along a second
+        dodge dimension and the legend renders two entries (see
+        ``hue``-and-hatch double-split in the bar gallery). Under
+        ``multiple="stack"`` / ``"fill"``: ``hatch`` can drive the stack
+        on its own (leave ``hue`` unset) — useful for B&W-friendly
+        stacks — or share the column with ``hue`` (``hatch=hue``) to
+        pattern each stack segment by its hue level. When both ``hue``
+        and ``hatch`` are distinct non-categorical columns, pass
+        ``stack_by="hue"`` or ``stack_by="hatch"`` to pick which
+        dimension stacks; the other is dodged side-by-side within each
+        category.
 
-        Patterns are drawn from :data:`publiplots.HATCH_PATTERNS` by default;
-        density is controlled globally via :func:`publiplots.set_hatch_mode`
-        (``"dense"``, ``"sparse"``, or ``"off"``) or overridden per-plot with
-        ``hatch_map``. Call :func:`publiplots.list_hatch_patterns` to see the
-        catalog.
+        Patterns are drawn from :data:`publiplots.HATCH_PATTERNS` by
+        default; density is controlled globally via
+        :func:`publiplots.set_hatch_mode` (``"dense"``, ``"sparse"``, or
+        ``"off"``) or overridden per-plot with ``hatch_map``. Call
+        :func:`publiplots.list_hatch_patterns` to see the catalog.
     color : str, optional
-        Fixed color for all bars (only used when hue is None).
-        Overrides default color. Example: "#ff0000" or "red".
+        Fixed color for all bars when no hue split is active. Accepts
+        any matplotlib color string (``"#ff0000"``, ``"red"``, etc.).
+        Falls back to ``rcParams["color"]``.
+    edgecolor : str, optional
+        Explicit edge color override. When ``None`` (the default, also
+        the default of ``rcParams["edgecolor"]``), the edge matches the
+        face color — publiplots' double-layer transparent-fill styling.
+        Set to a specific color (``"black"``) to draw bars with
+        consistent outlines regardless of fill.
     ax : Axes, optional
-        Matplotlib axes object. If None, creates new figure.
-    title : str, default=""
-        Plot title.
-    xlabel : str, default=""
-        X-axis label. If empty and hatch is used, uses x column name.
-    ylabel : str, default=""
-        Y-axis label. If empty, uses y column name.
-    linewidth : float, default=1.0
-        Width of bar edges.
-    capsize : float, default=0.0
-        Width of error bar caps.
-    alpha : float, default=0.1
-        Transparency of bar fill (0-1). Use 0 for outlined bars only.
+        Matplotlib axes to draw on. If ``None``, creates a new figure
+        via :func:`publiplots.layout.subplots` so the publiplots layout
+        manager can keep geometry stable. To control axes dimensions,
+        pre-create with ``pp.subplots(axes_size=(w_mm, h_mm))`` and
+        pass ``ax=``.
+    title : str or None, default=""
+        Plot title. Pass ``None`` to leave the existing title unchanged.
+    xlabel, ylabel : str or None, default=""
+        Axis labels. Pass ``None`` to leave the existing label unchanged.
+    linewidth : float, optional
+        Width of bar edges and hatch strokes. Defaults to
+        ``rcParams["lines.linewidth"]``.
+    capsize : float, optional
+        Width of errorbar caps in data units (dodge path only — stacked
+        bars drop errorbars). Defaults to ``rcParams["capsize"]``.
+    alpha : float, optional
+        Transparency of the bar *fill* (edges stay fully opaque).
+        ``0`` = outlined bars only; ``1`` = solid fill. Defaults to
+        ``rcParams["alpha"]``.
     border_radius : float or (top_mm, bottom_mm) tuple, optional
         Corner radius for the bars, in **millimeters** (print-consistent,
         independent of data-axis range). A scalar rounds all four corners
@@ -113,9 +153,12 @@ def barplot(
         via ``pp.rcParams['bar.border_radius'] = 1.5``.
     palette : str, dict, or list, optional
         Color palette. Can be:
-        - str: seaborn palette name or publiplots palette name
-        - dict: mapping from hue values to colors
-        - list: list of colors
+
+        - ``str``: seaborn palette name or publiplots palette name
+        - ``dict``: explicit ``{hue_level: color}`` mapping
+        - ``list``: list of colors assigned in hue-level order
+
+        Only used when a hue split is active.
     hatch_map : dict, optional
         Mapping from hatch-column values to matplotlib hatch-pattern strings,
         overriding the per-``hatch_mode`` defaults. Matplotlib hatches
@@ -130,55 +173,205 @@ def barplot(
         ``hatch_mode`` resolver picks from; call
         :func:`publiplots.list_hatch_patterns` to print them.
     legend : bool or dict, default=True
-        Whether to show the legend. Accepts ``bool`` or
-        ``dict[kind, bool]`` for per-kind control (e.g.,
-        ``legend={"hatch": False}`` hides just the hatch leg in a
-        double-split bar plot).
+        Whether to stash & render the legend. Accepts ``bool`` or
+        ``dict[kind, bool]`` for per-kind control (e.g.
+        ``legend={"hatch": False}`` hides just the hatch entry in a
+        double-split bar plot). ``False`` suppresses stashing entirely,
+        so a figure-level :func:`publiplots.legend` group won't claim
+        any entries from this axes.
+    legend_kws : dict, optional
+        Extra kwargs forwarded to the legend builder. Notable keys:
+        ``inside=True`` with ``loc=...`` places the legend inside the
+        axes using matplotlib's corner-based placement; ``hue_label`` /
+        ``hatch_label`` override the title shown above each entry.
     annotate : bool or dict, optional
-        If True, label each bar with its aggregated value. Pass a dict to
-        forward options to pp.annotate (e.g. {"fmt": ".3f", "anchor": "inside"}).
-        See :func:`publiplots.annotate` for all supported options.
-    errorbar : str, default="se"
-        Error bar type: "se" (standard error), "sd" (standard deviation),
-        "ci" (confidence interval), or None for no error bars.
+        If truthy, label each bar with its aggregated value. Pass a
+        ``dict`` to forward options to :func:`publiplots.annotate`:
+        ``fmt`` (Python format spec), ``anchor``
+        (``"outside"``/``"inside"``/``"top"``/``"left"``/``"right"``),
+        ``offset`` (mm), ``color``, ``rotation`` (degrees).
+
+        Under ``multiple="stack"`` / ``"fill"`` the default anchor is
+        ``"inside"`` and one label is produced per drawn segment; under
+        ``multiple="dodge"`` the default anchor is ``"outside"`` and
+        one label is produced per bar.
+    errorbar : str or None, default="se"
+        Error bar type for the dodge path: ``"se"`` (standard error),
+        ``"sd"`` (standard deviation), ``"ci"`` (confidence interval),
+        tuple ``("pi", q)`` for percentile intervals, callable, or
+        ``None`` for no error bars. Under ``multiple="stack"`` /
+        ``"fill"`` errorbars are always dropped with a
+        :class:`UserWarning` — per-segment errors are not additive
+        without covariance info.
     gap : float, default=0.1
-        Gap between bar groups (0-1).
+        Gap between adjacent bars, as a fraction of bar width.
+        Under ``"dodge"`` this is the gap between hue/hatch levels
+        within a category; under ``"stack"`` / ``"fill"`` this is the
+        gap between stacks across the categorical axis.
     order : list, optional
-        Order of x/y-axis categories. If provided, determines bar order.
+        Order of the categorical axis. Determines both draw order and
+        the tick-label sequence.
     hue_order : list, optional
-        Hue order. If provided, determines bar order within groups.
+        Explicit order of hue levels. Under ``"stack"`` / ``"fill"``,
+        also determines stack order bottom-to-top (first level at the
+        base, last level on top) and the legend entry order.
     hatch_order : list, optional
-        Order of hatch categories. If provided, determines bar order within groups.
+        Order of hatch levels. Under ``"stack"`` / ``"fill"`` with
+        ``hatch`` driving the stack, determines stack order
+        bottom-to-top.
+    multiple : {"dodge", "stack", "fill"}, default="dodge"
+        How to arrange bars across the secondary (hue / hatch)
+        categorical dimension within each category of the primary axis.
+
+        - ``"dodge"`` (default): levels sit **side-by-side** within each
+          category via seaborn's dodging. Current behavior, unchanged —
+          supports errorbars, ``hue + hatch`` double-split, and the full
+          four-case legend dispatcher.
+        - ``"stack"``: levels sit **on top of each other** within each
+          category, each segment's base set to the cumulative height
+          (or width, horizontal) of the levels below. Drawn directly
+          with ``ax.bar`` / ``ax.barh`` — seaborn's barplot has no stack
+          mode.
+        - ``"fill"``: stack and then normalize so every stack sums to
+          1.0 (100%-stacked bars — good for showing proportions whose
+          totals differ across categories).
+
+        Stacking requires at least one of ``hue`` / ``hatch`` to be set
+        and distinct from the categorical axis. If *neither* is set,
+        raises :class:`ValueError`. When *both* are distinct
+        non-categorical columns, use ``stack_by=`` (below) to pick the
+        stack dimension — the other is dodged side-by-side within each
+        category. ``hue == hatch`` (both drive a single stack, patterns
+        overlaid on colored swatches) is allowed.
+    stack_by : {"hue", "hatch"}, optional
+        Required when ``multiple in {"stack", "fill"}`` *and* both
+        ``hue`` and ``hatch`` are distinct non-categorical columns.
+        Picks which dimension accumulates along the value axis; the
+        other dimension dodges side-by-side within each category (so
+        each category shows ``N_other`` dodged stacks, each of
+        ``N_stack_by`` segments). Ignored when only one of
+        ``hue`` / ``hatch`` is active. Pass ``None`` in the single-dim
+        case — the sole split dimension becomes the stack.
     **kwargs
-        Additional keyword arguments passed to seaborn.barplot().
+        Additional keyword arguments passed to :func:`seaborn.barplot`
+        in the dodge path. Ignored in the stack/fill path. ``figsize``
+        is always rejected — use ``pp.subplots(axes_size=...)`` and
+        pass ``ax=``.
 
     Returns
     -------
     Axes
-        The axes where the plot was drawn.
+        The axes where the plot was drawn. Recover the figure handle
+        with ``ax.get_figure()``.
+
+    Raises
+    ------
+    ValueError
+        If neither ``x`` nor ``y`` is categorical; if ``multiple`` is
+        not one of ``"dodge"``, ``"stack"``, ``"fill"``; if
+        ``multiple="stack"|"fill"`` is requested without a stack column
+        (``hue`` / ``hatch``); if ``multiple="stack"|"fill"`` is
+        requested with both ``hue`` and ``hatch`` set as distinct
+        non-categorical columns but no ``stack_by=`` was provided.
+    TypeError
+        If ``figsize`` is passed (publiplots owns figure geometry via
+        :func:`publiplots.subplots`).
+
+    Warns
+    -----
+    UserWarning
+        If ``errorbar`` is set under ``multiple="stack"|"fill"``; the
+        errorbar is silently dropped (per-segment errors are not
+        additive without covariance information).
+
+    Notes
+    -----
+    **Performance.** The dodge path delegates aggregation to seaborn;
+    the stack/fill path aggregates once in a single pass via the shared
+    :class:`publiplots.annotate._splits.BarSplitSpec` iterator (the same
+    deterministic draw order used for annotate pairing).
+
+    **Legend stash.** Every call stashes :class:`LegendEntry` objects on
+    the axes (unless ``legend=False``); per-axes legends render unless
+    a figure-level :func:`publiplots.legend` group claims them.
 
     Examples
     --------
     Simple bar plot:
+
     >>> ax = pp.barplot(data=df, x="category", y="value")
 
-    Bar plot with color groups:
-    >>> ax = pp.barplot(data=df, x="category", y="value",
-    ...                  hue="group", palette="pastel")
+    Color grouping via ``hue``:
 
-    Bar plot with hatched bars and patterns:
+    >>> ax = pp.barplot(data=df, x="time", y="value",
+    ...                 hue="group", palette="pastel")
+
+    Two categorical dimensions via ``hue`` + ``hatch`` (side-by-side):
+
     >>> ax = pp.barplot(
-    ...     data=df, x="condition", y="measurement",
-    ...     hatch="treatment", hue="condition",
-    ...     hatch_map={"control": "", "treated": "///"},
-    ...     palette={"A": "#75b375", "B": "#8e8ec1"}
+    ...     data=df, x="cell_type", y="viability",
+    ...     hue="treatment", hatch="time",
+    ...     palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
+    ...     hatch_map={"24h": "", "48h": "///"},
+    ... )
+
+    Value labels on each bar:
+
+    >>> ax = pp.barplot(data=df, x="category", y="value",
+    ...                 annotate={"fmt": ".2f"})
+
+    Stacked bars (``multiple="stack"``) with per-segment labels:
+
+    >>> ax = pp.barplot(
+    ...     data=df, x="cohort", y="count", hue="stage",
+    ...     multiple="stack", errorbar=None,
+    ...     hue_order=["Early", "Mid", "Late"],
+    ...     annotate={"fmt": ".0f"},
+    ... )
+
+    100%-stacked proportions with percentage labels:
+
+    >>> ax = pp.barplot(
+    ...     data=df, x="cohort", y="count", hue="stage",
+    ...     multiple="fill", errorbar=None,
+    ...     annotate={"fmt": ".0%"},
+    ... )
+
+    B&W-friendly stack keyed by hatch (no hue):
+
+    >>> ax = pp.barplot(
+    ...     data=df, x="cohort", y="count", hatch="stage",
+    ...     multiple="stack", errorbar=None, color="#5D83C3",
+    ...     hatch_map={"Early": "", "Mid": "//", "Late": "xx"},
+    ... )
+
+    Horizontal stacked bars:
+
+    >>> ax = pp.barplot(
+    ...     data=df, x="count", y="cohort", hue="stage",
+    ...     multiple="stack", errorbar=None,
+    ... )
+
+    Two categoricals: stack one, dodge the other (``stack_by``):
+
+    >>> ax = pp.barplot(
+    ...     data=df, x="cell_type", y="viability",
+    ...     hue="treatment", hatch="time",
+    ...     multiple="stack", stack_by="hue", errorbar=None,
+    ...     palette={"Vehicle": "#8E8EC1", "Drug": "#60a8a8"},
+    ...     hatch_map={"24h": "", "48h": "///"},
     ... )
 
     See Also
     --------
+    publiplots.histplot : Histogram plot (also supports
+        ``multiple="stack"``/``"fill"`` via seaborn).
     publiplots.set_hatch_mode : Set the global hatch-density mode.
     publiplots.list_hatch_patterns : Print the built-in hatch patterns.
-    publiplots.annotate : Add value labels to bars (see ``annotate=`` above).
+    publiplots.annotate : Add value labels to bars (see ``annotate=``
+        above for the subset promoted to ``pp.barplot``).
+    publiplots.legend : Figure-level legend group that claims stashed
+        entries across multiple axes.
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
@@ -225,6 +418,16 @@ def barplot(
         hatch_map=hatch_map,
     )
 
+    # Honor hue_order / hatch_order in the resolved dict key order — the
+    # legend dispatcher iterates these dicts in insertion order, so an
+    # unordered dict ignores the user's request. Missing levels pass
+    # through unchanged; extra levels (beyond the dict keys) are tolerated
+    # but warn-worthy behavior we defer to resolve_palette_map.
+    if hue_order is not None and palette:
+        palette = {k: palette[k] for k in hue_order if k in palette}
+    if hatch_order is not None and hatch_map:
+        hatch_map = {k: hatch_map[k] for k in hatch_order if k in hatch_map}
+
 
     prepareA = hue is not None and (hue != categorical_axis)
     prepareB = hatch is not None and (hatch != categorical_axis)
@@ -240,12 +443,56 @@ def barplot(
 
     # Resolve which dimensions actually dodge via the shared spec (single
     # source of truth — annotate builders use the same rules).
-    from publiplots.annotate._splits import BarSplitSpec
     _split = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
     )
     split_by_hatch = _split.split_hatch is not None
     double_split = _split.split_hue is not None and _split.split_hatch is not None
+
+    if multiple not in ("dodge", "stack", "fill"):
+        raise ValueError(
+            "barplot: multiple must be one of 'dodge', 'stack', 'fill'; "
+            f"got {multiple!r}"
+        )
+
+    if multiple in ("stack", "fill"):
+        tracker = ArtistTracker(ax)
+        _draw_stacked(
+            ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
+            categorical_axis=categorical_axis, split=_split,
+            multiple=multiple, stack_by=stack_by,
+            palette=palette, hatch_map=hatch_map,
+            color=color, edgecolor=edgecolor, linewidth=linewidth,
+            errorbar=errorbar, gap=gap,
+        )
+        radius = normalize_border_radius(
+            resolve_param("bar.border_radius", border_radius)
+        )
+        apply_border_radius(tracker.get_new_patches(), radius, ax)
+        tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
+        # Reuse the dodge path's four-case legend dispatcher — the legend
+        # treatment is identical whether bars are dodged or stacked.
+        _legend(
+            ax=ax,
+            hue=hue, hatch=hatch, categorical_axis=categorical_axis,
+            alpha=alpha, linewidth=linewidth,
+            color=color, edgecolor=edgecolor,
+            palette=palette, hatch_map=hatch_map,
+            kwargs=legend_kws, legend=legend,
+        )
+        if xlabel is not None: ax.set_xlabel(xlabel)
+        if ylabel is not None: ax.set_ylabel(ylabel)
+        if title is not None: ax.set_title(title)
+        if annotate:
+            ax._publiplots_bar_meta = build_from_stacked_barplot_call(
+                ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
+                categorical_axis=categorical_axis, palette=palette,
+            )
+            from publiplots.annotate import annotate as _annotate_fn
+            opts = dict(annotate) if isinstance(annotate, dict) else {}
+            opts.setdefault("anchor", "inside")
+            _annotate_fn(ax, kind="bar_values", **opts)
+        return ax
 
     sns_hue = hue
     sns_palette = palette
@@ -652,3 +899,204 @@ def _legend(
             )
 
     render_entries(ax, flags=flags, legend_kws=kwargs)
+
+
+# =============================================================================
+# Stacked / filled bar path (multiple="stack"|"fill")
+# =============================================================================
+
+
+def _draw_stacked(
+    *,
+    ax: Axes,
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    hue: Optional[str],
+    hatch: Optional[str],
+    categorical_axis: str,
+    split: BarSplitSpec,
+    multiple: str,
+    stack_by: Optional[str],
+    palette: Dict[str, str],
+    hatch_map: Dict[str, str],
+    color: Optional[str],
+    edgecolor: Optional[str],
+    linewidth: float,
+    errorbar: Optional[str],
+    gap: float,
+) -> None:
+    """Draw stacked (``multiple="stack"``) or 100%-stacked (``multiple="fill"``)
+    bars via raw ``ax.bar`` / ``ax.barh`` with cumulative bottom / left per
+    stack position.
+
+    Three cases based on which split dimensions are active:
+
+    - **Single-dim stack** (only ``hue`` XOR ``hatch`` distinct from cat):
+      one stack per cat position.
+    - **Dual-dim with stack_by** (both ``hue`` and ``hatch`` distinct): the
+      dimension named in ``stack_by`` stacks; the *other* dimension dodges
+      side-by-side within each cat position, producing ``N_other``
+      dodged stacks per cat. ``stack_by`` is required here.
+    - **``hue == hatch``**: single stack per cat; hatches are overlaid on
+      colored swatches (same resolution rules as the dodge path).
+
+    Errorbars are never drawn: per-segment errors aren't additive without
+    covariance info and visually collide with the stacked segments above.
+    """
+    if split.split_hue is None and split.split_hatch is None:
+        raise ValueError(
+            "barplot: multiple='stack'|'fill' requires either hue= or hatch= "
+            "(distinct from the categorical axis) to define the stack "
+            "dimension."
+        )
+
+    both_active = split.split_hue is not None and split.split_hatch is not None
+    if both_active and stack_by not in ("hue", "hatch"):
+        raise ValueError(
+            "barplot: multiple='stack'|'fill' with distinct hue= and hatch= "
+            "columns requires stack_by='hue' or stack_by='hatch' to choose "
+            "which dimension stacks (the other will be dodged side-by-side "
+            "within each category)."
+        )
+    if stack_by is not None and stack_by not in ("hue", "hatch"):
+        raise ValueError(
+            f"barplot: stack_by must be 'hue' or 'hatch'; got {stack_by!r}"
+        )
+
+    if errorbar not in (None, False):
+        warnings.warn(
+            "barplot: errorbars are not drawn with multiple='stack'|'fill' "
+            "(per-segment errors are not additive without covariance info); "
+            "dropping errorbars for this call.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    # Decide stack vs dodge dimension. The stack dimension is the one that
+    # accumulates along the value axis; the dodge dimension is the one that
+    # sub-divides the cat position.
+    if both_active:
+        stack_is_hue = (stack_by == "hue")
+    else:
+        stack_is_hue = split.split_hue is not None
+    stack_col = split.split_hue if stack_is_hue else split.split_hatch
+    dodge_col = split.split_hatch if stack_is_hue else split.split_hue
+
+    stack_levels = _categories_in_draw_order(data[stack_col])
+    dodge_levels = (
+        _categories_in_draw_order(data[dodge_col]) if dodge_col is not None else [None]
+    )
+    cats = _categories_in_draw_order(data[categorical_axis])
+    cat_to_pos = {c: i for i, c in enumerate(cats)}
+    value_col = y if categorical_axis == x else x
+
+    # Aggregate mean per (cat, dodge_level, stack_level). A missing
+    # combination is omitted — zero-height stubs would still consume a
+    # seg in iter order but drawn with height 0 for alignment.
+    means: Dict[Tuple[object, Optional[object], object], float] = {}
+    for cat in cats:
+        for d_lv in dodge_levels:
+            for s_lv in stack_levels:
+                mask = data[categorical_axis] == cat
+                mask = mask & (data[stack_col] == s_lv)
+                if dodge_col is not None:
+                    mask = mask & (data[dodge_col] == d_lv)
+                vals = data.loc[mask, value_col].to_numpy()
+                if len(vals):
+                    means[(cat, d_lv, s_lv)] = float(vals.mean())
+
+    # Normalize to 100% stacks for multiple="fill" — per dodged stack.
+    if multiple == "fill":
+        totals: Dict[Tuple[object, Optional[object]], float] = {}
+        for (cat, d_lv, _s_lv), m in means.items():
+            totals[(cat, d_lv)] = totals.get((cat, d_lv), 0.0) + m
+        means = {
+            (cat, d_lv, s_lv): (m / totals[(cat, d_lv)]) if totals.get((cat, d_lv)) else 0.0
+            for (cat, d_lv, s_lv), m in means.items()
+        }
+
+    # Geometry: the cat slot has width 1. Without a dodge dim, one stack
+    # of width (1 - gap) centered at the cat position. With a dodge dim of
+    # cardinality k, k sub-stacks each of width ((1 - gap) / k) tiled with
+    # no inter-sub gap (matches seaborn's dodge layout).
+    k = len(dodge_levels)
+    slot = max(1.0 - gap, 0.0)
+    sub_width = slot / k
+
+    cum: Dict[Tuple[object, Optional[object]], float] = {}
+
+    # Iteration order for double-dim matches the dodge path's draw order
+    # (split.iter_draw_order) so the annotate builder pairs patches to
+    # aggregates identically. That order is:
+    #   hue-outer, hatch-middle, cat-inner
+    # ...which for a dodged-stack figure means we draw all segments of
+    # a given cat-position at once when possible (this still works for
+    # annotate pairing because we compare patch-by-patch against agg
+    # rows in the same order).
+    for cat, h_val, ht_val in split.iter_draw_order(data):
+        if stack_is_hue:
+            s_lv, d_lv = h_val, ht_val
+        else:
+            s_lv, d_lv = ht_val, h_val
+        key = (cat, d_lv, s_lv)
+        value = means.get(key)
+        if value is None:
+            continue
+
+        cum_key = (cat, d_lv)
+        base = cum.get(cum_key, 0.0)
+        pos_cat = cat_to_pos[cat]
+
+        # Sub-position within the cat slot: same ordering as dodge (the
+        # dodge dim's first level is leftmost).
+        if dodge_col is not None:
+            d_idx = dodge_levels.index(d_lv)
+            d_offset = -slot / 2 + sub_width / 2 + d_idx * sub_width
+        else:
+            d_offset = 0.0
+        pos = pos_cat + d_offset
+
+        face_color = palette.get(h_val, color) if palette and h_val is not None else color
+
+        # Hatch resolution (mirrors _paint_bars in the dodge path):
+        # - split_hatch active → hatch_value authoritative
+        # - hue == hatch (single-dim case, split_hatch None) → hue value
+        # - otherwise no hatch (or hatch==cat)
+        hatch_key: Optional[object] = None
+        if split.split_hatch is not None:
+            hatch_key = ht_val
+        elif hue is not None and hue == hatch:
+            hatch_key = h_val
+        hatch_pat = hatch_map.get(hatch_key, "") if hatch_map and hatch_key is not None else ""
+
+        edge = edgecolor if edgecolor is not None else face_color
+
+        if split.orient == "v":
+            artists = ax.bar(
+                pos, value, bottom=base, width=sub_width,
+                color=face_color, edgecolor=edge,
+                linewidth=linewidth, hatch=hatch_pat,
+            )
+        else:
+            artists = ax.barh(
+                pos, value, left=base, height=sub_width,
+                color=face_color, edgecolor=edge,
+                linewidth=linewidth, hatch=hatch_pat,
+            )
+        if hatch_pat:
+            for patch in artists:
+                patch.set_hatch_linewidth(linewidth)
+
+        cum[cum_key] = base + value
+
+    if split.orient == "v":
+        ax.set_xticks(list(range(len(cats))))
+        ax.set_xticklabels([str(c) for c in cats])
+    else:
+        ax.set_yticks(list(range(len(cats))))
+        ax.set_yticklabels([str(c) for c in cats])
+        if ax.get_ylim()[0] < ax.get_ylim()[1]:
+            ax.invert_yaxis()
+
+
