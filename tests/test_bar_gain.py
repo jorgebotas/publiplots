@@ -240,3 +240,52 @@ def test_gain_stack_by_hatch_flips_roles():
     # Now seeds (2 levels) compare; models (2 levels) dodge.
     # 2 cats × 2 model-dodge × 2 = 8.
     assert len(_bars(ax)) == 8
+
+
+def test_gain_horizontal_widths_and_inverted_y():
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="score", y="metric", hue="model",
+                    multiple="gain", errorbar=None)
+    assert len(_bars(ax)) == 6
+    assert ax.get_ylim()[0] > ax.get_ylim()[1]  # inverted
+    # Group rects by y-center; each group = 2 rects, base at x=0, delta
+    # at x=min.
+    groups: dict = {}
+    for r in _bars(ax):
+        k = round(r.get_y() + r.get_height() / 2, 3)
+        groups.setdefault(k, []).append(r)
+    for k, segs in groups.items():
+        assert len(segs) == 2
+        segs.sort(key=lambda r: r.get_x())
+        assert segs[0].get_x() == pytest.approx(0.0)
+        assert segs[1].get_x() == pytest.approx(segs[0].get_width())
+
+
+def test_gain_stashes_hue_legend_entry():
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None)
+    entries = get_entries(ax)
+    kinds = [(e.name, e.kind) for e in entries]
+    assert ("model", "hue") in kinds
+
+
+def test_gain_legend_false_does_not_stash():
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None, legend=False)
+    assert get_entries(ax) == []
+
+
+def test_gain_returns_axes():
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None)
+    assert isinstance(ax, Axes)
+
+
+def test_gain_rejects_figsize():
+    df = _simple_gain_df()
+    with pytest.raises(TypeError):
+        pp.barplot(data=df, x="metric", y="score", hue="model",
+                   multiple="gain", errorbar=None, figsize=(4, 3))
