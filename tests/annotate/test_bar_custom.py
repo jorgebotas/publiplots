@@ -4,8 +4,10 @@ import warnings
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.colors import to_rgba
 
 import publiplots as pp
 from publiplots.annotate._cache import BarRecord
@@ -208,3 +210,62 @@ def test_column_labels_hatch_only_split():
     texts = pp.annotate(ax, kind="bar_custom", labels="n")
     # Draw order is hatch-outer / cat-inner: h1(A, B), h2(A, B)
     assert [t.get_text() for t in texts] == ["11", "33", "22", "44"]
+
+
+# -----------------------------------------------------------------------------
+# Positioning parity with bar_values
+# -----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("orient,values", [
+    ("v", [1.0, 2.0, 3.0]),
+    ("h", [1.0, 2.0, 3.0]),
+])
+@pytest.mark.parametrize("anchor", ["outside", "inside", "base", "center"])
+@pytest.mark.parametrize("color", ["auto", "red"])
+def test_positioning_matches_bar_values(orient, values, anchor, color):
+    """bar_custom and bar_values produce identical positions/colors when
+    labels == str(value): proves the placement machinery is shared."""
+    df = pd.DataFrame({
+        "cat": pd.Categorical(["A", "B", "C"], categories=["A", "B", "C"]),
+        "value": values,
+    })
+
+    fig_v, ax_v = plt.subplots()
+    fig_c, ax_c = plt.subplots()
+
+    if orient == "v":
+        pp.barplot(data=df, x="cat", y="value", ax=ax_v)
+        pp.barplot(data=df, x="cat", y="value", ax=ax_c)
+    else:
+        pp.barplot(data=df, x="value", y="cat", ax=ax_v)
+        pp.barplot(data=df, x="value", y="cat", ax=ax_c)
+
+    t_values = pp.annotate(ax_v, kind="bar_values", fmt=".2f",
+                           anchor=anchor, color=color)
+    t_custom = pp.annotate(
+        ax_c, kind="bar_custom",
+        labels=lambda r: format(r.value, ".2f"),
+        anchor=anchor, color=color,
+    )
+
+    # Force a draw on both figures so get_window_extent returns fresh pixels.
+    fig_v.canvas.draw()
+    fig_c.canvas.draw()
+    renderer_v = fig_v.canvas.get_renderer()
+    renderer_c = fig_c.canvas.get_renderer()
+
+    assert len(t_values) == len(t_custom) == len(df)
+    for tv, tc in zip(t_values, t_custom):
+        assert tv.get_text() == tc.get_text()
+        # Anchor points (data coords) must match.
+        assert np.allclose(tv.get_position(), tc.get_position())
+        assert tv.get_ha() == tc.get_ha()
+        assert tv.get_va() == tc.get_va()
+        # Rendered window extent is the true invariant under pixel-stable
+        # transforms: same anchor + same mm offset = same pixels.
+        bbv = tv.get_window_extent(renderer_v)
+        bbc = tc.get_window_extent(renderer_c)
+        assert np.allclose((bbv.x0, bbv.y0, bbv.x1, bbv.y1),
+                           (bbc.x0, bbc.y0, bbc.x1, bbc.y1),
+                           atol=1.0)  # 1px tolerance
+        assert to_rgba(tv.get_color()) == to_rgba(tc.get_color())
