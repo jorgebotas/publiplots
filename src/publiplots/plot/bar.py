@@ -59,7 +59,7 @@ def barplot(
     order: Optional[List[str]] = None,
     hue_order: Optional[List[str]] = None,
     hatch_order: Optional[List[str]] = None,
-    multiple: Literal["dodge", "stack", "fill"] = "dodge",
+    multiple: Literal["dodge", "stack", "fill", "gain"] = "dodge",
     stack_by: Optional[Literal["hue", "hatch"]] = None,
     **kwargs
 ) -> Axes:
@@ -449,13 +449,13 @@ def barplot(
     split_by_hatch = _split.split_hatch is not None
     double_split = _split.split_hue is not None and _split.split_hatch is not None
 
-    if multiple not in ("dodge", "stack", "fill"):
+    if multiple not in ("dodge", "stack", "fill", "gain"):
         raise ValueError(
-            "barplot: multiple must be one of 'dodge', 'stack', 'fill'; "
-            f"got {multiple!r}"
+            "barplot: multiple must be one of 'dodge', 'stack', 'fill', "
+            f"'gain'; got {multiple!r}"
         )
 
-    if multiple in ("stack", "fill"):
+    if multiple in ("stack", "fill", "gain"):
         tracker = ArtistTracker(ax)
         _draw_stacked(
             ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
@@ -906,6 +906,55 @@ def _legend(
 # =============================================================================
 
 
+def _validate_gain_levels(
+    data: pd.DataFrame,
+    stack_col: str,
+    categorical_axis: str,
+    dodge_col: Optional[str],
+) -> List[object]:
+    """Validate that ``stack_col`` has exactly 2 unique levels and that
+    both levels have at least one observation at every (cat, dodge)
+    combination. Returns the 2 levels in their category order.
+
+    Raises ``ValueError`` on level-count mismatch or on a missing
+    (cat, dodge, level) combination — gain semantics are ill-defined
+    when a level is absent at some cat, and the caller cannot compute
+    a meaningful ``min`` / ``max`` pair.
+    """
+    levels = _categories_in_draw_order(data[stack_col])
+    if len(levels) != 2:
+        raise ValueError(
+            f"barplot: multiple='gain' requires exactly 2 levels on "
+            f"{stack_col!r}; got {len(levels)} ({list(levels)!r})"
+        )
+    cats = _categories_in_draw_order(data[categorical_axis])
+    dodge_levels = (
+        _categories_in_draw_order(data[dodge_col])
+        if dodge_col is not None else [None]
+    )
+    for cat in cats:
+        for d_lv in dodge_levels:
+            for lv in levels:
+                mask = data[categorical_axis] == cat
+                mask = mask & (data[stack_col] == lv)
+                if dodge_col is not None:
+                    mask = mask & (data[dodge_col] == d_lv)
+                if not mask.any():
+                    if dodge_col is not None:
+                        raise ValueError(
+                            f"barplot: multiple='gain' requires both "
+                            f"levels at every (category, dodge) combination; "
+                            f"missing level {lv!r} at ({categorical_axis}="
+                            f"{cat!r}, {dodge_col}={d_lv!r})"
+                        )
+                    raise ValueError(
+                        f"barplot: multiple='gain' requires both levels "
+                        f"at every category; missing level {lv!r} at "
+                        f"{categorical_axis}={cat!r}"
+                    )
+    return list(levels)
+
+
 def _draw_stacked(
     *,
     ax: Axes,
@@ -982,6 +1031,14 @@ def _draw_stacked(
         stack_is_hue = split.split_hue is not None
     stack_col = split.split_hue if stack_is_hue else split.split_hatch
     dodge_col = split.split_hatch if stack_is_hue else split.split_hue
+
+    if multiple == "gain":
+        _validate_gain_levels(
+            data=data,
+            stack_col=stack_col,
+            categorical_axis=categorical_axis,
+            dodge_col=dodge_col,
+        )
 
     stack_levels = _categories_in_draw_order(data[stack_col])
     dodge_levels = (
