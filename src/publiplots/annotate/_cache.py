@@ -25,6 +25,7 @@ class BarRecord:
     err_low: Optional[float]
     err_high: Optional[float]
     hue_color: Optional[RGBA]
+    anchor_override: Optional[str] = None
 
 
 @dataclass

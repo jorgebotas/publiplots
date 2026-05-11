@@ -274,6 +274,7 @@ def build_from_stacked_barplot_call(
 
     bars: List[BarRecord] = []
     for rect, row in zip(rects, agg):
+        anchor_override: Optional[str] = None
         if multiple == "gain":
             # Absolute values: base segment's height is the loser's total;
             # top segment's cumulative (y + height) is the winner's total.
@@ -282,13 +283,17 @@ def build_from_stacked_barplot_call(
             if orient == "v":
                 if rect.get_y() > 0:
                     value = rect.get_y() + rect.get_height()  # top: winner abs
+                    anchor_override = "outside"                # winner label floats above
                 else:
                     value = rect.get_height()                  # base or tie
+                    anchor_override = "inside"                 # loser label inside base
             else:
                 if rect.get_x() > 0:
                     value = rect.get_x() + rect.get_width()
+                    anchor_override = "outside"
                 else:
                     value = rect.get_width()
+                    anchor_override = "inside"
         else:
             value = rect.get_height() if orient == "v" else rect.get_width()
 
@@ -305,6 +310,7 @@ def build_from_stacked_barplot_call(
             err_low=None,
             err_high=None,
             hue_color=hue_color,
+            anchor_override=anchor_override,
         ))
     return BarValueMeta(
         orient=orient,

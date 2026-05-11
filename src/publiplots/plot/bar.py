@@ -513,7 +513,8 @@ def barplot(
             )
             from publiplots.annotate import annotate as _annotate_fn
             opts = dict(annotate) if isinstance(annotate, dict) else {}
-            opts.setdefault("anchor", "inside")
+            if multiple != "gain":
+                opts.setdefault("anchor", "inside")
             _annotate_fn(ax, kind="bar_values", **opts)
         return ax
 

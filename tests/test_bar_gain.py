@@ -167,6 +167,70 @@ def test_gain_annotate_tie_single_label():
     assert ax.texts[0].get_text() == "0.50"
 
 
+def test_gain_annotate_default_mixed_per_segment_anchor():
+    """Winner (top) label above the bar; loser (base) label inside base."""
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None, annotate=True)
+    ax.figure.canvas.draw()
+
+    base_segs = [r for r in _bars(ax) if r.get_y() == 0 and r.get_height() < 1.0]
+    top_segs  = [r for r in _bars(ax) if r.get_y() > 0]
+
+    # Each rect type has its own label. Pair by matching text position x
+    # to segment center.
+    for rect in base_segs:
+        cx = rect.get_x() + rect.get_width() / 2
+        # find text positioned at this x
+        matches = [t for t in ax.texts
+                   if abs(t.get_position()[0] - cx) < 0.15]
+        assert len(matches) >= 1, f"no text near base at x={cx}"
+        # base label should sit INSIDE the base segment (y between 0 and height)
+        base_top = rect.get_height()
+        base_bot = 0.0
+        inside = any(base_bot <= t.get_position()[1] <= base_top for t in matches)
+        assert inside, (
+            f"base label at x={cx} not inside base segment [0, {base_top}]; "
+            f"text ys={[t.get_position()[1] for t in matches]}"
+        )
+
+    for rect in top_segs:
+        cx = rect.get_x() + rect.get_width() / 2
+        matches = [t for t in ax.texts
+                   if abs(t.get_position()[0] - cx) < 0.15]
+        # top label should be at the TOP of the rect (winner's absolute value)
+        rect_top = rect.get_y() + rect.get_height()
+        # The label's data-coord y should be approximately at rect_top
+        # (the offset is applied via ScaledTranslation in display space).
+        has_winner_label = any(
+            abs(t.get_position()[1] - rect_top) < 0.02 for t in matches
+        )
+        assert has_winner_label, (
+            f"winner label at x={cx} not anchored at rect top={rect_top}; "
+            f"text ys={[t.get_position()[1] for t in matches]}"
+        )
+
+
+def test_gain_annotate_user_anchor_override_still_wins():
+    """annotate={'anchor': 'outside'} should put ALL labels outside."""
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None,
+                    annotate={"anchor": "outside"})
+    ax.figure.canvas.draw()
+    # All 6 labels should sit ABOVE their rect tops.
+    for rect in _bars(ax):
+        rect_top = rect.get_y() + rect.get_height()
+        cx = rect.get_x() + rect.get_width() / 2
+        matches = [t for t in ax.texts
+                   if abs(t.get_position()[0] - cx) < 0.15]
+        # At least one label at this x should be at rect_top.
+        assert any(abs(t.get_position()[1] - rect_top) < 0.02
+                   for t in matches), (
+            f"expected outside label at x={cx} near y={rect_top}"
+        )
+
+
 def test_gain_missing_level_at_cat_raises():
     # "Recall" only has Baseline data — Proposed missing there.
     df = pd.DataFrame({

@@ -81,10 +81,11 @@ def _bar_values_strategy(
     for bar in meta.bars:
         if math.isnan(bar.value):
             continue
+        bar_anchor = bar.anchor_override if bar.anchor_override is not None else anchor
         x, y, dx_mm, dy_mm, ha, va = resolve_anchor(
-            bar, anchor, meta.orient, offset, ax,
+            bar, bar_anchor, meta.orient, offset, ax,
         )
-        rgba = resolve_color(bar, color, anchor, ax, hue_active=meta.hue_active)
+        rgba = resolve_color(bar, color, bar_anchor, ax, hue_active=meta.hue_active)
         label = _format_value(bar.value, fmt)
         t = ax.text(
             x, y, label, ha=ha, va=va, color=rgba,
@@ -93,9 +94,9 @@ def _bar_values_strategy(
             **text_kws,
         )
 
-        if anchor != "outside":
+        if bar_anchor != "outside":
             bbox = bar.patch.get_window_extent(renderer)
-            if fit_check(t, bbox, meta.orient, anchor, renderer) == "reanchor_outside":
+            if fit_check(t, bbox, meta.orient, bar_anchor, renderer) == "reanchor_outside":
                 x2, y2, dx2, dy2, ha2, va2 = resolve_anchor(
                     bar, "outside", meta.orient, offset, ax,
                 )
