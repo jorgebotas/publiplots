@@ -195,3 +195,48 @@ def test_gain_with_errorbar_warns():
     with pytest.warns(UserWarning, match="errorbars"):
         pp.barplot(data=df, x="metric", y="score", hue="model",
                    multiple="gain", errorbar="se")
+
+
+def _dual_gain_df():
+    """2 cats × 2 models × 2 seeds → 8 rows. Both models present in both
+    seeds at both cats."""
+    rows = []
+    for cat, base in zip(("A", "B"), (0.80, 0.85)):
+        for model, m_add in zip(("Baseline", "Proposed"), (0.00, 0.05)):
+            for seed, s_add in zip(("s1", "s2"), (0.00, 0.02)):
+                rows.append({"cat": cat, "model": model, "seed": seed,
+                             "score": base + m_add + s_add})
+    df = pd.DataFrame(rows)
+    df["cat"] = pd.Categorical(df["cat"])
+    df["model"] = pd.Categorical(df["model"], categories=["Baseline", "Proposed"])
+    df["seed"] = pd.Categorical(df["seed"], categories=["s1", "s2"])
+    return df
+
+
+def test_gain_dual_dim_requires_stack_by():
+    df = _dual_gain_df()
+    with pytest.raises(ValueError, match="stack_by"):
+        pp.barplot(data=df, x="cat", y="score",
+                   hue="model", hatch="seed",
+                   multiple="gain", errorbar=None)
+
+
+def test_gain_stack_by_hue_dodges_hatch():
+    df = _dual_gain_df()
+    ax = pp.barplot(data=df, x="cat", y="score",
+                    hue="model", hatch="seed",
+                    multiple="gain", stack_by="hue", errorbar=None)
+    # 2 cats × 2 seed-dodge sub-positions × 2 (base+delta) = 8 rects.
+    # (Assumes every (cat, seed) has distinct Baseline/Proposed values;
+    # _dual_gain_df is constructed that way.)
+    assert len(_bars(ax)) == 8
+
+
+def test_gain_stack_by_hatch_flips_roles():
+    df = _dual_gain_df()
+    ax = pp.barplot(data=df, x="cat", y="score",
+                    hue="model", hatch="seed",
+                    multiple="gain", stack_by="hatch", errorbar=None)
+    # Now seeds (2 levels) compare; models (2 levels) dodge.
+    # 2 cats × 2 model-dodge × 2 = 8.
+    assert len(_bars(ax)) == 8
