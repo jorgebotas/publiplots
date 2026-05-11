@@ -53,3 +53,36 @@ def test_gain_three_level_hue_raises():
     with pytest.raises(ValueError, match="exactly 2 levels"):
         pp.barplot(data=df, x="cat", y="val", hue="grp",
                    multiple="gain", errorbar=None)
+
+
+def test_gain_single_dim_produces_two_rects_per_cat_when_distinct():
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None)
+    # AUC: 0.80/0.90 → 2 rects; F1: 0.75/0.82 → 2 rects;
+    # Recall: 0.88/0.85 → 2 rects. Total 6.
+    assert len(_bars(ax)) == 6
+
+
+def test_gain_base_y_zero_top_stacked_on_min():
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None)
+    # Group rects by x-center; each group = 2 rects, base at y=0, delta
+    # at y=min.
+    groups: dict = {}
+    for r in _bars(ax):
+        k = round(r.get_x() + r.get_width() / 2, 3)
+        groups.setdefault(k, []).append(r)
+    for k, segs in groups.items():
+        assert len(segs) == 2
+        segs.sort(key=lambda r: r.get_y())
+        lo = segs[0].get_height()
+        assert segs[0].get_y() == pytest.approx(0.0)
+        assert segs[1].get_y() == pytest.approx(lo)
+        hi = segs[1].get_y() + segs[1].get_height()
+        # hi matches one of the two model scores at that metric
+        metric = ["AUC", "F1", "Recall"][int(round(k))]
+        scores = df.loc[df["metric"] == metric, "score"].tolist()
+        assert hi == pytest.approx(max(scores))
+        assert lo == pytest.approx(min(scores))

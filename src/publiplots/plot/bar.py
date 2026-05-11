@@ -1082,6 +1082,85 @@ def _draw_stacked(
 
     cum: Dict[Tuple[object, Optional[object]], float] = {}
 
+    if multiple == "gain":
+        levels = _categories_in_draw_order(data[stack_col])
+        l0, l1 = levels[0], levels[1]
+        k = len(dodge_levels)
+        slot = max(1.0 - gap, 0.0)
+        sub_width = slot / k
+
+        for cat in cats:
+            for d_idx, d_lv in enumerate(dodge_levels):
+                # compute v0, v1 for the 2 stack levels at this (cat, d_lv)
+                m0 = data[categorical_axis] == cat
+                m0 = m0 & (data[stack_col] == l0)
+                if dodge_col is not None:
+                    m0 = m0 & (data[dodge_col] == d_lv)
+                m1 = data[categorical_axis] == cat
+                m1 = m1 & (data[stack_col] == l1)
+                if dodge_col is not None:
+                    m1 = m1 & (data[dodge_col] == d_lv)
+                v0 = float(data.loc[m0, value_col].mean())
+                v1 = float(data.loc[m1, value_col].mean())
+
+                pos_cat = cat_to_pos[cat]
+                if dodge_col is not None:
+                    d_offset = -slot / 2 + sub_width / 2 + d_idx * sub_width
+                else:
+                    d_offset = 0.0
+                pos = pos_cat + d_offset
+
+                if v0 == v1:
+                    # Tie: one rect only, colored by levels[0].
+                    face = palette.get(l0, color) if palette else color
+                    edge = edgecolor if edgecolor is not None else face
+                    if split.orient == "v":
+                        ax.bar(pos, v0, bottom=0.0, width=sub_width,
+                               color=face, edgecolor=edge,
+                               linewidth=linewidth)
+                    else:
+                        ax.barh(pos, v0, left=0.0, height=sub_width,
+                                color=face, edgecolor=edge,
+                                linewidth=linewidth)
+                    continue
+
+                # Distinct: sort into (lo_level, lo_val) + (hi_level, hi_val)
+                if v0 < v1:
+                    lo_lv, lo_v, hi_lv, hi_v = l0, v0, l1, v1
+                else:
+                    lo_lv, lo_v, hi_lv, hi_v = l1, v1, l0, v0
+
+                lo_face = palette.get(lo_lv, color) if palette else color
+                hi_face = palette.get(hi_lv, color) if palette else color
+                lo_edge = edgecolor if edgecolor is not None else lo_face
+                hi_edge = edgecolor if edgecolor is not None else hi_face
+
+                if split.orient == "v":
+                    ax.bar(pos, lo_v, bottom=0.0, width=sub_width,
+                           color=lo_face, edgecolor=lo_edge,
+                           linewidth=linewidth)
+                    ax.bar(pos, hi_v - lo_v, bottom=lo_v, width=sub_width,
+                           color=hi_face, edgecolor=hi_edge,
+                           linewidth=linewidth)
+                else:
+                    ax.barh(pos, lo_v, left=0.0, height=sub_width,
+                            color=lo_face, edgecolor=lo_edge,
+                            linewidth=linewidth)
+                    ax.barh(pos, hi_v - lo_v, left=lo_v, height=sub_width,
+                            color=hi_face, edgecolor=hi_edge,
+                            linewidth=linewidth)
+
+        # tick + invert logic identical to the stack/fill tail below
+        if split.orient == "v":
+            ax.set_xticks(list(range(len(cats))))
+            ax.set_xticklabels([str(c) for c in cats])
+        else:
+            ax.set_yticks(list(range(len(cats))))
+            ax.set_yticklabels([str(c) for c in cats])
+            if ax.get_ylim()[0] < ax.get_ylim()[1]:
+                ax.invert_yaxis()
+        return
+
     # Iteration order for double-dim matches the dodge path's draw order
     # (split.iter_draw_order) so the annotate builder pairs patches to
     # aggregates identically. That order is:
