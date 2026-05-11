@@ -86,3 +86,30 @@ def test_gain_base_y_zero_top_stacked_on_min():
         scores = df.loc[df["metric"] == metric, "score"].tolist()
         assert hi == pytest.approx(max(scores))
         assert lo == pytest.approx(min(scores))
+
+
+def test_gain_base_color_is_loser_top_is_winner():
+    df = _simple_gain_df()
+    palette = {"Baseline": "#ff0000", "Proposed": "#00ff00"}
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None, palette=palette)
+
+    groups: dict = {}
+    for r in _bars(ax):
+        k = round(r.get_x() + r.get_width() / 2, 3)
+        groups.setdefault(k, []).append(r)
+
+    # AUC (x=0): Baseline=0.80, Proposed=0.90 → Baseline loses (red base),
+    # Proposed wins (green top).
+    # F1 (x=1): same direction (Baseline loses).
+    # Recall (x=2): Baseline=0.88, Proposed=0.85 → Baseline WINS → green
+    # top, red base flip: red is now on top, green on bottom.
+    auc_segs = sorted(groups[0.0], key=lambda r: r.get_y())
+    assert tuple(auc_segs[0].get_facecolor()[:3]) == to_rgba("#ff0000")[:3]
+    assert tuple(auc_segs[1].get_facecolor()[:3]) == to_rgba("#00ff00")[:3]
+
+    recall_segs = sorted(groups[2.0], key=lambda r: r.get_y())
+    # Baseline wins Recall → base is Proposed (loser) green, top is
+    # Baseline (winner) red.
+    assert tuple(recall_segs[0].get_facecolor()[:3]) == to_rgba("#00ff00")[:3]
+    assert tuple(recall_segs[1].get_facecolor()[:3]) == to_rgba("#ff0000")[:3]
