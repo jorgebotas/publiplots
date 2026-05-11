@@ -123,3 +123,20 @@ def test_bar_value_meta_has_source_frame_and_group_keys():
     )
     assert meta.source_frame is df
     assert meta.group_keys == ("x",)
+
+
+def test_introspect_fills_draw_index_and_nones_other_fields():
+    fig, ax = plt.subplots()
+    ax.bar([0, 1, 2], [1.0, 2.0, 3.0])
+    fig.canvas.draw()
+    meta = _introspect(ax)
+    assert meta.source_frame is None
+    assert meta.group_keys is None
+    for i, bar in enumerate(meta.bars):
+        assert bar.draw_index == i
+        assert bar.category is None
+        assert bar.hue_value is None
+        assert bar.hatch_value is None
+        assert bar.frame_row_index is None
+        assert bar.anchor_override is None
+    plt.close(fig)

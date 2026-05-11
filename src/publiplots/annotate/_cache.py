@@ -214,7 +214,7 @@ def _introspect(ax: Axes) -> BarValueMeta:
     orient = _infer_orient(rects)
     err_by_bar = _match_errorbars(ax, rects, orient)
     bars: List[BarRecord] = []
-    for r, (err_low, err_high) in zip(rects, err_by_bar):
+    for i, (r, (err_low, err_high)) in enumerate(zip(rects, err_by_bar)):
         value = r.get_height() if orient == "v" else r.get_width()
         bars.append(BarRecord(
             patch=r,
@@ -222,6 +222,12 @@ def _introspect(ax: Axes) -> BarValueMeta:
             err_low=err_low,
             err_high=err_high,
             hue_color=tuple(r.get_facecolor()),
+            anchor_override=None,
+            category=None,
+            hue_value=None,
+            hatch_value=None,
+            draw_index=i,
+            frame_row_index=None,
         ))
     return BarValueMeta(
         orient=orient,
@@ -229,4 +235,6 @@ def _introspect(ax: Axes) -> BarValueMeta:
         errorbar_kind=None,
         hue_active=False,
         owner_is_publiplots=False,
+        source_frame=None,
+        group_keys=None,
     )
