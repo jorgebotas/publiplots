@@ -422,6 +422,11 @@ def barplot(
             "Run data[x].astype('category') or data[y].astype('category')"
         )
 
+    # Preserve the caller's original DataFrame identity for downstream
+    # annotate builders that stash `source_frame` on the meta (used by
+    # column-based custom labels to look up per-bar rows).
+    _source_data = data
+
     # Ensure category dtype on every column we'll touch with the .cat accessor
     data = data.copy()
     data[categorical_axis] = as_categorical(data[categorical_axis])
@@ -509,7 +514,7 @@ def barplot(
             ax._publiplots_bar_meta = build_from_stacked_barplot_call(
                 ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
                 categorical_axis=categorical_axis, palette=palette,
-                multiple=multiple,
+                multiple=multiple, source_frame=_source_data,
             )
             from publiplots.annotate import annotate as _annotate_fn
             opts = dict(annotate) if isinstance(annotate, dict) else {}
@@ -626,6 +631,7 @@ def barplot(
             ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
             categorical_axis=categorical_axis,
             palette=palette, errorbar=errorbar,
+            source_frame=_source_data,
         )
         from publiplots.annotate import annotate as _annotate_fn
         opts = annotate if isinstance(annotate, dict) else {}
