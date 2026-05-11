@@ -1106,8 +1106,7 @@ def _draw_stacked(
     cum: Dict[Tuple[object, Optional[object]], float] = {}
 
     if multiple == "gain":
-        levels = _categories_in_draw_order(data[stack_col])
-        l0, l1 = levels[0], levels[1]
+        l0, l1 = stack_levels[0], stack_levels[1]
 
         # means dict was already populated above; keys are (cat, dodge_level,
         # stack_level). _validate_gain_levels guarantees every (cat, d_lv, l0)
