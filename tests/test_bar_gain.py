@@ -113,3 +113,30 @@ def test_gain_base_color_is_loser_top_is_winner():
     # Baseline (winner) red.
     assert tuple(recall_segs[0].get_facecolor()[:3]) == to_rgba("#00ff00")[:3]
     assert tuple(recall_segs[1].get_facecolor()[:3]) == to_rgba("#ff0000")[:3]
+
+
+def test_gain_tie_produces_single_rect():
+    df = pd.DataFrame({
+        "metric": pd.Categorical(["Tied", "Tied", "Distinct", "Distinct"]),
+        "model": pd.Categorical(["A", "B"] * 2, categories=["A", "B"]),
+        "score": [0.8, 0.8, 0.7, 0.9],
+    })
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None)
+    # Tied → 1 rect; Distinct → 2 rects. Total 3.
+    assert len(_bars(ax)) == 3
+
+
+def test_gain_tie_uses_hue_order_first_color():
+    df = pd.DataFrame({
+        "metric": pd.Categorical(["Tied"] * 2),
+        "model": pd.Categorical(["A", "B"], categories=["A", "B"]),
+        "score": [0.5, 0.5],
+    })
+    palette = {"A": "#ff0000", "B": "#00ff00"}
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None, palette=palette)
+    rects = _bars(ax)
+    assert len(rects) == 1
+    assert tuple(rects[0].get_facecolor()[:3]) == to_rgba("#ff0000")[:3]
+    assert rects[0].get_height() == pytest.approx(0.5)
