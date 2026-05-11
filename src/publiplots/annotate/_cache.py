@@ -115,9 +115,18 @@ class BoxStatsMeta:
 
 
 def _is_bar_rect(p) -> bool:
+    """True for a Rectangle with non-zero width AND non-zero height.
+
+    Seaborn/matplotlib draw negative-valued bars as Rectangles with a
+    negative ``get_height()`` (or ``get_width()`` for horizontal orient):
+    ``x, y=0, height=-12.3`` instead of ``x, y=-12.3, height=12.3``.
+    A strict ``> 0`` check would silently drop those bars from meta,
+    causing annotate strategies to skip every negative bar. Here we only
+    reject *degenerate* zero-size rects (e.g. truly empty groups).
+    """
     if not isinstance(p, Rectangle):
         return False
-    return p.get_width() > 0 and p.get_height() > 0
+    return p.get_width() != 0 and p.get_height() != 0
 
 
 def _iter_error_segments(ax: Axes):

@@ -269,3 +269,26 @@ def test_positioning_matches_bar_values(orient, values, anchor, color):
                            (bbc.x0, bbc.y0, bbc.x1, bbc.y1),
                            atol=1.0)  # 1px tolerance
         assert to_rgba(tv.get_color()) == to_rgba(tc.get_color())
+
+
+def test_callable_labels_all_bars_with_negative_values():
+    """Regression: callable labels must be emitted for every non-NaN bar,
+    including negative ones. Originally discovered via the gallery
+    signed-delta example where only 1 of 3 labels was rendered."""
+    df = pd.DataFrame({
+        "cohort": pd.Categorical(
+            ["day-10", "day-20", "day-30"],
+            categories=["day-10", "day-20", "day-30"],
+        ),
+        "pct_change": [-12.3, 4.1, -7.8],
+    })
+    ax = pp.barplot(data=df, x="cohort", y="pct_change")
+    texts = pp.annotate(
+        ax, kind="bar_custom",
+        labels=lambda r: f"{r.value:+.1f}%",
+    )
+    assert len(texts) == 3, (
+        f"expected 3 labels, got {len(texts)}: "
+        f"{[t.get_text() for t in texts]}"
+    )
+    assert [t.get_text() for t in texts] == ["-12.3%", "+4.1%", "-7.8%"]

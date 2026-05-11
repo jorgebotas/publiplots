@@ -27,6 +27,7 @@ from publiplots.annotate._cache import (
     BoxStatsRecord,
     PointRecord,
     PointValueMeta,
+    _is_bar_rect,
     _iter_error_segments,
     _match_errorbars,
 )
@@ -237,10 +238,9 @@ def build_from_barplot_call(
     agg = _aggregate_means(data, x=x, y=y, hue=hue, hatch=hatch,
                            categorical_axis=categorical_axis,
                            source_frame=source_frame)
-    rects = [
-        p for p in ax.patches
-        if isinstance(p, Rectangle) and p.get_width() > 0 and p.get_height() > 0
-    ]
+    # `_is_bar_rect` treats signed extents as valid so negative-valued bars
+    # (matplotlib emits them as rects with negative height/width) are kept.
+    rects = [p for p in ax.patches if _is_bar_rect(p)]
     err_by_bar = _match_errorbars(ax, rects, orient)
 
     bars: List[BarRecord] = []
@@ -434,10 +434,7 @@ def build_from_histplot_call(
     """
     orient = "v" if x is not None else "h"
 
-    rects = [
-        p for p in ax.patches
-        if isinstance(p, Rectangle) and p.get_width() > 0 and p.get_height() > 0
-    ]
+    rects = [p for p in ax.patches if _is_bar_rect(p)]
 
     bars: List[BarRecord] = []
     for rect in rects:
