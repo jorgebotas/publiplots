@@ -58,6 +58,11 @@ class BarValueMeta:
     owner_is_publiplots: bool
     source_frame: Optional[Any] = None          # pandas DataFrame (kept Any to avoid import)
     group_keys: Optional[Tuple[str, ...]] = None
+    # Companion to group_keys identifying each key's dimension: one of
+    # "cat", "hue", "hatch". Parallel tuple with the same length and order as
+    # `group_keys`. Populated by publiplots-owned builders; left `None` by
+    # `_introspect` (foreign axes have no semantic dims to report).
+    group_dims: Optional[Tuple[str, ...]] = None
 
 
 @dataclass
@@ -237,4 +242,5 @@ def _introspect(ax: Axes) -> BarValueMeta:
         owner_is_publiplots=False,
         source_frame=None,
         group_keys=None,
+        group_dims=None,
     )

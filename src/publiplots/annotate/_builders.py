@@ -272,10 +272,13 @@ def build_from_barplot_call(
         x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
     )
     keys: List[str] = [categorical_axis]
+    dims: List[str] = ["cat"]
     if spec.split_hue is not None:
         keys.append(spec.split_hue)
+        dims.append("hue")
     if spec.split_hatch is not None:
         keys.append(spec.split_hatch)
+        dims.append("hatch")
 
     return BarValueMeta(
         orient=orient,
@@ -285,6 +288,7 @@ def build_from_barplot_call(
         owner_is_publiplots=True,
         source_frame=source_frame,
         group_keys=tuple(keys),
+        group_dims=tuple(dims),
     )
 
 
@@ -390,10 +394,13 @@ def build_from_stacked_barplot_call(
         x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
     )
     keys: List[str] = [categorical_axis]
+    dims: List[str] = ["cat"]
     if spec.split_hue is not None:
         keys.append(spec.split_hue)
+        dims.append("hue")
     if spec.split_hatch is not None:
         keys.append(spec.split_hatch)
+        dims.append("hatch")
 
     return BarValueMeta(
         orient=orient,
@@ -403,6 +410,7 @@ def build_from_stacked_barplot_call(
         owner_is_publiplots=True,
         source_frame=source_frame,
         group_keys=tuple(keys),
+        group_dims=tuple(dims),
     )
 
 
