@@ -911,10 +911,10 @@ def _validate_gain_levels(
     stack_col: str,
     categorical_axis: str,
     dodge_col: Optional[str],
-) -> List[object]:
+) -> None:
     """Validate that ``stack_col`` has exactly 2 unique levels and that
     both levels have at least one observation at every (cat, dodge)
-    combination. Returns the 2 levels in their category order.
+    combination.
 
     Raises ``ValueError`` on level-count mismatch or on a missing
     (cat, dodge, level) combination — gain semantics are ill-defined
@@ -952,7 +952,6 @@ def _validate_gain_levels(
                         f"at every category; missing level {lv!r} at "
                         f"{categorical_axis}={cat!r}"
                     )
-    return list(levels)
 
 
 def _draw_stacked(
