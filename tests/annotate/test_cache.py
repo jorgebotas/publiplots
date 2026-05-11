@@ -3,7 +3,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import pytest
+from matplotlib.patches import Rectangle
 
 from publiplots.annotate._cache import BarRecord, BarValueMeta, _introspect
 
@@ -83,3 +85,41 @@ def test_introspect_ignores_nan_errorbar_segments():
     for bar in meta.bars:
         assert bar.err_low is None
         assert bar.err_high is None
+
+
+def test_bar_record_has_new_public_fields():
+    rect = Rectangle((0, 0), 1, 1)
+    rec = BarRecord(
+        patch=rect,
+        value=1.0,
+        err_low=None, err_high=None,
+        hue_color=None,
+        # anchor_override is pre-existing; keep passing None for it
+        anchor_override=None,
+        category="A",
+        hue_value=None,
+        hatch_value=None,
+        draw_index=0,
+        frame_row_index=None,
+    )
+    assert rec.category == "A"
+    assert rec.hue_value is None
+    assert rec.hatch_value is None
+    assert rec.draw_index == 0
+    assert rec.frame_row_index is None
+    assert rec.anchor_override is None
+
+
+def test_bar_value_meta_has_source_frame_and_group_keys():
+    df = pd.DataFrame({"x": ["A", "B"], "y": [1.0, 2.0]})
+    meta = BarValueMeta(
+        orient="v",
+        bars=[],
+        errorbar_kind=None,
+        hue_active=False,
+        owner_is_publiplots=True,
+        source_frame=df,
+        group_keys=("x",),
+    )
+    assert meta.source_frame is df
+    assert meta.group_keys == ("x",)

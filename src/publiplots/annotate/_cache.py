@@ -7,7 +7,7 @@ reconstructs an equivalent meta by walking `ax.patches` and `ax.lines`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple
+from typing import Any, Hashable, List, Literal, Optional, Tuple
 
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
@@ -18,14 +18,35 @@ from matplotlib.patches import Rectangle
 RGBA = Tuple[float, float, float, float]
 
 
-@dataclass
+@dataclass(frozen=True)
 class BarRecord:
+    """One drawn bar plus the metadata annotate strategies need.
+
+    Fields:
+        patch: the matplotlib Rectangle drawn for this bar.
+        value: aggregated bar height (orient='v') or width ('h'); NaN-possible.
+        err_low, err_high: errorbar extents on the value axis, if present.
+        hue_color: the palette color assigned to this bar (RGBA).
+        anchor_override: if set, overrides the caller's anchor for this bar
+            (used by stacked/gain barplots to pin labels inside-vs-outside).
+        category: the x-axis group key (None on foreign axes).
+        hue_value: the hue group key, if hue is active (else None).
+        hatch_value: the hatch group key, if hatch is active (else None).
+        draw_index: 0-based position in the draw order.
+        frame_row_index: index of a representative source-DataFrame row for
+            this group (first row in the group); None on foreign axes.
+    """
     patch: Rectangle
     value: float
     err_low: Optional[float]
     err_high: Optional[float]
     hue_color: Optional[RGBA]
     anchor_override: Optional[str] = None
+    category: Optional[Hashable] = None
+    hue_value: Optional[Hashable] = None
+    hatch_value: Optional[Hashable] = None
+    draw_index: int = 0
+    frame_row_index: Optional[int] = None
 
 
 @dataclass
@@ -35,6 +56,8 @@ class BarValueMeta:
     errorbar_kind: Optional[str]
     hue_active: bool
     owner_is_publiplots: bool
+    source_frame: Optional[Any] = None          # pandas DataFrame (kept Any to avoid import)
+    group_keys: Optional[Tuple[str, ...]] = None
 
 
 @dataclass
