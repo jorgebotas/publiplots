@@ -228,3 +228,10 @@ def test_builder_requires_source_frame_kwarg():
             categorical_axis="cat", palette=None, errorbar=None,
             # source_frame deliberately omitted
         )
+
+
+def test_bar_record_is_publicly_importable():
+    """BarRecord is part of the public surface for kind='bar_custom' callables."""
+    from publiplots.annotate import BarRecord as PublicBarRecord
+    from publiplots.annotate._cache import BarRecord as PrivateBarRecord
+    assert PublicBarRecord is PrivateBarRecord
