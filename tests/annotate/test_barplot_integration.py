@@ -313,3 +313,18 @@ def test_barplot_annotate_single_sample_groups_no_nan_positions():
         x, y = t.get_position()
         assert not math.isnan(float(x)), f"NaN x for label {t.get_text()!r}"
         assert not math.isnan(float(y)), f"NaN y for label {t.get_text()!r}"
+
+
+def test_barplot_annotate_bar_custom_inline():
+    """pp.barplot(data, x, y, annotate={'kind': 'bar_custom', 'labels': 'n'})."""
+    df = pd.DataFrame({
+        "cat": pd.Categorical(["A", "B", "C"], categories=["A", "B", "C"]),
+        "value": [1.0, 2.0, 3.0],
+        "n": [12, 34, 56],
+    })
+    ax = pp.barplot(
+        data=df, x="cat", y="value",
+        annotate={"kind": "bar_custom", "labels": "n", "fmt": "n={}"},
+    )
+    labels = [t.get_text() for t in ax.texts]
+    assert labels == ["n=12", "n=34", "n=56"]
