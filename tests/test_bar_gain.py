@@ -165,3 +165,33 @@ def test_gain_annotate_tie_single_label():
                     annotate={"fmt": ".2f"})
     assert len(ax.texts) == 1
     assert ax.texts[0].get_text() == "0.50"
+
+
+def test_gain_missing_level_at_cat_raises():
+    # "Recall" only has Baseline data — Proposed missing there.
+    df = pd.DataFrame({
+        "metric": pd.Categorical(["AUC", "AUC", "Recall"]),
+        "model": pd.Categorical(["Baseline", "Proposed", "Baseline"],
+                                categories=["Baseline", "Proposed"]),
+        "score": [0.80, 0.90, 0.88],
+    })
+    with pytest.raises(ValueError, match="missing"):
+        pp.barplot(data=df, x="metric", y="score", hue="model",
+                   multiple="gain", errorbar=None)
+
+
+def test_gain_without_hue_or_hatch_raises():
+    df = pd.DataFrame({
+        "cat": pd.Categorical(["A", "B", "C"]),
+        "val": [1.0, 2.0, 3.0],
+    })
+    with pytest.raises(ValueError, match="stack'\\|'fill"):
+        pp.barplot(data=df, x="cat", y="val",
+                   multiple="gain", errorbar=None)
+
+
+def test_gain_with_errorbar_warns():
+    df = _simple_gain_df()
+    with pytest.warns(UserWarning, match="errorbars"):
+        pp.barplot(data=df, x="metric", y="score", hue="model",
+                   multiple="gain", errorbar="se")
