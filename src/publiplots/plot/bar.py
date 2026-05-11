@@ -1085,23 +1085,14 @@ def _draw_stacked(
     if multiple == "gain":
         levels = _categories_in_draw_order(data[stack_col])
         l0, l1 = levels[0], levels[1]
-        k = len(dodge_levels)
-        slot = max(1.0 - gap, 0.0)
-        sub_width = slot / k
 
+        # means dict was already populated above; keys are (cat, dodge_level,
+        # stack_level). _validate_gain_levels guarantees every (cat, d_lv, l0)
+        # and (cat, d_lv, l1) combination has data, so lookups won't return None.
         for cat in cats:
             for d_idx, d_lv in enumerate(dodge_levels):
-                # compute v0, v1 for the 2 stack levels at this (cat, d_lv)
-                m0 = data[categorical_axis] == cat
-                m0 = m0 & (data[stack_col] == l0)
-                if dodge_col is not None:
-                    m0 = m0 & (data[dodge_col] == d_lv)
-                m1 = data[categorical_axis] == cat
-                m1 = m1 & (data[stack_col] == l1)
-                if dodge_col is not None:
-                    m1 = m1 & (data[dodge_col] == d_lv)
-                v0 = float(data.loc[m0, value_col].mean())
-                v1 = float(data.loc[m1, value_col].mean())
+                v0 = means[(cat, d_lv, l0)]
+                v1 = means[(cat, d_lv, l1)]
 
                 pos_cat = cat_to_pos[cat]
                 if dodge_col is not None:
