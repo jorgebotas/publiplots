@@ -241,7 +241,7 @@ def build_from_stacked_barplot_call(
     categorical_axis: str,
     palette: Optional[Dict],
     hatch: Optional[str] = None,
-    multiple: str = "stack",
+    multiple: Literal["stack", "fill", "gain"] = "stack",
 ) -> BarValueMeta:
     """Build a ``BarValueMeta`` paired with a stacked bar plot's Rectangles.
 
@@ -251,6 +251,14 @@ def build_from_stacked_barplot_call(
     aggregate row yielded by ``BarSplitSpec.iter_draw_order`` in the same order
     the plotter painted them, so hue color resolution is deterministic and
     does not rely on color-matching heuristics.
+
+    For ``multiple="gain"``, the drawing path at `_draw_stacked` in
+    `plot/bar.py` emits the base segment with ``bottom=0`` and the top
+    segment with ``bottom=lo``. This function inverts that geometry:
+    when ``rect.get_y() > 0`` the rect is a top segment and the value
+    labeled is ``y + height`` (the winner's absolute total); otherwise
+    (base segment or tie) the label value is ``rect.get_height()``
+    itself. Horizontal orient mirrors with ``x`` / ``width``.
     """
     orient: Literal["v", "h"] = "v" if categorical_axis == x else "h"
 
