@@ -140,3 +140,28 @@ def test_gain_tie_uses_hue_order_first_color():
     assert len(rects) == 1
     assert tuple(rects[0].get_facecolor()[:3]) == to_rgba("#ff0000")[:3]
     assert rects[0].get_height() == pytest.approx(0.5)
+
+
+def test_gain_annotate_labels_show_absolute_values():
+    df = _simple_gain_df()
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None,
+                    annotate={"fmt": ".2f"})
+    # 6 rects → 6 labels. Labels show absolute values (0.80, 0.90, 0.75,
+    # 0.82, 0.85, 0.88) — never the delta (0.10, 0.07, 0.03).
+    assert len(ax.texts) == 6
+    texts = {t.get_text() for t in ax.texts}
+    assert texts == {"0.80", "0.90", "0.75", "0.82", "0.85", "0.88"}
+
+
+def test_gain_annotate_tie_single_label():
+    df = pd.DataFrame({
+        "metric": pd.Categorical(["Tied"] * 2),
+        "model": pd.Categorical(["A", "B"], categories=["A", "B"]),
+        "score": [0.5, 0.5],
+    })
+    ax = pp.barplot(data=df, x="metric", y="score", hue="model",
+                    multiple="gain", errorbar=None,
+                    annotate={"fmt": ".2f"})
+    assert len(ax.texts) == 1
+    assert ax.texts[0].get_text() == "0.50"

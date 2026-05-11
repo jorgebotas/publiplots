@@ -241,6 +241,7 @@ def build_from_stacked_barplot_call(
     categorical_axis: str,
     palette: Optional[Dict],
     hatch: Optional[str] = None,
+    multiple: str = "stack",
 ) -> BarValueMeta:
     """Build a ``BarValueMeta`` paired with a stacked bar plot's Rectangles.
 
@@ -265,7 +266,24 @@ def build_from_stacked_barplot_call(
 
     bars: List[BarRecord] = []
     for rect, row in zip(rects, agg):
-        value = rect.get_height() if orient == "v" else rect.get_width()
+        if multiple == "gain":
+            # Absolute values: base segment's height is the loser's total;
+            # top segment's cumulative (y + height) is the winner's total.
+            # For ties we get a single rect whose height is already the
+            # absolute value.
+            if orient == "v":
+                if rect.get_y() > 0:
+                    value = rect.get_y() + rect.get_height()  # top: winner abs
+                else:
+                    value = rect.get_height()                  # base or tie
+            else:
+                if rect.get_x() > 0:
+                    value = rect.get_x() + rect.get_width()
+                else:
+                    value = rect.get_width()
+        else:
+            value = rect.get_height() if orient == "v" else rect.get_width()
+
         hue_color: Optional[Tuple[float, float, float, float]] = None
         if palette is not None:
             key = row.get("hue_value")

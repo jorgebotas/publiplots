@@ -487,6 +487,7 @@ def barplot(
             ax._publiplots_bar_meta = build_from_stacked_barplot_call(
                 ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
                 categorical_axis=categorical_axis, palette=palette,
+                multiple=multiple,
             )
             from publiplots.annotate import annotate as _annotate_fn
             opts = dict(annotate) if isinstance(annotate, dict) else {}
