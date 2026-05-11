@@ -219,7 +219,7 @@ def barplot(
         Order of hatch levels. Under ``"stack"`` / ``"fill"`` with
         ``hatch`` driving the stack, determines stack order
         bottom-to-top.
-    multiple : {"dodge", "stack", "fill"}, default="dodge"
+    multiple : {"dodge", "stack", "fill", "gain"}, default="dodge"
         How to arrange bars across the secondary (hue / hatch)
         categorical dimension within each category of the primary axis.
 
@@ -235,6 +235,16 @@ def barplot(
         - ``"fill"``: stack and then normalize so every stack sums to
           1.0 (100%-stacked bars — good for showing proportions whose
           totals differ across categories).
+        - ``"gain"``: pairwise comparison for exactly 2 levels. Per
+          category: the bottom segment shows ``min`` of the two values
+          (colored by the losing level); the top segment shows
+          ``max - min`` (colored by the winning level). Bar top = max.
+          Who wins can flip across categories — the base color flips
+          accordingly. Use for summary metrics that don't compose by
+          sum (AUC, accuracy, F1); for additive quantities use
+          ``"stack"``. Ties render as a single bar in the first
+          level's color. Missing one of the two levels at some
+          category raises ``ValueError``.
 
         Stacking requires at least one of ``hue`` / ``hatch`` to be set
         and distinct from the categorical axis. If *neither* is set,
@@ -268,11 +278,14 @@ def barplot(
     ------
     ValueError
         If neither ``x`` nor ``y`` is categorical; if ``multiple`` is
-        not one of ``"dodge"``, ``"stack"``, ``"fill"``; if
-        ``multiple="stack"|"fill"`` is requested without a stack column
-        (``hue`` / ``hatch``); if ``multiple="stack"|"fill"`` is
-        requested with both ``hue`` and ``hatch`` set as distinct
-        non-categorical columns but no ``stack_by=`` was provided.
+        not one of ``"dodge"``, ``"stack"``, ``"fill"``, ``"gain"``;
+        if ``multiple="stack"|"fill"|"gain"`` is requested without a
+        stack column (``hue`` / ``hatch``); if
+        ``multiple="stack"|"fill"|"gain"`` is requested with both
+        ``hue`` and ``hatch`` set as distinct non-categorical columns
+        but no ``stack_by=`` was provided; if ``multiple="gain"`` is
+        requested with a stack column that has ≠ 2 levels or a level
+        missing at some category.
     TypeError
         If ``figsize`` is passed (publiplots owns figure geometry via
         :func:`publiplots.subplots`).
@@ -350,6 +363,15 @@ def barplot(
     >>> ax = pp.barplot(
     ...     data=df, x="count", y="cohort", hue="stage",
     ...     multiple="stack", errorbar=None,
+    ... )
+
+    Gain / improvement bars (pairwise comparison of 2 levels):
+
+    >>> ax = pp.barplot(
+    ...     data=df, x="metric", y="score", hue="model",
+    ...     multiple="gain", errorbar=None,
+    ...     palette={"Baseline": "#8E8EC1", "Proposed": "#60a8a8"},
+    ...     annotate={"fmt": ".2f"},
     ... )
 
     Two categoricals: stack one, dodge the other (``stack_by``):

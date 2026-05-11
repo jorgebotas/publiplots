@@ -703,3 +703,39 @@ ax = pp.barplot(
     ylabel="Count (summed)",
 )
 pp.show()
+
+# %%
+# Gain / Improvement Bars — ``multiple="gain"``
+# ---------------------------------------------
+# For comparing exactly two conditions whose values don't compose by
+# sum (AUC, accuracy, F1, expression ceiling). Per category: bottom
+# segment = ``min`` of the two values (loser color), top segment =
+# ``max - min`` (winner color). Bar top = ``max``. Who wins can flip
+# across categories — the base color flips accordingly.
+#
+# In the figure below, Proposed wins on AUC and F1 (teal top); Baseline
+# wins on Recall (purple top). Annotate shows **absolute values**
+# (loser total on the base, winner total on the top) — not the delta.
+
+metric_df = pd.DataFrame({
+    "metric": pd.Categorical(
+        ["AUC", "F1", "Recall"] * 2,
+        categories=["AUC", "F1", "Recall"],
+    ),
+    "model": pd.Categorical(
+        ["Baseline"] * 3 + ["Proposed"] * 3,
+        categories=["Baseline", "Proposed"],
+    ),
+    "score": [0.80, 0.75, 0.88, 0.90, 0.82, 0.85],
+})
+
+ax = pp.barplot(
+    data=metric_df,
+    x="metric", y="score", hue="model",
+    multiple="gain", errorbar=None,
+    palette={"Baseline": "#8E8EC1", "Proposed": "#60a8a8"},
+    annotate={"fmt": ".2f"},
+    title='multiple="gain" — pairwise metric comparison',
+    ylabel="Score",
+)
+pp.show()

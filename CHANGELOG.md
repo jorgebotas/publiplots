@@ -39,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     dodge and stacked paths — previously the legend ignored the
     ordering kwargs in favor of palette-resolution order.
 
+- `pp.barplot(multiple="gain")` — pairwise comparison bars for exactly
+  two levels. Per category: bottom segment = `min` of the two values
+  (loser color), top segment = `max - min` (winner color). Bar top
+  = `max`. Annotate shows absolute values; ties render as a single
+  bar; missing-level-at-a-category raises `ValueError`. Works
+  side-by-side with a second non-cat column via `stack_by=`. Useful
+  for summary metrics (AUC, accuracy, F1) where additive stacking is
+  semantically wrong.
+
 ## [0.10.8] - 2026-05-10
 
 ### Fixed
