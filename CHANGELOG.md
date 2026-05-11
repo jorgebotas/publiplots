@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.9] - 2026-05-11
+
 ### Added
 
 - `pp.barplot(multiple="stack"|"fill", stack_by=...)` — stacked and
@@ -47,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   side-by-side with a second non-cat column via `stack_by=`. Useful
   for summary metrics (AUC, accuracy, F1) where additive stacking is
   semantically wrong.
+  - `annotate=True` defaults to **mixed per-segment anchoring** on
+    gain: winner label floats above the bar top (`anchor="outside"`),
+    loser label sits inside the base segment (`anchor="inside"`), tie
+    label sits inside the single rect. Pass `annotate={"anchor": ...}`
+    to override uniformly. Stack/fill defaults stay `"inside"` for
+    all segments.
+  - New `anchor_override` field on `BarRecord` lets annotate strategies
+    resolve anchor per-bar (consumed by the gain-mode meta builder;
+    transparent to existing callers).
 
 ## [0.10.8] - 2026-05-10
 
@@ -211,6 +222,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls in `examples/plots/plot_12_heatmap.py` — auto-layout positions
   the title correctly regardless (PR #128).
 
+[0.10.9]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.9
 [0.10.8]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.8
 [0.10.7]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.7
 [0.10.6]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.6
