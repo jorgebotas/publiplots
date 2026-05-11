@@ -241,6 +241,7 @@ def build_from_stacked_barplot_call(
     categorical_axis: str,
     palette: Optional[Dict],
     hatch: Optional[str] = None,
+    multiple: Literal["stack", "fill", "gain"] = "stack",
 ) -> BarValueMeta:
     """Build a ``BarValueMeta`` paired with a stacked bar plot's Rectangles.
 
@@ -250,6 +251,14 @@ def build_from_stacked_barplot_call(
     aggregate row yielded by ``BarSplitSpec.iter_draw_order`` in the same order
     the plotter painted them, so hue color resolution is deterministic and
     does not rely on color-matching heuristics.
+
+    For ``multiple="gain"``, the drawing path at `_draw_stacked` in
+    `plot/bar.py` emits the base segment with ``bottom=0`` and the top
+    segment with ``bottom=lo``. This function inverts that geometry:
+    when ``rect.get_y() > 0`` the rect is a top segment and the value
+    labeled is ``y + height`` (the winner's absolute total); otherwise
+    (base segment or tie) the label value is ``rect.get_height()``
+    itself. Horizontal orient mirrors with ``x`` / ``width``.
     """
     orient: Literal["v", "h"] = "v" if categorical_axis == x else "h"
 
@@ -265,7 +274,29 @@ def build_from_stacked_barplot_call(
 
     bars: List[BarRecord] = []
     for rect, row in zip(rects, agg):
-        value = rect.get_height() if orient == "v" else rect.get_width()
+        anchor_override: Optional[str] = None
+        if multiple == "gain":
+            # Absolute values: base segment's height is the loser's total;
+            # top segment's cumulative (y + height) is the winner's total.
+            # For ties we get a single rect whose height is already the
+            # absolute value.
+            if orient == "v":
+                if rect.get_y() > 0:
+                    value = rect.get_y() + rect.get_height()  # top: winner abs
+                    anchor_override = "outside"                # winner label floats above
+                else:
+                    value = rect.get_height()                  # base or tie
+                    anchor_override = "inside"                 # loser label inside base
+            else:
+                if rect.get_x() > 0:
+                    value = rect.get_x() + rect.get_width()
+                    anchor_override = "outside"
+                else:
+                    value = rect.get_width()
+                    anchor_override = "inside"
+        else:
+            value = rect.get_height() if orient == "v" else rect.get_width()
+
         hue_color: Optional[Tuple[float, float, float, float]] = None
         if palette is not None:
             key = row.get("hue_value")
@@ -279,6 +310,7 @@ def build_from_stacked_barplot_call(
             err_low=None,
             err_high=None,
             hue_color=hue_color,
+            anchor_override=anchor_override,
         ))
     return BarValueMeta(
         orient=orient,

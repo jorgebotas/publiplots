@@ -59,7 +59,7 @@ def barplot(
     order: Optional[List[str]] = None,
     hue_order: Optional[List[str]] = None,
     hatch_order: Optional[List[str]] = None,
-    multiple: Literal["dodge", "stack", "fill"] = "dodge",
+    multiple: Literal["dodge", "stack", "fill", "gain"] = "dodge",
     stack_by: Optional[Literal["hue", "hatch"]] = None,
     **kwargs
 ) -> Axes:
@@ -219,7 +219,7 @@ def barplot(
         Order of hatch levels. Under ``"stack"`` / ``"fill"`` with
         ``hatch`` driving the stack, determines stack order
         bottom-to-top.
-    multiple : {"dodge", "stack", "fill"}, default="dodge"
+    multiple : {"dodge", "stack", "fill", "gain"}, default="dodge"
         How to arrange bars across the secondary (hue / hatch)
         categorical dimension within each category of the primary axis.
 
@@ -235,6 +235,16 @@ def barplot(
         - ``"fill"``: stack and then normalize so every stack sums to
           1.0 (100%-stacked bars — good for showing proportions whose
           totals differ across categories).
+        - ``"gain"``: pairwise comparison for exactly 2 levels. Per
+          category: the bottom segment shows ``min`` of the two values
+          (colored by the losing level); the top segment shows
+          ``max - min`` (colored by the winning level). Bar top = max.
+          Who wins can flip across categories — the base color flips
+          accordingly. Use for summary metrics that don't compose by
+          sum (AUC, accuracy, F1); for additive quantities use
+          ``"stack"``. Ties render as a single bar in the first
+          level's color. Missing one of the two levels at some
+          category raises ``ValueError``.
 
         Stacking requires at least one of ``hue`` / ``hatch`` to be set
         and distinct from the categorical axis. If *neither* is set,
@@ -268,11 +278,14 @@ def barplot(
     ------
     ValueError
         If neither ``x`` nor ``y`` is categorical; if ``multiple`` is
-        not one of ``"dodge"``, ``"stack"``, ``"fill"``; if
-        ``multiple="stack"|"fill"`` is requested without a stack column
-        (``hue`` / ``hatch``); if ``multiple="stack"|"fill"`` is
-        requested with both ``hue`` and ``hatch`` set as distinct
-        non-categorical columns but no ``stack_by=`` was provided.
+        not one of ``"dodge"``, ``"stack"``, ``"fill"``, ``"gain"``;
+        if ``multiple="stack"|"fill"|"gain"`` is requested without a
+        stack column (``hue`` / ``hatch``); if
+        ``multiple="stack"|"fill"|"gain"`` is requested with both
+        ``hue`` and ``hatch`` set as distinct non-categorical columns
+        but no ``stack_by=`` was provided; if ``multiple="gain"`` is
+        requested with a stack column that has ≠ 2 levels or a level
+        missing at some category.
     TypeError
         If ``figsize`` is passed (publiplots owns figure geometry via
         :func:`publiplots.subplots`).
@@ -350,6 +363,15 @@ def barplot(
     >>> ax = pp.barplot(
     ...     data=df, x="count", y="cohort", hue="stage",
     ...     multiple="stack", errorbar=None,
+    ... )
+
+    Gain / improvement bars (pairwise comparison of 2 levels):
+
+    >>> ax = pp.barplot(
+    ...     data=df, x="metric", y="score", hue="model",
+    ...     multiple="gain", errorbar=None,
+    ...     palette={"Baseline": "#8E8EC1", "Proposed": "#60a8a8"},
+    ...     annotate={"fmt": ".2f"},
     ... )
 
     Two categoricals: stack one, dodge the other (``stack_by``):
@@ -449,13 +471,13 @@ def barplot(
     split_by_hatch = _split.split_hatch is not None
     double_split = _split.split_hue is not None and _split.split_hatch is not None
 
-    if multiple not in ("dodge", "stack", "fill"):
+    if multiple not in ("dodge", "stack", "fill", "gain"):
         raise ValueError(
-            "barplot: multiple must be one of 'dodge', 'stack', 'fill'; "
-            f"got {multiple!r}"
+            "barplot: multiple must be one of 'dodge', 'stack', 'fill', "
+            f"'gain'; got {multiple!r}"
         )
 
-    if multiple in ("stack", "fill"):
+    if multiple in ("stack", "fill", "gain"):
         tracker = ArtistTracker(ax)
         _draw_stacked(
             ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
@@ -487,10 +509,12 @@ def barplot(
             ax._publiplots_bar_meta = build_from_stacked_barplot_call(
                 ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
                 categorical_axis=categorical_axis, palette=palette,
+                multiple=multiple,
             )
             from publiplots.annotate import annotate as _annotate_fn
             opts = dict(annotate) if isinstance(annotate, dict) else {}
-            opts.setdefault("anchor", "inside")
+            if multiple != "gain":
+                opts.setdefault("anchor", "inside")
             _annotate_fn(ax, kind="bar_values", **opts)
         return ax
 
@@ -906,6 +930,54 @@ def _legend(
 # =============================================================================
 
 
+def _validate_gain_levels(
+    data: pd.DataFrame,
+    stack_col: str,
+    categorical_axis: str,
+    dodge_col: Optional[str],
+) -> None:
+    """Validate that ``stack_col`` has exactly 2 unique levels and that
+    both levels have at least one observation at every (cat, dodge)
+    combination.
+
+    Raises ``ValueError`` on level-count mismatch or on a missing
+    (cat, dodge, level) combination — gain semantics are ill-defined
+    when a level is absent at some cat, and the caller cannot compute
+    a meaningful ``min`` / ``max`` pair.
+    """
+    levels = _categories_in_draw_order(data[stack_col])
+    if len(levels) != 2:
+        raise ValueError(
+            f"barplot: multiple='gain' requires exactly 2 levels on "
+            f"{stack_col!r}; got {len(levels)} ({list(levels)!r})"
+        )
+    cats = _categories_in_draw_order(data[categorical_axis])
+    dodge_levels = (
+        _categories_in_draw_order(data[dodge_col])
+        if dodge_col is not None else [None]
+    )
+    for cat in cats:
+        for d_lv in dodge_levels:
+            for lv in levels:
+                mask = data[categorical_axis] == cat
+                mask = mask & (data[stack_col] == lv)
+                if dodge_col is not None:
+                    mask = mask & (data[dodge_col] == d_lv)
+                if not mask.any():
+                    if dodge_col is not None:
+                        raise ValueError(
+                            f"barplot: multiple='gain' requires both "
+                            f"levels at every (category, dodge) combination; "
+                            f"missing level {lv!r} at ({categorical_axis}="
+                            f"{cat!r}, {dodge_col}={d_lv!r})"
+                        )
+                    raise ValueError(
+                        f"barplot: multiple='gain' requires both levels "
+                        f"at every category; missing level {lv!r} at "
+                        f"{categorical_axis}={cat!r}"
+                    )
+
+
 def _draw_stacked(
     *,
     ax: Axes,
@@ -983,6 +1055,14 @@ def _draw_stacked(
     stack_col = split.split_hue if stack_is_hue else split.split_hatch
     dodge_col = split.split_hatch if stack_is_hue else split.split_hue
 
+    if multiple == "gain":
+        _validate_gain_levels(
+            data=data,
+            stack_col=stack_col,
+            categorical_axis=categorical_axis,
+            dodge_col=dodge_col,
+        )
+
     stack_levels = _categories_in_draw_order(data[stack_col])
     dodge_levels = (
         _categories_in_draw_order(data[dodge_col]) if dodge_col is not None else [None]
@@ -1025,6 +1105,75 @@ def _draw_stacked(
     sub_width = slot / k
 
     cum: Dict[Tuple[object, Optional[object]], float] = {}
+
+    if multiple == "gain":
+        l0, l1 = stack_levels[0], stack_levels[1]
+
+        # means dict was already populated above; keys are (cat, dodge_level,
+        # stack_level). _validate_gain_levels guarantees every (cat, d_lv, l0)
+        # and (cat, d_lv, l1) combination has data, so lookups won't return None.
+        for cat in cats:
+            for d_idx, d_lv in enumerate(dodge_levels):
+                v0 = means[(cat, d_lv, l0)]
+                v1 = means[(cat, d_lv, l1)]
+
+                pos_cat = cat_to_pos[cat]
+                if dodge_col is not None:
+                    d_offset = -slot / 2 + sub_width / 2 + d_idx * sub_width
+                else:
+                    d_offset = 0.0
+                pos = pos_cat + d_offset
+
+                if v0 == v1:
+                    # Tie: one rect only, colored by levels[0].
+                    face = palette.get(l0, color) if palette else color
+                    edge = edgecolor if edgecolor is not None else face
+                    if split.orient == "v":
+                        ax.bar(pos, v0, bottom=0.0, width=sub_width,
+                               color=face, edgecolor=edge,
+                               linewidth=linewidth)
+                    else:
+                        ax.barh(pos, v0, left=0.0, height=sub_width,
+                                color=face, edgecolor=edge,
+                                linewidth=linewidth)
+                    continue
+
+                # Distinct: sort into (lo_level, lo_val) + (hi_level, hi_val)
+                if v0 < v1:
+                    lo_lv, lo_v, hi_lv, hi_v = l0, v0, l1, v1
+                else:
+                    lo_lv, lo_v, hi_lv, hi_v = l1, v1, l0, v0
+
+                lo_face = palette.get(lo_lv, color) if palette else color
+                hi_face = palette.get(hi_lv, color) if palette else color
+                lo_edge = edgecolor if edgecolor is not None else lo_face
+                hi_edge = edgecolor if edgecolor is not None else hi_face
+
+                if split.orient == "v":
+                    ax.bar(pos, lo_v, bottom=0.0, width=sub_width,
+                           color=lo_face, edgecolor=lo_edge,
+                           linewidth=linewidth)
+                    ax.bar(pos, hi_v - lo_v, bottom=lo_v, width=sub_width,
+                           color=hi_face, edgecolor=hi_edge,
+                           linewidth=linewidth)
+                else:
+                    ax.barh(pos, lo_v, left=0.0, height=sub_width,
+                            color=lo_face, edgecolor=lo_edge,
+                            linewidth=linewidth)
+                    ax.barh(pos, hi_v - lo_v, left=lo_v, height=sub_width,
+                            color=hi_face, edgecolor=hi_edge,
+                            linewidth=linewidth)
+
+        # tick + invert logic identical to the stack/fill tail below
+        if split.orient == "v":
+            ax.set_xticks(list(range(len(cats))))
+            ax.set_xticklabels([str(c) for c in cats])
+        else:
+            ax.set_yticks(list(range(len(cats))))
+            ax.set_yticklabels([str(c) for c in cats])
+            if ax.get_ylim()[0] < ax.get_ylim()[1]:
+                ax.invert_yaxis()
+        return
 
     # Iteration order for double-dim matches the dodge path's draw order
     # (split.iter_draw_order) so the annotate builder pairs patches to
