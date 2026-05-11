@@ -234,3 +234,122 @@ pp.boxplot(
     title="boxplot + rotation=90°",
 )
 pp.show()
+
+
+# %%
+# Custom labels: ``kind="bar_custom"``
+# ====================================
+#
+# The ``bar_custom`` strategy labels each bar with a user-supplied string
+# rather than the bar's own value. Use it to annotate an AUC bar with its
+# sample count, stamp pathway names on an enrichment bar plot, or render
+# any per-bar string derived from the source DataFrame.
+#
+# Labels come from either a DataFrame column name (aligned by the same
+# ``(x, hue, hatch)`` group keys ``pp.barplot`` used) or a callable that
+# receives each ``BarRecord`` and returns a string.
+
+# %%
+# Column source: AUC with per-bar ``n``
+# -------------------------------------
+# A classic "AUC + sample count" pattern. ``labels="n"`` picks up the
+# ``n`` column from the DataFrame that was plotted; ``fmt="n={:,}"``
+# formats each value with a thousands separator.
+auc_df = pd.DataFrame({
+    "method": pd.Categorical(
+        ["lemur", "pca", "scvi"],
+        categories=["lemur", "pca", "scvi"],
+    ),
+    "auc": [0.87, 0.72, 0.81],
+    "n":   [1204, 845, 987],
+})
+ax = pp.barplot(data=auc_df, x="method", y="auc",
+                title="AUC bars annotated with n=")
+pp.annotate(ax, kind="bar_custom", labels="n", fmt="n={:,}")
+pp.show()
+
+# %%
+# Callable source: signed percent delta
+# -------------------------------------
+# A ``labels=`` callable receives each ``BarRecord`` and returns the
+# label string. Use it when the label is a function of the bar's own
+# value (or anything else you can compute per-bar).
+delta_df = pd.DataFrame({
+    "cohort": pd.Categorical(
+        ["day-10", "day-20", "day-30"],
+        categories=["day-10", "day-20", "day-30"],
+    ),
+    "pct_change": [-12.3, 4.1, -7.8],
+})
+ax = pp.barplot(
+    data=delta_df, x="cohort", y="pct_change",
+    title="signed delta: labels=lambda r: f'{r.value:+.1f}%'",
+)
+pp.annotate(ax, kind="bar_custom",
+            labels=lambda r: f"{r.value:+.1f}%")
+pp.show()
+
+# %%
+# Callable source: per-bar categorical string
+# -------------------------------------------
+# The callable has access to ``r.frame_row_index`` (the position in the
+# source DataFrame of the first row matching this bar's group), so you
+# can look up arbitrary sibling columns — here, a pathway name that we
+# truncate for display.
+pathway_df = pd.DataFrame({
+    "rank":    pd.Categorical([1, 2, 3, 4, 5]),
+    "score":   [0.89, 0.83, 0.79, 0.75, 0.71],
+    "pathway": [
+        "glycolysis",
+        "tca cycle",
+        "oxphos",
+        "pentose phosphate",
+        "fatty-acid beta-oxidation",
+    ],
+})
+ax = pp.barplot(data=pathway_df, x="rank", y="score",
+                title="pathway names per bar")
+pp.annotate(
+    ax, kind="bar_custom",
+    labels=lambda r: pathway_df.iloc[r.frame_row_index]["pathway"][:20],
+    fontsize=8, rotation=30,
+)
+pp.show()
+
+# %%
+# Column source with hue
+# ----------------------
+# Label alignment follows the same dodge rules as ``pp.barplot``: columns
+# are looked up by the ``(category, hue, hatch)`` group key, so labels
+# are paired with the correct bar even when hue is active.
+hue_df = pd.DataFrame({
+    "method": pd.Categorical(
+        ["lemur", "lemur", "pca", "pca", "scvi", "scvi"],
+        categories=["lemur", "pca", "scvi"],
+    ),
+    "fold":   pd.Categorical(
+        ["f0", "f1", "f0", "f1", "f0", "f1"],
+        categories=["f0", "f1"],
+    ),
+    "auc":    [0.87, 0.85, 0.72, 0.74, 0.81, 0.79],
+    "n":      [1204, 1198, 845, 852, 987, 991],
+})
+ax = pp.barplot(
+    data=hue_df, x="method", y="auc", hue="fold",
+    title="AUC + n with hue",
+)
+pp.annotate(ax, kind="bar_custom", labels="n", fmt="n={:,}")
+pp.show()
+
+# %%
+# Inline via ``pp.barplot(annotate={"kind": "bar_custom", ...})``
+# ---------------------------------------------------------------
+# For brevity, pass the strategy and its options directly to
+# ``pp.barplot`` via the ``annotate=`` kwarg — the plotter dispatches
+# to ``bar_custom`` internally.
+ax = pp.barplot(
+    data=auc_df, x="method", y="auc",
+    annotate={"kind": "bar_custom", "labels": "n", "fmt": "n={:,}"},
+    title="inline: annotate={'kind': 'bar_custom', 'labels': 'n', ...}",
+)
+pp.show()
