@@ -65,45 +65,73 @@ class BarValueMeta:
     group_dims: Optional[Tuple[str, ...]] = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class PointRecord:
     """A single point's anchor + aggregated value + errorbar extents.
 
     Unlike BarRecord, a point has no matplotlib artist for the *mark itself*
     (seaborn merges all points of one hue into a single Line2D). We track
     the data-coord position directly and the palette color that was used.
+
+    Fields:
+        xy: (x, y) in data coords; y is the value for orient="v".
+        value: aggregated estimate (mean/median); NaN-possible.
+        err_low, err_high: errorbar extents on the value axis, if present.
+        hue_color: palette color assigned by pointplot.
+        category: x-axis group key (None on foreign axes).
+        hue_value: hue group key if hue is active (else None).
+        hatch_value: hatch group key if hatch is active (else None). Points
+            don't dodge on hatch today, so this is always None; the field
+            exists for shape-symmetry with BarRecord.
+        draw_index: 0-based position in the draw order.
+        frame_row_index: position of the first matching source-DataFrame row.
     """
-    xy: Tuple[float, float]                # (x, y) in data coords; y is the value for orient="v"
-    value: float                           # aggregated estimate (mean/median)
-    err_low: Optional[float]               # lower errorbar extent on the value axis
-    err_high: Optional[float]              # upper errorbar extent on the value axis
-    hue_color: Optional[RGBA]              # palette color assigned by pointplot
+    xy: Tuple[float, float]
+    value: float
+    err_low: Optional[float]
+    err_high: Optional[float]
+    hue_color: Optional[RGBA]
+    category: Optional[Hashable] = None
+    hue_value: Optional[Hashable] = None
+    hatch_value: Optional[Hashable] = None
+    draw_index: int = 0
+    frame_row_index: Optional[int] = None
 
 
 @dataclass
 class PointValueMeta:
-    orient: Literal["v", "h"]              # "v" = value on y-axis (common pointplot)
+    orient: Literal["v", "h"]
     points: List[PointRecord]
     errorbar_kind: Optional[str]
     hue_active: bool
     owner_is_publiplots: bool
+    source_frame: Optional[Any] = None
+    group_keys: Optional[Tuple[str, ...]] = None
+    group_dims: Optional[Tuple[str, ...]] = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class BoxStatsRecord:
-    """Statistics computed for a single box.
+    """Statistics computed for a single box. Same field set as PointRecord
+    plus box-specific center_pos / cat_half_width / stats dict.
 
-    `center_pos` is the categorical-axis coordinate of the box's center
-    (e.g. x for orient="v"). `cat_half_width` is the half-extent of the
-    drawn artist on the same axis (in data coords) — used by the strategy
-    to place `left`/`right`-anchored labels just past the box edge.
-    `stats` is a dict mapping stat name to its value-axis coordinate,
-    populated only for the stats the caller asked to label.
+    Fields:
+        center_pos: categorical-axis coordinate of the box's center.
+        cat_half_width: half-extent on the categorical axis in data coords.
+        stats: dict mapping stat name to its value-axis coordinate.
+        hue_color: palette color assigned by boxplot/violinplot.
+        category/hue_value/hatch_value/draw_index/frame_row_index: same
+            semantics as in BarRecord; populated by the builder.
     """
-    center_pos: float                           # x for orient="v", y for "h"
-    cat_half_width: float                       # half-width on categorical axis (data coords)
-    stats: dict                                 # {"median": y, "q1": y, ...}
+    center_pos: float
+    cat_half_width: float
+    stats: dict
     hue_color: Optional[RGBA]
+    category: Optional[Hashable] = None
+    hue_value: Optional[Hashable] = None
+    hatch_value: Optional[Hashable] = None
+    draw_index: int = 0
+    frame_row_index: Optional[int] = None
 
 
 @dataclass
@@ -112,6 +140,9 @@ class BoxStatsMeta:
     boxes: List[BoxStatsRecord]
     hue_active: bool
     owner_is_publiplots: bool
+    source_frame: Optional[Any] = None
+    group_keys: Optional[Tuple[str, ...]] = None
+    group_dims: Optional[Tuple[str, ...]] = None
 
 
 def _is_bar_rect(p) -> bool:

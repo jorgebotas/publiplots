@@ -7,7 +7,15 @@ import pandas as pd
 import pytest
 from matplotlib.patches import Rectangle
 
-from publiplots.annotate._cache import BarRecord, BarValueMeta, _introspect
+from publiplots.annotate._cache import (
+    BarRecord,
+    BarValueMeta,
+    BoxStatsMeta,
+    BoxStatsRecord,
+    PointRecord,
+    PointValueMeta,
+    _introspect,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -235,3 +243,72 @@ def test_bar_record_is_publicly_importable():
     from publiplots.annotate import BarRecord as PublicBarRecord
     from publiplots.annotate._cache import BarRecord as PrivateBarRecord
     assert PublicBarRecord is PrivateBarRecord
+
+
+def test_point_record_has_new_public_fields():
+    rec = PointRecord(
+        xy=(1.0, 2.0),
+        value=2.0,
+        err_low=None, err_high=None,
+        hue_color=None,
+        category="A",
+        hue_value=None,
+        hatch_value=None,
+        draw_index=3,
+        frame_row_index=7,
+    )
+    assert rec.category == "A"
+    assert rec.hue_value is None
+    assert rec.hatch_value is None
+    assert rec.draw_index == 3
+    assert rec.frame_row_index == 7
+
+
+def test_point_value_meta_has_source_frame_and_group_keys():
+    df = pd.DataFrame({"x": ["A"], "y": [1.0]})
+    meta = PointValueMeta(
+        orient="v",
+        points=[],
+        errorbar_kind=None,
+        hue_active=False,
+        owner_is_publiplots=True,
+        source_frame=df,
+        group_keys=("x",),
+        group_dims=("cat",),
+    )
+    assert meta.source_frame is df
+    assert meta.group_keys == ("x",)
+    assert meta.group_dims == ("cat",)
+
+
+def test_box_stats_record_has_new_public_fields():
+    rec = BoxStatsRecord(
+        center_pos=1.0,
+        cat_half_width=0.4,
+        stats={"median": 2.0},
+        hue_color=None,
+        category="A",
+        hue_value=None,
+        hatch_value=None,
+        draw_index=3,
+        frame_row_index=7,
+    )
+    assert rec.category == "A"
+    assert rec.draw_index == 3
+    assert rec.frame_row_index == 7
+
+
+def test_box_stats_meta_has_source_frame_and_group_keys():
+    df = pd.DataFrame({"x": ["A"], "y": [1.0]})
+    meta = BoxStatsMeta(
+        orient="v",
+        boxes=[],
+        hue_active=False,
+        owner_is_publiplots=True,
+        source_frame=df,
+        group_keys=("x",),
+        group_dims=("cat",),
+    )
+    assert meta.source_frame is df
+    assert meta.group_keys == ("x",)
+    assert meta.group_dims == ("cat",)
