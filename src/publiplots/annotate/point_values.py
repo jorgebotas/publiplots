@@ -56,9 +56,13 @@ def _resolve_point_anchor(
     px, py = point.xy
 
     if anchor == "top":
+        # va="baseline" (not "bottom"): for digit-only labels the bbox bottom
+        # sits ~3px below the glyph baseline (descender slack). va="baseline"
+        # anchors the visible glyph bottom directly to the offset point so the
+        # gap matches the horizontal "right" anchor.
         if point.err_high is not None:
-            return px, point.err_high, 0.0, +offset_mm, "center", "bottom"
-        return px, py, 0.0, +_MARKER_CLEARANCE_MM + offset_mm, "center", "bottom"
+            return px, point.err_high, 0.0, +offset_mm, "center", "baseline"
+        return px, py, 0.0, +_MARKER_CLEARANCE_MM + offset_mm, "center", "baseline"
     if anchor == "bottom":
         if point.err_low is not None:
             return px, point.err_low, 0.0, -offset_mm, "center", "top"

@@ -106,7 +106,7 @@ def test_boxplot_annotate_anchor_top():
         assert y == pytest.approx(box.stats["median"])
         bb = t.get_window_extent(renderer).transformed(ax.transData.inverted())
         assert bb.y0 > box.stats["median"]
-        assert t.get_va() == "bottom"
+        assert t.get_va() == "baseline"
 
 
 def test_boxplot_annotate_anchor_center_on_median():

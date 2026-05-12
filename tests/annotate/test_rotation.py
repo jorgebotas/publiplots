@@ -111,8 +111,8 @@ def _simple_hbar_df():
 @pytest.mark.parametrize("rotation", [0.0, 45.0, 90.0, 180.0, 270.0])
 def test_barplot_annotate_rotation_preserves_anchor_geometry(rotation):
     """For anchor='outside' on a positive vertical bar, resolve_anchor returns
-    (ha='center', va='bottom'). matplotlib applies these to the post-rotation
-    bbox, so the anchor stays at the bbox's lower edge at any rotation — the
+    (ha='center', va='baseline'). matplotlib applies these to the post-rotation
+    bbox, so the anchor stays at the glyph baseline at any rotation — the
     label always extends "up" from the bar top in the post-rotation frame,
     which visually places it above the bar (or beside it, when rotated).
     """
@@ -122,7 +122,7 @@ def test_barplot_annotate_rotation_preserves_anchor_geometry(rotation):
     for t in ax.texts:
         assert t.get_rotation() == pytest.approx(rotation)
         assert t.get_ha() == "center"
-        assert t.get_va() == "bottom"
+        assert t.get_va() == "baseline"
 
 
 def test_barplot_annotate_rotation_90_bbox_sits_above_bar_top():
@@ -285,11 +285,11 @@ def _point_df():
 
 
 def test_pointplot_annotate_rotation_90_preserves_anchor():
-    """Default point_values anchor='top' returns (ha='center', va='bottom')."""
+    """Default point_values anchor='top' returns (ha='center', va='baseline')."""
     ax = pp.pointplot(data=_point_df(), x="time", y="v",
                       errorbar="se", annotate={"rotation": 90})
     assert len(ax.texts) == 3
     for t in ax.texts:
         assert t.get_rotation() == pytest.approx(90.0)
         assert t.get_ha() == "center"
-        assert t.get_va() == "bottom"
+        assert t.get_va() == "baseline"
