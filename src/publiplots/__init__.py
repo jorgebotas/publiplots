@@ -26,7 +26,10 @@ __description__ = "Publication-ready plotting with a clean, modular API"
 from publiplots.plot.bar import barplot
 from publiplots.plot.hexbin import hexbinplot
 from publiplots.plot.hist import histplot
+from publiplots.plot.kdeplot import kdeplot
 from publiplots.plot.scatter import scatterplot
+from publiplots.plot.regplot import regplot
+from publiplots.plot.residplot import residplot
 from publiplots.plot.point import pointplot
 from publiplots.plot.line import lineplot
 from publiplots.plot.box import boxplot
@@ -100,7 +103,10 @@ __all__ = [
     "barplot",
     "hexbinplot",
     "histplot",
+    "kdeplot",
     "scatterplot",
+    "regplot",
+    "residplot",
     "pointplot",
     "lineplot",
     "boxplot",
