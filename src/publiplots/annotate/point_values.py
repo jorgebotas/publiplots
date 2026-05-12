@@ -19,7 +19,12 @@ from publiplots.annotate._cache import PointRecord, PointValueMeta
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
     make_offset_transform,
-    mm_to_data,
+)
+from publiplots.annotate._shared import (
+    compute_axes_to_expand_directional,
+    ensure_renderer as _ensure_renderer,
+    format_value as _format_value,
+    maybe_expand_limits,
 )
 
 
@@ -66,21 +71,6 @@ def _resolve_point_anchor(
     if anchor == "center":
         return px, py, 0.0, 0.0, "center", "center"
     raise ValueError(f"unreachable: unknown anchor {anchor!r}")
-
-
-def _format_value(value: float, fmt: str) -> str:
-    if "{" in fmt and "}" in fmt:
-        return fmt.format(value)
-    return format(value, fmt)
-
-
-def _ensure_renderer(ax: Axes):
-    canvas = ax.figure.canvas
-    renderer = canvas.get_renderer() if hasattr(canvas, "get_renderer") else None
-    if renderer is None:
-        canvas.draw()
-        renderer = canvas.get_renderer()
-    return renderer
 
 
 def _point_values_strategy(
@@ -147,9 +137,13 @@ def _point_values_strategy(
         )
         texts.append(t)
 
-    _maybe_expand_point_limits(ax, texts, anchor, pad_mm=pad,
-                               owner_is_publiplots=meta.owner_is_publiplots,
-                               rotation=rotation)
+    maybe_expand_limits(
+        ax, texts,
+        axes_to_expand=compute_axes_to_expand_directional(
+            anchor, meta.orient, rotation,
+        ),
+        pad_mm=pad, owner_is_publiplots=meta.owner_is_publiplots,
+    )
     return texts
 
 
@@ -173,106 +167,3 @@ class _PatchShim:
 
     def get_edgecolor(self):
         return self._rgba
-
-
-_MAX_EXPAND_ITERS = 4
-
-
-def _maybe_expand_point_limits(
-    ax: Axes,
-    texts: List[Text],
-    anchor: str,
-    pad_mm: float,
-    owner_is_publiplots: bool,
-    rotation: float = 0.0,
-) -> None:
-    if not texts:
-        return
-
-    # Which axis matches the unrotated anchor direction?
-    # top/bottom → y; left/right → x; center → neither.
-    if anchor in ("top", "bottom"):
-        primary_axis = "y"
-    elif anchor in ("left", "right"):
-        primary_axis = "x"
-    else:
-        primary_axis = None
-
-    rotated = rotation % 360.0 != 0.0
-
-    if primary_axis is None and not rotated:
-        return
-
-    axes_to_expand = []
-    if primary_axis is not None:
-        axes_to_expand.append(primary_axis)
-    if rotated:
-        other = "x" if primary_axis == "y" else "y"
-        if primary_axis is None:
-            axes_to_expand.extend(["x", "y"])
-        elif other not in axes_to_expand:
-            axes_to_expand.append(other)
-
-    renderer = _ensure_renderer(ax)
-    for _ in range(_MAX_EXPAND_ITERS):
-        # Re-fetch inverted transform each iter — set_xlim/ylim invalidates it.
-        ax.figure.canvas.draw()
-        inv = ax.transData.inverted()
-        extents = [t.get_window_extent(renderer).transformed(inv) for t in texts]
-        any_changed = False
-        for ax_name in axes_to_expand:
-            if _expand_point_axis(
-                ax, extents, axis=ax_name, pad_mm=pad_mm,
-                owner_is_publiplots=owner_is_publiplots,
-            ):
-                any_changed = True
-        if not any_changed:
-            break
-
-
-def _expand_point_axis(
-    ax: Axes,
-    extents: list,
-    axis: str,
-    pad_mm: float,
-    owner_is_publiplots: bool,
-) -> bool:
-    """Expand one axis to fit extents. Return True if limits changed."""
-    autoscale_on = (ax.get_autoscaley_on() if axis == "y"
-                    else ax.get_autoscalex_on())
-    should_expand = owner_is_publiplots or autoscale_on
-
-    if axis == "y":
-        need_min = min(e.y0 for e in extents)
-        need_max = max(e.y1 for e in extents)
-        get_lim, set_lim = ax.get_ylim, ax.set_ylim
-    else:
-        need_min = min(e.x0 for e in extents)
-        need_max = max(e.x1 for e in extents)
-        get_lim, set_lim = ax.get_xlim, ax.set_xlim
-
-    cur_lo, cur_hi = get_lim()
-    pad_data = mm_to_data(pad_mm, ax, axis=axis)
-
-    inverted = cur_lo > cur_hi
-    cur_min = min(cur_lo, cur_hi)
-    cur_max = max(cur_lo, cur_hi)
-
-    if should_expand:
-        new_min = min(cur_min, need_min - pad_data)
-        new_max = max(cur_max, need_max + pad_data)
-        if new_min == cur_min and new_max == cur_max:
-            return False
-        if inverted:
-            set_lim(new_max, new_min)
-        else:
-            set_lim(new_min, new_max)
-        return True
-    else:
-        if need_min < cur_min or need_max > cur_max:
-            warnings.warn(
-                "pp.annotate: labels clipped; autoscale is off on this axis",
-                UserWarning,
-                stacklevel=3,
-            )
-        return False

@@ -22,15 +22,13 @@ from publiplots.annotate._positioning import (
     make_offset_transform,
     resolve_anchor,
 )
-from publiplots.annotate.bar_values import (
-    _ensure_renderer,
-    _maybe_expand_limits,
-    _VALID_ANCHORS,
-    _DEFAULT_ANCHOR,
+from publiplots.annotate._shared import (
+    build_column_label_table as _build_column_label_table_shared,
+    ensure_renderer as _ensure_renderer,
+    format_column_value as _format_column_value,
+    maybe_expand_limits,
 )
-
-
-_DIM_TO_FIELD = {"cat": "category", "hue": "hue_value", "hatch": "hatch_value"}
+from publiplots.annotate.bar_values import _VALID_ANCHORS, _DEFAULT_ANCHOR
 
 
 logger = logging.getLogger(__name__)
@@ -41,67 +39,6 @@ def _get_or_introspect(ax: Axes) -> BarValueMeta:
     if isinstance(meta, BarValueMeta):
         return meta
     return _introspect(ax)
-
-
-def _build_column_label_table(
-    meta: BarValueMeta,
-    column: str,
-    data,                              # pandas DataFrame
-) -> Dict[int, object]:
-    """Return {draw_index: cell_value} for each bar in meta.bars.
-
-    Aligns by meta.group_keys. Emits a UserWarning when the column varies
-    within any group (uses `.first()`).
-    """
-    if column not in data.columns:
-        raise KeyError(
-            f"column {column!r} not found in data; available: "
-            f"{list(data.columns)}"
-        )
-    groupby = data.groupby(list(meta.group_keys), observed=True)
-    firsts = groupby[column].first()
-    nunique = groupby[column].nunique(dropna=False)
-    varies = nunique[nunique > 1]
-    if len(varies):
-        warnings.warn(
-            f"pp.annotate: column {column!r} varies within group(s) "
-            f"{list(varies.index)}; using .first()",
-            UserWarning,
-            stacklevel=4,
-        )
-
-    # meta.group_dims identifies each group_keys entry's semantic dimension:
-    # position 0 is always "cat", but position 1 may be "hue" OR "hatch"
-    # (under hatch-only splits). Reading that companion tuple — instead of
-    # assuming positional (cat, hue, hatch) order — keeps key lookups aligned
-    # regardless of which split dimensions are active. Foreign axes never
-    # reach this function (group_keys is None there), but we keep a defensive
-    # fallback to all-"cat" so a hypothetical caller doesn't silently KeyError.
-    dims = meta.group_dims or ("cat",) * len(meta.group_keys)
-    table: Dict[int, object] = {}
-    for bar in meta.bars:
-        key_parts = [getattr(bar, _DIM_TO_FIELD[d]) for d in dims]
-        key = key_parts[0] if len(key_parts) == 1 else tuple(key_parts)
-        try:
-            table[bar.draw_index] = firsts.loc[key]
-        except KeyError:
-            table[bar.draw_index] = None
-    return table
-
-
-def _format_column_value(value, fmt: str) -> Optional[str]:
-    """Apply fmt to a column cell. Return None for NaN/None so caller skips."""
-    if value is None:
-        return None
-    # pandas NA / float NaN
-    try:
-        if isinstance(value, float) and math.isnan(value):
-            return None
-    except TypeError:
-        pass
-    if "{" in fmt and "}" in fmt:
-        return fmt.format(value)
-    return format(value, fmt) if fmt != "{}" else str(value)
 
 
 def _bar_custom_strategy(
@@ -167,7 +104,9 @@ def _bar_custom_strategy(
                 "pp.annotate: column-based labels on foreign axes are not "
                 "supported; use a callable (fn(record) -> str) instead"
             )
-        label_table = _build_column_label_table(meta, labels, frame)
+        label_table = _build_column_label_table_shared(
+            meta.bars, meta.group_keys, meta.group_dims, labels, frame,
+        )
 
     # -------- per-record loop (mirrors bar_values._bar_values_strategy) ------
     renderer = _ensure_renderer(ax)
@@ -228,9 +167,9 @@ def _bar_custom_strategy(
                 )
         texts.append(t)
 
-    _maybe_expand_limits(
-        ax, texts, meta.orient, pad_mm=pad,
-        owner_is_publiplots=meta.owner_is_publiplots,
-        rotation=rotation,
+    maybe_expand_limits(
+        ax, texts,
+        axes_to_expand=["y", "x"] if meta.orient == "v" else ["x", "y"],
+        pad_mm=pad, owner_is_publiplots=meta.owner_is_publiplots,
     )
     return texts
