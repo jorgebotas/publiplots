@@ -73,6 +73,10 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# sphinx-gallery build artifacts (regenerated on every `make html`)
+docs/source/auto_examples/
+docs/source/sg_execution_times.rst
+
 # Local planning docs (spec/plan/handoff workflow — not shipped)
 docs/superpowers/
 
