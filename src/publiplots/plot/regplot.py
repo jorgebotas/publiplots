@@ -228,12 +228,16 @@ def regplot(
 
     # Build the shared scatter_kws / line_kws. Using setdefault means the
     # caller's values win while publiplots fills in any missing keys.
+    #
+    # alpha is NOT pushed into scatter_kws — seaborn would call
+    # collection.set_alpha(alpha) which applies uniformly to face AND
+    # edge, breaking the publiplots double-layer convention (face
+    # transparent, edge opaque). Instead we apply the face/edge split
+    # post-draw via apply_transparency on the captured PathCollections.
     scatter_kws = dict(scatter_kws or {})
     scatter_kws.setdefault("linewidths", linewidth)
     if edgecolor is not None:
         scatter_kws.setdefault("edgecolor", edgecolor)
-    if alpha is not None:
-        scatter_kws.setdefault("alpha", alpha)
 
     line_kws = dict(line_kws or {})
     line_kws.setdefault("linewidth", linewidth)
@@ -267,6 +271,11 @@ def regplot(
     )
     base_kws.update(kwargs)
 
+    # Capture every PathCollection the seaborn call(s) emit so we can
+    # apply the publiplots face/edge alpha split after the draw.
+    from publiplots.utils.transparency import ArtistTracker, apply_transparency
+    tracker = ArtistTracker(ax)
+
     if palette_map is not None:
         # Per-group regression loop. Each call re-uses the same scatter_kws /
         # line_kws but with the per-group color — seaborn's own color param
@@ -291,6 +300,24 @@ def regplot(
             line_kws=dict(line_kws),
             **base_kws,
         )
+
+    # Publiplots double-layer style: face carries alpha, edge stays
+    # opaque. Applied to PathCollections only — the regression line
+    # (Line2D) and CI band (FillBetweenPolyCollection) are intentionally
+    # left at full opacity / seaborn's CI alpha, since the line is
+    # structural and the CI band already reads as transparent.
+    #
+    # We must clear the collection-level _alpha first. sns.regplot
+    # internally sets it via Collection.set_alpha(0.8) (its scatter
+    # default), and matplotlib's set_facecolors/set_edgecolors re-apply
+    # _alpha after storing per-color RGBAs — so apply_transparency()
+    # would silently no-op without this reset.
+    if alpha is not None:
+        from matplotlib.collections import PathCollection
+        for c in tracker.get_new_collections():
+            if isinstance(c, PathCollection):
+                c.set_alpha(None)
+                apply_transparency(c, face_alpha=alpha, edge_alpha=1.0)
 
     if title is not None:
         ax.set_title(title)

@@ -168,11 +168,15 @@ def residplot(
         _, ax = _pp_subplots()
 
     # Common scatter_kws defaults (user values win via setdefault).
+    #
+    # alpha is NOT pushed into scatter_kws — seaborn's residplot calls
+    # collection.set_alpha(alpha) which applies uniformly to face AND
+    # edge, breaking the publiplots double-layer convention (face
+    # transparent, edge opaque). We apply the face/edge split post-draw
+    # via apply_transparency on the captured PathCollections.
     scatter_kws = dict(scatter_kws or {})
     line_kws = dict(line_kws or {})
     scatter_kws.setdefault("linewidths", linewidth)
-    if alpha is not None:
-        scatter_kws.setdefault("alpha", alpha)
     if edgecolor is not None:
         scatter_kws.setdefault("edgecolor", edgecolor)
     if marker is not None:
@@ -198,6 +202,11 @@ def residplot(
                 stacklevel=2,
             )
             fallback_to_single = True
+
+    # Capture every PathCollection the seaborn call(s) emit so we can
+    # apply the publiplots face/edge alpha split after the draw.
+    from publiplots.utils.transparency import ArtistTracker, apply_transparency
+    tracker = ArtistTracker(ax)
 
     if hue is None or fallback_to_single or not palette_map:
         # Single-color path.
@@ -230,6 +239,22 @@ def residplot(
                 scatter_kws=group_scatter_kws, line_kws=group_line_kws,
                 ax=ax,
             )
+
+    # Publiplots double-layer style: face carries alpha, edge stays
+    # opaque. Applied to PathCollections only — the y=0 reference line
+    # (Line2D) and any LOWESS smoother stay at full opacity.
+    #
+    # We must clear the collection-level _alpha first. sns.residplot
+    # internally sets it via Collection.set_alpha(0.8) (its scatter
+    # default), and matplotlib's set_facecolors/set_edgecolors re-apply
+    # _alpha after storing per-color RGBAs — so apply_transparency()
+    # would silently no-op without this reset.
+    if alpha is not None:
+        from matplotlib.collections import PathCollection
+        for c in tracker.get_new_collections():
+            if isinstance(c, PathCollection):
+                c.set_alpha(None)
+                apply_transparency(c, face_alpha=alpha, edge_alpha=1.0)
 
     # Labels / title. Only set when user passed an explicit value;
     # ``None`` preserves seaborn's inferred x / y names.

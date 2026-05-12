@@ -250,3 +250,41 @@ def test_rcparams_defaults_flow_through(simple_df):
     finally:
         pp.rcParams["lines.linewidth"] = saved_lw
         pp.rcParams["alpha"] = saved_alpha
+
+
+def test_alpha_face_edge_split(simple_df):
+    """publiplots double-layer style: alpha on face, opaque edge.
+
+    Regression — sns.regplot's internal scatter sets
+    Collection.set_alpha(alpha) which uniformly fades both face and
+    edge (matching seaborn's convention but not publiplots'). The
+    fix must clear the collection-level _alpha and re-apply via
+    apply_transparency so the edge stays at 1.0.
+    """
+    ax = regplot(data=simple_df, x="x", y="y", alpha=0.3, edgecolor="black")
+    pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
+    assert len(pcs) >= 1
+    pc = pcs[0]
+    fa = np.asarray(pc.get_facecolor())
+    ea = np.asarray(pc.get_edgecolor())
+    assert np.allclose(fa[..., -1], 0.3), (
+        f"face alpha should be 0.3, got {fa[..., -1]}"
+    )
+    assert np.allclose(ea[..., -1], 1.0), (
+        f"edge alpha should be 1.0 (opaque), got {ea[..., -1]}"
+    )
+
+
+def test_alpha_face_edge_split_with_hue(hue_df):
+    """Same face/edge split must apply to every per-group PathCollection."""
+    ax = regplot(
+        data=hue_df, x="x", y="y", hue="g",
+        alpha=0.3, edgecolor="black", palette="pastel",
+    )
+    pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
+    assert len(pcs) >= 3, "expected one PathCollection per hue group"
+    for i, pc in enumerate(pcs):
+        fa = np.asarray(pc.get_facecolor())
+        ea = np.asarray(pc.get_edgecolor())
+        assert np.allclose(fa[..., -1], 0.3), f"group {i} face alpha"
+        assert np.allclose(ea[..., -1], 1.0), f"group {i} edge alpha"
