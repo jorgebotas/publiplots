@@ -40,7 +40,6 @@ def test_violinplot_without_annotate_still_attaches_meta():
     assert meta.source_frame is df
 
 
-@pytest.mark.skip(reason="strategy registered in Task 7")
 def test_boxplot_annotate_kind_forwarded():
     df = _box_df()
     ax = pp.boxplot(

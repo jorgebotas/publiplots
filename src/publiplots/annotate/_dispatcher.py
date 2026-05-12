@@ -14,6 +14,7 @@ from matplotlib.text import Text
 
 from publiplots.annotate.bar_custom import _bar_custom_strategy
 from publiplots.annotate.bar_values import _bar_values_strategy
+from publiplots.annotate.box_custom import _box_custom_strategy
 from publiplots.annotate.box_stats import _box_stats_strategy
 from publiplots.annotate.point_custom import _point_custom_strategy
 from publiplots.annotate.point_values import _point_values_strategy
@@ -23,6 +24,7 @@ _STRATEGIES: dict[str, Callable] = {
     "bar_values": _bar_values_strategy,
     "bar_custom": _bar_custom_strategy,
     "box_stats": _box_stats_strategy,
+    "box_custom": _box_custom_strategy,
     "point_values": _point_values_strategy,
     "point_custom": _point_custom_strategy,
 }
@@ -33,6 +35,7 @@ _DEFAULT_FMT: dict[str, str] = {
     "bar_values": ".2f",
     "bar_custom": "{}",
     "box_stats": ".2f",
+    "box_custom": "{}",
     "point_values": ".2f",
     "point_custom": "{}",
 }
@@ -187,7 +190,7 @@ def annotate(
     # labels= and data= are only meaningful for *_custom strategies; reject
     # them for other kinds with a clear error, and forward them conditionally
     # so other strategies' signatures stay unchanged.
-    _custom_kinds = {"bar_custom", "point_custom"}
+    _custom_kinds = {"bar_custom", "box_custom", "point_custom"}
     extra = {}
     if kind in _custom_kinds:
         extra["labels"] = labels
