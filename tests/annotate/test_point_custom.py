@@ -143,3 +143,44 @@ def test_end_to_end_via_pp_pointplot_annotate():
         annotate={"kind": "point_custom", "labels": "n", "fmt": "n={}"},
     )
     assert [t.get_text() for t in ax.texts] == ["n=10", "n=20", "n=30"]
+
+
+def test_anchor_top_also_expands_xlim_for_edge_labels():
+    """Regression: ``anchor="top"`` on the leftmost/rightmost point's label
+    can still spill past the x-axis frame horizontally. The strategy must
+    expand the x-axis (not just the anchor-direction y-axis) so edge
+    labels don't clip the y/x frame."""
+    df = pd.DataFrame({
+        "cat": pd.Categorical(["A", "B", "C", "D"],
+                              categories=["A", "B", "C", "D"]),
+        "value": [0.62, 0.71, 0.83, 0.79],
+        "n": [120, 145, 98, 87],
+    })
+    ax = pp.pointplot(data=df, x="cat", y="value")
+    xlim_before = ax.get_xlim()
+
+    texts = pp.annotate(
+        ax, kind="point_custom",
+        labels="n", fmt="n={:,}",
+        anchor="top",
+    )
+    assert len(texts) == 4
+
+    ax.figure.canvas.draw()
+    renderer = ax.figure.canvas.get_renderer()
+    inv = ax.transData.inverted()
+    xlim_lo, xlim_hi = ax.get_xlim()
+
+    for t in texts:
+        bbox = t.get_window_extent(renderer).transformed(inv)
+        assert bbox.x0 >= xlim_lo, (
+            f"label {t.get_text()!r} x0={bbox.x0} clips left xlim={xlim_lo}"
+        )
+        assert bbox.x1 <= xlim_hi, (
+            f"label {t.get_text()!r} x1={bbox.x1} clips right xlim={xlim_hi}"
+        )
+    # xlim should have grown (leftmost/rightmost labels push outward).
+    assert (xlim_lo < xlim_before[0]) or (xlim_hi > xlim_before[1]), (
+        f"xlim unchanged {xlim_before} -> ({xlim_lo}, {xlim_hi}); "
+        "labels aren't triggering horizontal expansion"
+    )

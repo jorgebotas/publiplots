@@ -194,32 +194,20 @@ def compute_axes_to_expand_directional(
 ) -> List[Literal["x", "y"]]:
     """Pick which axes point/box strategies should expand.
 
-    ``anchor`` in ``{"top","bottom","left","right","center"}``. ``orient``
-    is ``"v"``/``"h"``; only box strategies care about it (box `left`/`right`
-    labels sit at ``cat_half_width`` away from center so they expand the
-    categorical axis, not the value axis). ``rotation`` turns on the
-    secondary axis expansion. ``rotated_both=True`` expands both axes even
-    without rotation (used by bar strategies that always expand both).
+    Always returns both axes, with the anchor-direction axis first so
+    it's the one matplotlib tries to grow first if only one needs it.
+    Previously returned only the anchor-direction axis (with rotation
+    forcing the secondary), which left edge-mark labels clipping the
+    perpendicular axis frame: e.g., an ``anchor="top"`` label on the
+    leftmost point has vertical headroom but is still flush against
+    the left y-axis frame. ``_expand_axis`` is a no-op whenever a label
+    already fits, so always checking both axes is safe — it only
+    actually changes limits when needed.
     """
+    _ = orient, rotation, rotated_both  # kept for signature compatibility
     if anchor in ("top", "bottom"):
-        primary = "y"
-    elif anchor in ("left", "right"):
-        primary = "x"
-    else:
-        primary = None
-
-    rotated = rotation % 360.0 != 0.0
-
-    if primary is None and not rotated and not rotated_both:
-        return []
-
-    axes: List[Literal["x", "y"]] = []
-    if primary is not None:
-        axes.append(primary)  # type: ignore[arg-type]
-    if rotated or rotated_both:
-        other: Literal["x", "y"] = "x" if primary == "y" else "y"
-        if primary is None:
-            axes.extend(["x", "y"])
-        elif other not in axes:
-            axes.append(other)
-    return axes
+        return ["y", "x"]
+    if anchor in ("left", "right"):
+        return ["x", "y"]
+    # "center" or an unexpected anchor — expand both regardless.
+    return ["y", "x"]
