@@ -50,7 +50,6 @@ def test_boxplot_annotate_kind_forwarded():
     assert labels == ["n=10", "n=20", "n=30"]
 
 
-@pytest.mark.skip(reason="strategy registered in Task 8")
 def test_violinplot_annotate_kind_forwarded():
     df = _box_df()
     ax = pp.violinplot(
