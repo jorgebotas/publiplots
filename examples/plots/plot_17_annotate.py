@@ -290,29 +290,48 @@ pp.annotate(ax, kind="bar_custom",
 pp.show()
 
 # %%
-# Callable source: per-bar categorical string
-# -------------------------------------------
+# Callable source: per-bar categorical string with fit-aware placement
+# --------------------------------------------------------------------
 # The callable has access to ``r.frame_row_index`` (the position in the
 # source DataFrame of the first row matching this bar's group), so you
-# can look up arbitrary sibling columns — here, a pathway name that we
-# truncate for display.
+# can look up arbitrary sibling columns — here, pathway names for an
+# enrichment plot.
+#
+# ``anchor="inside"`` places each label inside its bar. When a bar is
+# too short to fit its label, ``bar_custom`` falls back to
+# ``anchor="outside"`` for that bar only (same ``fit_check`` machinery
+# that ``bar_values`` uses). This means enrichment bars with a wide
+# score range get labels placed in whichever edge reads cleanly.
 pathway_df = pd.DataFrame({
-    "rank":    pd.Categorical([1, 2, 3, 4, 5]),
-    "score":   [0.89, 0.83, 0.79, 0.75, 0.71],
-    "pathway": [
-        "glycolysis",
-        "tca cycle",
-        "oxphos",
-        "pentose phosphate",
-        "fatty-acid beta-oxidation",
-    ],
+    "pathway": pd.Categorical(
+        [
+            "glycolysis",
+            "tca cycle",
+            "oxphos",
+            "pentose phosphate",
+            "fatty-acid beta-oxidation",
+        ],
+        categories=[
+            "fatty-acid beta-oxidation",
+            "pentose phosphate",
+            "oxphos",
+            "tca cycle",
+            "glycolysis",
+        ],
+    ),
+    # Wide score range: top bars easily fit the label inside;
+    # the bottom bars are too short, so fit_check re-anchors them outside.
+    "score": [2.45, 1.98, 0.62, 0.31, 0.18],
 })
-ax = pp.barplot(data=pathway_df, x="rank", y="score",
-                title="pathway names per bar")
+ax = pp.barplot(
+    data=pathway_df, x="score", y="pathway",
+    title="pathway enrichment (horizontal, anchor='inside' w/ auto-fallback)",
+    xlabel="−log₁₀(p)", ylabel="",
+)
 pp.annotate(
     ax, kind="bar_custom",
-    labels=lambda r: pathway_df.iloc[r.frame_row_index]["pathway"][:20],
-    fontsize=8, rotation=30,
+    labels=lambda r: str(r.category),
+    anchor="inside",
 )
 pp.show()
 
