@@ -422,6 +422,11 @@ def barplot(
             "Run data[x].astype('category') or data[y].astype('category')"
         )
 
+    # Preserve the caller's original DataFrame identity for downstream
+    # annotate builders that stash `source_frame` on the meta (used by
+    # column-based custom labels to look up per-bar rows).
+    _source_data = data
+
     # Ensure category dtype on every column we'll touch with the .cat accessor
     data = data.copy()
     data[categorical_axis] = as_categorical(data[categorical_axis])
@@ -505,17 +510,22 @@ def barplot(
         if xlabel is not None: ax.set_xlabel(xlabel)
         if ylabel is not None: ax.set_ylabel(ylabel)
         if title is not None: ax.set_title(title)
+        # Always attach the cache so follow-up pp.annotate(ax, ...) calls work.
+        ax._publiplots_bar_meta = build_from_stacked_barplot_call(
+            ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
+            categorical_axis=categorical_axis, palette=palette,
+            multiple=multiple, source_frame=_source_data,
+        )
         if annotate:
-            ax._publiplots_bar_meta = build_from_stacked_barplot_call(
-                ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
-                categorical_axis=categorical_axis, palette=palette,
-                multiple=multiple,
-            )
             from publiplots.annotate import annotate as _annotate_fn
             opts = dict(annotate) if isinstance(annotate, dict) else {}
-            if multiple != "gain":
+            kind = opts.pop("kind", "bar_values")
+            # For non-gain stacked bars, labels on bar_values default to 'inside'
+            # so they sit within each segment; bar_custom labels don't need this
+            # nudge (user-supplied text can't be meaningfully "fit-checked").
+            if kind == "bar_values" and multiple != "gain":
                 opts.setdefault("anchor", "inside")
-            _annotate_fn(ax, kind="bar_values", **opts)
+            _annotate_fn(ax, kind=kind, **opts)
         return ax
 
     sns_hue = hue
@@ -621,15 +631,18 @@ def barplot(
     if ylabel is not None: ax.set_ylabel(ylabel)
     if title is not None: ax.set_title(title)
 
+    # Always attach the cache so follow-up pp.annotate(ax, ...) calls work.
+    ax._publiplots_bar_meta = build_from_barplot_call(
+        ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
+        categorical_axis=categorical_axis,
+        palette=palette, errorbar=errorbar,
+        source_frame=_source_data,
+    )
     if annotate:
-        ax._publiplots_bar_meta = build_from_barplot_call(
-            ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
-            categorical_axis=categorical_axis,
-            palette=palette, errorbar=errorbar,
-        )
         from publiplots.annotate import annotate as _annotate_fn
-        opts = annotate if isinstance(annotate, dict) else {}
-        _annotate_fn(ax, kind="bar_values", **opts)
+        opts = dict(annotate) if isinstance(annotate, dict) else {}
+        kind = opts.pop("kind", "bar_values")
+        _annotate_fn(ax, kind=kind, **opts)
 
     return ax
 

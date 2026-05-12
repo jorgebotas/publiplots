@@ -12,6 +12,7 @@ from typing import Callable, List, Optional, Union
 from matplotlib.axes import Axes
 from matplotlib.text import Text
 
+from publiplots.annotate.bar_custom import _bar_custom_strategy
 from publiplots.annotate.bar_values import _bar_values_strategy
 from publiplots.annotate.box_stats import _box_stats_strategy
 from publiplots.annotate.point_values import _point_values_strategy
@@ -19,8 +20,18 @@ from publiplots.annotate.point_values import _point_values_strategy
 
 _STRATEGIES: dict[str, Callable] = {
     "bar_values": _bar_values_strategy,
+    "bar_custom": _bar_custom_strategy,
     "box_stats": _box_stats_strategy,
     "point_values": _point_values_strategy,
+}
+
+
+# Per-strategy default for `fmt` when the caller did not pass one explicitly.
+_DEFAULT_FMT: dict[str, str] = {
+    "bar_values": ".2f",
+    "bar_custom": "{}",
+    "box_stats": ".2f",
+    "point_values": ".2f",
 }
 
 
@@ -28,12 +39,14 @@ def annotate(
     ax: Axes,
     kind: str = "bar_values",
     *,
-    fmt: str = ".2f",
+    fmt: Optional[str] = None,
     anchor: Optional[str] = None,
     offset: float = 1.0,
     color: Union[str, tuple] = "auto",
     pad: Optional[float] = None,
     rotation: float = 0.0,
+    labels=None,
+    data=None,
     **text_kws,
 ) -> List[Text]:
     """Add value labels to plot marks on ``ax``.
@@ -49,20 +62,28 @@ def annotate(
         The axes to annotate. Must already have marks drawn on it
         (e.g. via :func:`publiplots.barplot`, :func:`publiplots.boxplot`,
         :func:`publiplots.pointplot`, or :func:`publiplots.lineplot`).
-    kind : {'bar_values', 'box_stats', 'point_values'}, default ``'bar_values'``
+    kind : {'bar_values', 'bar_custom', 'box_stats', 'point_values'}, default ``'bar_values'``
         Annotation strategy to use:
 
         - ``'bar_values'`` — label bars with their values; anchor
           vocabulary ``{"outside", "inside", "base", "center"}``.
+        - ``'bar_custom'`` — label bars with user-supplied strings
+          from a DataFrame column or a callable
+          ``fn(BarRecord) -> str``; anchor vocabulary
+          ``{"outside", "inside", "base", "center"}`` (same as
+          ``bar_values``).
         - ``'box_stats'`` — label box plots with distributional
           summary statistics.
         - ``'point_values'`` — label scatter or line-plot points;
           anchor vocabulary
           ``{"top", "bottom", "left", "right", "center"}``.
-    fmt : str, default ``'.2f'``
+    fmt : str, optional
         Either a bare format spec (e.g. ``".2f"``, ``",.0f"``) or a
         format-string template containing ``{}`` (e.g.
-        ``"{:,.1f}%"``).
+        ``"{:,.1f}%"``). If ``None`` (the default), each strategy picks
+        its own default: ``bar_values``, ``box_stats``, and
+        ``point_values`` default to ``'.2f'``; ``bar_custom`` defaults
+        to ``'{}'`` (raw passthrough of the supplied labels).
     anchor : str, optional
         Where to place the label relative to the mark.
         Strategy-specific — see ``kind`` above. If ``None``, each
@@ -92,6 +113,17 @@ def annotate(
         so rotated labels do not clip neighbouring marks. Non-right-angle
         rotations are passed through to matplotlib as-is; fine-tuning
         alignment is the caller's responsibility in that case.
+    labels : str or callable, optional
+        ``bar_custom`` only. Either a column name to look up in the
+        cached ``pp.barplot`` source frame (or in ``data=`` when given),
+        or a callable ``fn(BarRecord) -> str`` receiving each bar's
+        record and returning the label string. Required when
+        ``kind='bar_custom'``; passing it with any other kind is a
+        ``TypeError``.
+    data : pandas.DataFrame, optional
+        ``bar_custom`` only. Overrides the cached source frame for
+        column-based labels. Useful when labels live in a different
+        DataFrame than the one passed to ``pp.barplot``.
     **text_kws
         Forwarded to :meth:`matplotlib.axes.Axes.text` (e.g.
         ``fontsize``, ``fontweight``).
@@ -147,7 +179,22 @@ def annotate(
     if not math.isfinite(rotation):
         raise ValueError("rotation must be a finite number of degrees")
 
+    resolved_fmt = fmt if fmt is not None else _DEFAULT_FMT[kind]
+
+    # labels= and data= are only meaningful for bar_custom; reject them for
+    # other kinds with a clear error, and forward them conditionally so
+    # other strategies' signatures stay unchanged.
+    extra = {}
+    if kind == "bar_custom":
+        extra["labels"] = labels
+        extra["data"] = data
+    elif labels is not None or data is not None:
+        raise TypeError(
+            f"labels= and data= are only supported for kind='bar_custom'; "
+            f"got kind={kind!r}"
+        )
+
     return _STRATEGIES[kind](
-        ax, fmt=fmt, anchor=anchor, offset=offset, color=color, pad=pad,
-        rotation=rotation, **text_kws,
+        ax, fmt=resolved_fmt, anchor=anchor, offset=offset, color=color, pad=pad,
+        rotation=rotation, **extra, **text_kws,
     )

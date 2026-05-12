@@ -234,3 +234,141 @@ pp.boxplot(
     title="boxplot + rotation=90°",
 )
 pp.show()
+
+
+# %%
+# Custom labels: ``kind="bar_custom"``
+# ====================================
+#
+# The ``bar_custom`` strategy labels each bar with a user-supplied string
+# rather than the bar's own value. Use it to annotate an AUC bar with its
+# sample count, stamp pathway names on an enrichment bar plot, or render
+# any per-bar string derived from the source DataFrame.
+#
+# Labels come from either a DataFrame column name (aligned by the same
+# ``(x, hue, hatch)`` group keys ``pp.barplot`` used) or a callable that
+# receives each ``BarRecord`` and returns a string.
+
+# %%
+# Column source: AUC with per-bar ``n``
+# -------------------------------------
+# A classic "AUC + sample count" pattern. ``labels="n"`` picks up the
+# ``n`` column from the DataFrame that was plotted; ``fmt="n={:,}"``
+# formats each value with a thousands separator.
+auc_df = pd.DataFrame({
+    "group": pd.Categorical(
+        ["A", "B", "C"],
+        categories=["A", "B", "C"],
+    ),
+    "auc": [0.87, 0.72, 0.81],
+    "n":   [1204, 845, 987],
+})
+ax = pp.barplot(data=auc_df, x="group", y="auc",
+                title="AUC bars annotated with n=")
+pp.annotate(ax, kind="bar_custom", labels="n", fmt="n={:,}")
+pp.show()
+
+# %%
+# Callable source: signed percent delta
+# -------------------------------------
+# A ``labels=`` callable receives each ``BarRecord`` and returns the
+# label string. Use it when the label is a function of the bar's own
+# value (or anything else you can compute per-bar).
+delta_df = pd.DataFrame({
+    "cohort": pd.Categorical(
+        ["day-10", "day-20", "day-30"],
+        categories=["day-10", "day-20", "day-30"],
+    ),
+    "pct_change": [-12.3, 4.1, -7.8],
+})
+ax = pp.barplot(
+    data=delta_df, x="cohort", y="pct_change",
+    title="signed delta: labels=lambda r: f'{r.value:+.1f}%'",
+)
+pp.annotate(ax, kind="bar_custom",
+            labels=lambda r: f"{r.value:+.1f}%")
+pp.show()
+
+# %%
+# Callable source: per-bar categorical string with fit-aware placement
+# --------------------------------------------------------------------
+# The callable has access to ``r.frame_row_index`` (the position in the
+# source DataFrame of the first row matching this bar's group), so you
+# can look up arbitrary sibling columns — here, pathway names for an
+# enrichment plot.
+#
+# ``anchor="inside"`` places each label inside its bar. When a bar is
+# too short to fit its label, ``bar_custom`` falls back to
+# ``anchor="outside"`` for that bar only (same ``fit_check`` machinery
+# that ``bar_values`` uses). This means enrichment bars with a wide
+# score range get labels placed in whichever edge reads cleanly.
+pathway_df = pd.DataFrame({
+    "pathway": pd.Categorical(
+        [
+            "glycolysis",
+            "tca cycle",
+            "oxphos",
+            "pentose phosphate",
+            "fatty-acid beta-oxidation",
+        ],
+        categories=[
+            "fatty-acid beta-oxidation",
+            "pentose phosphate",
+            "oxphos",
+            "tca cycle",
+            "glycolysis",
+        ],
+    ),
+    # Wide score range: top bars easily fit the label inside;
+    # the bottom bars are too short, so fit_check re-anchors them outside.
+    "score": [2.45, 1.98, 0.62, 0.31, 0.18],
+})
+ax = pp.barplot(
+    data=pathway_df, x="score", y="pathway",
+    title="pathway enrichment (horizontal, anchor='inside' w/ auto-fallback)",
+    xlabel="−log₁₀(p)", ylabel="",
+)
+pp.annotate(
+    ax, kind="bar_custom",
+    labels=lambda r: str(r.category),
+    anchor="inside",
+)
+pp.show()
+
+# %%
+# Column source with hue
+# ----------------------
+# Label alignment follows the same dodge rules as ``pp.barplot``: columns
+# are looked up by the ``(category, hue, hatch)`` group key, so labels
+# are paired with the correct bar even when hue is active.
+hue_df = pd.DataFrame({
+    "group": pd.Categorical(
+        ["A", "A", "B", "B", "C", "C"],
+        categories=["A", "B", "C"],
+    ),
+    "fold":  pd.Categorical(
+        ["f0", "f1", "f0", "f1", "f0", "f1"],
+        categories=["f0", "f1"],
+    ),
+    "auc":   [0.87, 0.85, 0.72, 0.74, 0.81, 0.79],
+    "n":     [1204, 1198, 845, 852, 987, 991],
+})
+ax = pp.barplot(
+    data=hue_df, x="group", y="auc", hue="fold",
+    title="AUC + n with hue",
+)
+pp.annotate(ax, kind="bar_custom", labels="n", fmt="n={:,}")
+pp.show()
+
+# %%
+# Inline via ``pp.barplot(annotate={"kind": "bar_custom", ...})``
+# ---------------------------------------------------------------
+# For brevity, pass the strategy and its options directly to
+# ``pp.barplot`` via the ``annotate=`` kwarg — the plotter dispatches
+# to ``bar_custom`` internally.
+ax = pp.barplot(
+    data=auc_df, x="group", y="auc",
+    annotate={"kind": "bar_custom", "labels": "n", "fmt": "n={:,}"},
+    title="inline: annotate={'kind': 'bar_custom', 'labels': 'n', ...}",
+)
+pp.show()

@@ -152,7 +152,7 @@ pp.show()
 # ~~~~~~~~~~~~~~~~~~~
 # ``annotate=True`` labels the median by default. Pass
 # ``stats=["median", "q1", "q3", ...]`` to label multiple statistics per
-# box. See the dedicated :doc:`annotations gallery <plot_16_annotate>`
+# box. See the dedicated :doc:`annotations gallery <plot_17_annotate>`
 # for the full option set.
 
 ax = pp.boxplot(

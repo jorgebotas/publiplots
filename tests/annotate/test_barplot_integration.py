@@ -39,9 +39,32 @@ def _grouped_df():
     return df
 
 
-def test_barplot_annotate_false_attaches_no_meta():
+def test_barplot_annotate_false_attaches_meta_but_draws_no_labels():
+    """Meta is attached unconditionally; labels only when annotate= truthy."""
     ax = pp.barplot(data=_simple_df(), x="category", y="value")
-    assert not hasattr(ax, "_publiplots_bar_meta")
+    assert isinstance(ax._publiplots_bar_meta, BarValueMeta)
+    assert len(ax.texts) == 0
+
+
+def test_barplot_without_annotate_still_attaches_meta():
+    """Follow-up pp.annotate calls need the cache even when annotate= is False."""
+    ax = pp.barplot(data=_simple_df(), x="category", y="value")
+    assert isinstance(ax._publiplots_bar_meta, BarValueMeta)
+    assert ax._publiplots_bar_meta.owner_is_publiplots is True
+    # No labels drawn because annotate= was not passed
+    assert len(ax.texts) == 0
+
+
+def test_stacked_barplot_without_annotate_attaches_meta():
+    """Cache must also be attached on the stacked/fill/gain path."""
+    df = pd.DataFrame({
+        "cat": pd.Categorical(["A", "A", "B", "B"], categories=["A", "B"]),
+        "hue": pd.Categorical(["x", "y", "x", "y"], categories=["x", "y"]),
+        "value": [1.0, 2.0, 3.0, 4.0],
+    })
+    ax = pp.barplot(data=df, x="cat", y="value", hue="hue", multiple="stack")
+    assert isinstance(ax._publiplots_bar_meta, BarValueMeta)
+    assert len(ax.texts) == 0
 
 
 def test_barplot_annotate_true_attaches_meta_and_draws_labels():
@@ -290,3 +313,18 @@ def test_barplot_annotate_single_sample_groups_no_nan_positions():
         x, y = t.get_position()
         assert not math.isnan(float(x)), f"NaN x for label {t.get_text()!r}"
         assert not math.isnan(float(y)), f"NaN y for label {t.get_text()!r}"
+
+
+def test_barplot_annotate_bar_custom_inline():
+    """pp.barplot(data, x, y, annotate={'kind': 'bar_custom', 'labels': 'n'})."""
+    df = pd.DataFrame({
+        "cat": pd.Categorical(["A", "B", "C"], categories=["A", "B", "C"]),
+        "value": [1.0, 2.0, 3.0],
+        "n": [12, 34, 56],
+    })
+    ax = pp.barplot(
+        data=df, x="cat", y="value",
+        annotate={"kind": "bar_custom", "labels": "n", "fmt": "n={}"},
+    )
+    labels = [t.get_text() for t in ax.texts]
+    assert labels == ["n=12", "n=34", "n=56"]

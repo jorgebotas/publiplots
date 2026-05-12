@@ -7,7 +7,7 @@ reconstructs an equivalent meta by walking `ax.patches` and `ax.lines`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple
+from typing import Any, Hashable, List, Literal, Optional, Tuple
 
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
@@ -18,14 +18,35 @@ from matplotlib.patches import Rectangle
 RGBA = Tuple[float, float, float, float]
 
 
-@dataclass
+@dataclass(frozen=True)
 class BarRecord:
+    """One drawn bar plus the metadata annotate strategies need.
+
+    Fields:
+        patch: the matplotlib Rectangle drawn for this bar.
+        value: aggregated bar height (orient='v') or width ('h'); NaN-possible.
+        err_low, err_high: errorbar extents on the value axis, if present.
+        hue_color: the palette color assigned to this bar (RGBA).
+        anchor_override: if set, overrides the caller's anchor for this bar
+            (used by stacked/gain barplots to pin labels inside-vs-outside).
+        category: the x-axis group key (None on foreign axes).
+        hue_value: the hue group key, if hue is active (else None).
+        hatch_value: the hatch group key, if hatch is active (else None).
+        draw_index: 0-based position in the draw order.
+        frame_row_index: index of a representative source-DataFrame row for
+            this group (first row in the group); None on foreign axes.
+    """
     patch: Rectangle
     value: float
     err_low: Optional[float]
     err_high: Optional[float]
     hue_color: Optional[RGBA]
     anchor_override: Optional[str] = None
+    category: Optional[Hashable] = None
+    hue_value: Optional[Hashable] = None
+    hatch_value: Optional[Hashable] = None
+    draw_index: int = 0
+    frame_row_index: Optional[int] = None
 
 
 @dataclass
@@ -35,6 +56,13 @@ class BarValueMeta:
     errorbar_kind: Optional[str]
     hue_active: bool
     owner_is_publiplots: bool
+    source_frame: Optional[Any] = None          # pandas DataFrame (kept Any to avoid import)
+    group_keys: Optional[Tuple[str, ...]] = None
+    # Companion to group_keys identifying each key's dimension: one of
+    # "cat", "hue", "hatch". Parallel tuple with the same length and order as
+    # `group_keys`. Populated by publiplots-owned builders; left `None` by
+    # `_introspect` (foreign axes have no semantic dims to report).
+    group_dims: Optional[Tuple[str, ...]] = None
 
 
 @dataclass
@@ -87,9 +115,18 @@ class BoxStatsMeta:
 
 
 def _is_bar_rect(p) -> bool:
+    """True for a Rectangle with non-zero width AND non-zero height.
+
+    Seaborn/matplotlib draw negative-valued bars as Rectangles with a
+    negative ``get_height()`` (or ``get_width()`` for horizontal orient):
+    ``x, y=0, height=-12.3`` instead of ``x, y=-12.3, height=12.3``.
+    A strict ``> 0`` check would silently drop those bars from meta,
+    causing annotate strategies to skip every negative bar. Here we only
+    reject *degenerate* zero-size rects (e.g. truly empty groups).
+    """
     if not isinstance(p, Rectangle):
         return False
-    return p.get_width() > 0 and p.get_height() > 0
+    return p.get_width() != 0 and p.get_height() != 0
 
 
 def _iter_error_segments(ax: Axes):
@@ -191,7 +228,7 @@ def _introspect(ax: Axes) -> BarValueMeta:
     orient = _infer_orient(rects)
     err_by_bar = _match_errorbars(ax, rects, orient)
     bars: List[BarRecord] = []
-    for r, (err_low, err_high) in zip(rects, err_by_bar):
+    for i, (r, (err_low, err_high)) in enumerate(zip(rects, err_by_bar)):
         value = r.get_height() if orient == "v" else r.get_width()
         bars.append(BarRecord(
             patch=r,
@@ -199,6 +236,12 @@ def _introspect(ax: Axes) -> BarValueMeta:
             err_low=err_low,
             err_high=err_high,
             hue_color=tuple(r.get_facecolor()),
+            anchor_override=None,
+            category=None,
+            hue_value=None,
+            hatch_value=None,
+            draw_index=i,
+            frame_row_index=None,
         ))
     return BarValueMeta(
         orient=orient,
@@ -206,4 +249,7 @@ def _introspect(ax: Axes) -> BarValueMeta:
         errorbar_kind=None,
         hue_active=False,
         owner_is_publiplots=False,
+        source_frame=None,
+        group_keys=None,
+        group_dims=None,
     )

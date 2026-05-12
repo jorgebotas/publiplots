@@ -27,6 +27,7 @@ from publiplots.annotate._cache import (
     BoxStatsRecord,
     PointRecord,
     PointValueMeta,
+    _is_bar_rect,
     _iter_error_segments,
     _match_errorbars,
 )
@@ -40,13 +41,19 @@ def _aggregate_means(
     hue: Optional[str],
     categorical_axis: str,
     hatch: Optional[str] = None,
+    source_frame=None,
 ) -> List[Dict]:
     """Group by (categorical_axis [, hue [, hatch]]) and return means.
 
-    Uses the shared `BarSplitSpec` to decide which dimensions actually
-    dodge, so the row order here matches whatever bar.py draws.
-    Errorbar extents are not computed here; callers pull them from drawn
-    artists via `_match_errorbars`.
+    Each row carries its draw-order category/hue/hatch keys and the
+    frame row index of the first matching source row, so downstream
+    label lookups can align by group without re-deriving the spec.
+
+    ``frame_row_index`` is a *position* (integer offset) into
+    ``source_frame``, not a pandas label, so ``source_frame.iloc[idx]``
+    resolves the caller's row for any index kind (RangeIndex, string
+    index, sliced, MultiIndex, ...). When ``source_frame`` is omitted
+    the field is ``None``.
     """
     value_col = y if categorical_axis == x else x
     spec = BarSplitSpec.resolve(
@@ -54,19 +61,37 @@ def _aggregate_means(
     )
 
     rows: List[Dict] = []
-    for cat, h_val, _ht_val in spec.iter_draw_order(data):
+    for cat, h_val, ht_val in spec.iter_draw_order(data):
         parts = [data[categorical_axis] == cat]
         if spec.split_hue is not None:
             parts.append(data[spec.split_hue] == h_val)
         if spec.split_hatch is not None:
-            parts.append(data[spec.split_hatch] == _ht_val)
+            parts.append(data[spec.split_hatch] == ht_val)
         mask = parts[0]
         for p in parts[1:]:
             mask = mask & p
         vals = data.loc[mask, value_col].to_numpy()
-        row: Dict = {"mean": float(np.mean(vals))}
-        if h_val is not None:
-            row["hue_value"] = h_val
+        # Position within source_frame of the first row matching this group.
+        # We resolve against source_frame (not the prepared `data`) because the
+        # meta's `source_frame` is the pre-copy caller frame; `iloc` on the
+        # caller's frame must land on the same semantic row.
+        matching = data.index[mask]
+        frame_row_index: Optional[int] = None
+        if source_frame is not None and len(matching):
+            # Map the matching label back to a position in source_frame's index.
+            first_label = matching[0]
+            try:
+                frame_row_index = int(source_frame.index.get_loc(first_label))
+            except (KeyError, TypeError):
+                # Prepared data diverged from source_frame's index (rare).
+                frame_row_index = None
+        row: Dict = {
+            "mean": float(np.mean(vals)) if len(vals) else float("nan"),
+            "category": cat,
+            "hue_value": h_val,
+            "hatch_value": ht_val,
+            "frame_row_index": frame_row_index,
+        }
         rows.append(row)
     return rows
 
@@ -187,6 +212,8 @@ def build_from_barplot_call(
     palette: Optional[Dict],
     errorbar: Optional[str],
     hatch: Optional[str] = None,
+    *,
+    source_frame,
 ) -> BarValueMeta:
     """Build a `BarValueMeta` paired with the barplot's Rectangles.
 
@@ -196,19 +223,30 @@ def build_from_barplot_call(
     callables, `None`). Records are paired with Rectangles in draw order,
     which under hue + hatch double-split is hue-outer / hatch-middle /
     cat-inner. Hue colors come from the resolved palette map.
+
+    Parameters
+    ----------
+    source_frame : pandas.DataFrame
+        The caller's pre-copy DataFrame. Required keyword-only; must be
+        the exact object the user passed to ``pp.barplot``, so
+        ``meta.source_frame is df`` holds and
+        ``source_frame.iloc[record.frame_row_index]`` resolves correctly
+        regardless of the caller's index kind.
     """
     orient = "v" if categorical_axis == x else "h"
 
     agg = _aggregate_means(data, x=x, y=y, hue=hue, hatch=hatch,
-                           categorical_axis=categorical_axis)
-    rects = [
-        p for p in ax.patches
-        if isinstance(p, Rectangle) and p.get_width() > 0 and p.get_height() > 0
-    ]
+                           categorical_axis=categorical_axis,
+                           source_frame=source_frame)
+    # `_is_bar_rect` treats signed extents as valid so negative-valued bars
+    # (matplotlib emits them as rects with negative height/width) are kept.
+    rects = [p for p in ax.patches if _is_bar_rect(p)]
     err_by_bar = _match_errorbars(ax, rects, orient)
 
     bars: List[BarRecord] = []
-    for rect, row, (err_low, err_high) in zip(rects, agg, err_by_bar):
+    for i, (rect, row, (err_low, err_high)) in enumerate(
+        zip(rects, agg, err_by_bar)
+    ):
         hue_color = None
         if hue is not None and palette is not None:
             key = row.get("hue_value")
@@ -222,13 +260,35 @@ def build_from_barplot_call(
             err_low=err_low,
             err_high=err_high,
             hue_color=hue_color,
+            anchor_override=None,
+            category=row["category"],
+            hue_value=row["hue_value"],
+            hatch_value=row["hatch_value"],
+            draw_index=i,
+            frame_row_index=row["frame_row_index"],
         ))
+
+    spec = BarSplitSpec.resolve(
+        x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
+    )
+    keys: List[str] = [categorical_axis]
+    dims: List[str] = ["cat"]
+    if spec.split_hue is not None:
+        keys.append(spec.split_hue)
+        dims.append("hue")
+    if spec.split_hatch is not None:
+        keys.append(spec.split_hatch)
+        dims.append("hatch")
+
     return BarValueMeta(
         orient=orient,
         bars=bars,
         errorbar_kind=errorbar,
         hue_active=hue is not None,
         owner_is_publiplots=True,
+        source_frame=source_frame,
+        group_keys=tuple(keys),
+        group_dims=tuple(dims),
     )
 
 
@@ -242,6 +302,8 @@ def build_from_stacked_barplot_call(
     palette: Optional[Dict],
     hatch: Optional[str] = None,
     multiple: Literal["stack", "fill", "gain"] = "stack",
+    *,
+    source_frame,
 ) -> BarValueMeta:
     """Build a ``BarValueMeta`` paired with a stacked bar plot's Rectangles.
 
@@ -259,12 +321,22 @@ def build_from_stacked_barplot_call(
     labeled is ``y + height`` (the winner's absolute total); otherwise
     (base segment or tie) the label value is ``rect.get_height()``
     itself. Horizontal orient mirrors with ``x`` / ``width``.
+
+    Parameters
+    ----------
+    source_frame : pandas.DataFrame
+        The caller's pre-copy DataFrame. Required keyword-only; must be
+        the exact object the user passed to ``pp.barplot``, so
+        ``meta.source_frame is df`` holds and
+        ``source_frame.iloc[record.frame_row_index]`` resolves correctly
+        regardless of the caller's index kind.
     """
     orient: Literal["v", "h"] = "v" if categorical_axis == x else "h"
 
     agg = _aggregate_means(
         data, x=x, y=y, hue=hue, hatch=hatch,
         categorical_axis=categorical_axis,
+        source_frame=source_frame,
     )
     # No > 0 filter on height / width: the stacked path emits one
     # Rectangle per aggregated row via ax.bar, including legitimate
@@ -273,7 +345,7 @@ def build_from_stacked_barplot_call(
     rects = [p for p in ax.patches if isinstance(p, Rectangle)]
 
     bars: List[BarRecord] = []
-    for rect, row in zip(rects, agg):
+    for i, (rect, row) in enumerate(zip(rects, agg)):
         anchor_override: Optional[str] = None
         if multiple == "gain":
             # Absolute values: base segment's height is the loser's total;
@@ -311,13 +383,34 @@ def build_from_stacked_barplot_call(
             err_high=None,
             hue_color=hue_color,
             anchor_override=anchor_override,
+            category=row["category"],
+            hue_value=row["hue_value"],
+            hatch_value=row["hatch_value"],
+            draw_index=i,
+            frame_row_index=row["frame_row_index"],
         ))
+
+    spec = BarSplitSpec.resolve(
+        x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
+    )
+    keys: List[str] = [categorical_axis]
+    dims: List[str] = ["cat"]
+    if spec.split_hue is not None:
+        keys.append(spec.split_hue)
+        dims.append("hue")
+    if spec.split_hatch is not None:
+        keys.append(spec.split_hatch)
+        dims.append("hatch")
+
     return BarValueMeta(
         orient=orient,
         bars=bars,
         errorbar_kind=None,
         hue_active=hue is not None,
         owner_is_publiplots=True,
+        source_frame=source_frame,
+        group_keys=tuple(keys),
+        group_dims=tuple(dims),
     )
 
 
@@ -341,10 +434,7 @@ def build_from_histplot_call(
     """
     orient = "v" if x is not None else "h"
 
-    rects = [
-        p for p in ax.patches
-        if isinstance(p, Rectangle) and p.get_width() > 0 and p.get_height() > 0
-    ]
+    rects = [p for p in ax.patches if _is_bar_rect(p)]
 
     bars: List[BarRecord] = []
     for rect in rects:
