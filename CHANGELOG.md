@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.11] - 2026-05-12
+
+### Added
+
+- `pp.kdeplot` — univariate and bivariate kernel-density plot wrapping
+  `seaborn.kdeplot` with publiplots styling and legend integration.
+  - **1D mode** (exactly one of `x` / `y`): density curve with optional
+    `hue`-grouped overlays. `multiple="layer" | "stack" | "fill"`
+    controls overlap handling. Legend stashes one categorical-hue entry
+    whose handle shape follows the drawn geometry — `Rectangle` when
+    `fill=True`, `Line2D` when `fill=False`.
+  - **2D mode** (both `x` and `y`): filled or line contours. `cbar=True`
+    stashes a continuous-hue `ScalarMappable` through the shared legend
+    reactor, so the colorbar participates in `pp.legend(side=...)`,
+    figure-level bands, and `legend_kws={"inside": True}` just like
+    `pp.hexbinplot`. Categorical `hue` stashes a line-handle entry per
+    group.
+  - Preserves seaborn's `fill=None` tri-state (seaborn derives `fill`
+    from `multiple` when unset); `bw_method`, `bw_adjust`, `gridsize`,
+    `cut`, `clip`, `common_norm`, `common_grid`, `cumulative`,
+    `weights`, `log_scale`, `levels`, `thresh`, and `warn_singular` are
+    all forwarded verbatim.
+
+- `pp.regplot` — linear / polynomial / LOWESS / robust regression plot
+  wrapping `seaborn.regplot`, extended with native `hue=` support.
+  - `sns.regplot` itself has no `hue` parameter (users are expected to
+    reach for `sns.lmplot` + FacetGrid). `pp.regplot` resolves a
+    categorical palette via `resolve_palette_map` and loops over hue
+    levels, calling `sns.regplot` once per group with the group's
+    `color`. One `LegendEntry(kind="hue")` is stashed with marker-style
+    swatches — the regression line color matches the scatter swatch.
+  - `scatter_kws` / `line_kws` are forwarded via `setdefault` so user
+    values win over publiplots defaults for `linewidths`, `alpha`, and
+    `edgecolor`. `marker` is routed as a top-level kwarg (seaborn
+    hard-overwrites `scatter_kws["marker"]`).
+  - Full seaborn surface: `order`, `logistic`, `lowess`, `robust`,
+    `logx`, `x_estimator`, `x_bins`, `x_ci`, `x_partial`, `y_partial`,
+    `truncate`, `x_jitter`, `y_jitter`, `ci`, `n_boot`, `seed`.
+  - Continuous (numeric) hue emits `UserWarning` and falls back to a
+    single-color regression.
+
+- `pp.residplot` — residuals-vs-fitted plot wrapping `seaborn.residplot`
+  with the same hue-loop extension as `pp.regplot`.
+  - The `y=0` dotted reference line drawn by seaborn is preserved; with
+    `hue` each group overdraws an identical reference line (visually
+    indistinguishable from a single draw).
+  - `lowess`, `order`, `robust`, `dropna`, `x_partial`, `y_partial`
+    forwarded verbatim. Legend stash matches `pp.regplot` — one
+    marker-style hue entry per group, no entry when `hue` is None.
+  - Continuous hue warns + falls back to single-color residuals.
+
+### Changed
+
+- Gallery reorganized to keep thematically related plots adjacent:
+  `plot_03_kdeplot.py` inserted right after `plot_02_histogram.py` (1D
+  density sits with the histogram, 2D sits with `plot_04_hexbinplot.py`);
+  `plot_06_regplot.py` and `plot_07_residplot.py` inserted right after
+  `plot_05_scatter_plots.py` (regression is "fit a line through the
+  cloud"). Existing `plot_03` through `plot_19` shifted to `plot_04`
+  through `plot_22`. Four intra-gallery cross-references to
+  `plot_18_annotate` updated to `plot_21_annotate`.
+
 ## [0.10.10] - 2026-05-12
 
 ### Added

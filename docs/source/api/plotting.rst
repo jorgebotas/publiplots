@@ -25,6 +25,8 @@ Relational
 
    publiplots.scatterplot
    publiplots.lineplot
+   publiplots.regplot
+   publiplots.residplot
 
 Distribution
 ------------
@@ -34,6 +36,7 @@ Distribution
    :nosignatures:
 
    publiplots.histplot
+   publiplots.kdeplot
 
 Matrix
 ------

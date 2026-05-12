@@ -218,7 +218,7 @@ pp.show()
 # Violinplots share the ``box_stats`` annotation strategy with boxplots:
 # ``annotate=True`` labels the median by default; pass
 # ``stats=[...]`` to label multiple statistics per violin. See the
-# dedicated :doc:`annotations gallery <plot_18_annotate>` for more.
+# dedicated :doc:`annotations gallery <plot_21_annotate>` for more.
 
 ax = pp.violinplot(
     data=violin_data,
