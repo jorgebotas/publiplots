@@ -256,14 +256,14 @@ pp.show()
 # ``n`` column from the DataFrame that was plotted; ``fmt="n={:,}"``
 # formats each value with a thousands separator.
 auc_df = pd.DataFrame({
-    "method": pd.Categorical(
-        ["lemur", "pca", "scvi"],
-        categories=["lemur", "pca", "scvi"],
+    "group": pd.Categorical(
+        ["A", "B", "C"],
+        categories=["A", "B", "C"],
     ),
     "auc": [0.87, 0.72, 0.81],
     "n":   [1204, 845, 987],
 })
-ax = pp.barplot(data=auc_df, x="method", y="auc",
+ax = pp.barplot(data=auc_df, x="group", y="auc",
                 title="AUC bars annotated with n=")
 pp.annotate(ax, kind="bar_custom", labels="n", fmt="n={:,}")
 pp.show()
@@ -342,19 +342,19 @@ pp.show()
 # are looked up by the ``(category, hue, hatch)`` group key, so labels
 # are paired with the correct bar even when hue is active.
 hue_df = pd.DataFrame({
-    "method": pd.Categorical(
-        ["lemur", "lemur", "pca", "pca", "scvi", "scvi"],
-        categories=["lemur", "pca", "scvi"],
+    "group": pd.Categorical(
+        ["A", "A", "B", "B", "C", "C"],
+        categories=["A", "B", "C"],
     ),
-    "fold":   pd.Categorical(
+    "fold":  pd.Categorical(
         ["f0", "f1", "f0", "f1", "f0", "f1"],
         categories=["f0", "f1"],
     ),
-    "auc":    [0.87, 0.85, 0.72, 0.74, 0.81, 0.79],
-    "n":      [1204, 1198, 845, 852, 987, 991],
+    "auc":   [0.87, 0.85, 0.72, 0.74, 0.81, 0.79],
+    "n":     [1204, 1198, 845, 852, 987, 991],
 })
 ax = pp.barplot(
-    data=hue_df, x="method", y="auc", hue="fold",
+    data=hue_df, x="group", y="auc", hue="fold",
     title="AUC + n with hue",
 )
 pp.annotate(ax, kind="bar_custom", labels="n", fmt="n={:,}")
