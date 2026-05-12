@@ -37,6 +37,7 @@ Distribution
 
    publiplots.histplot
    publiplots.kdeplot
+   publiplots.hexbinplot
 
 Matrix
 ------
