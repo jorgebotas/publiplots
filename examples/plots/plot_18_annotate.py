@@ -372,3 +372,79 @@ ax = pp.barplot(
     title="inline: annotate={'kind': 'bar_custom', 'labels': 'n', ...}",
 )
 pp.show()
+
+# %%
+# ``kind="point_custom"``: per-point column labels
+# ================================================
+#
+# Same ``labels=(column|callable)`` contract as ``bar_custom``, but for
+# ``pp.pointplot``. Label each point with a sibling column (here,
+# sample count) aligned by the same ``(x, hue)`` group keys that
+# ``pp.pointplot`` used.
+point_df = pd.DataFrame({
+    "group": pd.Categorical(
+        ["A", "B", "C", "D"], categories=["A", "B", "C", "D"],
+    ),
+    "auc": [0.62, 0.71, 0.83, 0.79],
+    "n":   [120, 145, 98, 87],
+})
+ax = pp.pointplot(data=point_df, x="group", y="auc",
+                   title="pointplot annotated with n=")
+pp.annotate(ax, kind="point_custom", labels="n", fmt="n={:,}",
+            anchor="top")
+pp.show()
+
+# %%
+# ``kind="box_custom"``: per-box callable labels
+# ==============================================
+#
+# ``labels=`` accepts a callable ``(BoxStatsRecord) -> str``. Use
+# ``record.stats`` to read any of the six statistics on the fly
+# (median, q1, q3, whisker_low, whisker_high, mean) — here, the
+# IQR alongside the group position.
+box_df = pd.DataFrame({
+    "group": pd.Categorical(
+        (["A"] * 20 + ["B"] * 20 + ["C"] * 20),
+        categories=["A", "B", "C"],
+    ),
+    "score": (
+        list(0.6 + 0.01 * i for i in range(20))
+        + list(0.5 + 0.012 * i for i in range(20))
+        + list(0.8 + 0.008 * i for i in range(20))
+    ),
+})
+ax = pp.boxplot(data=box_df, x="group", y="score",
+                 title="boxplot with IQR annotations")
+pp.annotate(
+    ax, kind="box_custom",
+    labels=lambda r: f"IQR {r.stats['q3'] - r.stats['q1']:.2f}",
+    anchor="right",
+)
+pp.show()
+
+# %%
+# ``kind="violin_custom"``: per-violin inline annotation
+# ======================================================
+#
+# ``pp.violinplot(annotate={"kind": "violin_custom", ...})`` dispatches
+# to ``violin_custom`` without a follow-up ``pp.annotate`` call. Use
+# the inline form for one-shot figures; reach for the two-call form
+# when you want to compose multiple annotation layers.
+violin_df = pd.DataFrame({
+    "group": pd.Categorical(
+        (["A"] * 30 + ["B"] * 30 + ["C"] * 30),
+        categories=["A", "B", "C"],
+    ),
+    "score": (
+        list(0.6 + 0.011 * i for i in range(30))
+        + list(0.5 + 0.013 * i for i in range(30))
+        + list(0.8 + 0.009 * i for i in range(30))
+    ),
+    "n": [30] * 30 + [30] * 30 + [30] * 30,
+})
+ax = pp.violinplot(
+    data=violin_df, x="group", y="score",
+    annotate={"kind": "violin_custom", "labels": "n", "fmt": "n={}"},
+    title="violinplot inline: annotate={'kind': 'violin_custom', ...}",
+)
+pp.show()
