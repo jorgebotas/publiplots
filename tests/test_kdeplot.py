@@ -149,6 +149,54 @@ def test_2d_cbar_false_stashes_nothing(kde2d_df):
     assert get_entries(ax) == []
 
 
+def test_2d_cbar_implicit_fill(kde2d_df):
+    """cbar=True (no hue, fill unset) auto-fills contours so the
+    colorbar advertises a gradient that the contours actually encode."""
+    ax = kdeplot(data=kde2d_df, x="x", y="y", cbar=True)
+    contour_set = ax.collections[0]
+    facecolors = contour_set.get_facecolor()
+    # Filled QuadContourSet has one face color per band (>0 entries).
+    assert len(facecolors) > 0, (
+        "cbar=True should default to fill=True so contour bands are "
+        "filled with density-mapped colors"
+    )
+
+
+def test_2d_cbar_explicit_fill_false_respected(kde2d_df):
+    """User-set fill=False overrides the cbar=True implicit fill."""
+    ax = kdeplot(data=kde2d_df, x="x", y="y", cbar=True, fill=False)
+    contour_set = ax.collections[0]
+    facecolors = contour_set.get_facecolor()
+    assert len(facecolors) == 0, (
+        "Explicit fill=False must beat cbar=True's implicit fill"
+    )
+
+
+def test_2d_cbar_uses_continuous_cmap(kde2d_df):
+    """The stashed cbar mappable carries the continuous cmap (not the
+    discrete light_palette seaborn builds on the contour set)."""
+    ax = kdeplot(data=kde2d_df, x="x", y="y", cbar=True, cmap="viridis")
+    entries = get_entries(ax)
+    assert len(entries) == 1
+    mappable = entries[0].handles[0]
+    assert mappable.cmap.name == "viridis"
+    # A continuous cmap has 256 colors; discrete light_palette would have ~10.
+    assert mappable.cmap.N >= 256
+
+
+def test_2d_cbar_default_cmap_from_rcparams(kde2d_df):
+    """cmap=None falls back to rcParams['image.cmap'] (matches hexbin)."""
+    import matplotlib.pyplot as _plt
+    saved = _plt.rcParams["image.cmap"]
+    try:
+        _plt.rcParams["image.cmap"] = "magma"
+        ax = kdeplot(data=kde2d_df, x="x", y="y", cbar=True)
+        mappable = get_entries(ax)[0].handles[0]
+        assert mappable.cmap.name == "magma"
+    finally:
+        _plt.rcParams["image.cmap"] = saved
+
+
 def test_2d_hue_stashes_categorical(kde2d_df):
     ax = kdeplot(data=kde2d_df, x="x", y="y", hue="group")
     entries = get_entries(ax)

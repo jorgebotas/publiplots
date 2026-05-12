@@ -20,8 +20,7 @@ import pandas as pd
 
 import publiplots as pp
 
-# Temporary module-level import until the main agent wires up the export.
-from publiplots.plot.kdeplot import kdeplot
+kdeplot = pp.kdeplot
 
 rng = np.random.default_rng(0)
 
@@ -97,6 +96,27 @@ pp.show()
 
 
 # %%
+# 100%-Stacked Densities (Conditional Probability)
+# ------------------------------------------------
+# ``multiple="fill"`` re-normalizes the stack to a constant total of 1,
+# so each band reads as the conditional probability of belonging to
+# that hue level given ``x``. Use this when "which group dominates
+# here?" is the question the plot should answer.
+
+ax = kdeplot(
+    data=groups,
+    x="value",
+    hue="group",
+    multiple="fill",
+    palette="pastel",
+    title='multiple="fill" (conditional P(group | x))',
+    xlabel="value",
+    ylabel="P(group | x)",
+)
+pp.show()
+
+
+# %%
 # 2D Bivariate Contours
 # ---------------------
 # Provide both ``x`` and ``y`` for an iso-density contour plot. With no
@@ -123,9 +143,11 @@ pp.show()
 # 2D with Continuous Colorbar
 # ---------------------------
 # Pass ``cbar=True`` to route a continuous-hue colorbar through the
-# publiplots legend reactor. The mappable is built from the
-# ``QuadContourSet``'s colormap + density-level range, not seaborn's
-# internal ``NoNorm``, so the ticks read real density values.
+# publiplots legend reactor. publiplots auto-fills the contour bands
+# with the resolved cmap (defaulting to
+# ``matplotlib.rcParams["image.cmap"]``) so the gradient the colorbar
+# advertises is the gradient the contours actually encode. Pass
+# ``cmap=`` to override (any matplotlib colormap name is accepted).
 
 ax = kdeplot(
     data=bivariate,

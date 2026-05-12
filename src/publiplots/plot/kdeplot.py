@@ -25,7 +25,7 @@ Legend stashing
 """
 
 import warnings
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,6 +75,7 @@ def kdeplot(
     cbar: bool = False,
     cbar_ax: Optional[Axes] = None,
     cbar_kws: Optional[Dict] = None,
+    cmap: Optional[str] = None,
     linewidth: Optional[float] = None,
     edgecolor: Optional[str] = None,
     ax: Optional[Axes] = None,
@@ -154,15 +155,23 @@ def kdeplot(
         Lowest iso-density level as a fraction of peak density. Used in
         2D mode only.
     cbar : bool, default=False
-        2D only. If True, stash a continuous-hue colorbar entry on the
-        axes. The band is rendered by publiplots' legend reactor, not by
-        seaborn.
+        2D only. If True, draws filled contour bands colored by density
+        and stashes a continuous-hue colorbar entry on the axes. The
+        band is rendered by publiplots' legend reactor, not by seaborn.
+        When ``hue`` is None and ``fill`` is unset, ``cbar=True``
+        implicitly switches to ``fill=True`` so the contour fill encodes
+        the density value the colorbar advertises.
     cbar_ax : Axes, optional
         Accepted for signature compatibility. Logs a UserWarning — the
         colorbar is placed via ``stash_continuous_hue``, not onto
         ``cbar_ax`` directly.
     cbar_kws : dict, optional
         Forwarded into ``legend_kws`` (e.g. ``{'hue_label': 'density'}``).
+    cmap : str or Colormap, optional
+        2D only. Colormap used to color the filled contour bands and
+        the colorbar gradient. When None (the default), falls back to
+        ``matplotlib.rcParams["image.cmap"]`` — same convention as
+        :func:`pp.hexbinplot`. Only applies in 2D mode without ``hue``.
     linewidth : float, optional
         Stroke width for curves / contour lines. Falls back to rcParams.
     edgecolor : str, optional
@@ -285,11 +294,28 @@ def kdeplot(
     # matplotlib's contour, which doesn't accept it), but honors it in 1D.
     if not is_2d:
         sns_kwargs["linewidth"] = linewidth
-    # Preserve fill tri-state: only forward when the user set it.
-    if fill is not None:
-        sns_kwargs["fill"] = fill
+
+    # 2D + cbar + no hue: a colorbar is meaningful only when the
+    # contours are actually colored by density. Default fill=True (when
+    # the user didn't explicitly set fill) and resolve a continuous
+    # cmap so the bands span the density range. Without this, seaborn
+    # draws all contour lines in a single color and the colorbar
+    # advertises a gradient that the plot does not actually encode.
+    effective_fill = fill
+    cmap_resolved: Optional[Any] = None
+    if is_2d and cbar and hue is None:
+        if effective_fill is None:
+            effective_fill = True
+        cmap_resolved = cmap if cmap is not None else plt.rcParams["image.cmap"]
+        sns_kwargs["cmap"] = cmap_resolved
+
+    if effective_fill is not None:
+        sns_kwargs["fill"] = effective_fill
     if hue is None:
-        if color is not None:
+        # Don't pass `color` when we're letting `cmap` drive the bands;
+        # seaborn would otherwise build a discrete light_palette from
+        # `color` and re-discretize the cmap.
+        if color is not None and cmap_resolved is None:
             sns_kwargs["color"] = color
     else:
         sns_kwargs["palette"] = palette_map if palette_map else palette
@@ -347,6 +373,7 @@ def kdeplot(
         fill=fill,
         multiple=multiple,
         cbar=cbar,
+        cbar_cmap=cmap_resolved,
         new_collections=tracker.get_new_collections(),
         alpha=alpha,
         linewidth=linewidth,
@@ -484,6 +511,7 @@ def _legend(
     fill: Optional[bool],
     multiple: str,
     cbar: bool,
+    cbar_cmap: Optional[Any],
     new_collections: List,
     alpha: float,
     linewidth: float,
@@ -520,9 +548,14 @@ def _legend(
             contour_set = _find_quadcontour(new_collections)
             if contour_set is not None:
                 hue_label = legend_kws.pop("hue_label", "density")
-                cmap = contour_set.get_cmap()
+                # Prefer the explicitly resolved cmap from the call site
+                # (a continuous Colormap). The QuadContourSet's own
+                # cmap is a discrete light_palette built from `color`
+                # and only has N≈levels swatches — wrong for a smooth
+                # colorbar gradient.
+                cmap = cbar_cmap
                 if cmap is None:
-                    cmap = plt.rcParams["image.cmap"]
+                    cmap = contour_set.get_cmap() or plt.rcParams["image.cmap"]
                 stash_continuous_hue(
                     ax,
                     name=hue_label,
