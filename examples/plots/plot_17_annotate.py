@@ -367,7 +367,7 @@ pp.show()
 # ``pp.barplot`` via the ``annotate=`` kwarg — the plotter dispatches
 # to ``bar_custom`` internally.
 ax = pp.barplot(
-    data=auc_df, x="method", y="auc",
+    data=auc_df, x="group", y="auc",
     annotate={"kind": "bar_custom", "labels": "n", "fmt": "n={:,}"},
     title="inline: annotate={'kind': 'bar_custom', 'labels': 'n', ...}",
 )
