@@ -40,7 +40,7 @@ def test_vertical_positive_outside_no_errorbar():
     x, y, dx, dy, ha, va = resolve_anchor(bar, anchor="outside", orient="v",
                                           offset_mm=0.0, ax=ax)
     assert ha == "center"
-    assert va == "bottom"
+    assert va == "baseline"
     assert x == pytest.approx(1.0)
     assert y == pytest.approx(5.0)  # top of bar
 
@@ -72,7 +72,7 @@ def test_vertical_positive_base():
     x, y, dx, dy, ha, va = resolve_anchor(bar, anchor="base", orient="v",
                                           offset_mm=0.0, ax=ax)
     assert ha == "center"
-    assert va == "bottom"
+    assert va == "baseline"
     assert y == pytest.approx(0.0)
 
 

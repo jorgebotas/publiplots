@@ -124,7 +124,7 @@ def test_pointplot_annotate_default_anchor_is_top():
     for text, point in zip(ax.texts, meta.points):
         _, y = text.get_position()
         assert y >= point.err_high
-        assert text.get_va() == "bottom"
+        assert text.get_va() == "baseline"
 
 
 def test_pointplot_annotate_anchor_bottom_flips_below():

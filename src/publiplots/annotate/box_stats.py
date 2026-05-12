@@ -52,11 +52,14 @@ def _resolve_box_anchor(
     don't rescale with ``sharey=True`` — only the mm padding needs to
     live in display space.
     """
+    # va="baseline" for "above-mark" anchors: see _positioning.resolve_anchor
+    # for the rationale (digit-only labels have invisible descender slack
+    # under va="bottom"; va="baseline" matches the horizontal-anchor gap).
     if orient == "v":
         px = box.center_pos
         py = stat_value
         if anchor == "top":
-            return px, py, 0.0, +offset_mm, "center", "bottom"
+            return px, py, 0.0, +offset_mm, "center", "baseline"
         if anchor == "bottom":
             return px, py, 0.0, -offset_mm, "center", "top"
         if anchor == "right":
@@ -70,7 +73,7 @@ def _resolve_box_anchor(
         px = stat_value
         py = box.center_pos
         if anchor == "top":
-            return px, py + box.cat_half_width, 0.0, +offset_mm, "center", "bottom"
+            return px, py + box.cat_half_width, 0.0, +offset_mm, "center", "baseline"
         if anchor == "bottom":
             return px, py - box.cat_half_width, 0.0, -offset_mm, "center", "top"
         if anchor == "right":

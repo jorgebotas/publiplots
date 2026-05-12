@@ -103,10 +103,15 @@ def resolve_anchor(
         x_center = (left + right) / 2.0
         ha = "center"
 
+        # Labels sitting ABOVE a mark use va="baseline" (not "bottom") so the
+        # glyph baseline — not the bbox bottom — anchors to the offset point.
+        # A digit-only string has no descenders, so va="bottom" leaves ~3px of
+        # invisible descender slack between glyph ink and the bar; va="baseline"
+        # eliminates that, matching the visual gap of horizontal "outside" labels.
         if anchor == "outside":
             if is_positive:
                 edge = bar.err_high if bar.err_high is not None else top
-                return x_center, edge, 0.0, +offset_mm, ha, "bottom"
+                return x_center, edge, 0.0, +offset_mm, ha, "baseline"
             else:
                 edge = bar.err_low if bar.err_low is not None else bottom
                 return x_center, edge, 0.0, -offset_mm, ha, "top"
@@ -114,14 +119,14 @@ def resolve_anchor(
             if is_positive:
                 return x_center, top, 0.0, -offset_mm, ha, "top"
             else:
-                return x_center, bottom, 0.0, +offset_mm, ha, "bottom"
+                return x_center, bottom, 0.0, +offset_mm, ha, "baseline"
         if anchor == "base":
             if ax.get_yscale() == "log":
                 base = ax.get_ylim()[0]
             else:
                 base = 0.0
             if is_positive:
-                return x_center, base, 0.0, +offset_mm, ha, "bottom"
+                return x_center, base, 0.0, +offset_mm, ha, "baseline"
             else:
                 return x_center, base, 0.0, -offset_mm, ha, "top"
         if anchor == "center":
