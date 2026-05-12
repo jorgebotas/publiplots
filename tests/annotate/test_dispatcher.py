@@ -52,6 +52,7 @@ def test_registry_contains_known_strategies():
     from publiplots.annotate._dispatcher import _STRATEGIES
     assert set(_STRATEGIES.keys()) == {
         "bar_values", "bar_custom", "box_stats", "point_values",
+        "point_custom",
     }
 
 

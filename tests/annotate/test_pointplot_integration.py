@@ -32,7 +32,6 @@ def test_pointplot_without_annotate_still_attaches_meta():
         assert p.frame_row_index is not None
 
 
-@pytest.mark.skip(reason="strategy registered in Task 6")
 def test_pointplot_annotate_kind_forwarded():
     df = pd.DataFrame({
         "cat": pd.Categorical(["A", "A", "B", "B"]),
