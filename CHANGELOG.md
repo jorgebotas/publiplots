@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     marker-style hue entry per group, no entry when `hue` is None.
   - Continuous hue warns + falls back to single-color residuals.
 
+- New optional dependency group `regression` (`pip install
+  publiplots[regression]`) pulls in `statsmodels>=0.14.0`. Required at
+  call time when passing `lowess=True`, `robust=True`, or
+  `logistic=True` to `pp.regplot` / `pp.residplot` (matches seaborn's
+  optional-statsmodels stance — the underlying primitives raise
+  `RuntimeError` from `_check_statsmodels` when missing).
+
 ### Changed
 
 - Gallery reorganized to keep thematically related plots adjacent:

@@ -75,14 +75,20 @@ pp.show()
 # ----------------------------
 # ``lowess=True`` fits a nonparametric smoother on top of the residual
 # cloud. A flat LOWESS curve is the goal; a persistent bow is evidence
-# of unmodeled structure.
+# of unmodeled structure. Requires ``statsmodels`` (install with
+# ``pip install publiplots[regression]``).
 
-ax = residplot(
-    data=df_poly, x="x", y="y", order=1, lowess=True,
-    title="LOWESS Reveals Missing Quadratic Term",
-    xlabel="x", ylabel="residual",
-)
-pp.show()
+try:
+    import statsmodels  # noqa: F401
+
+    ax = residplot(
+        data=df_poly, x="x", y="y", order=1, lowess=True,
+        title="LOWESS Reveals Missing Quadratic Term",
+        xlabel="x", ylabel="residual",
+    )
+    pp.show()
+except ImportError:
+    print("statsmodels not installed; skipping LOWESS section")
 
 
 # %%

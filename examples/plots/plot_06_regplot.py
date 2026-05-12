@@ -97,23 +97,28 @@ pp.show()
 # ----------------
 # ``lowess=True`` fits a locally-weighted regression curve instead of an
 # ordinary-least-squares line. Handy for data with non-parametric trends.
-# Requires ``statsmodels``.
+# Requires ``statsmodels`` (install with ``pip install publiplots[regression]``).
 
-n = 150
-x = np.linspace(-3.0, 3.0, n)
-y = np.sin(x) + 0.2 * rng.normal(size=n)
-lowess_df = pd.DataFrame({"x": x, "y": y})
+try:
+    import statsmodels  # noqa: F401
 
-ax = regplot(
-    data=lowess_df,
-    x="x",
-    y="y",
-    lowess=True,
-    title="Lowess Smoothing",
-    xlabel="x",
-    ylabel="y",
-)
-pp.show()
+    n = 150
+    x = np.linspace(-3.0, 3.0, n)
+    y = np.sin(x) + 0.2 * rng.normal(size=n)
+    lowess_df = pd.DataFrame({"x": x, "y": y})
+
+    ax = regplot(
+        data=lowess_df,
+        x="x",
+        y="y",
+        lowess=True,
+        title="Lowess Smoothing",
+        xlabel="x",
+        ylabel="y",
+    )
+    pp.show()
+except ImportError:
+    print("statsmodels not installed; skipping LOWESS section")
 
 # %%
 # Binned Aggregation with Error Bars
