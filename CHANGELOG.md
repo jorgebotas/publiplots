@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.10] - 2026-05-12
+
+### Added
+
+- `pp.hexbinplot` — new bivariate 2D-density plot. Aggregates an
+  `(x, y)` point cloud into a hexagonal grid and colors each cell by
+  count (default) or by a user-supplied reduction of a third column
+  (`C=` + `reduce_C_function=`). Supports `bins="log"` for heavy-tailed
+  densities and `mincnt=` to hide sparse cells (PR #141).
+  - Sits in the plot surface as the 2D sibling of `pp.histplot`. Reach
+    for it when scatter is too dense to read as points.
+  - Legend integrates with the shared reactor: one continuous-hue
+    `ScalarMappable` stashed via `stash_continuous_hue`, so
+    `pp.legend(side=...)`, `legend_kws={"inside": True}`, and figure-
+    level bands all work without plot-specific legend code.
+  - `alpha` defaults to `1.0` (literal, not `rcParams["alpha"]=0.1`):
+    hex cells are solid density patches, not layered markers, so the
+    scatter-tuned rcParams default would wash them out.
+  - `gridsize=30` default (matplotlib's 100 is too fine at publiplots'
+    mm-sized axes); `cmap=None` falls back to
+    `matplotlib.rcParams["image.cmap"]`; `edgecolor=None` coerces to
+    `"none"` (stroking thousands of cells rarely reads well).
+
+### Changed
+
+- Gallery reorganized: `plot_03_hexbinplot.py` inserted right after
+  `plot_02_histogram.py` so 1D and 2D density sit together. Existing
+  `plot_03` through `plot_18` renumbered to `plot_04` through
+  `plot_19`. Four intra-gallery cross-references to
+  `plot_17_annotate` updated to `plot_18_annotate`.
+
 ## [0.10.9] - 2026-05-11
 
 ### Added
@@ -222,6 +253,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls in `examples/plots/plot_12_heatmap.py` — auto-layout positions
   the title correctly regardless (PR #128).
 
+[0.10.10]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.10
 [0.10.9]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.9
 [0.10.8]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.8
 [0.10.7]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.7
