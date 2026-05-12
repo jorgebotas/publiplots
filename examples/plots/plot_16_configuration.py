@@ -247,3 +247,45 @@ pp.show()
 # 7. Use hatch patterns for black-and-white publications
 
 print("\nConfiguration complete!")
+
+# %%
+# Asymmetric Grids
+# ----------------
+# ``pp.subplots`` accepts ``width_ratios=`` and ``height_ratios=`` to build
+# asymmetric grids. ``axes_size`` remains the per-cell budget: total grid
+# width is ``axes_size[0] * ncols`` and the ratios split that budget across
+# columns proportionally (rows analogous). Equal ratios recover the uniform
+# case. The canonical use is a seaborn-style JointGrid: a large main panel
+# flanked by thin marginal strips.
+
+rng = np.random.default_rng(42)
+n = 10_000
+cluster_a = rng.multivariate_normal([-1.5, -1.0], [[1.0, 0.4], [0.4, 1.0]], n // 2)
+cluster_b = rng.multivariate_normal([2.0, 1.5], [[1.2, -0.3], [-0.3, 0.8]], n // 2)
+joint = pd.DataFrame(np.vstack([cluster_a, cluster_b]), columns=["x", "y"])
+
+fig, axes = pp.subplots(
+    2, 2,
+    axes_size=(45, 35),
+    width_ratios=[7, 2],
+    height_ratios=[2, 5],
+)
+axes[0, 1].set_visible(False)
+
+pp.hexbinplot(
+    data=joint, x="x", y="y",
+    gridsize=20,
+    xlabel="x", ylabel="y",
+    ax=axes[1, 0],
+)
+pp.histplot(
+    data=joint, x="x", bins=30,
+    xlabel="", ylabel="",
+    ax=axes[0, 0],
+)
+pp.histplot(
+    data=joint, y="y", bins=30,
+    xlabel="", ylabel="",
+    ax=axes[1, 1],
+)
+pp.show()

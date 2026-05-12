@@ -18,7 +18,7 @@ Follow-up PR(s) will add a Composer for cross-figure page layout.
 """
 
 import warnings
-from typing import Optional, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,6 +75,8 @@ def subplots(
     ncols: int = 1,
     *,
     axes_size: Union[Tuple[float, float], float, None] = None,
+    width_ratios: Optional[Sequence[float]] = None,
+    height_ratios: Optional[Sequence[float]] = None,
     sharex: Union[bool, str] = False,
     sharey: Union[bool, str] = False,
     title_space: Optional[float] = None,
@@ -108,10 +110,27 @@ def subplots(
     nrows, ncols : int, default 1
         Grid shape (must be >= 1).
     axes_size : (float, float) or float, in mm, optional
-        Declared axes bounding box, in **millimeters**. A scalar is
-        coerced to ``(s, s)``. If ``None``, falls back to
+        Declared per-cell axes bounding box, in **millimeters**. A
+        scalar is coerced to ``(s, s)``. If ``None``, falls back to
         ``pp.rcParams["subplots.axes_size"]`` — the baseline publication
-        default is ``(70, 50)`` mm.
+        default is ``(70, 50)`` mm. This is the per-cell budget; total
+        grid-width budget is ``axes_size[0] * ncols`` and total grid-
+        height budget is ``axes_size[1] * nrows``. Asymmetric grids
+        (see ``width_ratios`` / ``height_ratios``) renormalize that
+        budget across columns/rows without changing the total.
+    width_ratios : sequence of float, optional
+        Per-column width weights, matching
+        :func:`matplotlib.pyplot.subplots` in spirit. Length must equal
+        ``ncols``. Derived mm widths are
+        ``ratios[c] / sum(ratios) * (axes_size[0] * ncols)`` — so the
+        total grid-width budget is preserved and each cell's width is
+        its ratio-share of that budget. Equal ratios recover the
+        uniform-grid behavior. Use for JointGrid-style layouts (e.g.,
+        ``width_ratios=[7, 2]`` for a big main panel + thin right
+        marginal).
+    height_ratios : sequence of float, optional
+        Per-row height weights. Same semantics as ``width_ratios`` but
+        along the row axis.
     sharex, sharey : bool or {"all", "row", "col", "none"}, default False
         Axis-sharing semantics, matching :func:`matplotlib.pyplot.subplots`.
     title_space, xlabel_space, ylabel_space, right : float, optional
@@ -171,6 +190,17 @@ def subplots(
 
     >>> fig, ax = pp.subplots(axes_size=(60, 40), title_space=8)
 
+    Asymmetric 2×2 grid — a JointGrid-shaped layout with a large main
+    panel and thin marginal strips. ``axes_size`` sets the per-cell
+    budget that ``width_ratios`` / ``height_ratios`` renormalize:
+
+    >>> fig, axes = pp.subplots(2, 2, axes_size=(45, 35),
+    ...                         width_ratios=[7, 2], height_ratios=[2, 5])
+
+    With ``axes_size=(45, 35)`` and ``ncols=2`` the total grid-width
+    budget is 90 mm; the ratio ``[7, 2]`` splits it into ``70`` and
+    ``20`` mm. Same for rows: total 70 mm → ``20`` and ``50`` mm.
+
     See Also
     --------
     reject_figsize : Guard used by plot functions to reject ``figsize=``.
@@ -198,6 +228,21 @@ def subplots(
         if w_ax <= 0 or h_ax <= 0:
             raise ValueError(f"axes_size must be positive, got {axes_size}")
         axes_size_t = (float(w_ax), float(h_ax))
+
+    col_widths_t = _resolve_cell_dims(
+        axis_len=ncols,
+        axis_name="col",
+        ratios=width_ratios,
+        ratio_kwarg="width_ratios",
+        budget_per_cell=axes_size_t[0],
+    )
+    row_heights_t = _resolve_cell_dims(
+        axis_len=nrows,
+        axis_name="row",
+        ratios=height_ratios,
+        ratio_kwarg="height_ratios",
+        budget_per_cell=axes_size_t[1],
+    )
 
     if "figsize" in fig_kw:
         raise TypeError(
@@ -271,6 +316,8 @@ def subplots(
     layout = FigureLayout(
         nrows=nrows, ncols=ncols,
         axes_size=axes_size_t,
+        col_widths=col_widths_t,
+        row_heights=row_heights_t,
         legend_column=0.0,
         suptitle_space=0.0,
         **resolved,
@@ -296,6 +343,44 @@ def subplots(
         for c in range(ncols):
             arr[r, c] = axes_matrix[r][c]
     return fig, _squeeze(arr, nrows, ncols)
+
+
+def _resolve_cell_dims(
+    *,
+    axis_len: int,
+    axis_name: str,
+    ratios: Optional[Sequence[float]],
+    ratio_kwarg: str,
+    budget_per_cell: float,
+) -> Tuple[float, ...]:
+    """Resolve per-cell widths (or heights) from ratios or the uniform fallback.
+
+    Precedence:
+      1. ``ratios`` (unitless) → each cell's mm dimension is
+         ``ratios[i] / sum(ratios) * (budget_per_cell * axis_len)``.
+         Total grid budget is preserved; equal ratios recover uniform.
+      2. Else uniform broadcast of ``budget_per_cell``.
+    """
+    if ratios is None:
+        return (float(budget_per_cell),) * axis_len
+
+    try:
+        rtup = tuple(float(v) for v in ratios)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"{ratio_kwarg} must be a sequence of numbers, got {ratios!r}"
+        )
+    if len(rtup) != axis_len:
+        raise ValueError(
+            f"{ratio_kwarg} must have length {axis_len} ({axis_name}s), "
+            f"got length {len(rtup)}"
+        )
+    for i, v in enumerate(rtup):
+        if v <= 0:
+            raise ValueError(f"{ratio_kwarg}[{i}] must be positive, got {v}")
+    total_budget = budget_per_cell * axis_len
+    total_ratios = sum(rtup)
+    return tuple(r / total_ratios * total_budget for r in rtup)
 
 
 def _build_axes(fig, layout, sharex, sharey):

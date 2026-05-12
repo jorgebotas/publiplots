@@ -6,10 +6,14 @@ dimensions. No matplotlib imports — this module is pure math.
 
 Per-side reservations are TUPLES indexed by position (length nrows for
 title_space / xlabel_space; length ncols for ylabel_space / right).
-Scalar-to-tuple broadcast happens at the pp.subplots() boundary.
+Per-cell dimensions are also TUPLES (length nrows for ``row_heights``,
+length ncols for ``col_widths``) so rows and columns can have
+heterogeneous sizes — a JointGrid-shaped figure, for instance, has a
+large main cell and two thin marginal cells. Scalar-to-tuple broadcast
+happens at the pp.subplots() boundary.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Tuple
 
 
@@ -23,7 +27,16 @@ class FigureLayout:
     nrows, ncols : int
         Grid shape (>= 1).
     axes_size : tuple of (width, height) in mm
-        Declared axes bbox for every cell. Inviolate after construction.
+        Uniform axes bbox fallback. When ``col_widths`` / ``row_heights``
+        are empty tuples, they are broadcast from this field. Kept for
+        backward compatibility with code that constructs ``FigureLayout``
+        with only ``axes_size``.
+    col_widths : tuple[float, ...] of length ncols
+        Per-column axes widths in mm. Broadcast from ``axes_size[0]``
+        when ``()``.
+    row_heights : tuple[float, ...] of length nrows
+        Per-row axes heights in mm. Broadcast from ``axes_size[1]``
+        when ``()``.
     title_space : tuple[float, ...] of length nrows
         Space reserved above each row for titles.
     xlabel_space : tuple[float, ...] of length nrows
@@ -65,22 +78,31 @@ class FigureLayout:
     legend_band_top: float = 0.0
     legend_band_left: float = 0.0
     suptitle_space: float = 0.0
+    col_widths: Tuple[float, ...] = field(default_factory=tuple)
+    row_heights: Tuple[float, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        for side in ("title_space", "xlabel_space", "ylabel_space", "right"):
+        # Broadcast from axes_size when caller didn't supply per-cell tuples.
+        if not self.col_widths:
+            self.col_widths = (float(self.axes_size[0]),) * self.ncols
+        if not self.row_heights:
+            self.row_heights = (float(self.axes_size[1]),) * self.nrows
+
+        for side in ("title_space", "xlabel_space", "ylabel_space", "right",
+                     "col_widths", "row_heights"):
             val = getattr(self, side)
             if not isinstance(val, tuple):
                 raise TypeError(
                     f"{side} must be a tuple of floats; got {type(val).__name__}. "
                     f"pp.subplots() broadcasts scalars — construct FigureLayout with tuples."
                 )
-        for side in ("title_space", "xlabel_space"):
+        for side in ("title_space", "xlabel_space", "row_heights"):
             val = getattr(self, side)
             if len(val) != self.nrows:
                 raise ValueError(
                     f"{side} must have length nrows={self.nrows}, got length {len(val)}"
                 )
-        for side in ("ylabel_space", "right"):
+        for side in ("ylabel_space", "right", "col_widths"):
             val = getattr(self, side)
             if len(val) != self.ncols:
                 raise ValueError(
@@ -90,15 +112,18 @@ class FigureLayout:
             for i, v in enumerate(getattr(self, side)):
                 if v < 0:
                     raise ValueError(f"{side}[{i}] must be non-negative, got {v}")
+        for side in ("col_widths", "row_heights"):
+            for i, v in enumerate(getattr(self, side)):
+                if v <= 0:
+                    raise ValueError(f"{side}[{i}] must be positive, got {v}")
 
     def figure_size(self) -> Tuple[float, float]:
         """Total figure size in mm as (width, height)."""
-        w_ax, h_ax = self.axes_size
         W = (
             self.outer_pad
             + self.legend_band_left
             + sum(self.ylabel_space)
-            + self.ncols * w_ax
+            + sum(self.col_widths)
             + sum(self.right)
             + max(self.ncols - 1, 0) * self.wspace
             + self.legend_column
@@ -109,7 +134,7 @@ class FigureLayout:
             + self.suptitle_space
             + self.legend_band_top
             + sum(self.title_space)
-            + self.nrows * h_ax
+            + sum(self.row_heights)
             + sum(self.xlabel_space)
             + max(self.nrows - 1, 0) * self.hspace
             + self.legend_band_bottom
@@ -120,19 +145,25 @@ class FigureLayout:
     def axes_position(self, row: int, col: int) -> Tuple[float, float, float, float]:
         """Figure-fraction (x0, y0, w, h) for the cell at (row, col)."""
         W, H = self.figure_size()
-        w_ax, h_ax = self.axes_size
         x0_mm = self.outer_pad + self.legend_band_left
         for c in range(col):
-            x0_mm += self.ylabel_space[c] + w_ax + self.right[c] + self.wspace
+            x0_mm += self.ylabel_space[c] + self.col_widths[c] + self.right[c] + self.wspace
         x0_mm += self.ylabel_space[col]
         y0_mm = self.outer_pad + self.legend_band_bottom
         for r in range(self.nrows - 1, row, -1):
-            y0_mm += self.xlabel_space[r] + h_ax + self.title_space[r] + self.hspace
+            y0_mm += self.xlabel_space[r] + self.row_heights[r] + self.title_space[r] + self.hspace
         y0_mm += self.xlabel_space[row]
-        return (x0_mm / W, y0_mm / H, w_ax / W, h_ax / H)
+        return (x0_mm / W, y0_mm / H, self.col_widths[col] / W, self.row_heights[row] / H)
 
     def with_updated_reservations(self, **overrides) -> "FigureLayout":
-        """Return a copy with the given fields updated. ``axes_size`` must not change."""
-        if "axes_size" in overrides:
-            raise ValueError("axes_size is inviolate; cannot be overridden")
+        """Return a copy with the given fields updated.
+
+        ``axes_size``, ``col_widths``, and ``row_heights`` are inviolate
+        cell dimensions and cannot be overridden via this method.
+        """
+        for protected in ("axes_size", "col_widths", "row_heights"):
+            if protected in overrides:
+                raise ValueError(
+                    f"{protected} is inviolate; cannot be overridden"
+                )
         return replace(self, **overrides)

@@ -771,3 +771,185 @@ def test_auto_layout_suptitle_coexists_with_top_legend_band():
         f"suptitle should sit above top legend band; "
         f"got suptitle.y0={su_ext.y0:.1f}, legend_top.y1={legend_y1:.1f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Asymmetric grids — width_ratios / height_ratios
+# ---------------------------------------------------------------------------
+
+
+def test_width_ratios_equal_recovers_uniform():
+    """Equal ratios must be bit-for-bit identical to passing no ratios."""
+    fig_uniform, _ = pp.subplots(2, 3, axes_size=(40, 30))
+    fig_equal, _ = pp.subplots(2, 3, axes_size=(40, 30), width_ratios=[1, 1, 1])
+    assert fig_uniform.get_size_inches().tolist() == fig_equal.get_size_inches().tolist()
+
+
+def test_height_ratios_equal_recovers_uniform():
+    fig_uniform, _ = pp.subplots(2, 3, axes_size=(40, 30))
+    fig_equal, _ = pp.subplots(2, 3, axes_size=(40, 30), height_ratios=[1, 1])
+    assert fig_uniform.get_size_inches().tolist() == fig_equal.get_size_inches().tolist()
+
+
+def test_width_ratios_preserves_total_grid_budget():
+    """Total grid-width budget is axes_size[0] * ncols regardless of ratios."""
+    fig, _ = pp.subplots(1, 2, axes_size=(45, 30), width_ratios=[7, 2])
+    layout = fig._publiplots_layout
+    assert sum(layout.col_widths) == pytest.approx(45 * 2)  # 90 mm total
+
+
+def test_height_ratios_preserves_total_grid_budget():
+    fig, _ = pp.subplots(2, 1, axes_size=(45, 35), height_ratios=[2, 5])
+    layout = fig._publiplots_layout
+    assert sum(layout.row_heights) == pytest.approx(35 * 2)  # 70 mm total
+
+
+def test_width_ratios_jointgrid_shape():
+    """Canonical JointGrid shape: big main + thin right marginal."""
+    fig, _ = pp.subplots(2, 2, axes_size=(45, 35),
+                         width_ratios=[7, 2], height_ratios=[2, 5])
+    layout = fig._publiplots_layout
+    # Budget: 90 mm wide -> [70, 20]; 70 mm tall -> [20, 50]
+    assert layout.col_widths == pytest.approx((70.0, 20.0))
+    assert layout.row_heights == pytest.approx((20.0, 50.0))
+
+
+def test_ratios_produce_correct_per_cell_mm_widths():
+    """A cell's rendered width in mm should match the derived col_widths."""
+    fig, axes = pp.subplots(1, 2, axes_size=(45, 30), width_ratios=[7, 2])
+    # Use the shared layout to derive expected fraction widths
+    layout = fig._publiplots_layout
+    W_mm, _ = layout.figure_size()
+    w0_expected = layout.col_widths[0] / W_mm
+    w1_expected = layout.col_widths[1] / W_mm
+    assert axes[0].get_position().width == pytest.approx(w0_expected)
+    assert axes[1].get_position().width == pytest.approx(w1_expected)
+
+
+def test_width_ratios_length_mismatch_raises():
+    with pytest.raises(ValueError, match="width_ratios must have length 3"):
+        pp.subplots(1, 3, width_ratios=[1, 2])
+
+
+def test_height_ratios_length_mismatch_raises():
+    with pytest.raises(ValueError, match="height_ratios must have length 2"):
+        pp.subplots(2, 1, height_ratios=[1, 2, 3])
+
+
+def test_width_ratios_non_positive_raises():
+    with pytest.raises(ValueError, match="width_ratios\\[1\\] must be positive"):
+        pp.subplots(1, 2, width_ratios=[1, 0])
+
+
+def test_height_ratios_non_positive_raises():
+    with pytest.raises(ValueError, match="height_ratios\\[0\\] must be positive"):
+        pp.subplots(2, 1, height_ratios=[-1, 2])
+
+
+def test_width_ratios_non_numeric_raises():
+    with pytest.raises(ValueError, match="width_ratios"):
+        pp.subplots(1, 2, width_ratios=["wide", "narrow"])
+
+
+def test_asymmetric_grid_axes_dont_overlap():
+    """JointGrid-shaped 2x2 cells must still partition the grid with no overlap."""
+    fig, axes = pp.subplots(2, 2, axes_size=(45, 35),
+                            width_ratios=[7, 2], height_ratios=[2, 5])
+    rects = [ax.get_position().bounds for row in axes for ax in row]
+    for i, (x0a, y0a, wa, ha) in enumerate(rects):
+        for j, (x0b, y0b, wb, hb) in enumerate(rects):
+            if i == j:
+                continue
+            x1a, y1a = x0a + wa, y0a + ha
+            x1b, y1b = x0b + wb, y0b + hb
+            overlaps = not (x1a <= x0b + 1e-9 or x1b <= x0a + 1e-9
+                            or y1a <= y0b + 1e-9 or y1b <= y0a + 1e-9)
+            assert not overlaps, f"asymmetric cells {i} and {j} overlap"
+
+
+def test_asymmetric_grid_preserves_reservation_contract():
+    """Per-row/per-col reservations still apply uniformly across a row/col,
+    regardless of heterogeneous cell dimensions."""
+    fig, _ = pp.subplots(2, 2, axes_size=(45, 35),
+                         width_ratios=[7, 2], height_ratios=[2, 5],
+                         title_space=6.0, xlabel_space=10.0,
+                         ylabel_space=12.0, right=3.0)
+    layout = fig._publiplots_layout
+    # Scalars broadcast per-row / per-col as before.
+    assert layout.title_space == (6.0, 6.0)
+    assert layout.xlabel_space == (10.0, 10.0)
+    assert layout.ylabel_space == (12.0, 12.0)
+    assert layout.right == (3.0, 3.0)
+
+
+def test_asymmetric_grid_sharex_col_works():
+    """Sharing x across a column must still yield consistent xlim."""
+    fig, axes = pp.subplots(2, 2, axes_size=(45, 35),
+                            width_ratios=[7, 2], height_ratios=[2, 5],
+                            sharex="col")
+    axes[1, 0].set_xlim(-5, 5)
+    # axes[0, 0] shares x with axes[1, 0] (same column)
+    assert axes[0, 0].get_xlim() == pytest.approx((-5, 5))
+
+
+def test_figure_layout_asymmetric_passthrough():
+    """FigureLayout accepts col_widths/row_heights directly (internal API)."""
+    from publiplots.layout.figure_layout import FigureLayout
+    layout = FigureLayout(
+        nrows=2, ncols=2, axes_size=(45, 35),
+        col_widths=(70.0, 20.0), row_heights=(20.0, 50.0),
+        title_space=(0.0, 0.0), xlabel_space=(0.0, 8.0),
+        ylabel_space=(10.0, 0.0), right=(0.0, 2.0),
+        hspace=1.0, wspace=1.0, outer_pad=2.0, legend_column=0.0,
+    )
+    W, H = layout.figure_size()
+    # outer_pad + legend_band_left + ylabel_space + col_widths + right + wspace + legend_column + outer_pad
+    # = 2 + 0 + (10 + 0) + (70 + 20) + (0 + 2) + 1 + 0 + 2 = 107
+    assert W == pytest.approx(107.0)
+    # outer_pad + suptitle_space + legend_band_top + title_space + row_heights + xlabel_space + hspace + legend_band_bottom + outer_pad
+    # = 2 + 0 + 0 + (0 + 0) + (20 + 50) + (0 + 8) + 1 + 0 + 2 = 83
+    assert H == pytest.approx(83.0)
+
+
+def test_figure_layout_col_widths_length_mismatch_raises():
+    from publiplots.layout.figure_layout import FigureLayout
+    with pytest.raises(ValueError, match="col_widths must have length"):
+        FigureLayout(
+            nrows=1, ncols=2, axes_size=(50, 30),
+            col_widths=(50.0,),  # wrong length
+            title_space=(5.0,), xlabel_space=(8.0,),
+            ylabel_space=(10.0, 10.0), right=(2.0, 2.0),
+            hspace=0.0, wspace=0.0, outer_pad=0.0, legend_column=0.0,
+        )
+
+
+def test_auto_layout_reactor_settles_on_asymmetric_grid():
+    """Reactor must auto-measure title_space on an asymmetric top row without
+    corrupting the per-row / per-col reservation contract."""
+    fig, axes = pp.subplots(2, 2, axes_size=(45, 35),
+                            width_ratios=[7, 2], height_ratios=[2, 5])
+    # Give only the main cell a long title; reactor should grow the
+    # title_space reservation for row=0 (where the marginals live)
+    # — but our main panel is in row=1, so we set titles on row 1.
+    axes[1, 0].set_title("A long main-panel title that forces measurement")
+    fig._publiplots_auto_layout.settle()
+    layout = fig._publiplots_layout
+    # After settlement, title_space for row 1 (where the title lives) must
+    # be positive and the figure height must have grown to accommodate it.
+    W_mm, H_mm = layout.figure_size()
+    # Figure dimensions (inches * 25.4) should match the layout's mm size.
+    w_actual, h_actual = fig.get_size_inches() * 25.4
+    assert w_actual == pytest.approx(W_mm, rel=1e-3)
+    assert h_actual == pytest.approx(H_mm, rel=1e-3)
+
+
+def test_figure_layout_row_heights_non_positive_raises():
+    from publiplots.layout.figure_layout import FigureLayout
+    with pytest.raises(ValueError, match="row_heights\\[0\\] must be positive"):
+        FigureLayout(
+            nrows=2, ncols=1, axes_size=(50, 30),
+            row_heights=(0.0, 30.0),  # zero height
+            title_space=(5.0, 5.0), xlabel_space=(8.0, 8.0),
+            ylabel_space=(10.0,), right=(2.0,),
+            hspace=0.0, wspace=0.0, outer_pad=0.0, legend_column=0.0,
+        )
