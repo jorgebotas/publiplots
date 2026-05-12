@@ -145,12 +145,14 @@ def build_from_pointplot_call(
     categorical_axis: str,
     palette: Optional[Dict],
     errorbar: Optional[str],
+    *,
+    source_frame,
 ) -> PointValueMeta:
     """Build a `PointValueMeta` paired with the pointplot's marker positions.
 
-    Iteration uses the shared `BarSplitSpec` so hue/categorical-axis
-    collapse rules match barplot. Errorbar extents are pulled from the
-    drawn errorbar Line2D segments via `_match_point_errorbars`.
+    ``source_frame`` is a required keyword-only: must be the caller's
+    pre-copy DataFrame so ``meta.source_frame is df`` holds and
+    ``source_frame.iloc[record.frame_row_index]`` resolves correctly.
     """
     spec = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
@@ -161,7 +163,7 @@ def build_from_pointplot_call(
     value_col = y if categorical_axis == x else x
 
     points_xy: List[Tuple[float, float]] = []
-    hue_values_for_points: List = []
+    aggregated: List[Dict] = []
     for cat, h_val, _ht_val in spec.iter_draw_order(data):
         mask = data[categorical_axis] == cat
         if spec.split_hue is not None:
@@ -172,19 +174,33 @@ def build_from_pointplot_call(
         pos = cat_to_pos[cat]
         mean = float(np.mean(vals))
         points_xy.append((pos, mean) if orient == "v" else (mean, pos))
-        hue_values_for_points.append(h_val)
+        matching_labels = data.index[mask]
+        frame_row_index: Optional[int] = None
+        if source_frame is not None and len(matching_labels):
+            try:
+                frame_row_index = int(
+                    source_frame.index.get_loc(matching_labels[0])
+                )
+            except (KeyError, TypeError):
+                frame_row_index = None
+        aggregated.append({
+            "category": cat,
+            "hue_value": h_val,
+            "frame_row_index": frame_row_index,
+        })
 
     # Tolerance on the categorical axis: 0.5 is conservative (integer positions)
     tol = 0.5
     err_by_point = _match_point_errorbars(ax, points_xy, orient, tol)
 
     points: List[PointRecord] = []
-    for (xy, hue_value, (err_low, err_high)) in zip(
-        points_xy, hue_values_for_points, err_by_point
+    for i, (xy, row, (err_low, err_high)) in enumerate(
+        zip(points_xy, aggregated, err_by_point)
     ):
         hue_color = None
-        if hue_value is not None and palette is not None and hue_value in palette:
-            hue_color = to_rgba(palette[hue_value])
+        hv = row["hue_value"]
+        if hv is not None and palette is not None and hv in palette:
+            hue_color = to_rgba(palette[hv])
         value = xy[1] if orient == "v" else xy[0]
         points.append(PointRecord(
             xy=xy,
@@ -192,13 +208,28 @@ def build_from_pointplot_call(
             err_low=err_low,
             err_high=err_high,
             hue_color=hue_color,
+            category=row["category"],
+            hue_value=row["hue_value"],
+            hatch_value=None,
+            draw_index=i,
+            frame_row_index=row["frame_row_index"],
         ))
+
+    keys: List[str] = [categorical_axis]
+    dims: List[str] = ["cat"]
+    if spec.split_hue is not None:
+        keys.append(spec.split_hue)
+        dims.append("hue")
+
     return PointValueMeta(
         orient=orient,
         points=points,
         errorbar_kind=errorbar if isinstance(errorbar, str) else None,
         hue_active=spec.split_hue is not None,
         owner_is_publiplots=True,
+        source_frame=source_frame,
+        group_keys=tuple(keys),
+        group_dims=tuple(dims),
     )
 
 
@@ -504,10 +535,20 @@ def _aggregate_box_stats(
     hue: Optional[str],
     categorical_axis: str,
     whis: float,
+    *,
+    source_frame,
 ) -> List[Dict]:
     """Group by (categorical_axis [, hue]) and compute box stats per group.
 
     Row ordering matches seaborn's dodge draw order: hue-outer, cat-inner.
+
+    Each row carries its draw-order ``category`` / ``hue_value`` /
+    ``hatch_value`` (boxes don't dodge on hatch, always ``None``) plus
+    ``frame_row_index``: a *position* (integer offset) into
+    ``source_frame``, not a pandas label, so
+    ``source_frame.iloc[frame_row_index]`` resolves the caller's row for
+    any index kind. When ``source_frame`` is ``None`` or the label does
+    not map (rare), ``frame_row_index`` is ``None``.
     """
     value_col = y if categorical_axis == x else x
     spec = BarSplitSpec.resolve(
@@ -523,9 +564,18 @@ def _aggregate_box_stats(
         if len(vals) == 0:
             continue
         stats = _compute_box_stats(vals, whis)
-        stats["cat"] = cat
-        if h_val is not None:
-            stats["hue_value"] = h_val
+        # Position within source_frame of the first row matching this group.
+        matching = data.index[mask]
+        frame_row_index: Optional[int] = None
+        if source_frame is not None and len(matching):
+            try:
+                frame_row_index = int(source_frame.index.get_loc(matching[0]))
+            except (KeyError, TypeError):
+                frame_row_index = None
+        stats["category"] = cat
+        stats["hue_value"] = h_val
+        stats["hatch_value"] = None
+        stats["frame_row_index"] = frame_row_index
         rows.append(stats)
     return rows
 
@@ -565,23 +615,32 @@ def _build_box_stats_meta(
     palette: Optional[Dict],
     whis: float,
     artists: List,
+    *,
+    source_frame,
 ) -> BoxStatsMeta:
     """Shared builder for pp.boxplot / pp.violinplot.
 
     Stats are computed from raw data (exact, matching seaborn's whis rule
     for boxplot; violinplot shows the same underlying stats). Categorical
     positions come from the drawn artists so dodge groupings are honored.
+
+    ``source_frame`` is required keyword-only: the caller's pre-copy
+    DataFrame. The returned meta carries it so downstream annotate
+    strategies can look up per-box source rows.
     """
     orient = "v" if categorical_axis == x else "h"
-    agg = _aggregate_box_stats(data, x=x, y=y, hue=hue,
-                               categorical_axis=categorical_axis, whis=whis)
+    agg = _aggregate_box_stats(
+        data, x=x, y=y, hue=hue,
+        categorical_axis=categorical_axis, whis=whis,
+        source_frame=source_frame,
+    )
     if len(artists) != len(agg):
         n = min(len(artists), len(agg))
         artists = artists[:n]
         agg = agg[:n]
 
     boxes: List[BoxStatsRecord] = []
-    for artist, row in zip(artists, agg):
+    for i, (artist, row) in enumerate(zip(artists, agg)):
         center_pos, cat_half_width = _cat_extents_from_artist(artist, ax, orient)
         hue_color = None
         if hue is not None and palette is not None:
@@ -595,12 +654,30 @@ def _build_box_stats_meta(
             cat_half_width=cat_half_width,
             stats={k: v for k, v in row.items() if k in VALID_BOX_STATS},
             hue_color=hue_color,
+            category=row["category"],
+            hue_value=row["hue_value"],
+            hatch_value=row["hatch_value"],
+            draw_index=i,
+            frame_row_index=row["frame_row_index"],
         ))
+
+    spec = BarSplitSpec.resolve(
+        x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
+    )
+    keys: List[str] = [categorical_axis]
+    dims: List[str] = ["cat"]
+    if spec.split_hue is not None:
+        keys.append(spec.split_hue)
+        dims.append("hue")
+
     return BoxStatsMeta(
         orient=orient,
         boxes=boxes,
         hue_active=hue is not None,
         owner_is_publiplots=True,
+        source_frame=source_frame,
+        group_keys=tuple(keys),
+        group_dims=tuple(dims),
     )
 
 
@@ -613,11 +690,17 @@ def build_from_boxplot_call(
     categorical_axis: str,
     palette: Optional[Dict],
     whis: float,
+    *,
+    source_frame,
 ) -> BoxStatsMeta:
-    """Build a BoxStatsMeta paired with the boxplot's PathPatches."""
+    """Build a BoxStatsMeta paired with the boxplot's PathPatches.
+
+    ``source_frame`` is required keyword-only; see ``_build_box_stats_meta``.
+    """
     patches = [p for p in ax.patches if isinstance(p, PathPatch)]
     return _build_box_stats_meta(
         ax, data, x, y, hue, categorical_axis, palette, whis, patches,
+        source_frame=source_frame,
     )
 
 
@@ -630,14 +713,19 @@ def build_from_violinplot_call(
     categorical_axis: str,
     palette: Optional[Dict],
     whis: float = 1.5,
+    *,
+    source_frame,
 ) -> BoxStatsMeta:
     """Build a BoxStatsMeta paired with the violinplot's fill collections.
 
     Violin draws one FillBetweenPolyCollection per violin; stats are the
     same as for boxplot (computed from raw data with matching whis rule).
+
+    ``source_frame`` is required keyword-only; see ``_build_box_stats_meta``.
     """
     from matplotlib.collections import PolyCollection
     artists = [c for c in ax.collections if isinstance(c, PolyCollection)]
     return _build_box_stats_meta(
         ax, data, x, y, hue, categorical_axis, palette, whis, artists,
+        source_frame=source_frame,
     )

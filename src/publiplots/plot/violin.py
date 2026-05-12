@@ -213,6 +213,10 @@ def violinplot(
     if orient is not None:
         raise DeprecationWarning("orient is deprecated. Use x and y instead.")
 
+    # Preserve the caller's original DataFrame identity for downstream
+    # annotate builders that stash `source_frame` on the meta.
+    _source_data = data
+
     # Create figure via pp.subplots to install SubplotsAutoLayout; users who
     # want custom dimensions should compose with pp.subplots(axes_size=...)
     # before calling and pass ax=.
@@ -315,22 +319,25 @@ def violinplot(
     if title is not None:
         ax.set_title(title)
 
+    # Always attach the cache so follow-up pp.annotate(ax, ...) calls work.
+    from publiplots.annotate._builders import build_from_violinplot_call
+    if is_categorical(data[x]):
+        categorical_axis = x
+    elif is_categorical(data[y]):
+        categorical_axis = y
+    else:
+        categorical_axis = x
+    ax._publiplots_box_meta = build_from_violinplot_call(
+        ax=ax, data=data, x=x, y=y, hue=hue,
+        categorical_axis=categorical_axis,
+        palette=palette if isinstance(palette, dict) else None,
+        source_frame=_source_data,
+    )
     if annotate:
-        from publiplots.annotate._builders import build_from_violinplot_call
         from publiplots.annotate import annotate as _annotate_fn
-        if is_categorical(data[x]):
-            categorical_axis = x
-        elif is_categorical(data[y]):
-            categorical_axis = y
-        else:
-            categorical_axis = x
-        ax._publiplots_box_meta = build_from_violinplot_call(
-            ax=ax, data=data, x=x, y=y, hue=hue,
-            categorical_axis=categorical_axis,
-            palette=palette if isinstance(palette, dict) else None,
-        )
-        opts = annotate if isinstance(annotate, dict) else {}
-        _annotate_fn(ax, kind="box_stats", **opts)
+        opts = dict(annotate) if isinstance(annotate, dict) else {}
+        kind = opts.pop("kind", "box_stats")
+        _annotate_fn(ax, kind=kind, **opts)
 
     return ax
 

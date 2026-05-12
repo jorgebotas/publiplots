@@ -219,6 +219,10 @@ def pointplot(
             "join parameter is deprecated. Use linestyle='none' instead for no connecting lines."
         )
 
+    # Preserve the caller's original DataFrame identity for downstream
+    # annotate builders that stash `source_frame` on the meta.
+    _source_data = data
+
     # Create figure via pp.subplots to install SubplotsAutoLayout; users who
     # want custom dimensions should compose with pp.subplots(axes_size=...)
     # before calling and pass ax=.
@@ -359,23 +363,28 @@ def pointplot(
             legend=legend,
         )
 
+    # Determine categorical axis (same logic as before).
+    if is_categorical(data[x]):
+        categorical_axis = x
+    elif is_categorical(data[y]):
+        categorical_axis = y
+    else:
+        categorical_axis = x
+
+    # Always attach the cache so follow-up pp.annotate(ax, ...) calls work.
+    from publiplots.annotate._builders import build_from_pointplot_call
+    ax._publiplots_point_meta = build_from_pointplot_call(
+        ax=ax, data=data, x=x, y=y, hue=hue,
+        categorical_axis=categorical_axis,
+        palette=palette if isinstance(palette, dict) else None,
+        errorbar=errorbar if isinstance(errorbar, str) else None,
+        source_frame=_source_data,
+    )
     if annotate:
-        from publiplots.annotate._builders import build_from_pointplot_call
         from publiplots.annotate import annotate as _annotate_fn
-        if is_categorical(data[x]):
-            categorical_axis = x
-        elif is_categorical(data[y]):
-            categorical_axis = y
-        else:
-            categorical_axis = x
-        ax._publiplots_point_meta = build_from_pointplot_call(
-            ax=ax, data=data, x=x, y=y, hue=hue,
-            categorical_axis=categorical_axis,
-            palette=palette if isinstance(palette, dict) else None,
-            errorbar=errorbar if isinstance(errorbar, str) else None,
-        )
-        opts = annotate if isinstance(annotate, dict) else {}
-        _annotate_fn(ax, kind="point_values", **opts)
+        opts = dict(annotate) if isinstance(annotate, dict) else {}
+        kind = opts.pop("kind", "point_values")
+        _annotate_fn(ax, kind=kind, **opts)
 
     return ax
 

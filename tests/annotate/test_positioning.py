@@ -227,3 +227,37 @@ def test_fit_check_tall_bar_inside_fits():
     renderer = fig.canvas.get_renderer()
     bbox = ax.patches[0].get_window_extent(renderer)
     assert fit_check(t, bbox, orient="v", anchor="inside", renderer=renderer) == "fits"
+
+
+def test_anchor_resolvers_conform_to_protocol():
+    """All three resolvers satisfy the AnchorResolver runtime protocol."""
+    from publiplots.annotate._positioning import (
+        AnchorResolver,
+        BarAnchorResolver,
+    )
+    from publiplots.annotate.box_stats import BoxAnchorResolver
+    from publiplots.annotate.point_values import PointAnchorResolver
+
+    assert isinstance(BarAnchorResolver(), AnchorResolver)
+    assert isinstance(PointAnchorResolver(), AnchorResolver)
+    assert isinstance(BoxAnchorResolver(), AnchorResolver)
+
+
+def test_anchor_resolver_vocabularies():
+    """Each resolver declares its anchor vocabulary + default as ClassVars."""
+    from publiplots.annotate._positioning import BarAnchorResolver
+    from publiplots.annotate.box_stats import BoxAnchorResolver
+    from publiplots.annotate.point_values import PointAnchorResolver
+
+    assert BarAnchorResolver.VALID_ANCHORS == frozenset({
+        "outside", "inside", "base", "center",
+    })
+    assert BarAnchorResolver.DEFAULT_ANCHOR == "outside"
+    assert PointAnchorResolver.VALID_ANCHORS == frozenset({
+        "top", "bottom", "left", "right", "center",
+    })
+    assert PointAnchorResolver.DEFAULT_ANCHOR == "top"
+    assert BoxAnchorResolver.VALID_ANCHORS == frozenset({
+        "top", "bottom", "left", "right", "center",
+    })
+    assert BoxAnchorResolver.DEFAULT_ANCHOR == "top"
