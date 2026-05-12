@@ -298,7 +298,7 @@ pp.show()
 # ``annotate=True`` labels each mean with its value, above the errorbar
 # cap by default. Point-plot anchors are directional (``top``, ``bottom``,
 # ``left``, ``right``, ``center``). See the dedicated
-# :doc:`annotations gallery <plot_17_annotate>` for more.
+# :doc:`annotations gallery <plot_18_annotate>` for more.
 
 ax = pp.pointplot(
     data=simple_data,
