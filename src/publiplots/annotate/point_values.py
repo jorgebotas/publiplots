@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import List, Tuple
+from typing import ClassVar, FrozenSet, List, Tuple
 
 from matplotlib.axes import Axes
 from matplotlib.text import Text
@@ -18,6 +18,7 @@ from matplotlib.text import Text
 from publiplots.annotate._cache import PointRecord, PointValueMeta
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
+    AnchorTuple,
     make_offset_transform,
 )
 from publiplots.annotate._shared import (
@@ -71,6 +72,19 @@ def _resolve_point_anchor(
     if anchor == "center":
         return px, py, 0.0, 0.0, "center", "center"
     raise ValueError(f"unreachable: unknown anchor {anchor!r}")
+
+
+class PointAnchorResolver:
+    """Adapter to _resolve_point_anchor. The `orient` arg is unused (points
+    have an orient on the meta for informational purposes, but the resolver
+    reads the marker's own (px, py) directly)."""
+    VALID_ANCHORS: ClassVar[FrozenSet[str]] = frozenset({
+        "top", "bottom", "left", "right", "center",
+    })
+    DEFAULT_ANCHOR: ClassVar[str] = "top"
+
+    def resolve(self, record, anchor, orient, offset_mm, ax) -> AnchorTuple:
+        return _resolve_point_anchor(record, anchor, offset_mm, ax)
 
 
 def _point_values_strategy(

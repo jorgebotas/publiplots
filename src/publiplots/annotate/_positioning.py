@@ -15,7 +15,7 @@ transform to hand to ``ax.text(..., transform=...)``.
 """
 from __future__ import annotations
 
-from typing import Literal, Tuple
+from typing import ClassVar, FrozenSet, Literal, Protocol, Tuple, runtime_checkable
 
 from matplotlib.axes import Axes
 from matplotlib.text import Text
@@ -177,3 +177,40 @@ def fit_check(
         return "fits" if tbb.height + 2 * margin_px <= bar_bbox_display.height else "reanchor_outside"
     else:
         return "fits" if tbb.width + 2 * margin_px <= bar_bbox_display.width else "reanchor_outside"
+
+
+AnchorTuple = Tuple[float, float, float, float, str, str]
+#                   x,     y,     dx_mm, dy_mm, ha,  va
+
+
+@runtime_checkable
+class AnchorResolver(Protocol):
+    """Per-mark anchor-resolution contract.
+
+    Maps ``(record, anchor, orient, offset_mm, ax)`` to
+    ``(x, y, dx_mm, dy_mm, ha, va)``. ``VALID_ANCHORS`` defines the anchor
+    vocabulary for this mark type; ``DEFAULT_ANCHOR`` is the fallback when
+    the caller passes ``anchor=None``.
+    """
+    VALID_ANCHORS: ClassVar[FrozenSet[str]]
+    DEFAULT_ANCHOR: ClassVar[str]
+
+    def resolve(
+        self,
+        record,
+        anchor: str,
+        orient: Literal["v", "h"],
+        offset_mm: float,
+        ax: Axes,
+    ) -> AnchorTuple: ...
+
+
+class BarAnchorResolver:
+    """Adapter to the free-function resolve_anchor(bar, ...)."""
+    VALID_ANCHORS: ClassVar[FrozenSet[str]] = frozenset({
+        "outside", "inside", "base", "center",
+    })
+    DEFAULT_ANCHOR: ClassVar[str] = "outside"
+
+    def resolve(self, record, anchor, orient, offset_mm, ax):
+        return resolve_anchor(record, anchor, orient, offset_mm, ax)

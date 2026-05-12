@@ -9,7 +9,7 @@ matches the most common journal style.
 from __future__ import annotations
 
 import warnings
-from typing import Iterable, List, Tuple
+from typing import ClassVar, FrozenSet, Iterable, List, Tuple
 
 from matplotlib.axes import Axes
 from matplotlib.text import Text
@@ -17,6 +17,7 @@ from matplotlib.text import Text
 from publiplots.annotate._cache import BoxStatsMeta, BoxStatsRecord
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import (
+    AnchorTuple,
     make_offset_transform,
 )
 from publiplots.annotate._shared import (
@@ -79,6 +80,29 @@ def _resolve_box_anchor(
         if anchor == "center":
             return px, py, 0.0, 0.0, "center", "center"
     raise ValueError(f"unreachable: unknown anchor {anchor!r}")
+
+
+class BoxAnchorResolver:
+    """Adapter to _resolve_box_anchor. Box-stats records carry per-stat
+    values inside `record.stats`; the custom strategy labels a single
+    chosen stat (default: "median") whose value is passed to the resolver
+    as stat_value."""
+    VALID_ANCHORS: ClassVar[FrozenSet[str]] = frozenset({
+        "top", "bottom", "left", "right", "center",
+    })
+    DEFAULT_ANCHOR: ClassVar[str] = "top"
+
+    # The custom strategy always uses the median by default; a callable
+    # label path can compute from record.stats directly. Pin the stat name
+    # the resolver receives.
+    STAT_FOR_POSITIONING: ClassVar[str] = "median"
+
+    def resolve(self, record, anchor, orient, offset_mm, ax) -> AnchorTuple:
+        stat_value = record.stats[self.STAT_FOR_POSITIONING]
+        return _resolve_box_anchor(
+            record, self.STAT_FOR_POSITIONING, stat_value,
+            anchor, orient, offset_mm, ax,
+        )
 
 
 def _box_stats_strategy(
