@@ -55,6 +55,11 @@ def hexbinplot(
     etc.) of an auxiliary column ``C``. The color legend is a continuous
     colorbar routed through the standard publiplots legend reactor.
 
+    Hexbin renders a single density mesh — there is no ``hue=`` knob.
+    For per-subgroup 2D density, use :func:`publiplots.histplot` in 2D
+    mode with ``hue=`` (one stacked colorbar per level), or facet via
+    :func:`publiplots.subplots`.
+
     Parameters
     ----------
     data : DataFrame
