@@ -408,12 +408,18 @@ def test_2d_returns_quadmesh(df_2d):
     assert any(isinstance(c, QuadMesh) for c in ax.collections)
 
 
-def test_2d_default_cmap_from_rcparams(df_2d, monkeypatch):
+def test_2d_default_cmap_tracks_pp_color(df_2d):
+    import publiplots as _pp
     from matplotlib.collections import QuadMesh
-    monkeypatch.setitem(plt.rcParams, "image.cmap", "magma")
-    ax = pp.histplot(data=df_2d, x="x", y="y")
+    original = _pp.rcParams["color"]
+    try:
+        _pp.rcParams["color"] = "#ff0000"
+        ax = pp.histplot(data=df_2d, x="x", y="y")
+    finally:
+        _pp.rcParams["color"] = original
     mesh = next(c for c in ax.collections if isinstance(c, QuadMesh))
-    assert mesh.get_cmap().name == "magma"
+    high_end = mesh.get_cmap()(1.0)
+    assert high_end[0] > 0.9 and high_end[1] < 0.2 and high_end[2] < 0.2
 
 
 def test_2d_explicit_cmap(df_2d):

@@ -7,6 +7,7 @@ for creating consistent, publication-ready visualizations.
 
 from publiplots.themes.colors import (
     color_palette,
+    resolve_continuous_cmap,
     PALETTES,
 )
 
@@ -51,6 +52,7 @@ __all__ = [
     "resolve_param",
     # Color functions
     "color_palette",
+    "resolve_continuous_cmap",
     # Color palettes
     "PALETTES",
     # Style functions

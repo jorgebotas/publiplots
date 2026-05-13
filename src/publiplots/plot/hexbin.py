@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.axes import Axes
 
+from publiplots.themes.colors import resolve_continuous_cmap
 from publiplots.themes.rcparams import resolve_param
 from publiplots.utils.legend_entries import resolve_legend_flags
 from publiplots.utils.plot_legend import render_entries, stash_continuous_hue
@@ -78,9 +79,12 @@ def hexbinplot(
         Hide hexes below this count (matplotlib returns a masked array,
         so empty hexes render as fully transparent cells — matching
         seaborn's appearance). Pass ``0`` to render every hex.
-    cmap : str, optional
-        Matplotlib colormap name. When ``None`` (the default), falls back
-        to ``matplotlib.rcParams['image.cmap']``.
+    cmap : str or Colormap, optional
+        Colormap for the hex density. When ``None`` (the default),
+        builds a light sequential gradient from ``pp.rcParams["color"]``
+        so the default look matches the rest of publiplots' theme.
+        Pass any matplotlib/seaborn cmap name (``"viridis"``,
+        ``"magma"``, ``"rocket"``...) to override.
     vmin, vmax : float, optional
         Color scale bounds. When both are ``None`` (the default),
         matplotlib autoscales from the reduced/count array.
@@ -149,8 +153,7 @@ def hexbinplot(
 
     linewidth = resolve_param("lines.linewidth", linewidth)
     edgecolor = resolve_param("edgecolor", edgecolor)
-    if cmap is None:
-        cmap = plt.rcParams["image.cmap"]
+    cmap = resolve_continuous_cmap(cmap)
     hex_edgecolor = edgecolor if edgecolor is not None else "none"
 
     required_cols = [x, y] + ([C] if C is not None else [])

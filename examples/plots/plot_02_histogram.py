@@ -224,9 +224,11 @@ pp.show()
 # %%
 # 2D Histogram with Custom Colormap
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# ``cmap=`` controls the palette and falls back to
-# ``rcParams["image.cmap"]`` when omitted (mirrors :func:`pp.hexbinplot`'s
-# convention). Pair with ``vmin=``/``vmax=`` to clip the color scale.
+# By default the cmap is a light sequential gradient built from
+# ``pp.rcParams["color"]`` so 2D primitives match the rest of
+# publiplots' theme. Pass ``cmap=`` to override with any matplotlib
+# or seaborn cmap name. Pair with ``vmin=``/``vmax=`` to clip the
+# color scale.
 
 ax = pp.histplot(data=mixture, x="x", y="y", cmap="magma")
 pp.show()

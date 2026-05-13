@@ -19,7 +19,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 
 from publiplots.annotate._builders import build_from_histplot_call
-from publiplots.themes.colors import resolve_palette_map
+from publiplots.themes.colors import resolve_continuous_cmap, resolve_palette_map
 from publiplots.themes.hatches import resolve_hatch_map
 from publiplots.themes.rcparams import resolve_param
 from publiplots.utils import create_legend_handles
@@ -181,10 +181,12 @@ def histplot(
     legend_kws : dict, optional
         Additional kwargs for the legend builder. Supported keys include
         ``hue_label`` to override the title.
-    cmap : str, optional
-        2D-only. Matplotlib colormap name for the bivariate heatmap.
-        When ``None`` (the default), falls back to
-        ``rcParams["image.cmap"]`` (matches :func:`pp.hexbinplot`).
+    cmap : str or Colormap, optional
+        2D-only. Colormap for the bivariate heatmap. When ``None`` (the
+        default), builds a light sequential gradient from
+        ``pp.rcParams["color"]`` so the default look matches the rest
+        of publiplots' theme. Pass any matplotlib/seaborn cmap name
+        (``"viridis"``, ``"magma"``, ``"rocket"``...) to override.
         Silently ignored in 1D and when ``hue`` is set in 2D (seaborn
         uses ``palette`` per hue level instead).
     vmin, vmax : float, optional
@@ -261,7 +263,7 @@ def histplot(
     if is_2d:
         alpha = alpha if alpha is not None else 1.0
         edgecolor_resolved = edgecolor if edgecolor is not None else "none"
-        cmap_resolved = cmap if cmap is not None else plt.rcParams["image.cmap"]
+        cmap_resolved = resolve_continuous_cmap(cmap)
     else:
         alpha = resolve_param("alpha", alpha)
         edgecolor_resolved = resolve_param("edgecolor", edgecolor)
