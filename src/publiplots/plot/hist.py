@@ -183,12 +183,13 @@ def histplot(
         ``hue_label`` to override the title.
     cmap : str or Colormap, optional
         2D-only. Colormap for the bivariate heatmap. When ``None`` (the
-        default), builds a light sequential gradient from
-        ``pp.rcParams["color"]`` so the default look matches the rest
-        of publiplots' theme. Pass any matplotlib/seaborn cmap name
-        (``"viridis"``, ``"magma"``, ``"rocket"``...) to override.
-        Silently ignored in 1D and when ``hue`` is set in 2D (seaborn
-        uses ``palette`` per hue level instead).
+        default), builds a light sequential gradient from ``color`` (or
+        ``pp.rcParams["color"]`` when unset) so the default look matches
+        the rest of publiplots' theme. Passing ``color="#ff0000"`` with
+        no ``cmap`` yields a light-red gradient. Pass any matplotlib /
+        seaborn cmap name (``"viridis"``, ``"magma"``, ``"rocket"``...)
+        to override. Silently ignored in 1D and when ``hue`` is set in
+        2D (seaborn uses ``palette`` per hue level instead).
     vmin, vmax : float, optional
         2D-only. Color scale bounds. When both are ``None`` (the
         default), seaborn autoscales from the per-cell statistic.
@@ -263,7 +264,7 @@ def histplot(
     if is_2d:
         alpha = alpha if alpha is not None else 1.0
         edgecolor_resolved = edgecolor if edgecolor is not None else "none"
-        cmap_resolved = resolve_continuous_cmap(cmap)
+        cmap_resolved = resolve_continuous_cmap(cmap, color=color)
     else:
         alpha = resolve_param("alpha", alpha)
         edgecolor_resolved = resolve_param("edgecolor", edgecolor)

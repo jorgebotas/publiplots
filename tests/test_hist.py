@@ -429,6 +429,14 @@ def test_2d_explicit_cmap(df_2d):
     assert mesh.get_cmap().name == "rocket"
 
 
+def test_2d_color_drives_default_cmap(df_2d):
+    from matplotlib.collections import QuadMesh
+    ax = pp.histplot(data=df_2d, x="x", y="y", color="#ff0000")
+    mesh = next(c for c in ax.collections if isinstance(c, QuadMesh))
+    high_end = mesh.get_cmap()(1.0)
+    assert high_end[0] > 0.9 and high_end[1] < 0.2 and high_end[2] < 0.2
+
+
 def test_2d_vmin_vmax(df_2d):
     from matplotlib.collections import QuadMesh
     ax = pp.histplot(data=df_2d, x="x", y="y", vmin=0, vmax=10)

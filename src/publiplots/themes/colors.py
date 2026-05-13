@@ -210,19 +210,19 @@ def color_palette(palette=None, n_colors=None, desat=None, as_cmap=False, diverg
     return sns.color_palette(palette, n_colors=n_colors, desat=desat, as_cmap=as_cmap)
 
 
-def resolve_continuous_cmap(cmap=None):
+def resolve_continuous_cmap(cmap=None, color=None):
     """
     Resolve a continuous-hue colormap for 2D plots.
 
     Returns ``cmap`` unchanged when set. Otherwise builds a light
-    sequential gradient from ``pp.rcParams["color"]`` via
-    ``sns.color_palette("light:<color>", as_cmap=True)`` so 2D
-    primitives match the user's themed default color.
+    sequential gradient from ``color`` (or ``pp.rcParams["color"]`` when
+    unset) via ``sns.color_palette("light:<color>", as_cmap=True)`` so
+    2D primitives match the user's themed color.
     """
     if cmap is not None:
         return cmap
     import seaborn as sns
-    base_color = resolve_param("color")
+    base_color = resolve_param("color", color)
     return sns.color_palette(f"light:{base_color}", as_cmap=True)
 
 
