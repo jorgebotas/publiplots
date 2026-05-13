@@ -87,6 +87,17 @@ g = pp.jointplot(data=linear, x="x", y="y", kind="resid")
 pp.show()
 
 # %%
+# Histogram Jointplot
+# -------------------
+# ``kind="hist"`` puts a 2D histogram on the joint panel via
+# :func:`pp.histplot`'s 2D mode and 1D histograms on each marginal.
+# A discretized alternative to ``kind="hex"`` — useful when you want
+# explicit rectangular bins instead of hexagonal ones.
+
+g = pp.jointplot(data=mixture, x="x", y="y", kind="hist")
+pp.show()
+
+# %%
 # Custom Composition via ``pp.JointGrid``
 # ---------------------------------------
 # ``pp.jointplot`` is a thin convenience wrapper; when you want

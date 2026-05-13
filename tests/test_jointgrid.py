@@ -243,16 +243,22 @@ def test_jointplot_kind_resid(df):
     assert len(g.ax_marg_y.patches) > 0
 
 
-def test_jointplot_kind_hist_raises(df):
-    """``kind='hist'`` is deferred until publiplots ships a 2D
-    histogram primitive."""
-    with pytest.raises(ValueError) as exc_info:
-        pp.jointplot(data=df, x="x", y="y", kind="hist")
-    msg = str(exc_info.value)
-    assert "hist" in msg
-    # Message should list the available kinds.
-    assert "scatter" in msg
-    assert "hex" in msg
+def test_jointplot_kind_hist(df):
+    """``kind='hist'`` puts a 2D bivariate histogram on the joint and
+    1D histograms on each marginal — both via :func:`pp.histplot`."""
+    from matplotlib.collections import QuadMesh
+    g = pp.jointplot(data=df, x="x", y="y", kind="hist")
+    assert isinstance(g, pp.JointGrid)
+    # 2D mode emits a QuadMesh on the joint panel.
+    assert any(isinstance(c, QuadMesh) for c in g.ax_joint.collections)
+    # The joint panel stashes a continuous-hue colorbar entry.
+    entries = get_entries(g.ax_joint)
+    assert len(entries) == 1
+    assert entries[0].kind == "hue"
+    assert is_continuous_hue(entries[0].handles)
+    # Marginals: histograms (Rectangle patches).
+    assert len(g.ax_marg_x.patches) > 0
+    assert len(g.ax_marg_y.patches) > 0
 
 
 def test_jointplot_unknown_kind_raises(df):

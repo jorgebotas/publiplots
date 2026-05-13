@@ -8,17 +8,18 @@ optional KDE overlay.
 
 from typing import Dict, List, Optional, Tuple, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.axes import Axes
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import PolyCollection, QuadMesh
 from matplotlib.colors import to_rgba
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 
 from publiplots.annotate._builders import build_from_histplot_call
-from publiplots.themes.colors import resolve_palette_map
+from publiplots.themes.colors import resolve_continuous_cmap, resolve_palette_map
 from publiplots.themes.hatches import resolve_hatch_map
 from publiplots.themes.rcparams import resolve_param
 from publiplots.utils import create_legend_handles
@@ -27,7 +28,7 @@ from publiplots.utils.legend_entries import (
     resolve_legend_flags,
     stash_entry,
 )
-from publiplots.utils.plot_legend import render_entries
+from publiplots.utils.plot_legend import render_entries, stash_continuous_hue
 from publiplots.utils.transparency import ArtistTracker
 
 
@@ -65,6 +66,9 @@ def histplot(
     log_scale: Optional[Union[bool, float, Tuple]] = None,
     legend: Union[bool, Dict] = True,
     legend_kws: Optional[Dict] = None,
+    cmap: Optional[str] = None,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
     annotate: Union[bool, Dict, None] = None,
     ax: Optional[Axes] = None,
     title: str = "",
@@ -77,9 +81,15 @@ def histplot(
 
     Draws a univariate histogram with optional hue grouping, multiple
     rendering elements (bars, step, poly), and an optional KDE overlay.
-    Exposes the full seaborn ``histplot`` API while applying publiplots'
-    double-layer transparent-fill styling, palette resolution, and
-    legend-entry pipeline.
+    When BOTH ``x`` and ``y`` are passed, switches to a 2D bivariate
+    heatmap-like mode (``QuadMesh`` rendered via :func:`seaborn.histplot`
+    in 2D mode). The legend routes through the publiplots legend
+    reactor: a single continuous-hue colorbar when ``hue is None``, or
+    one stacked colorbar per hue level when ``hue`` is set (so per-
+    subgroup count magnitudes stay readable). Exposes the full seaborn
+    ``histplot`` API while
+    applying publiplots' double-layer transparent-fill styling, palette
+    resolution, and legend-entry pipeline.
 
     Parameters
     ----------
@@ -87,10 +97,11 @@ def histplot(
         Input data. Long-form frame containing ``x`` / ``y`` / ``hue``.
     x : str, optional
         Column name for the variable binned along the x-axis (vertical
-        histogram). Provide exactly one of ``x`` or ``y``.
+        histogram). Pass either ``x`` alone (1D vertical), ``y`` alone
+        (1D horizontal), or both (2D heatmap).
     y : str, optional
         Column name for the variable binned along the y-axis (horizontal
-        histogram). Provide exactly one of ``x`` or ``y``.
+        histogram). See ``x`` for combined usage.
     hue : str, optional
         Column name for categorical color grouping.
     weights : str, optional
@@ -172,6 +183,19 @@ def histplot(
     legend_kws : dict, optional
         Additional kwargs for the legend builder. Supported keys include
         ``hue_label`` to override the title.
+    cmap : str or Colormap, optional
+        2D-only. Colormap for the bivariate heatmap. When ``None`` (the
+        default), builds a light sequential gradient from ``color`` (or
+        ``pp.rcParams["color"]`` when unset) so the default look matches
+        the rest of publiplots' theme. Passing ``color="#ff0000"`` with
+        no ``cmap`` yields a light-red gradient. Pass any matplotlib /
+        seaborn cmap name (``"viridis"``, ``"magma"``, ``"rocket"``...)
+        to override. Silently ignored in 1D and when ``hue`` is set in
+        2D (seaborn uses ``palette`` per hue level instead).
+    vmin, vmax : float, optional
+        2D-only. Color scale bounds. When both are ``None`` (the
+        default), seaborn autoscales from the per-cell statistic.
+        Silently ignored in 1D.
     annotate : bool or dict, optional
         If truthy, label each bar with its statistic (only supported
         for ``element="bars"``). Pass a dict to forward options to
@@ -215,23 +239,38 @@ def histplot(
     >>> ax = pp.histplot(data=df, x="value", hue="group",
     ...                  element="step", fill=False)
 
+    2D bivariate heatmap (both ``x`` and ``y`` set):
+
+    >>> ax = pp.histplot(data=df, x="x", y="y", cmap="magma")
+
     See Also
     --------
     seaborn.histplot : Underlying rendering primitive.
     publiplots.annotate : Add bar-value labels (see ``annotate=`` above).
+    publiplots.hexbinplot : Hexagonal-binning bivariate density plot.
     """
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
 
-    linewidth = resolve_param("lines.linewidth", linewidth)
-    alpha = resolve_param("alpha", alpha)
-    color = resolve_param("color", color)
-    edgecolor_resolved = resolve_param("edgecolor", edgecolor)
-
-    if (x is None) == (y is None):
+    if x is None and y is None:
         raise ValueError(
-            "Exactly one of `x` or `y` must be provided to pp.histplot."
+            "At least one of `x` or `y` must be provided to pp.histplot."
         )
+    is_2d = x is not None and y is not None
+
+    linewidth = resolve_param("lines.linewidth", linewidth)
+    color = resolve_param("color", color)
+    # 2D heatmap cells are solid density patches (mirrors hexbinplot):
+    # alpha defaults to a literal 1.0 and edgecolor to "none". 1D paths
+    # keep the existing rcParam-resolved defaults.
+    if is_2d:
+        alpha = alpha if alpha is not None else 1.0
+        edgecolor_resolved = edgecolor if edgecolor is not None else "none"
+        cmap_resolved = resolve_continuous_cmap(cmap, color=color)
+    else:
+        alpha = resolve_param("alpha", alpha)
+        edgecolor_resolved = resolve_param("edgecolor", edgecolor)
+        cmap_resolved = None
 
     if ax is None:
         from publiplots.layout.subplots import subplots as _pp_subplots
@@ -263,89 +302,183 @@ def histplot(
 
     tracker = ArtistTracker(ax)
 
-    sns_kwargs = {
-        "data": data,
-        "x": x,
-        "y": y,
-        "hue": hue,
-        "weights": weights,
-        "stat": stat,
-        "bins": bins,
-        "binwidth": binwidth,
-        "binrange": binrange,
-        "discrete": discrete,
-        "cumulative": cumulative,
-        "common_bins": common_bins,
-        "common_norm": common_norm,
-        "multiple": multiple,
-        "element": element,
-        "fill": fill,
-        "shrink": shrink,
-        "kde": kde,
-        "kde_kws": kde_kws,
-        "line_kws": line_kws,
-        "palette": palette_map if palette_map else palette,
-        "hue_order": hue_order,
-        "log_scale": log_scale,
-        "ax": ax,
-        "legend": False,
-    }
-    if hue is None:
-        sns_kwargs["color"] = color
-    sns_kwargs.update(kwargs)
+    if is_2d:
+        # 2D bivariate histogram: seaborn renders one (or one-per-hue-level)
+        # QuadMesh; we post-style it and route the legend either as a
+        # continuous-hue colorbar (no hue) or via the existing 1D
+        # categorical rectangle stash (hue set).
+        if annotate:
+            raise NotImplementedError(
+                "histplot: annotate= is not supported in 2D mode "
+                "(no Rectangle patches to label)."
+            )
+        if element != "bars":
+            raise NotImplementedError(
+                f"histplot: element={element!r} is not supported in 2D "
+                "mode (use the default 'bars')."
+            )
 
-    sns.histplot(**sns_kwargs)
+        sns_kwargs = {
+            "data": data,
+            "x": x,
+            "y": y,
+            "hue": hue,
+            "weights": weights,
+            "stat": stat,
+            "bins": bins,
+            "binwidth": binwidth,
+            "binrange": binrange,
+            "discrete": discrete,
+            "cumulative": cumulative,
+            "common_bins": common_bins,
+            "common_norm": common_norm,
+            "hue_order": hue_order,
+            "log_scale": log_scale,
+            "ax": ax,
+            # Both routed through publiplots' legend reactor.
+            "legend": False,
+            "cbar": False,
+        }
+        if kde:
+            sns_kwargs["kde"] = True
+            if kde_kws:
+                sns_kwargs["kde_kws"] = kde_kws
+        # cmap is mutually exclusive with hue in seaborn 2D.
+        if hue is None:
+            sns_kwargs["cmap"] = cmap_resolved
+            if vmin is not None:
+                sns_kwargs["vmin"] = vmin
+            if vmax is not None:
+                sns_kwargs["vmax"] = vmax
+        else:
+            sns_kwargs["palette"] = palette_map if palette_map else palette
+        sns_kwargs.update(kwargs)
 
-    if element == "bars":
-        _paint_bars(
-            patches=tracker.get_new_patches(),
-            data=data,
-            hue=hue,
-            hue_order=hue_order,
-            palette=palette_map,
-            hatch_col=hatch,
-            hatch_map=hatch_map_resolved,
-            color=color,
-            edgecolor=edgecolor_resolved,
-            linewidth=linewidth,
-        )
-        tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
+        sns.histplot(**sns_kwargs)
+
+        # Post-draw QuadMesh styling.
+        new_collections = list(tracker.get_new_collections())
+        meshes = [c for c in new_collections if isinstance(c, QuadMesh)]
+        for mesh in meshes:
+            if alpha is not None:
+                mesh.set_alpha(alpha)
+            if linewidth:
+                mesh.set_linewidth(linewidth)
+            if edgecolor_resolved not in (None, "none"):
+                mesh.set_edgecolor(edgecolor_resolved)
+
+        # Legend stash: continuous colorbar (no hue) or N stacked
+        # colorbars (one per hue level — preserves per-subgroup count
+        # scale that a categorical legend would discard).
+        if legend is not False and meshes:
+            flags = resolve_legend_flags(legend)
+            _legend_kws = dict(legend_kws or {})
+            hue_label = _legend_kws.pop("hue_label", stat)
+            if flags["hue"]:
+                if hue is None:
+                    stash_continuous_hue(
+                        ax,
+                        name=hue_label,
+                        palette=meshes[0].get_cmap(),
+                        hue_norm=meshes[0].norm,
+                    )
+                else:
+                    levels = (
+                        list(hue_order) if hue_order is not None
+                        else list(data[hue].unique())
+                    )
+                    for mesh, level in zip(meshes, levels):
+                        stash_continuous_hue(
+                            ax,
+                            name=f"{hue_label} [{level}]",
+                            palette=mesh.get_cmap(),
+                            hue_norm=mesh.norm,
+                        )
+            render_entries(ax, flags=flags, legend_kws=_legend_kws)
     else:
-        _paint_lines(
-            new_lines=tracker.get_new_lines(),
-            new_collections=tracker.get_new_collections(),
+        sns_kwargs = {
+            "data": data,
+            "x": x,
+            "y": y,
+            "hue": hue,
+            "weights": weights,
+            "stat": stat,
+            "bins": bins,
+            "binwidth": binwidth,
+            "binrange": binrange,
+            "discrete": discrete,
+            "cumulative": cumulative,
+            "common_bins": common_bins,
+            "common_norm": common_norm,
+            "multiple": multiple,
+            "element": element,
+            "fill": fill,
+            "shrink": shrink,
+            "kde": kde,
+            "kde_kws": kde_kws,
+            "line_kws": line_kws,
+            "palette": palette_map if palette_map else palette,
+            "hue_order": hue_order,
+            "log_scale": log_scale,
+            "ax": ax,
+            "legend": False,
+        }
+        if hue is None:
+            sns_kwargs["color"] = color
+        sns_kwargs.update(kwargs)
+
+        sns.histplot(**sns_kwargs)
+
+        if element == "bars":
+            _paint_bars(
+                patches=tracker.get_new_patches(),
+                data=data,
+                hue=hue,
+                hue_order=hue_order,
+                palette=palette_map,
+                hatch_col=hatch,
+                hatch_map=hatch_map_resolved,
+                color=color,
+                edgecolor=edgecolor_resolved,
+                linewidth=linewidth,
+            )
+            tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
+        else:
+            _paint_lines(
+                new_lines=tracker.get_new_lines(),
+                new_collections=tracker.get_new_collections(),
+                palette=palette_map,
+                hue_order=hue_order,
+                color=color,
+                edgecolor=edgecolor_resolved,
+                linewidth=linewidth,
+                alpha=alpha,
+                fill=fill,
+            )
+
+        if kde:
+            _paint_kde(
+                new_lines=tracker.get_new_lines(),
+                palette=palette_map,
+                hue_order=hue_order,
+                color=color,
+                linewidth=linewidth,
+                alpha=alpha,
+            )
+
+        _legend(
+            ax=ax,
+            hue=hue,
             palette=palette_map,
-            hue_order=hue_order,
+            element=element,
+            fill=fill,
+            alpha=alpha,
+            linewidth=linewidth,
             color=color,
             edgecolor=edgecolor_resolved,
-            linewidth=linewidth,
-            alpha=alpha,
-            fill=fill,
+            legend=legend,
+            legend_kws=legend_kws,
         )
-
-    if kde:
-        _paint_kde(
-            new_lines=tracker.get_new_lines(),
-            palette=palette_map,
-            hue_order=hue_order,
-            color=color,
-            linewidth=linewidth,
-            alpha=alpha,
-        )
-
-    _legend(
-        ax=ax,
-        hue=hue,
-        palette=palette_map,
-        element=element,
-        fill=fill,
-        alpha=alpha,
-        linewidth=linewidth,
-        color=color,
-        edgecolor=edgecolor_resolved,
-        legend=legend,
-        legend_kws=legend_kws,
-    )
 
     if xlabel is not None:
         ax.set_xlabel(xlabel)

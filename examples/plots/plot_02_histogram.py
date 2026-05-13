@@ -201,3 +201,48 @@ ax = pp.histplot(
     ylabel="Value",
 )
 pp.show()
+
+# %%
+# 2D Histogram (Bivariate)
+# ------------------------
+# Pass both ``x=`` and ``y=`` to render a 2D histogram — a heatmap-
+# like bivariate density readout where each cell colors by the count
+# (or whatever ``stat=`` resolves to). The colorbar lands on the
+# figure-level legend band on the right. With many points, this is a
+# useful alternative to :func:`pp.hexbinplot` when you want explicit
+# rectangular bins.
+
+rng = np.random.default_rng(0)
+n = 5_000
+cluster_a = rng.multivariate_normal([-1.5, -1.0], [[1.0, 0.4], [0.4, 1.0]], n // 2)
+cluster_b = rng.multivariate_normal([2.0, 1.5], [[1.2, -0.3], [-0.3, 0.8]], n // 2)
+mixture = pd.DataFrame(np.vstack([cluster_a, cluster_b]), columns=["x", "y"])
+
+ax = pp.histplot(data=mixture, x="x", y="y")
+pp.show()
+
+# %%
+# 2D Histogram with Custom Colormap
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# By default the cmap is a light sequential gradient built from
+# ``pp.rcParams["color"]`` so 2D primitives match the rest of
+# publiplots' theme. Pass ``cmap=`` to override with any matplotlib
+# or seaborn cmap name. Pair with ``vmin=``/``vmax=`` to clip the
+# color scale.
+
+ax = pp.histplot(data=mixture, x="x", y="y", cmap="magma")
+pp.show()
+
+# %%
+# 2D Histogram with Hue
+# ~~~~~~~~~~~~~~~~~~~~~
+# Pass ``hue=`` to overlay one heatmap per hue level. Each level
+# draws its own QuadMesh tinted by the palette, and the legend
+# stacks one colorbar per level (e.g. ``count [A]`` / ``count [B]``)
+# so per-subgroup count magnitudes stay readable. Useful for two or
+# three labeled subgroups in 2D — for more than three levels, prefer
+# faceting via :func:`pp.subplots`.
+
+mixture["cluster"] = np.repeat(["A", "B"], n // 2)
+ax = pp.histplot(data=mixture, x="x", y="y", hue="cluster")
+pp.show()
