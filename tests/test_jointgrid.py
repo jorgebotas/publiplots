@@ -380,3 +380,25 @@ def test_scatter_no_colorbar_costs_nothing(df):
         f"scatter + no legend should leave right reservations at 0; "
         f"got {layout.right}"
     )
+
+
+def test_jointgrid_violinplot_marginals(df):
+    from matplotlib.collections import PolyCollection
+    g = pp.JointGrid(data=df, x="x", y="y")
+    g.plot_joint(pp.scatterplot)
+    g.plot_marginals(pp.violinplot)
+    px = [c for c in g.ax_marg_x.collections if isinstance(c, PolyCollection)]
+    py = [c for c in g.ax_marg_y.collections if isinstance(c, PolyCollection)]
+    assert len(px) >= 1
+    assert len(py) >= 1
+
+
+def test_jointgrid_boxplot_marginals(df):
+    from matplotlib.patches import PathPatch
+    g = pp.JointGrid(data=df, x="x", y="y")
+    g.plot_joint(pp.scatterplot)
+    g.plot_marginals(pp.boxplot)
+    nx = sum(1 for p in g.ax_marg_x.patches if isinstance(p, PathPatch))
+    ny = sum(1 for p in g.ax_marg_y.patches if isinstance(p, PathPatch))
+    assert nx >= 1
+    assert ny >= 1

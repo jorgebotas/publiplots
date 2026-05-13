@@ -206,6 +206,21 @@ def violinplot(
     if edgecolor is not None:
         linecolor = edgecolor
 
+    # 1D mode: synthesize a constant categorical column on the missing axis so
+    # the rest of the function flows through the 2D code path unchanged.
+    if x is None and y is None:
+        raise ValueError("at least one of `x` or `y` must be provided to pp.violinplot.")
+    _hide_axis: Optional[str] = None
+    if x is None or y is None:
+        _DUMMY = "__publiplots_constant_axis__"
+        data = data.assign(**{_DUMMY: ""})
+        if x is None:
+            x = _DUMMY
+            _hide_axis = "x"
+        else:
+            y = _DUMMY
+            _hide_axis = "y"
+
     # Validate side parameter
     if side not in ("both", "left", "right"):
         raise ValueError(f"side must be 'both', 'left', or 'right', got '{side}'")
@@ -338,6 +353,13 @@ def violinplot(
         opts = dict(annotate) if isinstance(annotate, dict) else {}
         kind = opts.pop("kind", "box_stats")
         _annotate_fn(ax, kind=kind, **opts)
+
+    if _hide_axis == "x":
+        ax.set_xticks([])
+        ax.spines["bottom"].set_visible(False)
+    elif _hide_axis == "y":
+        ax.set_yticks([])
+        ax.spines["left"].set_visible(False)
 
     return ax
 
