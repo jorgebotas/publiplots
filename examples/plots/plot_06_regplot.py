@@ -176,20 +176,20 @@ ci_df = pd.DataFrame({"x": x, "y": y})
 fig, axes = pp.subplots(2, 2, axes_size=(45, 32))
 regplot(data=ci_df, x="x", y="y", ax=axes[0, 0],
         title="default ci_kws (alpha=0.15)")
-regplot(data=ci_df, x="x", y="y", ci_kws={"alpha": 0.6}, ax=axes[0, 1],
-        title="ci_kws={'alpha': 0.6}")
-regplot(data=ci_df, x="x", y="y", ci_kws={"color": "#888"}, ax=axes[1, 0],
-        title="ci_kws={'color': '#888'}")
-regplot(data=ci_df, x="x", y="y", ci_kws={"alpha": 0.4, "color": "tomato"},
-        ax=axes[1, 1], title="ci_kws={'alpha': 0.4, 'color': 'tomato'}")
+regplot(data=ci_df, x="x", y="y", ci_kws=dict(alpha=0.6), ax=axes[0, 1],
+        title="ci_kws=dict(alpha=0.6)")
+regplot(data=ci_df, x="x", y="y", ci_kws=dict(color="#888"), ax=axes[1, 0],
+        title="ci_kws=dict(color='#888')")
+regplot(data=ci_df, x="x", y="y", ci_kws=dict(alpha=0.4, color="tomato"),
+        ax=axes[1, 1], title="ci_kws=dict(alpha=0.4, color='tomato')")
 pp.show()
 
 
 # %%
 # ``ci_kws`` with Hue: De-emphasize Bands When Overlaying Groups
-# -------------------------------------------------------------
+# --------------------------------------------------------------
 # When several regressions share an axes, full-strength CI bands
-# stack into mud. A lower ``ci_kws['alpha']`` (e.g. 0.1) pushes the
+# stack into mud. A lower ``ci_kws['alpha']`` (e.g. 0.3) pushes the
 # bands into the visual background while the per-group lines and
 # scatter remain crisp. Each band still inherits its group's palette
 # color — ``ci_kws`` only overrides the keys you set.
@@ -208,7 +208,7 @@ ax = regplot(
     y="y",
     hue="group",
     palette="pastel",
-    ci_kws={"alpha": 0.1},
+    ci_kws=dict(alpha=0.3),
     title="Per-group fits with low-alpha CI bands",
     xlabel="x",
     ylabel="y",

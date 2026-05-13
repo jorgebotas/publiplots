@@ -250,14 +250,14 @@ def regplot(
     Bolder CI band (de-emphasize the regression line, emphasize the
     uncertainty):
 
-    >>> ax = pp.regplot(data=df, x="x", y="y", ci_kws={"alpha": 0.6})
+    >>> ax = pp.regplot(data=df, x="x", y="y", ci_kws=dict(alpha=0.6))
 
     De-emphasize CI bands when overlaying multiple groups (full-strength
     bands stack into mud):
 
     >>> ax = pp.regplot(
     ...     data=df, x="x", y="y", hue="group",
-    ...     palette="pastel", ci_kws={"alpha": 0.1},
+    ...     palette="pastel", ci_kws=dict(alpha=0.3),
     ... )
 
     Decouple band color from line color (e.g. for accessibility / print
@@ -266,7 +266,7 @@ def regplot(
     >>> ax = pp.regplot(
     ...     data=df, x="x", y="y",
     ...     line_kws={"color": "navy"},
-    ...     ci_kws={"color": "#888", "alpha": 0.3},
+    ...     ci_kws=dict(color="#888", alpha=0.3),
     ... )
 
     Custom marker, transparent face, opaque edge — full publiplots
