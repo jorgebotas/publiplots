@@ -1,17 +1,17 @@
 """
 Errorbar plot for scatter measurements with x and/or y uncertainty.
 
-:func:`errorbar` is a 2D scatter primitive that overlays uncertainty
+:func:`errorbarplot` is a 2D scatter primitive that overlays uncertainty
 stems on each marker. Marker rendering — including hue routing,
-palette selection, the publiplots face/edge alpha split, and continuous-
-hue colorbar stashing — is delegated to :func:`pp.scatterplot`. The
-errorbar stems themselves are drawn with a single
-``ax.errorbar(fmt='none', ...)`` call layered *below* the markers
-(``zorder=1`` vs the scatter's ``zorder=2``).
+palette selection, the publiplots face/edge alpha split, opaque
+background marker for occlusion, and continuous-hue colorbar stashing
+— is delegated to :func:`pp.scatterplot`. Errorbar stems are layered
+*below* the markers (``zorder=1`` vs the scatter's ``zorder=2``).
 
-Stems default to ``rcParams['edgecolor']`` rather than the per-point
-hue color: a neutral, opaque stem reads as "uncertainty" on top of any
-qualitative or continuous colormapping without competing for attention.
+When a categorical ``hue=`` is supplied, stems are drawn per-group with
+``ecolor`` set from the resolved palette so each measurement's
+uncertainty inherits its group's color. Without hue (or with
+continuous hue), stems use the neutral ``rcParams['edgecolor']``.
 """
 
 from __future__ import annotations
@@ -24,10 +24,12 @@ from matplotlib.axes import Axes
 from matplotlib.colors import Normalize
 
 from publiplots.plot.scatter import scatterplot as _pp_scatter
+from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.rcparams import resolve_param
+from publiplots.utils import is_categorical
 
 
-def errorbar(
+def errorbarplot(
     data: pd.DataFrame,
     x: str,
     y: str,
@@ -43,6 +45,7 @@ def errorbar(
     capsize: Optional[float] = None,
     capthick: Optional[float] = None,
     hue_norm: Optional[Union[Tuple[float, float], Normalize]] = None,
+    background_marker: Union[bool, str] = True,
     errorbar_kws: Optional[Dict] = None,
     scatter_kws: Optional[Dict] = None,
     ax: Optional[Axes] = None,
@@ -59,14 +62,21 @@ def errorbar(
     Each ``(x, y)`` pair is drawn as a marker (via :func:`pp.scatterplot`,
     inheriting all of its hue / palette / face-edge alpha behavior) with
     optional x- and/or y-direction uncertainty rendered as thin stems
-    below the marker. Stems are issued in a single
-    :meth:`matplotlib.axes.Axes.errorbar` call regardless of hue grouping
-    — they share a uniform neutral color (``rcParams['edgecolor']``) so
-    they don't compete with hue-mapped marker faces for visual weight.
+    below the marker.
 
-    Errorbars use ``zorder=1``; scatter markers use ``zorder=2`` (the
-    default from :func:`pp.scatterplot`). The marker face is drawn last
-    so the stem appears to terminate at the marker edge.
+    **Stem coloring.** With a categorical ``hue=``, stems are issued
+    per-group with ``ecolor`` set to the group's palette color so each
+    measurement's uncertainty matches its marker. Without ``hue=`` (or
+    with a continuous numeric ``hue=``) stems use a neutral
+    ``rcParams['edgecolor']`` — per-point colored stems would require N
+    ``ax.errorbar`` calls and produce visually noisy rainbow striping.
+
+    **Layering.** Errorbar stems use ``zorder=1``; scatter markers use
+    ``zorder=2`` (the default from :func:`pp.scatterplot`). The marker
+    is drawn last so the stem appears to terminate at the marker edge.
+    ``background_marker=True`` (the default) draws an opaque white
+    twin behind each marker so the stem does not show through the
+    alpha-faded marker face.
 
     Parameters
     ----------
@@ -89,18 +99,21 @@ def errorbar(
         both ``xerr`` and ``yerr`` are ``None`` no errorbar call is
         issued at all.
     hue : str, optional
-        Column name for marker color grouping. Categorical or
-        continuous, forwarded verbatim to :func:`pp.scatterplot`.
+        Column name for marker color grouping. Categorical values
+        produce per-group stem colors via ``palette``; numeric values
+        produce a continuous colorbar (stems remain neutral).
     palette : str, dict, or list, optional
         Color palette for hue values. See :func:`pp.scatterplot`.
     color : str, optional
-        Fixed marker color when ``hue`` is None.
+        Fixed marker color when ``hue`` is None. Stems pick up this
+        color too.
     linewidth : float, optional
         Stroke width for both marker edges and errorbar stems. Falls
         back to ``rcParams['lines.linewidth']``.
     edgecolor : str, optional
-        Color for marker edges *and* the default stem color. Falls back
-        to ``rcParams['edgecolor']``. Override the stem color
+        Color for marker edges *and* the default stem color when
+        ``hue`` is None or continuous. Falls back to
+        ``rcParams['edgecolor']``. Override the stem color
         independently via ``errorbar_kws={'ecolor': ...}``.
     alpha : float, optional
         Marker face transparency (0–1). Edges stay opaque (publiplots
@@ -114,29 +127,38 @@ def errorbar(
     hue_norm : (vmin, vmax) or Normalize, optional
         Color normalization for continuous hue. Forwarded to
         :func:`pp.scatterplot`.
+    background_marker : bool or str, default True
+        Draw an opaque background twin behind each marker so the stem
+        does not show through the alpha-faded marker face. ``True``
+        uses white; pass a color string (e.g. ``"#eeeeee"``) to match
+        a non-white axes background. Set ``False`` to allow the stem
+        to read through the marker.
     errorbar_kws : dict, optional
         Extra keyword arguments forwarded to
         :meth:`matplotlib.axes.Axes.errorbar`. Common overrides:
 
-        - ``ecolor`` — stem color (defaults to ``edgecolor``).
+        - ``ecolor`` — stem color. Wins over the hue-derived color.
+          Useful when you want neutral stems even with a categorical
+          hue (pass ``ecolor=pp.rcParams['edgecolor']``).
         - ``elinewidth`` — stem thickness (defaults to ``linewidth``).
         - ``capsize``, ``capthick`` — see top-level kwargs.
 
         Caller-supplied keys win via ``setdefault``.
     scatter_kws : dict, optional
         Extra keyword arguments forwarded to :func:`pp.scatterplot`.
+        ``background_marker`` is forwarded automatically; pass it here
+        only if you want to override the top-level kwarg per-call.
     ax : Axes, optional
         Target axes. When ``None``, a new figure is created via
         :func:`pp.subplots`.
     title : str, optional
         Plot title.
     xlabel, ylabel : str, optional
-        Axis labels. ``None`` (the default) preserves seaborn's
-        column-name inference from :func:`pp.scatterplot`.
+        Axis labels.
     legend : bool or dict, default True
         Legend control passed through to :func:`pp.scatterplot`.
-        ``False`` stashes nothing. A dict maps legend kinds (``"hue"``,
-        ``"size"``, ``"style"``) to booleans.
+        ``False`` stashes nothing. A dict maps legend kinds to
+        booleans.
     legend_kws : dict, optional
         Forwarded to the legend builder; supports e.g. ``hue_label``
         for overriding the legend title.
@@ -160,35 +182,40 @@ def errorbar(
     --------
     Symmetric y-error bars:
 
-    >>> ax = pp.errorbar(data=df, x="dose", y="response", yerr="sem")
+    >>> ax = pp.errorbarplot(data=df, x="dose", y="response", yerr="sem")
 
     Both directions:
 
-    >>> ax = pp.errorbar(data=df, x="dose", y="response",
-    ...                   xerr="dose_err", yerr="response_err")
+    >>> ax = pp.errorbarplot(data=df, x="dose", y="response",
+    ...                       xerr="dose_err", yerr="response_err")
 
     Asymmetric y-errors via a (lo, hi) column tuple:
 
-    >>> ax = pp.errorbar(data=df, x="dose", y="response",
-    ...                   yerr=("ci_lo", "ci_hi"))
+    >>> ax = pp.errorbarplot(data=df, x="dose", y="response",
+    ...                       yerr=("ci_lo", "ci_hi"))
 
     Constant scalar error:
 
-    >>> ax = pp.errorbar(data=df, x="x", y="y", xerr=0.1, yerr=0.2)
+    >>> ax = pp.errorbarplot(data=df, x="x", y="y", xerr=0.1, yerr=0.2)
 
-    Hue groups with neutral stems:
+    Hue groups with per-group stem colors:
 
-    >>> ax = pp.errorbar(data=df, x="dose", y="response", yerr="sem",
-    ...                   hue="treatment", palette="pastel")
+    >>> ax = pp.errorbarplot(data=df, x="dose", y="response", yerr="sem",
+    ...                       hue="treatment", palette="pastel")
 
-    Continuous hue with colorbar legend:
+    Continuous hue with colorbar legend (neutral stems):
 
-    >>> ax = pp.errorbar(data=df, x="x", y="y", yerr="err",
-    ...                   hue="score", palette="viridis")
+    >>> ax = pp.errorbarplot(data=df, x="x", y="y", yerr="err",
+    ...                       hue="score", palette="viridis")
 
     Visible caps:
 
-    >>> ax = pp.errorbar(data=df, x="x", y="y", yerr="err", capsize=2)
+    >>> ax = pp.errorbarplot(data=df, x="x", y="y", yerr="err", capsize=2)
+
+    Force neutral stems even with a categorical hue:
+
+    >>> ax = pp.errorbarplot(data=df, x="x", y="y", yerr="err",
+    ...                       hue="g", errorbar_kws={"ecolor": "0.4"})
 
     See Also
     --------
@@ -201,28 +228,24 @@ def errorbar(
     )
     reject_figsize(kwargs)
 
-    # rcParams resolution: same as pp.scatterplot for marker styling
-    # plus the publiplots-specific 'capsize' default.
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     edgecolor = resolve_param("edgecolor", edgecolor)
     capsize = resolve_param("capsize", capsize)
     capthick_resolved = capthick if capthick is not None else linewidth
 
-    # Validate xerr / yerr columns up front so we surface clear messages.
-    # (pp.scatterplot's own validation only sees x, y, hue.)
     _validate_err_columns(xerr, "xerr", data)
     _validate_err_columns(yerr, "yerr", data)
 
     if ax is None:
         _, ax = _pp_subplots()
 
-    # Delegate marker rendering. pp.scatterplot already handles:
-    #   - hue routing (categorical -> palette, continuous -> colorbar)
-    #   - face/edge alpha split (face=alpha, edge=1.0)
-    #   - LegendEntry stashing (hue, size, style)
-    #   - continuous-hue ScalarMappable for the colorbar legend.
+    # Default background_marker=True so the alpha-faded marker face
+    # doesn't reveal the stem behind it. Caller can opt out per-call
+    # via top-level kwarg or via scatter_kws['background_marker'].
     scatter_kws = dict(scatter_kws or {})
+    scatter_kws.setdefault("background_marker", background_marker)
+
     _pp_scatter(
         data=data, x=x, y=y,
         hue=hue, palette=palette, color=color,
@@ -235,70 +258,79 @@ def errorbar(
     xerr_arr = _resolve_err(xerr, data)
     yerr_arr = _resolve_err(yerr, data)
 
-    if xerr_arr is not None or yerr_arr is not None:
-        ekws = dict(errorbar_kws or {})
-        # Stems use the neutral edgecolor by default — never the per-point
-        # hue color — so they read as "uncertainty" rather than competing
-        # with the marker face.
-        ekws.setdefault("ecolor", edgecolor)
-        ekws.setdefault("elinewidth", linewidth)
-        ekws.setdefault("capsize", capsize)
-        ekws.setdefault("capthick", capthick_resolved)
+    if xerr_arr is None and yerr_arr is None:
+        if title is not None:  ax.set_title(title)
+        if xlabel is not None: ax.set_xlabel(xlabel)
+        if ylabel is not None: ax.set_ylabel(ylabel)
+        return ax
+
+    ekws_user = dict(errorbar_kws or {})
+    ekws_user.setdefault("elinewidth", linewidth)
+    ekws_user.setdefault("capsize", capsize)
+    ekws_user.setdefault("capthick", capthick_resolved)
+
+    # Stem color routing:
+    #   - ecolor in user errorbar_kws -> single call, that color
+    #     (caller wins; lets users force neutral stems on hue plots)
+    #   - categorical hue -> per-group call with ecolor=palette[level]
+    #   - else (no hue / continuous hue) -> single call, ecolor=edgecolor
+    user_ecolor = ekws_user.pop("ecolor", None)
+    has_categorical_hue = (
+        hue is not None
+        and user_ecolor is None
+        and is_categorical(data[hue])
+    )
+
+    if has_categorical_hue:
+        levels = data[hue].unique()
+        palette_map = resolve_palette_map(values=levels, palette=palette)
+        for level in levels:
+            mask = (data[hue] == level).to_numpy()
+            xs = np.asarray(data[x])[mask]
+            ys = np.asarray(data[y])[mask]
+            xerr_g = _slice_err(xerr_arr, mask)
+            yerr_g = _slice_err(yerr_arr, mask)
+            ax.errorbar(
+                xs, ys,
+                xerr=xerr_g, yerr=yerr_g,
+                fmt="none",
+                zorder=1,
+                ecolor=palette_map[level],
+                **ekws_user,
+            )
+    else:
         ax.errorbar(
             np.asarray(data[x]),
             np.asarray(data[y]),
             xerr=xerr_arr,
             yerr=yerr_arr,
-            fmt="none",        # no marker — pp.scatterplot drew them.
-            zorder=1,          # below scatter (zorder=2 from pp.scatterplot).
-            **ekws,
+            fmt="none",
+            zorder=1,
+            ecolor=user_ecolor if user_ecolor is not None else edgecolor,
+            **ekws_user,
         )
 
-    if title is not None:
-        ax.set_title(title)
-    if xlabel is not None:
-        ax.set_xlabel(xlabel)
-    if ylabel is not None:
-        ax.set_ylabel(ylabel)
+    if title is not None:  ax.set_title(title)
+    if xlabel is not None: ax.set_xlabel(xlabel)
+    if ylabel is not None: ax.set_ylabel(ylabel)
 
     return ax
 
 
 def _validate_err_columns(err, name: str, data: pd.DataFrame) -> None:
-    """Raise a clear ValueError if ``err`` references a missing column.
-
-    Accepts the same shapes as :func:`_resolve_err`:
-
-    - ``str`` — must exist in ``data.columns``.
-    - ``(lo, hi)`` tuple of two strings — both must exist.
-    - scalar / sequence / None — pass through unchanged.
-    """
     if err is None:
         return
     if isinstance(err, tuple) and len(err) == 2 and all(isinstance(e, str) for e in err):
         missing = [c for c in err if c not in data.columns]
         if missing:
-            raise ValueError(
-                f"{name} columns not found in data: {missing}"
-            )
+            raise ValueError(f"{name} columns not found in data: {missing}")
         return
     if isinstance(err, str):
         if err not in data.columns:
-            raise ValueError(
-                f"{name} column '{err}' not found in data."
-            )
+            raise ValueError(f"{name} column '{err}' not found in data.")
 
 
 def _resolve_err(err, data: pd.DataFrame):
-    """Convert the user's ``xerr`` / ``yerr`` argument to the array form
-    expected by :meth:`Axes.errorbar`.
-
-    - ``None`` -> ``None`` (suppresses stems in that direction).
-    - ``str`` -> 1-D numpy array from ``data[col]`` (symmetric ±err).
-    - ``(lo_col, hi_col)`` -> 2-row numpy array (asymmetric).
-    - scalar / sequence -> coerced via ``np.asarray`` (matplotlib handles
-      broadcasting from scalar / 1-D / 2-row inputs).
-    """
     if err is None:
         return None
     if isinstance(err, tuple) and len(err) == 2 and all(isinstance(e, str) for e in err):
@@ -308,3 +340,22 @@ def _resolve_err(err, data: pd.DataFrame):
     if isinstance(err, str):
         return np.asarray(data[err].to_numpy(), dtype=float)
     return np.asarray(err)
+
+
+def _slice_err(err_arr, mask):
+    """Slice a resolved err array along the row axis using a boolean mask.
+
+    Handles the four shapes ``_resolve_err`` produces:
+      - ``None`` -> ``None``
+      - ``(N,)`` -> ``arr[mask]``
+      - ``(2, N)`` -> ``arr[:, mask]``
+      - scalar -> unchanged (broadcast at draw time)
+    """
+    if err_arr is None:
+        return None
+    arr = np.asarray(err_arr)
+    if arr.ndim == 0:
+        return arr
+    if arr.ndim == 2:
+        return arr[:, mask]
+    return arr[mask]

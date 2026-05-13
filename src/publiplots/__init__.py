@@ -30,7 +30,7 @@ from publiplots.plot.kdeplot import kdeplot
 from publiplots.plot.scatter import scatterplot
 from publiplots.plot.regplot import regplot
 from publiplots.plot.residplot import residplot
-from publiplots.plot.errorbar import errorbar
+from publiplots.plot.errorbarplot import errorbarplot
 from publiplots.plot.point import pointplot
 from publiplots.plot.line import lineplot
 from publiplots.plot.box import boxplot
@@ -109,7 +109,7 @@ __all__ = [
     "scatterplot",
     "regplot",
     "residplot",
-    "errorbar",
+    "errorbarplot",
     "pointplot",
     "lineplot",
     "boxplot",

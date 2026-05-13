@@ -25,7 +25,7 @@ Relational
 
    publiplots.scatterplot
    publiplots.lineplot
-   publiplots.errorbar
+   publiplots.errorbarplot
    publiplots.regplot
    publiplots.residplot
 

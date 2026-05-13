@@ -1,11 +1,11 @@
 """Tests for the shared custom-errorbar helper and its plot-function
-integrations, AND tests for the standalone ``pp.errorbar`` primitive.
+integrations, AND tests for the standalone ``pp.errorbarplot`` primitive.
 
 The first half of this file covers the legacy ``format_for_custom_errorbar``
 helper (used by ``pp.pointplot`` / ``pp.lineplot``). The second half (after
-``# ====== pp.errorbar primitive ======``) tests the new top-level
-``pp.errorbar`` plotting function — a 2D scatter primitive with x and/or
-y uncertainty stems.
+``# ====== pp.errorbarplot primitive ======``) tests the new top-level
+``pp.errorbarplot`` plotting function — a 2D scatter primitive with x
+and/or y uncertainty stems.
 """
 
 import matplotlib
@@ -24,11 +24,9 @@ import publiplots as pp
 from publiplots.utils.errorbar import format_for_custom_errorbar
 from publiplots.utils.legend_entries import get_entries, is_continuous_hue
 
-# Import the new primitive directly — the public ``pp.errorbar`` alias is
-# wired in ``src/publiplots/__init__.py`` by the main agent after this
-# test/impl pair lands; the in-module import keeps these tests independent
-# of that registration step.
-from publiplots.plot.errorbar import errorbar as _errorbar
+# Import the new primitive directly. Aliasing as ``_errorbar`` keeps the
+# call sites short; the public name is ``pp.errorbarplot``.
+from publiplots.plot.errorbarplot import errorbarplot as _errorbar
 
 
 @pytest.fixture(autouse=True)
@@ -201,7 +199,7 @@ def test_lineplot_custom_errorbar_with_hue():
     assert len(bands) == 2
 
 
-# ====== pp.errorbar primitive ============================================
+# ====== pp.errorbarplot primitive ========================================
 #
 # Tests below cover the standalone 2D errorbar plotting function. It draws
 # a ``pp.scatterplot`` for the markers and overlays a single
@@ -232,6 +230,13 @@ def _last_errorbar_container(ax):
     if not ax.containers:
         return None
     return ax.containers[-1]
+
+
+def _errorbar_containers(ax):
+    """Return every ErrorbarContainer on ``ax`` (one per hue group when a
+    categorical hue is set, else a single container)."""
+    from matplotlib.container import ErrorbarContainer
+    return [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
 
 
 # ---- Contract ----
@@ -329,22 +334,42 @@ def test_scalar_xerr(err_df):
 
 def test_alpha_face_edge_split(err_df):
     """publiplots double-layer style: marker face carries alpha, edge stays
-    at 1.0. Pull from the scatter ``PathCollection``."""
+    at 1.0. With ``background_marker=True`` (the default), there are two
+    PathCollections — the background twin (first, opaque) and the
+    foreground marker (last, alpha-faded face). Inspect the foreground."""
     ax = _errorbar(
         data=err_df, x="x", y="y", yerr="yerr",
         alpha=0.3, edgecolor="black",
     )
     pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
     assert len(pcs) >= 1
-    pc = pcs[0]
+    pc = pcs[-1]  # foreground; background twin (if any) is at pcs[0]
     fa = np.asarray(pc.get_facecolor())
     ea = np.asarray(pc.get_edgecolor())
-    assert np.allclose(fa[..., -1], 0.3), (
-        f"face alpha should be 0.3, got {fa[..., -1]}"
-    )
+    # background_marker mode pre-composites face over white so the face
+    # alpha reads as 1.0 — the visual *appearance* of alpha=0.3 comes
+    # from the composited color, not the alpha channel. So this test
+    # only asserts the edge stays opaque (the invariant we care about).
     assert np.allclose(ea[..., -1], 1.0), (
         f"edge alpha should be 1.0 (opaque), got {ea[..., -1]}"
     )
+
+
+def test_alpha_face_edge_split_no_background(err_df):
+    """With ``background_marker=False``, the standard publiplots alpha
+    split applies: face alpha = user alpha, edge alpha = 1.0."""
+    ax = _errorbar(
+        data=err_df, x="x", y="y", yerr="yerr",
+        alpha=0.3, edgecolor="black",
+        background_marker=False,
+    )
+    pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
+    assert len(pcs) == 1
+    pc = pcs[0]
+    fa = np.asarray(pc.get_facecolor())
+    ea = np.asarray(pc.get_edgecolor())
+    assert np.allclose(fa[..., -1], 0.3)
+    assert np.allclose(ea[..., -1], 1.0)
 
 
 def test_stem_color_is_edgecolor_default(err_df):
@@ -442,29 +467,76 @@ def test_continuous_hue_stashes_colorbar(err_df):
     assert is_continuous_hue(hue_entries[0].handles)
 
 
-def test_hue_does_not_affect_stem_color(err_df):
-    """With ``hue='g'`` and a default edgecolor, stem color remains the
-    rcParams edgecolor — NOT any palette color."""
+def test_categorical_hue_colors_stems_per_group(err_df):
+    """With a categorical ``hue=``, stems are issued per-group and pick up
+    the group's palette color — one ErrorbarContainer per level."""
+    palette_dict = {
+        "a": "#ff0000",
+        "b": "#00ff00",
+        "c": "#0000ff",
+    }
+    ax = _errorbar(
+        data=err_df, x="x", y="y", yerr="yerr",
+        hue="g", palette=palette_dict,
+    )
+    containers = _errorbar_containers(ax)
+    # Three groups -> three containers (one per ax.errorbar call).
+    assert len(containers) == 3, f"expected 3 containers, got {len(containers)}"
+
+    # Each container's stem color should be in the palette (the order
+    # depends on the order pandas .unique() returns, so we just assert
+    # set equality).
+    actual_colors = set()
+    for cont in containers:
+        c = np.asarray(cont.lines[2][0].get_color())
+        if c.ndim == 2:
+            c = c[0]
+        actual_colors.add(tuple(np.round(c, 6)))
+    expected_colors = {
+        tuple(np.round(mcolors.to_rgba(v), 6)) for v in palette_dict.values()
+    }
+    assert actual_colors == expected_colors
+
+
+def test_continuous_hue_keeps_neutral_stems(err_df):
+    """With a numeric ``hue=`` (continuous, colorbar mode), stems remain
+    the neutral rcParams edgecolor — per-point colored stems would need
+    N ax.errorbar calls."""
     saved_edge = pp.rcParams["edgecolor"]
     try:
         pp.rcParams["edgecolor"] = "#444444"
         ax = _errorbar(
             data=err_df, x="x", y="y", yerr="yerr",
-            hue="g", palette="pastel",
+            hue="score", palette="viridis",
         )
-        cont = _last_errorbar_container(ax)
-        assert cont is not None
-        actual = np.asarray(cont.lines[2][0].get_color())
+        containers = _errorbar_containers(ax)
+        # Continuous hue -> single ax.errorbar call, single container.
+        assert len(containers) == 1
+        actual = np.asarray(containers[0].lines[2][0].get_color())
         expected = np.asarray(mcolors.to_rgba("#444444"))
         if actual.ndim == 2:
-            # Single-color LineCollection still reports its color as one
-            # RGBA — assert all rows agree.
-            for row in actual:
-                assert np.allclose(row, expected, atol=1e-6)
-        else:
-            assert np.allclose(actual, expected, atol=1e-6)
+            actual = actual[0]
+        assert np.allclose(actual, expected, atol=1e-6)
     finally:
         pp.rcParams["edgecolor"] = saved_edge
+
+
+def test_user_ecolor_overrides_categorical_hue(err_df):
+    """``errorbar_kws={'ecolor': ...}`` wins over the per-hue palette
+    coloring — useful when the caller wants neutral stems on a hue plot."""
+    ax = _errorbar(
+        data=err_df, x="x", y="y", yerr="yerr",
+        hue="g", palette="pastel",
+        errorbar_kws={"ecolor": "#444444"},
+    )
+    containers = _errorbar_containers(ax)
+    # User ecolor short-circuits the per-group loop -> single container.
+    assert len(containers) == 1
+    actual = np.asarray(containers[0].lines[2][0].get_color())
+    expected = np.asarray(mcolors.to_rgba("#444444"))
+    if actual.ndim == 2:
+        actual = actual[0]
+    assert np.allclose(actual, expected, atol=1e-6)
 
 
 # ---- Misc ----

@@ -2,16 +2,17 @@
 Errorbar Examples
 =================
 
-:func:`publiplots.errorbar` is a publication-ready scatter plot that
-draws x and/or y uncertainty bars at each point. Unlike
-:func:`publiplots.pointplot` (which is categorical-x only and y-error
-only), ``pp.errorbar`` accepts continuous x, two-axis errors, and
-asymmetric bounds via tuple-of-columns. Marker rendering is delegated
-to :func:`publiplots.scatterplot`, so categorical and continuous
-``hue=``, ``palette=``, and the publiplots double-layer alpha
-convention all work out of the box. Errorbar stems use
-``rcParams['edgecolor']`` so they remain neutral and do not compete
-with hue-colored markers.
+:func:`publiplots.errorbarplot` is a publication-ready scatter plot
+that draws x and/or y uncertainty bars at each point. Unlike
+:func:`publiplots.pointplot` (which is categorical-x only and
+y-error only), ``pp.errorbarplot`` accepts continuous x, two-axis
+errors, and asymmetric bounds via tuple-of-columns. Marker rendering
+is delegated to :func:`publiplots.scatterplot`, so categorical and
+continuous ``hue=``, ``palette=``, the publiplots double-layer alpha
+convention, and the opaque background-marker for occlusion all work
+out of the box. With a categorical ``hue=``, errorbar stems pick up
+each group's palette color; with no hue (or a continuous numeric
+``hue=``), stems use the neutral ``rcParams['edgecolor']``.
 """
 
 import numpy as np
@@ -35,7 +36,7 @@ basic_df = pd.DataFrame({
     "sem": 0.05 + 0.04 * rng.uniform(size=n),
 })
 
-pp.errorbar(
+pp.errorbarplot(
     data=basic_df,
     x="dose",
     y="response",
@@ -66,7 +67,7 @@ calib_df = pd.DataFrame({
     "y_err": 0.15 + 0.1 * rng.uniform(size=n),
 })
 
-pp.errorbar(
+pp.errorbarplot(
     data=calib_df,
     x="x_meas",
     y="y_meas",
@@ -98,7 +99,7 @@ asym_df = pd.DataFrame({
     "y_hi": 0.1 + 0.8 * rng.uniform(size=n),
 })
 
-pp.errorbar(
+pp.errorbarplot(
     data=asym_df,
     x="x",
     y="y",
@@ -113,10 +114,11 @@ pp.show()
 # %%
 # Categorical Hue
 # ---------------
-# Pass ``hue=`` to color the markers by group. Stems and caps remain
-# neutral (``rcParams['edgecolor']``) so the hue legend is read from
-# the marker fill alone — important when there are more than a handful
-# of groups, where per-stem coloring would be visually noisy.
+# Pass ``hue=`` to color the markers by group. With a categorical hue,
+# errorbar stems are issued per-group with ``ecolor`` set from the
+# resolved palette so each measurement's uncertainty inherits its
+# group's color. (Continuous numeric ``hue=`` keeps stems neutral —
+# see the next section.)
 
 rng = np.random.default_rng(3)
 groups = ["control", "low", "mid", "high"]
@@ -132,7 +134,7 @@ hue_df = pd.concat([
 ], ignore_index=True)
 
 fig, ax = pp.subplots(axes_size=(60, 45))
-pp.errorbar(
+pp.errorbarplot(
     data=hue_df,
     x="x",
     y="y",
@@ -153,7 +155,9 @@ pp.show()
 # Pass a numeric column as ``hue=`` to color markers along a continuous
 # scale. ``pp.scatterplot`` (delegated to internally) registers a
 # colorbar via the publiplots layout reactor, so the colorbar reserves
-# space without colliding with the axes.
+# space without colliding with the axes. Stems remain neutral
+# (``rcParams['edgecolor']``) — per-point colored stems would require
+# one ``ax.errorbar`` call per row and produce visually noisy stripes.
 
 rng = np.random.default_rng(4)
 n = 25
@@ -166,7 +170,7 @@ cont_df = pd.DataFrame({
 })
 
 fig, ax = pp.subplots(axes_size=(60, 45))
-pp.errorbar(
+pp.errorbarplot(
     data=cont_df,
     x="x",
     y="y",
@@ -188,7 +192,7 @@ pp.show()
 # caps). Pass ``capsize=2`` (or any positive value) for the
 # publication look. ``capthick`` defaults to the stem linewidth.
 
-pp.errorbar(
+pp.errorbarplot(
     data=basic_df,
     x="dose",
     y="response",
@@ -209,7 +213,7 @@ pp.show()
 # ``ecolor=`` (force a non-edgecolor stem color) and ``elinewidth=``
 # (thicker or thinner stems than the default).
 
-pp.errorbar(
+pp.errorbarplot(
     data=basic_df,
     x="dose",
     y="response",
@@ -218,6 +222,31 @@ pp.errorbar(
     errorbar_kws=dict(ecolor="#8b0000", elinewidth=1.2),
     title="Red, thicker stems",
     xlabel="dose (mg)",
+    ylabel="response",
+)
+pp.show()
+
+# %%
+# Forcing Neutral Stems on a Hue Plot
+# -----------------------------------
+# Caller-supplied ``errorbar_kws['ecolor']`` wins over the per-hue
+# coloring. Pass it when you want hue-colored markers on top of a
+# uniform, neutral set of stems — e.g. when groups overlap heavily or
+# you want the marker fill alone to carry the hue.
+
+fig, ax = pp.subplots(axes_size=(60, 45))
+pp.errorbarplot(
+    data=hue_df,
+    x="x",
+    y="y",
+    yerr="yerr",
+    hue="group",
+    palette="pastel",
+    capsize=2,
+    errorbar_kws=dict(ecolor="0.4"),
+    ax=ax,
+    title="Neutral stems, hue-colored markers",
+    xlabel="x",
     ylabel="response",
 )
 pp.show()
