@@ -139,7 +139,9 @@ def histplot(
     shrink : float, default=1
         Bar width as a fraction of the bin width.
     kde : bool, default=False
-        Overlay a kernel density estimate per hue level.
+        Overlay a 1D kernel density estimate per hue level. Not
+        supported in 2D mode (raises ``NotImplementedError``); use
+        :func:`publiplots.kdeplot` for 2D KDE contours.
     kde_kws : dict, optional
         Extra keyword arguments forwarded to the KDE estimator (see
         :func:`seaborn.histplot`).
@@ -317,6 +319,12 @@ def histplot(
                 f"histplot: element={element!r} is not supported in 2D "
                 "mode (use the default 'bars')."
             )
+        if kde:
+            raise NotImplementedError(
+                "histplot: kde= is not supported in 2D mode. "
+                "Use publiplots.kdeplot for 2D KDE contours, or layer "
+                "pp.kdeplot(..., ax=ax) on top of the histplot manually."
+            )
 
         sns_kwargs = {
             "data": data,
@@ -339,10 +347,6 @@ def histplot(
             "legend": False,
             "cbar": False,
         }
-        if kde:
-            sns_kwargs["kde"] = True
-            if kde_kws:
-                sns_kwargs["kde_kws"] = kde_kws
         # cmap is mutually exclusive with hue in seaborn 2D.
         if hue is None:
             sns_kwargs["cmap"] = cmap_resolved
