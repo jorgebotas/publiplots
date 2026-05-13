@@ -245,9 +245,18 @@ def scatterplot(
         palette=palette,
     ) if hue is not None else None
 
-    # Set default sizes
+    # Set default size range for size-mapped plots. The unsized case is
+    # handled below via the top-level ``s=`` kwarg (seaborn ignores
+    # ``sizes=`` when ``size`` is None — that's why a ``sizes=(100, 100)``
+    # default here used to be silently dropped, with seaborn's own 36-pt²
+    # fallback taking effect instead).
     if sizes is None:
-        sizes = (100, 100) if size is None else (20, 200)
+        sizes = (20, 200)
+    # Unified marker area, in points², for the unsized case. lines.markersize
+    # is a diameter in points; matplotlib scatter takes points². Square it
+    # so a single rcParams knob drives every marker-bearing plot.
+    default_markersize = resolve_param("lines.markersize", None)
+    default_marker_area = float(default_markersize) ** 2
 
     # Size resolution: numeric → Normalize + get_size_ticks; categorical →
     # explicit {category: area_points²} map (get_size_ticks assumes numeric).
@@ -293,6 +302,11 @@ def scatterplot(
         "palette": palette,
         "legend": False,
     }
+    # Unsized case: seaborn ignores ``sizes=`` and falls back to its own
+    # default (36 pt²). Forward a top-level ``s=`` so publiplots' rcParam
+    # actually drives the marker area.
+    if size is None:
+        scatter_kwargs["s"] = default_marker_area
 
     # Merge with user kwargs
     scatter_kwargs.update(kwargs)

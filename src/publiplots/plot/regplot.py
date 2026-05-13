@@ -344,6 +344,11 @@ def regplot(
     scatter_kws.setdefault("linewidths", linewidth)
     if edgecolor is not None:
         scatter_kws.setdefault("edgecolor", edgecolor)
+    # Marker area in points². ``lines.markersize`` is a diameter in
+    # points; matplotlib's scatter takes points² area, so we square it.
+    # User-supplied ``scatter_kws['s']`` wins via setdefault.
+    _markersize = resolve_param("lines.markersize", None)
+    scatter_kws.setdefault("s", float(_markersize) ** 2)
 
     line_kws = dict(line_kws or {})
     line_kws.setdefault("linewidth", linewidth)
