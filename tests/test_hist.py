@@ -476,6 +476,11 @@ def test_2d_element_step_raises(df_2d):
         pp.histplot(data=df_2d, x="x", y="y", element="step")
 
 
+def test_2d_kde_raises(df_2d):
+    with pytest.raises(NotImplementedError, match="kdeplot"):
+        pp.histplot(data=df_2d, x="x", y="y", kde=True)
+
+
 def test_2d_alpha_default_is_one(df_2d):
     from matplotlib.collections import QuadMesh
     ax = pp.histplot(data=df_2d, x="x", y="y")
