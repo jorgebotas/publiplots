@@ -18,9 +18,16 @@ publiplots is a publication-ready plotting library with a seaborn-shaped API but
 ## Public API surface (`pp.*`)
 
 ### Plots
-`barplot`, `scatterplot`, `pointplot`, `lineplot`, `boxplot`, `swarmplot`, `stripplot`, `violinplot`, `raincloudplot`, `venn`, `upsetplot`, `heatmap`, `complex_heatmap`, `dendrogram`.
+`barplot`, `scatterplot`, `pointplot`, `lineplot`, `regplot`, `residplot`, `boxplot`, `swarmplot`, `stripplot`, `violinplot`, `raincloudplot`, `histplot`, `kdeplot`, `hexbinplot`, `venn`, `upsetplot`, `heatmap`, `complex_heatmap`, `dendrogram`.
 
 All accept `data=`, `x=`, `y=`, `hue=`, `palette=`, `ax=`, `title=`, `legend_kws={}`. None accept `figsize=` — it raises `TypeError` (see `src/publiplots/layout/subplots.py::reject_figsize`).
+
+By plot family:
+- **Categorical:** `barplot`, `boxplot`, `violinplot`, `raincloudplot`, `stripplot`, `swarmplot`, `pointplot`.
+- **Relational:** `scatterplot`, `lineplot`, `regplot`, `residplot`.
+- **Distribution:** `histplot`, `kdeplot`, `hexbinplot`.
+- **Matrix:** `heatmap`, `complex_heatmap`, `dendrogram`.
+- **Set:** `venn`, `upsetplot`.
 
 ### Layout
 - `pp.subplots(nrows, ncols, *, axes_size=(w_mm, h_mm), sharex, sharey, title_space, xlabel_space, ylabel_space, right, hspace, wspace, outer_pad, **fig_kw)` — the canonical factory. Returns `(fig, axes)` with `plt.subplots`-style squeezing.
@@ -136,11 +143,12 @@ pp.reset_style()
 
 ## When to read the code directly
 
-publiplots has ~15 plot functions, each with plot-specific kwargs. When asked about a specific plot kind, Read `src/publiplots/plot/<kind>.py` for the signature:
+publiplots has 19 plot functions, each with plot-specific kwargs. When asked about a specific plot kind, Read `src/publiplots/plot/<kind>.py` for the signature:
 
-- Heatmaps: `src/publiplots/plot/heatmap.py` (plus `complex_heatmap` and `dendrogram` in the same file).
-- Distributions: `src/publiplots/plot/{violin,box,swarm,strip,raincloud}.py`.
-- Set diagrams: `src/publiplots/plot/{venn,upset}.py`.
-- Relational: `src/publiplots/plot/{scatter,line,point,bar}.py`.
+- Categorical: `src/publiplots/plot/{bar,box,violin,raincloud,strip,swarm,point}.py`.
+- Relational: `src/publiplots/plot/{scatter,line,regplot,residplot}.py`.
+- Distribution: `src/publiplots/plot/{hist,kdeplot,hexbin}.py`.
+- Matrix: `src/publiplots/plot/heatmap.py` (also `complex_heatmap` and `dendrogram` in the same file).
+- Set: `src/publiplots/plot/{venn,upset}.py`.
 
-For the full `pp.legend()` signature and every `MultiAxesLegendGroup` option, see `src/publiplots/utils/legend_group.py`. For canonical legend patterns with running code, the authoritative reference is `examples/plots/plot_17_legend_placement.py` (14 worked sections).
+For the full `pp.legend()` signature and every `MultiAxesLegendGroup` option, see `src/publiplots/utils/legend_group.py`. For canonical legend patterns with running code, the authoritative reference is `examples/plots/plot_22_legend_placement.py` (14 worked sections).
