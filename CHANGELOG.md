@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.12] - 2026-05-13
+
+### Changed
+
+- **Default marker diameter dropped from 6pt to 4pt** across every
+  marker-bearing plot (PR #152). 4pt ≈ 1.4mm at 600 dpi — small
+  enough that density patterns read through, large enough to land
+  as a discrete data point at publication-mm sizes. The new default
+  is driven by ``pp.rcParams["lines.markersize"]``, so a single
+  rcParam override now propagates to ``pp.scatterplot``,
+  ``pp.regplot``, ``pp.residplot``, ``pp.swarmplot``,
+  ``pp.stripplot``, ``pp.pointplot``, and ``pp.lineplot``.
+  - Previously every plot picked its own size: 5pt (swarm/strip
+    hardcode), 6pt (point/line via rcParam), 6pt (scatter — but its
+    own ``sizes=(100, 100)`` literal was silently dropped because
+    seaborn ignores ``sizes=`` when ``size=`` is None, so seaborn's
+    36 pt² fallback won). Two latent bugs fixed as part of the
+    rewiring (see "Fixed" below).
+  - The scatter family squares the rcParam internally to get
+    matplotlib's points² area; everything else uses it as a
+    diameter directly.
+  - User-supplied ``size=`` (swarm/strip), ``scatter_kws['s']=``
+    (regplot/residplot), or ``s=`` (scatterplot) still wins via
+    ``setdefault``.
+
+### Fixed
+
+- ``pp.scatterplot``'s default size now actually reaches the canvas
+  (PR #152). The previous ``sizes=(100, 100)`` literal at
+  ``scatter.py:250`` was dropped silently because seaborn ignores
+  ``sizes=`` when ``size=`` is None — seaborn's 36 pt² fallback won
+  unnoticed. Replaced with a top-level ``s=`` kwarg that seaborn
+  honors.
+
+- ``pp.swarmplot`` / ``pp.stripplot`` defaults now read from
+  ``pp.rcParams["lines.markersize"]`` instead of being hardcoded
+  to 5 (PR #152). Signature default changed from ``size: float = 5``
+  to ``size: Optional[float] = None``.
+
+- ``pp.regplot(x_estimator=, x_bins=)`` errorbar linewidth and
+  binned-point area no longer follow seaborn's hardcoded
+  ``rcParams['lines.linewidth'] * 1.75`` (errorbar) / ``s=50``
+  (point) values — both are now driven by publiplots conventions
+  (PR #152). Errorbars are reset to ``rcParams['lines.linewidth']``
+  and binned points to ``rcParams['lines.markersize']²`` post-draw,
+  with user overrides via ``line_kws['linewidth']`` and
+  ``scatter_kws['s']`` preserved.
+
 ## [0.10.11] - 2026-05-12
 
 ### Added
