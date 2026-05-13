@@ -18,7 +18,7 @@ Follow-up PR(s) will add a Composer for cross-figure page layout.
 """
 
 import warnings
-from typing import Optional, Sequence, Tuple, Union
+from typing import Dict, FrozenSet, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -133,11 +133,22 @@ def subplots(
         along the row axis.
     sharex, sharey : bool or {"all", "row", "col", "none"}, default False
         Axis-sharing semantics, matching :func:`matplotlib.pyplot.subplots`.
-    title_space, xlabel_space, ylabel_space, right : float, optional
-        Per-cell reservations, in millimeters. ``None`` means: take the
-        initial value from ``pp.rcParams["subplots.<name>"]``, then
-        auto-measure on first draw. Passing a float locks the value and
-        disables auto-measurement for that side.
+    title_space, xlabel_space, ylabel_space, right : float | sequence, optional
+        Per-cell reservations, in millimeters. Accepts:
+
+        - ``None`` (default) — use ``pp.rcParams["subplots.<name>"]`` as
+          the initial value and auto-measure every position on first draw.
+        - A float — broadcast across the whole side AND lock it; no
+          position is auto-measured.
+        - A sequence of length ``nrows`` (for ``title_space`` /
+          ``xlabel_space``) or ``ncols`` (for ``ylabel_space`` /
+          ``right``). Each element is either a float (lock that
+          position) or ``None`` (leave it auto-measured, initial value
+          from rcParams). Mixed sequences such as ``(0.0, None)`` let
+          you pin one row/column while the other auto-grows — this is
+          how :class:`pp.JointGrid` clamps the inside-facing
+          joint↔marginal edges to 0 mm without disabling label
+          auto-measurement on the outer edges.
     hspace, wspace, outer_pad : float, optional
         Gaps between rows/cols and outer margin, in millimeters.
         ``None`` falls back to ``pp.rcParams["subplots.<name>"]``. These
@@ -274,7 +285,10 @@ def subplots(
         ylabel_space=ylabel_space, right=right,
         hspace=hspace, wspace=wspace, outer_pad=outer_pad,
     )
-    locked = {k for k, v in user_values.items() if v is not None}
+    # Whole-side locks (scalar or fully-floats sequence). Per-position
+    # locks live in ``locked_positions`` below.
+    locked: set = set()
+    locked_positions: Dict[str, FrozenSet[int]] = {}
 
     resolved = {}
     for side in _ROW_SIDES + _COL_SIDES:
@@ -289,22 +303,50 @@ def subplots(
             if user_val < 0:
                 raise ValueError(f"{side} must be non-negative, got {user_val}")
             resolved[side] = (float(user_val),) * length
+            locked.add(side)
         else:
             try:
-                tup = tuple(float(x) for x in user_val)
-            except (TypeError, ValueError):
+                seq = list(user_val)
+            except TypeError:
                 raise ValueError(
                     f"{side} must be a scalar or sequence of numbers, got {user_val!r}"
                 )
-            if len(tup) != length:
+            if len(seq) != length:
                 raise ValueError(
                     f"{side} must have length {length} for nrows={nrows} ncols={ncols}, "
-                    f"got length {len(tup)}"
+                    f"got length {len(seq)}"
                 )
-            for i, v in enumerate(tup):
-                if v < 0:
-                    raise ValueError(f"{side}[{i}] must be non-negative, got {v}")
-            resolved[side] = tup
+            tup_list = []
+            locked_idxs: set = set()
+            default_scalar = None  # resolved lazily on first None
+            for i, v in enumerate(seq):
+                if v is None:
+                    if default_scalar is None:
+                        default_scalar = resolve_param(f"subplots.{side}", None)
+                        if default_scalar < 0:
+                            raise ValueError(
+                                f"{side} default must be non-negative, got {default_scalar}"
+                            )
+                    tup_list.append(float(default_scalar))
+                    # NOT added to locked_idxs — auto-measure this position.
+                    continue
+                try:
+                    fv = float(v)
+                except (TypeError, ValueError):
+                    raise ValueError(
+                        f"{side}[{i}] must be a number or None, got {v!r}"
+                    )
+                if fv < 0:
+                    raise ValueError(f"{side}[{i}] must be non-negative, got {fv}")
+                tup_list.append(fv)
+                locked_idxs.add(i)
+            resolved[side] = tuple(tup_list)
+            if len(locked_idxs) == length:
+                # All positions locked: equivalent to whole-side lock.
+                locked.add(side)
+            elif locked_idxs:
+                locked_positions[side] = frozenset(locked_idxs)
+            # else: every entry was None → fully auto, nothing to track.
 
     for side in _SCALAR_SIDES:
         val = resolve_param(f"subplots.{side}", user_values[side])
@@ -332,10 +374,20 @@ def subplots(
     # --- attach auto-layout hook (skipped internally if all sides locked) -
     # Only lock the auto-measurable sides; hspace/wspace/outer_pad are not
     # auto-measured regardless.
-    auto_locked = locked & {"title_space", "xlabel_space", "ylabel_space", "right"}
+    _AUTO_SIDES = {"title_space", "xlabel_space", "ylabel_space", "right"}
+    auto_locked = locked & _AUTO_SIDES
+    # Per-position locks on the auto-measurable sides — passed through to
+    # SubplotsAutoLayout so it can skip remeasuring just those positions.
+    auto_locked_positions = {
+        side: idxs for side, idxs in locked_positions.items() if side in _AUTO_SIDES
+    }
     # If every auto-measurable side is user-locked, SubplotsAutoLayout
     # skips the draw-event connection (see auto_layout.py).
-    fig._publiplots_auto_layout = SubplotsAutoLayout(fig, layout, locked=auto_locked)
+    fig._publiplots_auto_layout = SubplotsAutoLayout(
+        fig, layout,
+        locked=auto_locked,
+        locked_positions=auto_locked_positions,
+    )
 
     # --- squeeze & return --------------------------------------------------
     arr = np.empty((nrows, ncols), dtype=object)

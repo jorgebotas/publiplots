@@ -540,6 +540,115 @@ def test_subplots_negative_tuple_element_raises():
         pp.subplots(2, 1, axes_size=(50, 30), title_space=(5, -1))
 
 
+# ---------------------------------------------------------------------------
+# pp.subplots() — mixed lock (tuple containing None entries)
+# ---------------------------------------------------------------------------
+
+
+def test_subplots_mixed_lock_resolves_none_to_rcparams_default():
+    """``xlabel_space=(0.0, None)`` must populate position 1 with the
+    rcParams default so ``FigureLayout`` sees a tuple of floats only.
+    Locked positions are tracked separately."""
+    fig, _ = pp.subplots(2, 1, axes_size=(50, 30), xlabel_space=(0.0, None))
+    layout = fig._publiplots_layout
+    rc_default = pp.rcParams["subplots.xlabel_space"]
+    assert layout.xlabel_space == (0.0, float(rc_default))
+
+
+def test_subplots_mixed_lock_locked_position_not_remeasured():
+    """``xlabel_space=(0.0, None)`` on a 2x1 grid: row 0 is locked at 0,
+    row 1 auto-measures. Place a tall xlabel decoration on row 0 that
+    would normally inflate xlabel_space[0] — confirm row 0 stays at 0
+    while row 1 grows for its own decoration."""
+    fig, axes = pp.subplots(
+        2, 1, axes_size=(50, 30), xlabel_space=(0.0, None),
+    )
+    # Decoration on row 0 that would normally grow xlabel_space[0].
+    axes[0].set_xlabel("Row 0 xlabel — should NOT grow xlabel_space[0]")
+    # Decoration on row 1 that should grow xlabel_space[1].
+    axes[1].set_xlabel("Row 1 xlabel — SHOULD grow xlabel_space[1]")
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    assert layout.xlabel_space[0] == pytest.approx(0.0, abs=1e-6), (
+        f"row 0 locked to 0; got xlabel_space[0]={layout.xlabel_space[0]:.3f}"
+    )
+    assert layout.xlabel_space[1] > 3.0, (
+        f"row 1 should auto-measure to fit xlabel; "
+        f"got xlabel_space[1]={layout.xlabel_space[1]:.3f}"
+    )
+
+
+def test_subplots_mixed_lock_per_column_ylabel_space():
+    """``ylabel_space=(None, 0.0)`` on a 1x2 grid: col 0 auto, col 1 locked."""
+    fig, axes = pp.subplots(
+        1, 2, axes_size=(50, 30), ylabel_space=(None, 0.0),
+    )
+    axes[0].set_ylabel("Col 0 ylabel — SHOULD grow ylabel_space[0]")
+    axes[1].set_ylabel("Col 1 ylabel — should NOT grow ylabel_space[1]")
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    assert layout.ylabel_space[0] > 3.0, (
+        f"col 0 should auto-measure; got ylabel_space[0]={layout.ylabel_space[0]:.3f}"
+    )
+    assert layout.ylabel_space[1] == pytest.approx(0.0, abs=1e-6), (
+        f"col 1 locked to 0; got ylabel_space[1]={layout.ylabel_space[1]:.3f}"
+    )
+
+
+def test_subplots_mixed_lock_all_none_equivalent_to_full_auto():
+    """``title_space=(None, None)`` is equivalent to ``title_space=None``
+    (every position auto-measured, no locks): the reactor must NOT
+    register either position as locked, and both must grow when a tall
+    title is added."""
+    fig, axes = pp.subplots(2, 1, axes_size=(50, 30), title_space=(None, None))
+    locked = fig._publiplots_auto_layout._locked
+    locked_positions = fig._publiplots_auto_layout._locked_positions
+    assert "title_space" not in locked
+    assert "title_space" not in locked_positions
+    # Add tall titles; both rows should grow well past the rcParams default.
+    axes[0].set_title("Top title")
+    axes[1].set_title("Bottom title")
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    assert layout.title_space[0] > 1.0
+    assert layout.title_space[1] > 1.0
+
+
+def test_subplots_mixed_lock_all_floats_equivalent_to_whole_side_lock():
+    """``title_space=(5.0, 8.0)`` (every position a float) is equivalent
+    to a full whole-side lock — neither position should ever be remeasured."""
+    fig, axes = pp.subplots(2, 1, axes_size=(50, 30), title_space=(5.0, 8.0))
+    axes[0].set_title("a really really really long title that wants more space")
+    axes[1].set_title("a really really really long title that wants more space")
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    # Locked: must stay exactly at user-supplied values.
+    assert layout.title_space == (5.0, 8.0)
+
+
+def test_subplots_mixed_lock_invalid_string_raises():
+    with pytest.raises(ValueError, match="title_space"):
+        pp.subplots(2, 1, axes_size=(50, 30), title_space=("locked", None))
+
+
+def test_subplots_mixed_lock_negative_raises():
+    with pytest.raises(ValueError, match="title_space"):
+        pp.subplots(2, 1, axes_size=(50, 30), title_space=(-1.0, None))
+
+
+def test_subplots_mixed_lock_attaches_hook():
+    """Even when one position is locked, the hook stays connected so
+    other positions can auto-measure."""
+    fig, _ = pp.subplots(2, 1, axes_size=(50, 30), xlabel_space=(0.0, None))
+    assert fig._publiplots_auto_layout._cid is not None
+    # The reactor should track the per-position lock.
+    locked_positions = fig._publiplots_auto_layout._locked_positions
+    assert "xlabel_space" in locked_positions
+    assert locked_positions["xlabel_space"] == frozenset({0})
+    # And xlabel_space is NOT in the whole-side ``locked`` set.
+    assert "xlabel_space" not in fig._publiplots_auto_layout._locked
+
+
 def test_auto_layout_figure_anchored_legend_group_uses_legend_column():
     """Figure-anchored ``pp.legend()`` writes overhang into
     ``legend_column`` (the far-right scalar reservation), leaving every
