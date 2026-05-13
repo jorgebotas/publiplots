@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-05-13
+
+### Added
+
+- `pp.errorbarplot(data, x, y, *, xerr=, yerr=, hue=, palette=, ...)`
+  — publication-ready scatter-with-uncertainty primitive. Supports x
+  and/or y errorbars (1D or 2D), categorical and continuous `hue=`,
+  and asymmetric errors via tuple-of-columns `(lo_col, hi_col)`. Marker
+  rendering is delegated to `pp.scatterplot`, so the publiplots
+  double-layer alpha convention (face transparent, edge opaque),
+  palette resolution, legend stash, and continuous-hue colorbar all
+  apply for free.
+  - **xerr / yerr semantics** mirror matplotlib: `None`, a column name
+    (symmetric), a scalar/sequence (raw values), or a 2-tuple of
+    column names `(lo, hi)` (asymmetric).
+  - **Stem color** matches the marker:
+    - Categorical `hue=` → one `ax.errorbar` call per level with
+      `ecolor=palette[level]`.
+    - Continuous numeric `hue=` → one `ax.errorbar` call per point
+      with `ecolor` resolved from the cmap and norm.
+    - No `hue=` → single call with `ecolor=rcParams['edgecolor']`.
+    - `errorbar_kws={'ecolor': ...}` always wins (e.g. force a
+      uniform neutral stem color on any hue plot).
+  - **`background_marker=True`** by default: an opaque background twin
+    is drawn behind each marker so the stem does not show through the
+    alpha-faded marker face. Pass `background_marker=False` (or via
+    `scatter_kws`) for the see-through look.
+  - **`capsize`** falls through to `rcParams['capsize']` (currently
+    `0.0`); pass `capsize=2` per call for a publication look.
+  - Layered below the scatter at `zorder=1`; markers stay on top.
+  - Use cases: cross-experiment measurements with x and y uncertainty,
+    calibration curves, bootstrap CI plots with asymmetric bounds.
+  - Gallery: `examples/plots/plot_06_errorbarplot.py` (8 worked
+    sections).
+
+### Changed
+
+- **Gallery renumbering.** `examples/plots/plot_06_errorbarplot.py`
+  inserts at slot 06, immediately after `plot_05_scatter_plots.py`
+  (errorbarplot is "scatter + uncertainty"). All slots from 06 onward
+  shift by +1: `regplot` 06→07, `residplot` 07→08, `jointgrid`
+  08→09, `pointplot` 09→10, `lineplot` 10→11, …, `legend_placement`
+  23→24. Intra-gallery `:doc:` cross-references updated to the new
+  slot numbers; skill-file references in `skills/publiplots-guide/`
+  and `skills/legend-placement/` bumped to match.
+
+- **Plugin skill — `skills/publiplots-guide/SKILL.md`** —
+  `errorbarplot` added to the Plots inventory and the Relational
+  family grouping. Gallery references updated to the new slot numbers
+  (per the persistent rule that release PRs must keep the Claude Code
+  plugin discovery surface in sync with the public API).
+
 ## [0.11.0] - 2026-05-13
 
 ### Added

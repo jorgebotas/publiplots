@@ -464,7 +464,7 @@ pp.show()
 # --------------
 # Label each bar with its aggregated value by passing ``annotate=True``.
 # Pass a dict to control format, anchor, color, and text kwargs. See the
-# dedicated :doc:`annotations gallery <plot_22_annotate>` for the full
+# dedicated :doc:`annotations gallery <plot_23_annotate>` for the full
 # option set shared across barplot, pointplot, boxplot, and violinplot.
 
 ax = pp.barplot(

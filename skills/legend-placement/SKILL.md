@@ -154,4 +154,4 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
 
 ## Further reading
 
-For the full factory signature (every kwarg: `orientation`, `align`, `x_offset`, `y_offset`, `gap`, `column_spacing`, `vpad`, `max_width`, `figure`), see `src/publiplots/utils/legend_group.py`. For 14 worked examples covering every scope mode, see `examples/plots/plot_23_legend_placement.py`.
+For the full factory signature (every kwarg: `orientation`, `align`, `x_offset`, `y_offset`, `gap`, `column_spacing`, `vpad`, `max_width`, `figure`), see `src/publiplots/utils/legend_group.py`. For 14 worked examples covering every scope mode, see `examples/plots/plot_24_legend_placement.py`.
