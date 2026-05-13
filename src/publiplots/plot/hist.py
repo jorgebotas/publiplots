@@ -83,9 +83,11 @@ def histplot(
     rendering elements (bars, step, poly), and an optional KDE overlay.
     When BOTH ``x`` and ``y`` are passed, switches to a 2D bivariate
     heatmap-like mode (``QuadMesh`` rendered via :func:`seaborn.histplot`
-    in 2D mode, with a continuous-hue colorbar routed through the
-    publiplots legend reactor — mirrors :func:`pp.hexbinplot`'s
-    convention). Exposes the full seaborn ``histplot`` API while
+    in 2D mode). The legend routes through the publiplots legend
+    reactor: a single continuous-hue colorbar when ``hue is None``, or
+    one stacked colorbar per hue level when ``hue`` is set (so per-
+    subgroup count magnitudes stay readable). Exposes the full seaborn
+    ``histplot`` API while
     applying publiplots' double-layer transparent-fill styling, palette
     resolution, and legend-entry pipeline.
 
@@ -365,35 +367,34 @@ def histplot(
             if edgecolor_resolved not in (None, "none"):
                 mesh.set_edgecolor(edgecolor_resolved)
 
-        # Legend stash: continuous colorbar (no hue) or categorical
-        # rectangles (hue).
-        if hue is None:
-            if legend is not False and meshes:
-                flags = resolve_legend_flags(legend)
-                _legend_kws = dict(legend_kws or {})
-                hue_label = _legend_kws.pop("hue_label", stat)
-                if flags["hue"]:
+        # Legend stash: continuous colorbar (no hue) or N stacked
+        # colorbars (one per hue level — preserves per-subgroup count
+        # scale that a categorical legend would discard).
+        if legend is not False and meshes:
+            flags = resolve_legend_flags(legend)
+            _legend_kws = dict(legend_kws or {})
+            hue_label = _legend_kws.pop("hue_label", stat)
+            if flags["hue"]:
+                if hue is None:
                     stash_continuous_hue(
                         ax,
                         name=hue_label,
                         palette=meshes[0].get_cmap(),
                         hue_norm=meshes[0].norm,
                     )
-                render_entries(ax, flags=flags, legend_kws=_legend_kws)
-        else:
-            _legend(
-                ax=ax,
-                hue=hue,
-                palette=palette_map,
-                element=element,
-                fill=fill,
-                alpha=alpha,
-                linewidth=linewidth,
-                color=color,
-                edgecolor=edgecolor_resolved,
-                legend=legend,
-                legend_kws=legend_kws,
-            )
+                else:
+                    levels = (
+                        list(hue_order) if hue_order is not None
+                        else list(data[hue].unique())
+                    )
+                    for mesh, level in zip(meshes, levels):
+                        stash_continuous_hue(
+                            ax,
+                            name=f"{hue_label} [{level}]",
+                            palette=mesh.get_cmap(),
+                            hue_norm=mesh.norm,
+                        )
+            render_entries(ax, flags=flags, legend_kws=_legend_kws)
     else:
         sns_kwargs = {
             "data": data,

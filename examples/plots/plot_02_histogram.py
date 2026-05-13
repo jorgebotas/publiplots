@@ -236,11 +236,12 @@ pp.show()
 # %%
 # 2D Histogram with Hue
 # ~~~~~~~~~~~~~~~~~~~~~
-# Pass ``hue=`` to overlay one heatmap per hue level. Each level draws
-# its own QuadMesh tinted by the palette, and the legend switches from
-# a continuous-hue colorbar to categorical rectangles (one per level).
-# Useful when comparing two or three labeled subgroups in 2D — for
-# more than three levels, prefer faceting via :func:`pp.subplots`.
+# Pass ``hue=`` to overlay one heatmap per hue level. Each level
+# draws its own QuadMesh tinted by the palette, and the legend
+# stacks one colorbar per level (e.g. ``count [A]`` / ``count [B]``)
+# so per-subgroup count magnitudes stay readable. Useful for two or
+# three labeled subgroups in 2D — for more than three levels, prefer
+# faceting via :func:`pp.subplots`.
 
 mixture["cluster"] = np.repeat(["A", "B"], n // 2)
 ax = pp.histplot(data=mixture, x="x", y="y", hue="cluster")

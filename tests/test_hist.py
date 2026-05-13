@@ -455,14 +455,15 @@ def test_2d_legend_stashes_continuous_hue_colorbar(df_2d):
     assert entry.name == "density"
 
 
-def test_2d_with_hue_stashes_categorical_rectangles(df_2d):
+def test_2d_with_hue_stashes_n_continuous_colorbars(df_2d):
     ax = pp.histplot(data=df_2d, x="x", y="y", hue="g")
     entries = get_entries(ax)
-    assert len(entries) == 1
-    entry = entries[0]
-    assert entry.kind == "hue"
-    assert not is_continuous_hue(entry.handles)
-    assert len(entry.handles) == 2  # two hue levels
+    assert len(entries) == 2  # one continuous-hue stash per hue level
+    for entry in entries:
+        assert entry.kind == "hue"
+        assert is_continuous_hue(entry.handles)
+    names = {e.name for e in entries}
+    assert "count [a]" in names and "count [b]" in names
 
 
 def test_2d_annotate_raises(df_2d):
