@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.axes import Axes
+from matplotlib.colors import to_rgba
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.themes.rcparams import resolve_param
@@ -71,6 +72,7 @@ def regplot(
     legend_kws: Optional[Dict] = None,
     scatter_kws: Optional[Dict] = None,
     line_kws: Optional[Dict] = None,
+    ci_kws: Optional[Dict] = None,
     **kwargs,
 ) -> Axes:
     """
@@ -149,6 +151,23 @@ def regplot(
     line_kws : dict, optional
         Extra kwargs forwarded to the fit-line
         :meth:`matplotlib.axes.Axes.plot` call via seaborn.
+    ci_kws : dict, optional
+        Styling overrides for the confidence-interval band drawn
+        around the fit (the ``FillBetweenPolyCollection`` seaborn
+        emits when ``ci`` is not None). Recognized keys:
+
+        - ``alpha`` : float — face alpha for the band. Default is
+          seaborn's 0.15. Use a lower value to de-emphasize the band
+          when overlaying multiple groups, or a higher value for a
+          single bold fit.
+        - ``color`` : color — face color. Defaults to the regression
+          line color (typically the per-group palette entry under
+          ``hue=``). Override when you want a band color independent
+          of the line, e.g. for accessibility or print contrast.
+
+        Applied per-group when ``hue=`` is set. ``ci_kws`` only
+        affects the CI band; the regression line uses ``line_kws``,
+        the scatter uses ``scatter_kws``.
     **kwargs
         Extra keyword arguments forwarded to :func:`seaborn.regplot`.
         ``figsize`` is rejected — use ``pp.subplots(axes_size=...)``
@@ -301,23 +320,45 @@ def regplot(
             **base_kws,
         )
 
-    # Publiplots double-layer style: face carries alpha, edge stays
-    # opaque. Applied to PathCollections only — the regression line
-    # (Line2D) and CI band (FillBetweenPolyCollection) are intentionally
-    # left at full opacity / seaborn's CI alpha, since the line is
-    # structural and the CI band already reads as transparent.
+    # Two post-draw passes over the new collections:
     #
-    # We must clear the collection-level _alpha first. sns.regplot
-    # internally sets it via Collection.set_alpha(0.8) (its scatter
-    # default), and matplotlib's set_facecolors/set_edgecolors re-apply
-    # _alpha after storing per-color RGBAs — so apply_transparency()
-    # would silently no-op without this reset.
-    if alpha is not None:
-        from matplotlib.collections import PathCollection
-        for c in tracker.get_new_collections():
-            if isinstance(c, PathCollection):
+    # 1. PathCollection (scatter): publiplots double-layer style — face
+    #    carries alpha, edge stays opaque. We must clear the
+    #    collection-level ``_alpha`` first; sns.regplot internally sets
+    #    it via Collection.set_alpha(0.8) (its scatter default), and
+    #    matplotlib's set_facecolors/set_edgecolors re-apply ``_alpha``
+    #    after storing per-color RGBAs — so apply_transparency() would
+    #    silently no-op without this reset.
+    #
+    # 2. FillBetweenPolyCollection (CI band): apply ci_kws overrides
+    #    (alpha, color). Same _alpha-reset trick is needed for the
+    #    same matplotlib reason. The regression line (Line2D, untouched
+    #    here) keeps line_kws styling.
+    from matplotlib.collections import PathCollection, FillBetweenPolyCollection
+    ci_kws = dict(ci_kws or {})
+    ci_alpha = ci_kws.get("alpha")
+    ci_color = ci_kws.get("color")
+    for c in tracker.get_new_collections():
+        if isinstance(c, PathCollection):
+            if alpha is not None:
                 c.set_alpha(None)
                 apply_transparency(c, face_alpha=alpha, edge_alpha=1.0)
+        elif isinstance(c, FillBetweenPolyCollection):
+            if ci_alpha is not None or ci_color is not None:
+                # Recover the band's current face color (set by seaborn
+                # to match the regression line) so we can preserve it
+                # when only alpha is overridden.
+                current_fc = np.asarray(c.get_facecolor())
+                base_color = ci_color if ci_color is not None else (
+                    tuple(current_fc[0][:3]) if current_fc.size else (0, 0, 0)
+                )
+                # Final alpha: explicit ci_kws['alpha'] wins; otherwise
+                # preserve seaborn's existing alpha (typically 0.15).
+                final_alpha = ci_alpha if ci_alpha is not None else (
+                    float(current_fc[0][3]) if current_fc.size else 0.15
+                )
+                c.set_alpha(None)  # clear any collection-level alpha
+                c.set_facecolor(to_rgba(base_color, alpha=final_alpha))
 
     if title is not None:
         ax.set_title(title)

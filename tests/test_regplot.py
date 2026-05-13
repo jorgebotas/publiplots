@@ -288,3 +288,89 @@ def test_alpha_face_edge_split_with_hue(hue_df):
         ea = np.asarray(pc.get_edgecolor())
         assert np.allclose(fa[..., -1], 0.3), f"group {i} face alpha"
         assert np.allclose(ea[..., -1], 1.0), f"group {i} edge alpha"
+
+
+# ---- ci_kws ------------------------------------------------------------------
+
+
+def _ci_band(ax):
+    """Return the FillBetweenPolyCollection seaborn emits for the CI."""
+    from matplotlib.collections import FillBetweenPolyCollection
+    bands = [c for c in ax.collections if isinstance(c, FillBetweenPolyCollection)]
+    assert len(bands) >= 1, "expected at least one CI band"
+    return bands[0]
+
+
+def test_ci_kws_default_preserves_seaborn_alpha(simple_df):
+    """No ci_kws → CI band keeps seaborn's default alpha (~0.15)."""
+    ax = regplot(data=simple_df, x="x", y="y")
+    band = _ci_band(ax)
+    fc = np.asarray(band.get_facecolor())
+    assert np.isclose(fc[0][3], 0.15, atol=0.05), (
+        f"default CI alpha should be near 0.15, got {fc[0][3]}"
+    )
+
+
+def test_ci_kws_alpha_override(simple_df):
+    """ci_kws={'alpha': X} sets band face alpha to X without changing color."""
+    ax = regplot(data=simple_df, x="x", y="y", ci_kws={"alpha": 0.5})
+    band = _ci_band(ax)
+    fc = np.asarray(band.get_facecolor())
+    assert np.isclose(fc[0][3], 0.5)
+    # RGB should match seaborn's default (the regression line color).
+    # We just assert it's not the all-zero default and not red etc.
+    assert fc[0][0] > 0  # nonzero R channel
+    assert not (fc[0][0] == 1.0 and fc[0][1] == 0.0 and fc[0][2] == 0.0)
+
+
+def test_ci_kws_color_override(simple_df):
+    """ci_kws={'color': 'red'} sets band face color to red, preserves alpha."""
+    ax = regplot(data=simple_df, x="x", y="y", ci_kws={"color": "red"})
+    band = _ci_band(ax)
+    fc = np.asarray(band.get_facecolor())
+    # Red is (1, 0, 0, alpha)
+    assert np.allclose(fc[0][:3], [1.0, 0.0, 0.0])
+    # Alpha preserved from seaborn's default
+    assert np.isclose(fc[0][3], 0.15, atol=0.05)
+
+
+def test_ci_kws_alpha_and_color(simple_df):
+    """Both keys together: explicit alpha AND explicit color."""
+    ax = regplot(data=simple_df, x="x", y="y", ci_kws={"alpha": 0.4, "color": "green"})
+    band = _ci_band(ax)
+    fc = np.asarray(band.get_facecolor())
+    # Pure green at alpha=0.4
+    assert np.allclose(fc[0][:3], [0.0, 0.5, 0.0], atol=0.01) or \
+           np.allclose(fc[0][:3], [0.0, 1.0, 0.0])  # matplotlib's 'green' is (0, 0.5, 0)
+    assert np.isclose(fc[0][3], 0.4)
+
+
+def test_ci_kws_per_group_with_hue(hue_df):
+    """ci_kws applied to every per-group CI band, color per palette."""
+    from matplotlib.collections import FillBetweenPolyCollection
+    ax = regplot(
+        data=hue_df, x="x", y="y", hue="g",
+        palette="pastel", ci_kws={"alpha": 0.3},
+    )
+    bands = [c for c in ax.collections if isinstance(c, FillBetweenPolyCollection)]
+    assert len(bands) >= 3, "expected one CI band per hue group"
+    for i, b in enumerate(bands):
+        fc = np.asarray(b.get_facecolor())
+        assert np.isclose(fc[0][3], 0.3), f"group {i} band alpha"
+    # The three RGBs should be distinct (per-palette colors, not a single override).
+    rgbs = [tuple(np.asarray(b.get_facecolor())[0][:3]) for b in bands]
+    assert len(set(rgbs)) == 3, f"expected 3 distinct band colors, got {rgbs}"
+
+
+def test_ci_kws_does_not_affect_scatter_or_line(simple_df):
+    """ci_kws only touches the FillBetweenPolyCollection — scatter and
+    fit-line remain at their independently-controlled alphas."""
+    ax = regplot(
+        data=simple_df, x="x", y="y", alpha=0.3,
+        ci_kws={"alpha": 0.5, "color": "red"},
+    )
+    pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
+    assert len(pcs) >= 1
+    fa = np.asarray(pcs[0].get_facecolor())
+    # Scatter still at 0.3, not 0.5 (ci_kws didn't leak).
+    assert np.allclose(fa[..., -1], 0.3)
