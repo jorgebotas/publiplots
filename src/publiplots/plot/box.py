@@ -178,6 +178,21 @@ def boxplot(
         )
     resolved_edgecolor = edgecolor if edgecolor is not None else linecolor
 
+    # 1D mode: synthesize a constant categorical column on the missing axis so
+    # the rest of the function flows through the 2D code path unchanged.
+    if x is None and y is None:
+        raise ValueError("at least one of `x` or `y` must be provided to pp.boxplot.")
+    _hide_axis: Optional[str] = None
+    if x is None or y is None:
+        _DUMMY = "__publiplots_constant_axis__"
+        data = data.assign(**{_DUMMY: ""})
+        if x is None:
+            x = _DUMMY
+            _hide_axis = "x"
+        else:
+            y = _DUMMY
+            _hide_axis = "y"
+
     # Preserve the caller's original DataFrame identity for downstream
     # annotate builders that stash `source_frame` on the meta.
     _source_data = data
@@ -340,6 +355,11 @@ def boxplot(
         opts = dict(annotate) if isinstance(annotate, dict) else {}
         kind = opts.pop("kind", "box_stats")
         _annotate_fn(ax, kind=kind, **opts)
+
+    if _hide_axis == "x":
+        ax.set_xticks([])
+    elif _hide_axis == "y":
+        ax.set_yticks([])
 
     return ax
 

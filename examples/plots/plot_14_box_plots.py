@@ -80,6 +80,22 @@ ax = pp.boxplot(
 pp.show()
 
 # %%
+# Univariate (1D) Box Plot
+# ~~~~~~~~~~~~~~~~~~~~~~~~
+# Pass only ``x=`` or only ``y=`` to summarize a single distribution.
+# A constant categorical axis is synthesized internally so all 2D
+# features (``hue=``, ``annotate=``, ``alpha``, ``border_radius``)
+# remain available. The synthetic axis ticks and spine are hidden so
+# the result reads cleanly as a single-distribution summary. This is
+# the form used by :func:`pp.JointGrid.plot_marginals` to put boxes on
+# the marginal panels of a joint plot.
+
+fig, axes = pp.subplots(1, 2, axes_size=(40, 50))
+pp.boxplot(data=box_data, y='value', ax=axes[0], title='Vertical (y= only)')
+pp.boxplot(data=box_data, x='value', ax=axes[1], title='Horizontal (x= only)')
+pp.show()
+
+# %%
 # Combined Box and Swarm Plot
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Overlay swarm plot on box plot to show both summary statistics and individual data points.

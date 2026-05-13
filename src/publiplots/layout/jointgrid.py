@@ -237,12 +237,9 @@ class JointGrid:
         Top marginal receives ``x=self.x``, right marginal receives
         ``y=self.y``. Plot functions that support swapping ``x=``/``y=``
         to flip orientation work directly: ``pp.histplot`` (the default
-        marginal for :func:`jointplot`) and ``pp.stripplot``. Plot
-        functions that require one of ``x`` or ``y`` and error on
-        ``None`` for the other (notably ``pp.violinplot``,
-        ``pp.boxplot``) will raise a ``KeyError: None`` from pandas at
-        call time — use ``pp.histplot`` instead, or pass pre-split
-        frames via ``plot_joint`` / the axes directly.
+        marginal for :func:`jointplot`) and ``pp.stripplot``.
+        ``pp.violinplot`` and ``pp.boxplot`` also support 1D usage
+        (only ``x`` or only ``y``) and work as marginals out of the box.
 
         Returns
         -------
