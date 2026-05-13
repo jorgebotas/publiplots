@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-13
+
+### Added
+
+- `pp.JointGrid` and `pp.jointplot` — bivariate + marginal-distribution
+  composition (PR #145). Three-axes layout: large bivariate main panel
+  with thin top and right marginals, hidden top-right corner, shared
+  axes, and symmetric joint↔marginal gaps at any height.
+  - `pp.JointGrid(data, *, x, y, height=80, ratio=5, space=None)` —
+    the primitive. Exposes `fig`, `ax_joint`, `ax_marg_x`, `ax_marg_y`.
+    Methods `.plot_joint(fn, **kw)` / `.plot_marginals(fn, **kw)` /
+    `.plot(joint_fn, marginal_fn, **kw)` forward `data`+`x`/`y`+`ax=`
+    to any compatible `pp.*` plot function. Chainable.
+  - `pp.jointplot(data, *, x, y, kind='scatter', ...)` — convenience
+    wrapper. `kind` in `{'scatter', 'hex', 'kde', 'reg', 'resid'}`
+    maps to (joint_fn, marginal_fn). Returns the constructed
+    `JointGrid` so per-axes tweaks remain possible. `'hist'` is
+    deferred until publiplots ships a 2D-histogram primitive.
+  - **Sizing.** `height` is the total grid budget in mm (square);
+    matches seaborn's `JointGrid(height=)` modulo the unit. `ratio`
+    is the marginal-to-main split (default `5`, matching seaborn's
+    default). `space` is the inter-panel gap in mm — `None` (default)
+    auto-scales as `height * 0.025` so the gap reads well across
+    sizes; an explicit value is taken as absolute mm for cross-figure
+    consistency.
+  - **Joint-panel legend routing.** Continuous-hue colorbar entries
+    stashed by `pp.hexbinplot` (or any 2D plot with a colorbar) on the
+    joint panel are auto-routed to a figure-level band anchored on the
+    right marginal — keeping the joint↔right-marginal pair flush.
+    Zero layout cost when no colorbar is stashed.
+
+- `pp.subplots` per-position lock/auto reservations via tuples-with-None.
+  Tuples passed to `title_space`, `xlabel_space`, `ylabel_space`, or
+  `right` may now contain `None` entries to opt that position into
+  auto-measurement while locking the others (PR #145).
+
+      pp.subplots(2, 2, ...,
+          xlabel_space=(0.0, None),    # row 0 locked to 0; row 1 auto
+          ylabel_space=(None, 0.0),    # col 0 auto; col 1 locked to 0
+      )
+
+  Each `None` resolves to the rcParams default at the `pp.subplots`
+  boundary; `FigureLayout` still receives a tuple of floats and its
+  data invariants are unchanged. Locked indices are tracked in
+  `SubplotsAutoLayout` so the reactor preserves the layout's current
+  value at locked positions instead of remeasuring on draw.
+
+  Used by `pp.JointGrid` to lock the four inside-facing reservations
+  to 0 mm so the joint↔marginal gaps stay symmetric (the auto-measured
+  `tightbbox` baseline padding from corner-most count-axis tick labels
+  was previously inflating one gap by ~0.7 mm relative to the other).
+  Available to any user composing asymmetric grids that need a flush
+  edge somewhere.
+
+### Changed
+
+- **Bumped to 0.11.0 (minor).** The new `JointGrid` / `jointplot`
+  surfaces and the `tuples-with-None` extension to `pp.subplots`
+  collectively justify a minor bump under semver. Backward
+  compatibility on existing `pp.subplots` and all per-side reservation
+  forms (scalar / `None` / full-floats-tuple) is preserved bit-for-bit.
+
 ## [0.10.12] - 2026-05-13
 
 ### Changed
@@ -403,6 +465,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls in `examples/plots/plot_12_heatmap.py` — auto-layout positions
   the title correctly regardless (PR #128).
 
+[0.11.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.11.0
+[0.10.12]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.12
+[0.10.11]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.11
 [0.10.10]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.10
 [0.10.9]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.9
 [0.10.8]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.8

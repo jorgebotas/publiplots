@@ -29,8 +29,14 @@ By plot family:
 - **Matrix:** `heatmap`, `complex_heatmap`, `dendrogram`.
 - **Set:** `venn`, `upsetplot`.
 
+### Composition
+- `pp.JointGrid(data, *, x, y, height=80, ratio=5, space=None)` — three-axes composition: large bivariate main panel + thin top and right marginals (shared axes, hidden corner). Methods `.plot_joint(fn, **kw)` / `.plot_marginals(fn, **kw)` / `.plot(joint_fn, marginal_fn, **kw)` forward to any compatible `pp.*` plot function via `ax=`. Chainable.
+- `pp.jointplot(data, *, x, y, kind='scatter', height=80, ratio=5, space=None, **kw)` — convenience wrapper. `kind` ∈ `{'scatter', 'hex', 'kde', 'reg', 'resid'}`. Returns the constructed `JointGrid`.
+
 ### Layout
-- `pp.subplots(nrows, ncols, *, axes_size=(w_mm, h_mm), sharex, sharey, title_space, xlabel_space, ylabel_space, right, hspace, wspace, outer_pad, **fig_kw)` — the canonical factory. Returns `(fig, axes)` with `plt.subplots`-style squeezing.
+- `pp.subplots(nrows, ncols, *, axes_size=(w_mm, h_mm), width_ratios=None, height_ratios=None, sharex, sharey, title_space, xlabel_space, ylabel_space, right, hspace, wspace, outer_pad, **fig_kw)` — the canonical factory. Returns `(fig, axes)` with `plt.subplots`-style squeezing.
+- **Asymmetric grids** (since 0.10.x): pass `width_ratios=[r0, r1, ...]` (length `ncols`) or `height_ratios=[...]` (length `nrows`) to renormalize the per-cell budget across columns/rows. Equal ratios recover the uniform case bit-for-bit. Total grid budget stays `axes_size[0] * ncols` × `axes_size[1] * nrows`.
+- **Per-position lock/auto** (since 0.11): tuples passed to `title_space` / `xlabel_space` / `ylabel_space` / `right` may contain `None` entries to opt that position into auto-measurement while locking the others. Example: `xlabel_space=(0.0, None)` locks row 0 to 0 mm and lets row 1 grow with decoration. Each `None` resolves to the rcParams default at construction; the reactor preserves the locked positions on later draws. Used internally by `pp.JointGrid` to keep joint↔marginal gaps symmetric without sacrificing auto-measurement of the joint panel's own labels.
 
 ### Legend
 - `pp.legend(axes=None, collect=None, *, side='right', anchor=None, figure=None, orientation='auto', align='auto', x_offset, y_offset, gap=2, column_spacing=5, vpad, max_width)` — unified legend factory. See the `legend-placement` skill.
@@ -108,6 +114,18 @@ pp.scatterplot(data=df, x="x", y="y", hue="group",
                legend_kws={"inside": True, "loc": "upper right"}, ax=ax)
 ```
 
+**Bivariate + marginals.** `pp.jointplot` is the canonical one-call form; reach for the `pp.JointGrid` class when you need different plot types in joint vs marginal slots.
+
+```python
+# Convenience wrapper — picks joint+marginal fns from a kind alias.
+pp.jointplot(data=df, x="x", y="y", kind="hex")  # or 'scatter', 'kde', 'reg', 'resid'
+
+# Class API — mix any compatible pp.* functions.
+g = pp.JointGrid(data=df, x="x", y="y", height=80, ratio=5)
+g.plot_joint(pp.hexbinplot, gridsize=20)
+g.plot_marginals(pp.histplot, bins=30, kde=True)
+```
+
 **Save a figure.** No implicit tight-crop; the canvas is already mm-precise.
 
 ```python
@@ -143,12 +161,13 @@ pp.reset_style()
 
 ## When to read the code directly
 
-publiplots has 19 plot functions, each with plot-specific kwargs. When asked about a specific plot kind, Read `src/publiplots/plot/<kind>.py` for the signature:
+publiplots has 19 plot functions plus the `JointGrid` composition, each with kind-specific kwargs. When asked about a specific plot kind, Read `src/publiplots/plot/<kind>.py` for the signature:
 
 - Categorical: `src/publiplots/plot/{bar,box,violin,raincloud,strip,swarm,point}.py`.
 - Relational: `src/publiplots/plot/{scatter,line,regplot,residplot}.py`.
 - Distribution: `src/publiplots/plot/{hist,kdeplot,hexbin}.py`.
 - Matrix: `src/publiplots/plot/heatmap.py` (also `complex_heatmap` and `dendrogram` in the same file).
 - Set: `src/publiplots/plot/{venn,upset}.py`.
+- Composition: `src/publiplots/layout/jointgrid.py` (`JointGrid` class + `jointplot` wrapper).
 
-For the full `pp.legend()` signature and every `MultiAxesLegendGroup` option, see `src/publiplots/utils/legend_group.py`. For canonical legend patterns with running code, the authoritative reference is `examples/plots/plot_22_legend_placement.py` (14 worked sections).
+For the full `pp.legend()` signature and every `MultiAxesLegendGroup` option, see `src/publiplots/utils/legend_group.py`. For canonical legend patterns with running code, the authoritative reference is `examples/plots/plot_23_legend_placement.py` (14 worked sections). For JointGrid usage patterns, see `examples/plots/plot_08_jointgrid.py` (7 worked sections covering all 5 `kind=` aliases plus the class API).
