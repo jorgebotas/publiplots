@@ -344,6 +344,11 @@ def regplot(
     scatter_kws.setdefault("linewidths", linewidth)
     if edgecolor is not None:
         scatter_kws.setdefault("edgecolor", edgecolor)
+    # Marker area in points². ``lines.markersize`` is a diameter in
+    # points; matplotlib's scatter takes points² area, so we square it.
+    # User-supplied ``scatter_kws['s']`` wins via setdefault.
+    _markersize = resolve_param("lines.markersize", None)
+    scatter_kws.setdefault("s", float(_markersize) ** 2)
 
     line_kws = dict(line_kws or {})
     line_kws.setdefault("linewidth", linewidth)
@@ -407,7 +412,7 @@ def regplot(
             **base_kws,
         )
 
-    # Two post-draw passes over the new collections:
+    # Three post-draw passes over the new artists:
     #
     # 1. PathCollection (scatter): publiplots double-layer style — face
     #    carries alpha, edge stays opaque. We must clear the
@@ -417,19 +422,40 @@ def regplot(
     #    after storing per-color RGBAs — so apply_transparency() would
     #    silently no-op without this reset.
     #
+    #    In binned mode (x_estimator), seaborn also forces ``s=50`` on
+    #    its scatter call (regression.py:418), ignoring our
+    #    scatter_kws['s'] setdefault. We re-apply the resolved size
+    #    post-draw — but only when the user didn't pass an explicit
+    #    scatter_kws['s'].
+    #
     # 2. FillBetweenPolyCollection (CI band): apply ci_kws overrides
     #    (alpha, color). Same _alpha-reset trick is needed for the
     #    same matplotlib reason. The regression line (Line2D, untouched
     #    here) keeps line_kws styling.
+    #
+    # 3. Errorbar Line2Ds (binned mode only): seaborn hardcodes their
+    #    linewidth to ``rcParams['lines.linewidth'] * 1.75``
+    #    (regression.py:417), which reads as visually thicker than the
+    #    regression line itself. We reset to the resolved publiplots
+    #    linewidth. Errorbars are identifiable because they are 2-point
+    #    Line2Ds with a single unique x — the regression line has many
+    #    points and a varying x.
     from matplotlib.collections import PathCollection, FillBetweenPolyCollection
     ci_kws = dict(ci_kws or {})
     ci_alpha = ci_kws.get("alpha")
     ci_color = ci_kws.get("color")
+    user_set_s = "s" in (scatter_kws or {})
+    target_s = float(_markersize) ** 2
     for c in tracker.get_new_collections():
         if isinstance(c, PathCollection):
             if alpha is not None:
                 c.set_alpha(None)
                 apply_transparency(c, face_alpha=alpha, edge_alpha=1.0)
+            # In binned mode, seaborn's s=50 hardcode wins over our
+            # scatter_kws['s'] setdefault. Reset to the publiplots
+            # default unless the user explicitly passed scatter_kws['s'].
+            if x_estimator is not None and not user_set_s:
+                c.set_sizes([target_s] * len(c.get_offsets()))
         elif isinstance(c, FillBetweenPolyCollection):
             if ci_alpha is not None or ci_color is not None:
                 # Recover the band's current face color (set by seaborn
@@ -446,6 +472,14 @@ def regplot(
                 )
                 c.set_alpha(None)  # clear any collection-level alpha
                 c.set_facecolor(to_rgba(base_color, alpha=final_alpha))
+
+    # Errorbar lines: 2-point Line2Ds with a single unique x value.
+    if x_estimator is not None:
+        target_lw = line_kws.get("linewidth", linewidth)
+        for line in tracker.get_new_lines():
+            xd = np.asarray(line.get_xdata())
+            if len(xd) == 2 and len(np.unique(xd)) == 1:
+                line.set_linewidth(target_lw)
 
     if title is not None:
         ax.set_title(title)

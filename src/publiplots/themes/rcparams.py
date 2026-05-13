@@ -89,7 +89,13 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     # Line settings
     "lines.linewidth": 1.0,
     "lines.markeredgewidth": 1.0,
-    "lines.markersize": 6,
+    # Diameter in points. Used directly by pp.pointplot, pp.lineplot,
+    # pp.swarmplot, pp.stripplot. pp.scatterplot / pp.regplot /
+    # pp.residplot square it internally to get matplotlib's points² area.
+    # 4pt → ~1.4mm diameter at 600 dpi: small enough that density patterns
+    # read through, large enough to land as discrete points at typical
+    # publication mm-axes sizes.
+    "lines.markersize": 4,
 
     # Patch settings (for bars, etc.)
     "patch.linewidth": 1.0,

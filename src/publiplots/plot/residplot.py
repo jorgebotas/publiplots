@@ -181,6 +181,11 @@ def residplot(
         scatter_kws.setdefault("edgecolor", edgecolor)
     if marker is not None:
         scatter_kws.setdefault("marker", marker)
+    # Marker area in points². ``lines.markersize`` is a diameter in
+    # points; matplotlib's scatter takes points² area, so we square it.
+    # User-supplied ``scatter_kws['s']`` wins via setdefault.
+    _markersize = resolve_param("lines.markersize", None)
+    scatter_kws.setdefault("s", float(_markersize) ** 2)
 
     # Decide whether we take the per-group hue path or the single-call path.
     palette_map: Dict = {}

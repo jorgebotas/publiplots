@@ -40,7 +40,7 @@ def stripplot(
     orient: Optional[str] = None,
     color: Optional[str] = None,
     palette: Optional[Union[str, Dict, List]] = None,
-    size: float = 5,
+    size: Optional[float] = None,
     edgecolor: Optional[str] = None,
     linewidth: Optional[float] = None,
     hue_norm: Optional[Union[Tuple[float, float], Normalize]] = None,
@@ -83,8 +83,9 @@ def stripplot(
         Fixed color for all points (only used when hue is None).
     palette : str, dict, or list, optional
         Color palette for hue grouping.
-    size : float, default=5
-        Size of the markers.
+    size : float, optional
+        Marker diameter in points. Falls back to
+        ``pp.rcParams["lines.markersize"]`` (default 4) when None.
     edgecolor : str, optional
         Color for marker edges. If None, uses face color. Can also be set
         globally via ``publiplots.rcParams["edgecolor"]``.
@@ -144,6 +145,7 @@ def stripplot(
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)
+    size = resolve_param("lines.markersize", size)
 
     # Create figure via pp.subplots to install SubplotsAutoLayout; users who
     # want custom dimensions should compose with pp.subplots(axes_size=...)
