@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-05-13
+
+### Added
+
+- `pp.histplot` 2D mode — calling `pp.histplot(data=df, x=..., y=...)`
+  with both axes set now renders a heatmap-like bivariate histogram
+  via a single `QuadMesh` (or N stacked `QuadMesh`es when `hue=` is
+  set, one per hue level). 1D paths are unchanged. Three new 2D-only
+  kwargs land alongside: `cmap=`, `vmin=`, `vmax=` (silently ignored
+  in 1D). The default cmap is a light sequential gradient built from
+  `pp.rcParams["color"]` (or per-call `color=`); pass any matplotlib
+  or seaborn cmap name to override (PR #159).
+- `pp.jointplot(kind="hist")` is now valid (was deferred in 0.11.0
+  with a `NotImplementedError`). The joint panel renders a 2D
+  histogram, the marginals render 1D histograms. `_KIND_REGISTRY`
+  wires `'hist'` → `(pp.histplot, pp.histplot)`; the kind-enumeration
+  docstring lists `'hist'` alongside `'scatter'`, `'hex'`, `'kde'`,
+  `'reg'`, `'resid'`.
+- `publiplots.themes.colors.resolve_continuous_cmap(cmap=None,
+  color=None)` — new helper shared between 2D distribution primitives
+  (`pp.histplot` 2D + `pp.hexbinplot`). When `cmap` is `None`, builds
+  a light sequential gradient from `color` (or `pp.rcParams["color"]`
+  when `color` is also `None`); when `cmap` is a string or `Colormap`
+  instance, it round-trips through `matplotlib.colormaps`.
+- Gallery sections demonstrating the new 2D mode:
+  - `examples/plots/plot_02_histogram.py` — "2D Histogram
+    (Bivariate)" using a Gaussian mixture, with a default-cmap panel,
+    a `cmap="magma"` override panel, and a `hue=` panel showing the
+    per-level stacked colorbars.
+  - `examples/plots/plot_09_jointgrid.py` — "Histogram Jointplot"
+    section using `pp.jointplot(kind="hist")`.
+
+### Changed
+
+- `pp.hexbinplot`'s default cmap now also derives from
+  `pp.rcParams["color"]` (via the new
+  `resolve_continuous_cmap` helper) instead of
+  `rcParams["image.cmap"]`. This unifies the themed look across
+  publiplots' 2D distribution primitives — `pp.histplot(x=, y=)`
+  and `pp.hexbinplot(...)` both pick up the same palette-derived
+  gradient when `cmap=` is omitted.
+- `pp.histplot` 2D + `hue=` now stashes one continuous-hue colorbar
+  per hue level (e.g. `count [A]` / `count [B]`) instead of the
+  categorical rectangles used in 1D. Each colorbar reflects that
+  level's own count magnitude, preserving per-subgroup density
+  information that a single shared norm would flatten.
+
+### Fixed
+
+- `pp.histplot(x=, y=, kde=True)` previously silently no-op'd —
+  seaborn's `histplot` does not draw 2D KDE contours from `kde=True`
+  (that's a `kdeplot` feature), so the kwarg was forwarded but
+  produced no contour artist. The 2D path now raises
+  `NotImplementedError` with a pointer to `pp.kdeplot` for 2D KDE
+  contours, matching the existing 2D guards on `annotate=` and
+  `element != "bars"`. The 1D `kde=True` path is unchanged
+  (PR #160).
+
 ## [0.11.2] - 2026-05-13
 
 ### Fixed
@@ -553,6 +611,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls in `examples/plots/plot_12_heatmap.py` — auto-layout positions
   the title correctly regardless (PR #128).
 
+[0.11.3]: https://github.com/jorgebotas/publiplots/releases/tag/v0.11.3
 [0.11.2]: https://github.com/jorgebotas/publiplots/releases/tag/v0.11.2
 [0.11.1]: https://github.com/jorgebotas/publiplots/releases/tag/v0.11.1
 [0.11.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.11.0
