@@ -99,6 +99,22 @@ ax = pp.violinplot(
 pp.show()
 
 # %%
+# Univariate (1D) Violin Plot
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Pass only ``x=`` or only ``y=`` to summarize a single distribution.
+# A constant categorical axis is synthesized internally so all 2D
+# features (``hue=``, ``side=``, ``inner=``, ``alpha``) remain
+# available. The synthetic axis ticks and spine are hidden so the
+# result reads cleanly as a single-distribution summary. This is the
+# form used by :func:`pp.JointGrid.plot_marginals` to put violins on
+# the marginal panels of a joint plot.
+
+fig, axes = pp.subplots(1, 2, axes_size=(40, 50))
+pp.violinplot(data=violin_data, y='value', ax=axes[0], title='Vertical (y= only)')
+pp.violinplot(data=violin_data, x='value', ax=axes[1], title='Horizontal (x= only)')
+pp.show()
+
+# %%
 # Combined Violin and Swarm Plot
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Overlay swarm plot on violin plot to show distribution shape and individual data points.

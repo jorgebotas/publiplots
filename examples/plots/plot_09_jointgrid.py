@@ -94,12 +94,28 @@ pp.show()
 # yourself and call ``plot_joint`` / ``plot_marginals``. Any publiplots
 # plot function that accepts ``data=, x=, y=, ax=`` works in the joint
 # slot; for marginals, use 1D-capable ``pp.*`` plots — currently
-# :func:`pp.histplot`, :func:`pp.kdeplot`, and :func:`pp.stripplot`.
-# Here we mix a hexbin joint with KDE marginals.
+# :func:`pp.histplot`, :func:`pp.kdeplot`, :func:`pp.stripplot`,
+# :func:`pp.boxplot`, and :func:`pp.violinplot`. Here we mix a hexbin
+# joint with KDE marginals.
 
 g = pp.JointGrid(data=mixture, x="x", y="y")
 g.plot_joint(pp.hexbinplot, gridsize=20)
 g.plot_marginals(pp.kdeplot, fill=True)
+pp.show()
+
+# %%
+# Box / Violin Marginals
+# ----------------------
+# ``pp.boxplot`` and ``pp.violinplot`` accept univariate calls (only
+# ``x=`` or only ``y=``), which makes them drop-in marginal functions
+# for :class:`pp.JointGrid`. Each marginal becomes a single box / violin
+# summarizing that axis's distribution — a compact alternative to
+# histograms when the joint is dense. Here we put a scatter on the
+# joint with violin marginals on top and right.
+
+g = pp.JointGrid(data=mixture, x="x", y="y")
+g.plot_joint(pp.scatterplot, alpha=0.4)
+g.plot_marginals(pp.violinplot)
 pp.show()
 
 # %%
