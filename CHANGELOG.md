@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-05-13
+
+### Fixed
+
+- `pp.boxplot` and `pp.violinplot` now accept univariate calls
+  (only `x=` or only `y=`). Previously these raised `KeyError: None`
+  from the annotate-meta cache builder when the missing axis was
+  looked up by `None`. Both functions now synthesize a constant
+  categorical column for the missing axis so the existing 2D code
+  path handles 1D as a degenerate single-category case — `annotate`,
+  `hue`, `dodge`, side-clip, and the legend stash all keep working
+  in 1D unchanged. The synthetic-side ticks and tick labels are
+  dropped post-draw while the spine is preserved so the standalone
+  1D frame stays closed (PR #157).
+
+### Added
+
+- `pp.JointGrid.plot_marginals(pp.boxplot)` and
+  `pp.JointGrid.plot_marginals(pp.violinplot)` are now first-class
+  compositions, unblocked by the 1D-mode fix above. Both forward
+  `data` + `x`/`y` + `ax=` to the marginal axes via the existing
+  `JointGrid` plumbing. New gallery sections demonstrate the
+  combinations:
+  - `examples/plots/plot_14_box_plots.py` — "Univariate (1D) Box
+    Plot" section.
+  - `examples/plots/plot_15_violin_plots.py` — "Univariate (1D)
+    Violin Plot" section.
+  - `examples/plots/plot_09_jointgrid.py` — "Box Marginals" and
+    "Violin Marginals" sections; the "Custom Composition" docstring
+    now lists `pp.boxplot` and `pp.violinplot` alongside `pp.histplot`
+    and `pp.kdeplot` as 1D-capable marginal functions.
+  - Note: `pp.jointplot(kind=)` does not yet expose `kind="box"` /
+    `kind="violin"` aliases — only the explicit
+    `JointGrid.plot_marginals(pp.boxplot)` /
+    `JointGrid.plot_marginals(pp.violinplot)` form works in 0.11.2.
+
 ## [0.11.1] - 2026-05-13
 
 ### Added
@@ -517,6 +553,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls in `examples/plots/plot_12_heatmap.py` — auto-layout positions
   the title correctly regardless (PR #128).
 
+[0.11.2]: https://github.com/jorgebotas/publiplots/releases/tag/v0.11.2
+[0.11.1]: https://github.com/jorgebotas/publiplots/releases/tag/v0.11.1
 [0.11.0]: https://github.com/jorgebotas/publiplots/releases/tag/v0.11.0
 [0.10.12]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.12
 [0.10.11]: https://github.com/jorgebotas/publiplots/releases/tag/v0.10.11
