@@ -57,7 +57,7 @@ def test_univariate_annotate(df):
 def test_univariate_hides_synthetic_axis(df):
     ax = pp.violinplot(data=df, y="val")
     assert list(ax.get_xticks()) == []
-    assert ax.spines["bottom"].get_visible() is False
+    assert ax.spines["bottom"].get_visible() is True
 
 
 def test_univariate_side_clip(df):

@@ -358,10 +358,8 @@ def boxplot(
 
     if _hide_axis == "x":
         ax.set_xticks([])
-        ax.spines["bottom"].set_visible(False)
     elif _hide_axis == "y":
         ax.set_yticks([])
-        ax.spines["left"].set_visible(False)
 
     return ax
 
