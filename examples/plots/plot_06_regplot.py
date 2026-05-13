@@ -35,6 +35,7 @@ ax = regplot(
     data=linear_df,
     x="x",
     y="y",
+    ci_kws=dict(alpha=0.3),
     title="Linear Fit",
     xlabel="x",
     ylabel="y",
@@ -57,6 +58,7 @@ ax = regplot(
     x="x",
     y="y",
     order=2,
+    ci_kws=dict(alpha=0.3),
     title="Quadratic Fit (order=2)",
     xlabel="x",
     ylabel="y",
@@ -86,6 +88,7 @@ ax = regplot(
     y="y",
     hue="group",
     palette="pastel",
+    ci_kws=dict(alpha=0.3),
     title="Per-group Fits (hue='group')",
     xlabel="x",
     ylabel="y",
@@ -112,6 +115,7 @@ try:
         x="x",
         y="y",
         lowess=True,
+        ci_kws=dict(alpha=0.3),
         title="Lowess Smoothing",
         xlabel="x",
         ylabel="y",
@@ -139,7 +143,78 @@ ax = regplot(
     y="y",
     x_bins=10,
     x_estimator=np.mean,
+    ci_kws=dict(alpha=0.3),
     title="Binned Aggregation (x_bins=10, x_estimator=mean)",
+    xlabel="x",
+    ylabel="y",
+)
+pp.show()
+
+
+# %%
+# Styling the Confidence-Interval Band: ``ci_kws=``
+# -------------------------------------------------
+# The CI band drawn around the fit is a separate visual layer (a
+# :class:`~matplotlib.collections.FillBetweenPolyCollection`) and gets
+# its own styling bucket — ``ci_kws=`` — so the band can be tuned
+# independently from the scatter (``scatter_kws``) and the regression
+# line (``line_kws``).
+#
+# Recognized keys:
+#
+# - ``alpha``: face alpha (default seaborn's 0.15). Use lower for
+#   de-emphasis when overlaying multiple groups, higher for a single
+#   bold fit.
+# - ``color``: face color. Defaults to the regression line color;
+#   override for accessibility / print contrast when the band needs
+#   to differ from the line.
+#
+# A four-panel comparison: default → bolder alpha → recoloured band
+# → both keys together. Same data in every panel so only the band
+# styling moves.
+
+n = 80
+x = rng.uniform(-2.5, 2.5, n)
+y = 0.7 * x + 0.4 * rng.normal(size=n)
+ci_df = pd.DataFrame({"x": x, "y": y})
+
+fig, axes = pp.subplots(2, 2, axes_size=(45, 32))
+regplot(data=ci_df, x="x", y="y", ax=axes[0, 0],
+        title="default ci_kws (alpha=0.15)")
+regplot(data=ci_df, x="x", y="y", ci_kws=dict(alpha=0.6), ax=axes[0, 1],
+        title="ci_kws=dict(alpha=0.6)")
+regplot(data=ci_df, x="x", y="y", ci_kws=dict(color="#888"), ax=axes[1, 0],
+        title="ci_kws=dict(color='#888')")
+regplot(data=ci_df, x="x", y="y", ci_kws=dict(alpha=0.4, color="tomato"),
+        ax=axes[1, 1], title="ci_kws=dict(alpha=0.4, color='tomato')")
+pp.show()
+
+
+# %%
+# ``ci_kws`` with Hue: De-emphasize Bands When Overlaying Groups
+# --------------------------------------------------------------
+# When several regressions share an axes, full-strength CI bands
+# stack into mud. A lower ``ci_kws['alpha']`` (e.g. 0.3) pushes the
+# bands into the visual background while the per-group lines and
+# scatter remain crisp. Each band still inherits its group's palette
+# color — ``ci_kws`` only overrides the keys you set.
+
+rng2 = np.random.default_rng(7)
+rows = []
+for slope, g in zip((1.0, 0.3, -0.7), ("A", "B", "C")):
+    xs = rng2.uniform(-2, 2, 50)
+    ys = slope * xs + 0.3 * rng2.normal(size=50)
+    rows.extend({"x": xi, "y": yi, "group": g} for xi, yi in zip(xs, ys))
+hue_groups = pd.DataFrame(rows)
+
+ax = regplot(
+    data=hue_groups,
+    x="x",
+    y="y",
+    hue="group",
+    palette="pastel",
+    ci_kws=dict(alpha=0.3),
+    title="Per-group fits with low-alpha CI bands",
     xlabel="x",
     ylabel="y",
 )

@@ -224,20 +224,61 @@ def test_rcparams_defaults_flow_through(linear_df):
         pp.rcParams["lines.linewidth"] = 1.75
         pp.rcParams["alpha"] = 0.5
         ax = residplot(data=linear_df, x="x", y="y")
-        coll = ax.collections[0]
+        # Find the scatter PathCollection (skip Line2D reference line, etc.)
+        from matplotlib.collections import PathCollection
+        pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
+        assert len(pcs) >= 1
+        coll = pcs[0]
 
         # linewidth flows through to the scatter marker edge width.
         lws = np.asarray(coll.get_linewidths())
         assert np.allclose(lws, 1.75)
 
-        # alpha flows through to the scatter (either via collection alpha
-        # or baked into the facecolors alpha channel).
-        alpha_attr = coll.get_alpha()
-        if alpha_attr is not None:
-            assert alpha_attr == pytest.approx(0.5, abs=1e-6)
-        else:
-            face = np.asarray(coll.get_facecolors())
-            assert np.isclose(face[0][-1], 0.5, atol=1e-6)
+        # alpha is baked into the per-color facecolors alpha channel
+        # (NOT the collection-level _alpha — that gets cleared so the
+        # face/edge split survives matplotlib's set_facecolors logic).
+        face = np.asarray(coll.get_facecolors())
+        assert np.allclose(face[..., -1], 0.5)
     finally:
         pp.rcParams["lines.linewidth"] = saved_lw
         pp.rcParams["alpha"] = saved_alpha
+
+
+def test_alpha_face_edge_split(linear_df):
+    """publiplots double-layer style: alpha on face, opaque edge.
+
+    Regression — sns.residplot's internal scatter sets
+    Collection.set_alpha(alpha) which uniformly fades both face and
+    edge (matching seaborn's convention but not publiplots'). The
+    fix must clear the collection-level _alpha and re-apply via
+    apply_transparency so the edge stays at 1.0.
+    """
+    from matplotlib.collections import PathCollection
+    ax = residplot(data=linear_df, x="x", y="y", alpha=0.3, edgecolor="black")
+    pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
+    assert len(pcs) >= 1
+    pc = pcs[0]
+    fa = np.asarray(pc.get_facecolor())
+    ea = np.asarray(pc.get_edgecolor())
+    assert np.allclose(fa[..., -1], 0.3), (
+        f"face alpha should be 0.3, got {fa[..., -1]}"
+    )
+    assert np.allclose(ea[..., -1], 1.0), (
+        f"edge alpha should be 1.0 (opaque), got {ea[..., -1]}"
+    )
+
+
+def test_alpha_face_edge_split_with_hue(hue_df):
+    """Face/edge split must apply to every per-group PathCollection."""
+    from matplotlib.collections import PathCollection
+    ax = residplot(
+        data=hue_df, x="x", y="y", hue="group",
+        alpha=0.3, edgecolor="black", palette="pastel",
+    )
+    pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
+    assert len(pcs) >= 3, "expected one PathCollection per hue group"
+    for i, pc in enumerate(pcs):
+        fa = np.asarray(pc.get_facecolor())
+        ea = np.asarray(pc.get_edgecolor())
+        assert np.allclose(fa[..., -1], 0.3), f"group {i} face alpha"
+        assert np.allclose(ea[..., -1], 1.0), f"group {i} edge alpha"
