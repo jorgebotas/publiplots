@@ -14,7 +14,7 @@ pp.subplots()) and therefore fires first, so LayoutReactor sees the
 repositioned axes and re-anchors legends correctly.
 """
 
-from typing import Dict, Set, Tuple
+from typing import Dict, FrozenSet, Optional, Set, Tuple
 
 from publiplots.layout.figure_layout import FigureLayout
 
@@ -43,10 +43,35 @@ _SIDE_CALCULATORS = {
 class SubplotsAutoLayout:
     """Per-figure draw-event listener that resizes the figure to fit decorations."""
 
-    def __init__(self, fig, layout: FigureLayout, locked: Set[str]):
+    def __init__(
+        self,
+        fig,
+        layout: FigureLayout,
+        locked: Set[str],
+        locked_positions: Optional[Dict[str, FrozenSet[int]]] = None,
+    ):
+        """
+        Parameters
+        ----------
+        locked : set of str
+            Sides whose reservation is FULLY locked (every position pinned).
+            Names are auto-measurable side names (``title_space``,
+            ``xlabel_space``, ``ylabel_space``, ``right``) and the legend /
+            suptitle scalars enumerated in ``_ALL_SIDES``.
+        locked_positions : dict[str, frozenset[int]], optional
+            Per-position locks for the four auto-measurable per-cell sides.
+            ``locked_positions["xlabel_space"] = frozenset({0})`` means
+            ``xlabel_space[0]`` is pinned to its initial value while the
+            remaining positions auto-measure. A side appearing in ``locked``
+            takes precedence (whole-side lock). Empty / missing entries
+            mean "no per-position lock".
+        """
         self._fig = fig
         self._layout = layout
         self._locked = set(locked)
+        self._locked_positions: Dict[str, FrozenSet[int]] = {
+            side: frozenset(idxs) for side, idxs in (locked_positions or {}).items() if idxs
+        }
         self._updating = False
 
         fig._publiplots_layout = layout
@@ -121,9 +146,17 @@ class SubplotsAutoLayout:
         for side, (axis_kind, calc) in _SIDE_CALCULATORS.items():
             if side in self._locked:
                 continue
+            locked_idxs = self._locked_positions.get(side, frozenset())
+            current = getattr(self._layout, side)
             if axis_kind == "row":
                 per = []
-                for row in axes_matrix:
+                for r, row in enumerate(axes_matrix):
+                    if r in locked_idxs:
+                        # Preserve the user-supplied locked value verbatim;
+                        # tightbbox padding for an empty/blank-decoration
+                        # row would otherwise re-inflate this slot every draw.
+                        per.append(current[r])
+                        continue
                     max_px = 0.0
                     for ax in row:
                         max_px = max(max_px, self._side_extent(ax, calc, managed))
@@ -133,6 +166,9 @@ class SubplotsAutoLayout:
                 ncols = len(axes_matrix[0])
                 per = []
                 for c in range(ncols):
+                    if c in locked_idxs:
+                        per.append(current[c])
+                        continue
                     max_px = 0.0
                     for row in axes_matrix:
                         ax = row[c]
@@ -359,13 +395,17 @@ class SubplotsAutoLayout:
             return
         ax = group.anchor
         r, c = self._find_ax_indices(ax, axes_matrix)
+        idx = c if axis_kind == "col" else r
+        if idx in self._locked_positions.get(cell_field, frozenset()):
+            # Per-position lock: this slot is pinned (e.g., JointGrid's
+            # joint↔marginal gap edges). Don't grow it for legend overhang.
+            return
         # Read the pure-decoration reservation BEFORE we write our
         # overhang into it. _measure() already filled ``measured[cell_field]``
         # from _side_extent (which uses set_in_layout(False) on managed
         # overlays, i.e., OUR legend, so the measured slot is the
         # anchor's decoration size WITHOUT our band).
         existing = list(measured.get(cell_field, getattr(self._layout, cell_field)))
-        idx = c if axis_kind == "col" else r
         pure_decoration_mm = existing[idx]
         # For side='right' there is no decoration past ax.x1 (tick labels
         # live inside ax), so this is already 0. For side='top' it equals
@@ -394,6 +434,8 @@ class SubplotsAutoLayout:
         r, c = self._find_ax_indices(group.anchor, axes_matrix)
         existing = measured.get(cell_field, getattr(self._layout, cell_field))
         idx = c if axis_kind == "col" else r
+        if idx in self._locked_positions.get(cell_field, frozenset()):
+            return
         pure_decoration_mm = existing[idx] - group._band_contribution_mm
         if pure_decoration_mm < 0:
             pure_decoration_mm = 0.0

@@ -71,6 +71,7 @@ from publiplots.utils.legend_group import (
     legend,
 )
 from publiplots.layout import subplots
+from publiplots.layout.jointgrid import JointGrid, jointplot
 # Register custom fonts
 from publiplots.utils.fonts import _register_fonts
 _register_fonts()
@@ -119,6 +120,8 @@ __all__ = [
     "heatmap",
     "complex_heatmap",
     "dendrogram",
+    "jointplot",
+    "JointGrid",
     # I/O utilities
     "savefig",
     "save_multiple",
