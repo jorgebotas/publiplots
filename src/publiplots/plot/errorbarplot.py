@@ -8,10 +8,11 @@ background marker for occlusion, and continuous-hue colorbar stashing
 — is delegated to :func:`pp.scatterplot`. Errorbar stems are layered
 *below* the markers (``zorder=1`` vs the scatter's ``zorder=2``).
 
-When a categorical ``hue=`` is supplied, stems are drawn per-group with
-``ecolor`` set from the resolved palette so each measurement's
-uncertainty inherits its group's color. Without hue (or with
-continuous hue), stems use the neutral ``rcParams['edgecolor']``.
+Stems match the marker color: categorical ``hue=`` issues one stem
+group per level (``ecolor=palette[level]``); numeric ``hue=`` issues
+one stem per point (``ecolor=cmap(norm(value))``); no ``hue=`` uses
+the neutral ``rcParams['edgecolor']``. Caller-supplied
+``errorbar_kws['ecolor']`` always wins.
 """
 
 from __future__ import annotations
@@ -64,12 +65,21 @@ def errorbarplot(
     optional x- and/or y-direction uncertainty rendered as thin stems
     below the marker.
 
-    **Stem coloring.** With a categorical ``hue=``, stems are issued
-    per-group with ``ecolor`` set to the group's palette color so each
-    measurement's uncertainty matches its marker. Without ``hue=`` (or
-    with a continuous numeric ``hue=``) stems use a neutral
-    ``rcParams['edgecolor']`` — per-point colored stems would require N
-    ``ax.errorbar`` calls and produce visually noisy rainbow striping.
+    **Stem coloring.** Stems match the marker color so the uncertainty
+    visually attaches to the measurement:
+
+    - **Categorical ``hue=``**: stems issued per-group with ``ecolor``
+      set to the group's palette color (one ``ax.errorbar`` call per
+      level).
+    - **Continuous numeric ``hue=``**: stems issued per-point with
+      ``ecolor`` resolved from the cmap and norm (one ``ax.errorbar``
+      call per row — acceptable since errorbar plots typically show
+      <100 points).
+    - **No ``hue=``**: single ``ax.errorbar`` call with
+      ``ecolor=rcParams['edgecolor']``.
+    - **``errorbar_kws={'ecolor': ...}``** always wins over the above.
+      Useful when a uniform stem color is wanted regardless of hue
+      (e.g. neutral stems on a categorical hue plot).
 
     **Layering.** Errorbar stems use ``zorder=1``; scatter markers use
     ``zorder=2`` (the default from :func:`pp.scatterplot`). The marker
@@ -101,7 +111,8 @@ def errorbarplot(
     hue : str, optional
         Column name for marker color grouping. Categorical values
         produce per-group stem colors via ``palette``; numeric values
-        produce a continuous colorbar (stems remain neutral).
+        produce a continuous colorbar with per-point stem colors
+        resolved from the cmap.
     palette : str, dict, or list, optional
         Color palette for hue values. See :func:`pp.scatterplot`.
     color : str, optional
@@ -273,15 +284,25 @@ def errorbarplot(
     #   - ecolor in user errorbar_kws -> single call, that color
     #     (caller wins; lets users force neutral stems on hue plots)
     #   - categorical hue -> per-group call with ecolor=palette[level]
-    #   - else (no hue / continuous hue) -> single call, ecolor=edgecolor
+    #   - continuous hue -> per-point call with ecolor=cmap(norm(value))
+    #     (one ax.errorbar call per row; only choice that matches stems
+    #     to the marker cmap. Acceptable since errorbar plots typically
+    #     have <100 points.)
+    #   - else (no hue) -> single call, ecolor=edgecolor
     user_ecolor = ekws_user.pop("ecolor", None)
-    has_categorical_hue = (
-        hue is not None
-        and user_ecolor is None
-        and is_categorical(data[hue])
-    )
 
-    if has_categorical_hue:
+    if user_ecolor is not None or hue is None:
+        ax.errorbar(
+            np.asarray(data[x]),
+            np.asarray(data[y]),
+            xerr=xerr_arr,
+            yerr=yerr_arr,
+            fmt="none",
+            zorder=1,
+            ecolor=user_ecolor if user_ecolor is not None else edgecolor,
+            **ekws_user,
+        )
+    elif is_categorical(data[hue]):
         levels = data[hue].unique()
         palette_map = resolve_palette_map(values=levels, palette=palette)
         for level in levels:
@@ -299,16 +320,35 @@ def errorbarplot(
                 **ekws_user,
             )
     else:
-        ax.errorbar(
-            np.asarray(data[x]),
-            np.asarray(data[y]),
-            xerr=xerr_arr,
-            yerr=yerr_arr,
-            fmt="none",
-            zorder=1,
-            ecolor=user_ecolor if user_ecolor is not None else edgecolor,
-            **ekws_user,
-        )
+        # Continuous numeric hue. Resolve cmap+norm directly from the
+        # hue column (NOT from the foreground PathCollection's face
+        # colors — those have been composited over the background
+        # marker's white at the user's alpha, so reading them back
+        # would give washed-out stems).
+        from matplotlib import colormaps
+        from matplotlib.colors import Normalize
+        values = np.asarray(data[hue], dtype=float)
+        norm = hue_norm
+        if norm is None:
+            norm = Normalize(vmin=values.min(), vmax=values.max())
+        elif isinstance(norm, tuple):
+            norm = Normalize(vmin=norm[0], vmax=norm[1])
+        cmap = colormaps[palette] if isinstance(palette, str) else palette
+        stem_colors = cmap(norm(values))
+
+        xs = np.asarray(data[x])
+        ys = np.asarray(data[y])
+        for i in range(len(data)):
+            xerr_i = _slice_err(xerr_arr, np.array([i]))
+            yerr_i = _slice_err(yerr_arr, np.array([i]))
+            ax.errorbar(
+                xs[i:i + 1], ys[i:i + 1],
+                xerr=xerr_i, yerr=yerr_i,
+                fmt="none",
+                zorder=1,
+                ecolor=stem_colors[i],
+                **ekws_user,
+            )
 
     if title is not None:  ax.set_title(title)
     if xlabel is not None: ax.set_xlabel(xlabel)

@@ -498,27 +498,31 @@ def test_categorical_hue_colors_stems_per_group(err_df):
     assert actual_colors == expected_colors
 
 
-def test_continuous_hue_keeps_neutral_stems(err_df):
-    """With a numeric ``hue=`` (continuous, colorbar mode), stems remain
-    the neutral rcParams edgecolor — per-point colored stems would need
-    N ax.errorbar calls."""
-    saved_edge = pp.rcParams["edgecolor"]
-    try:
-        pp.rcParams["edgecolor"] = "#444444"
-        ax = _errorbar(
-            data=err_df, x="x", y="y", yerr="yerr",
-            hue="score", palette="viridis",
-        )
-        containers = _errorbar_containers(ax)
-        # Continuous hue -> single ax.errorbar call, single container.
-        assert len(containers) == 1
-        actual = np.asarray(containers[0].lines[2][0].get_color())
-        expected = np.asarray(mcolors.to_rgba("#444444"))
-        if actual.ndim == 2:
-            actual = actual[0]
-        assert np.allclose(actual, expected, atol=1e-6)
-    finally:
-        pp.rcParams["edgecolor"] = saved_edge
+def test_continuous_hue_colors_stems_per_point(err_df):
+    """With a numeric ``hue=`` (continuous colorbar mode), stems are
+    issued per-point with ``ecolor`` resolved from the cmap+norm so
+    each stem matches its marker color. One ErrorbarContainer per row."""
+    ax = _errorbar(
+        data=err_df, x="x", y="y", yerr="yerr",
+        hue="score", palette="viridis",
+    )
+    containers = _errorbar_containers(ax)
+    # One container per row (continuous hue takes the per-point path).
+    assert len(containers) == len(err_df)
+
+    # Stem colors should span the cmap. Walk all containers and check
+    # the colors aren't all identical (which would mean we collapsed
+    # to a single neutral color).
+    colors = []
+    for cont in containers:
+        c = np.asarray(cont.lines[2][0].get_color())
+        if c.ndim == 2:
+            c = c[0]
+        colors.append(tuple(np.round(c, 4)))
+    # If continuous-hue routing worked, we expect ~N distinct colors.
+    assert len(set(colors)) >= 3, (
+        f"continuous hue stems should span the cmap, got {len(set(colors))} unique colors"
+    )
 
 
 def test_user_ecolor_overrides_categorical_hue(err_df):

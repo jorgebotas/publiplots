@@ -22,13 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **xerr / yerr semantics** mirror matplotlib: `None`, a column name
     (symmetric), a scalar/sequence (raw values), or a 2-tuple of
     column names `(lo, hi)` (asymmetric).
-  - **Stem color**:
-    - Categorical `hue=` → stems issued per-group with `ecolor` set
-      from the resolved palette (one `ax.errorbar` call per level).
-    - No `hue=` or numeric `hue=` (continuous colorbar mode) → single
-      neutral stem color from `rcParams['edgecolor']`.
-    - `errorbar_kws={'ecolor': ...}` always wins (e.g. force neutral
-      stems on a categorical hue plot for less visual noise).
+  - **Stem color** matches the marker:
+    - Categorical `hue=` → one `ax.errorbar` call per level with
+      `ecolor=palette[level]`.
+    - Continuous numeric `hue=` → one `ax.errorbar` call per point
+      with `ecolor` resolved from the cmap and norm.
+    - No `hue=` → single call with `ecolor=rcParams['edgecolor']`.
+    - `errorbar_kws={'ecolor': ...}` always wins (e.g. force a
+      uniform neutral stem color on any hue plot).
   - **`background_marker=True`** by default: an opaque background twin
     is drawn behind each marker so the stem does not show through the
     alpha-faded marker face. Pass `background_marker=False` (or via

@@ -10,9 +10,10 @@ errors, and asymmetric bounds via tuple-of-columns. Marker rendering
 is delegated to :func:`publiplots.scatterplot`, so categorical and
 continuous ``hue=``, ``palette=``, the publiplots double-layer alpha
 convention, and the opaque background-marker for occlusion all work
-out of the box. With a categorical ``hue=``, errorbar stems pick up
-each group's palette color; with no hue (or a continuous numeric
-``hue=``), stems use the neutral ``rcParams['edgecolor']``.
+out of the box. Stems match their marker color: categorical ``hue=``
+groups stems by level, continuous numeric ``hue=`` colors each stem
+from the cmap, and no ``hue=`` falls back to the neutral
+``rcParams['edgecolor']``.
 """
 
 import numpy as np
@@ -155,9 +156,9 @@ pp.show()
 # Pass a numeric column as ``hue=`` to color markers along a continuous
 # scale. ``pp.scatterplot`` (delegated to internally) registers a
 # colorbar via the publiplots layout reactor, so the colorbar reserves
-# space without colliding with the axes. Stems remain neutral
-# (``rcParams['edgecolor']``) — per-point colored stems would require
-# one ``ax.errorbar`` call per row and produce visually noisy stripes.
+# space without colliding with the axes. Each stem inherits its
+# marker's cmap color (one ``ax.errorbar`` call per point) so the
+# uncertainty visually attaches to the measurement.
 
 rng = np.random.default_rng(4)
 n = 25
