@@ -14,7 +14,7 @@ publiplots applies its publication-grade rcParams on import. Use
 :func:`publiplots.reset_style` to revert to matplotlib defaults.
 """
 
-__version__ = "0.11.0"
+__version__ = "0.11.1"
 __author__ = "Jorge Botas"
 __license__ = "MIT"
 __copyright__ = "Copyright 2025, Jorge Botas"
@@ -30,6 +30,7 @@ from publiplots.plot.kdeplot import kdeplot
 from publiplots.plot.scatter import scatterplot
 from publiplots.plot.regplot import regplot
 from publiplots.plot.residplot import residplot
+from publiplots.plot.errorbar import errorbar
 from publiplots.plot.point import pointplot
 from publiplots.plot.line import lineplot
 from publiplots.plot.box import boxplot
@@ -108,6 +109,7 @@ __all__ = [
     "scatterplot",
     "regplot",
     "residplot",
+    "errorbar",
     "pointplot",
     "lineplot",
     "boxplot",
