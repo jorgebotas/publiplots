@@ -25,13 +25,13 @@ All accept `data=`, `x=`, `y=`, `hue=`, `palette=`, `ax=`, `title=`, `legend_kws
 By plot family:
 - **Categorical:** `barplot`, `boxplot`, `violinplot`, `raincloudplot`, `stripplot`, `swarmplot`, `pointplot`. Since 0.11.2, `boxplot` and `violinplot` also accept univariate calls (only `x=` or only `y=`) — they synthesize a constant categorical column for the missing axis, so all 2D features (`annotate`, `hue`, `dodge`, side-clip, legends) keep working in 1D, and both are usable as `pp.JointGrid.plot_marginals(...)` functions.
 - **Relational:** `scatterplot`, `lineplot`, `errorbarplot`, `regplot`, `residplot`.
-- **Distribution:** `histplot`, `kdeplot`, `hexbinplot`.
+- **Distribution:** `histplot`, `kdeplot`, `hexbinplot`. Since 0.11.3, `histplot` accepts both `x=` and `y=` simultaneously to render a 2D bivariate heatmap (QuadMesh) with a continuous-hue colorbar — a discretized alternative to `hexbinplot`. New 2D-only kwargs: `cmap=`, `vmin=`, `vmax=` (silently ignored in 1D).
 - **Matrix:** `heatmap`, `complex_heatmap`, `dendrogram`.
 - **Set:** `venn`, `upsetplot`.
 
 ### Composition
 - `pp.JointGrid(data, *, x, y, height=80, ratio=5, space=None)` — three-axes composition: large bivariate main panel + thin top and right marginals (shared axes, hidden corner). Methods `.plot_joint(fn, **kw)` / `.plot_marginals(fn, **kw)` / `.plot(joint_fn, marginal_fn, **kw)` forward to any compatible `pp.*` plot function via `ax=`. Chainable.
-- `pp.jointplot(data, *, x, y, kind='scatter', height=80, ratio=5, space=None, **kw)` — convenience wrapper. `kind` ∈ `{'scatter', 'hex', 'kde', 'reg', 'resid'}`. Returns the constructed `JointGrid`.
+- `pp.jointplot(data, *, x, y, kind='scatter', height=80, ratio=5, space=None, **kw)` — convenience wrapper. `kind` ∈ `{'scatter', 'hex', 'hist', 'kde', 'reg', 'resid'}`. Returns the constructed `JointGrid`. (`'hist'` since 0.11.3 — 2D histogram joint + 1D histogram marginals.)
 
 ### Layout
 - `pp.subplots(nrows, ncols, *, axes_size=(w_mm, h_mm), width_ratios=None, height_ratios=None, sharex, sharey, title_space, xlabel_space, ylabel_space, right, hspace, wspace, outer_pad, **fig_kw)` — the canonical factory. Returns `(fig, axes)` with `plt.subplots`-style squeezing.
@@ -118,7 +118,7 @@ pp.scatterplot(data=df, x="x", y="y", hue="group",
 
 ```python
 # Convenience wrapper — picks joint+marginal fns from a kind alias.
-pp.jointplot(data=df, x="x", y="y", kind="hex")  # or 'scatter', 'kde', 'reg', 'resid'
+pp.jointplot(data=df, x="x", y="y", kind="hex")  # or 'scatter', 'hist', 'kde', 'reg', 'resid'
 
 # Class API — mix any compatible pp.* functions.
 g = pp.JointGrid(data=df, x="x", y="y", height=80, ratio=5)

@@ -201,3 +201,24 @@ ax = pp.histplot(
     ylabel="Value",
 )
 pp.show()
+
+# %%
+# 2D Histogram (Bivariate)
+# ------------------------
+# Pass both ``x=`` and ``y=`` to render a 2D histogram — a heatmap-
+# like bivariate density readout where each cell colors by the count
+# (or whatever ``stat=`` resolves to). The colorbar lands on the
+# figure-level legend band on the right; ``cmap=`` controls the
+# palette and falls back to ``rcParams["image.cmap"]`` when omitted
+# (mirrors :func:`pp.hexbinplot`'s convention). With many points,
+# this is a useful alternative to ``pp.hexbinplot`` when you want
+# explicit rectangular bins.
+
+rng = np.random.default_rng(0)
+n = 5_000
+cluster_a = rng.multivariate_normal([-1.5, -1.0], [[1.0, 0.4], [0.4, 1.0]], n // 2)
+cluster_b = rng.multivariate_normal([2.0, 1.5], [[1.2, -0.3], [-0.3, 0.8]], n // 2)
+mixture = pd.DataFrame(np.vstack([cluster_a, cluster_b]), columns=["x", "y"])
+
+ax = pp.histplot(data=mixture, x="x", y="y", cmap="magma")
+pp.show()

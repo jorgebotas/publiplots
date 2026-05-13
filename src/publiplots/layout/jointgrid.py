@@ -285,7 +285,7 @@ def jointplot(
         Long-form frame.
     x, y : str
         Column names for the bivariate plot.
-    kind : {"scatter", "hex", "kde", "reg", "resid"}, default "scatter"
+    kind : {"scatter", "hex", "hist", "kde", "reg", "resid"}, default "scatter"
         Which joint + marginal plot functions to draw:
 
         - ``"scatter"`` — :func:`publiplots.scatterplot` joint +
@@ -293,16 +293,15 @@ def jointplot(
         - ``"hex"`` — :func:`publiplots.hexbinplot` joint (with colorbar
           routed to a figure-level band) + :func:`publiplots.histplot`
           marginals.
+        - ``"hist"`` — :func:`publiplots.histplot` 2D heatmap joint +
+          :func:`publiplots.histplot` 1D histogram marginals. A
+          discretized alternative to ``"hex"``.
         - ``"kde"`` — :func:`publiplots.kdeplot` 2D contour joint +
           :func:`publiplots.kdeplot` 1D density marginals.
         - ``"reg"`` — :func:`publiplots.regplot` joint +
           :func:`publiplots.histplot` marginals (regplot has no 1D mode).
         - ``"resid"`` — :func:`publiplots.residplot` joint +
           :func:`publiplots.histplot` marginals.
-
-        ``"hist"`` is deferred until publiplots ships a 2D histogram
-        primitive; compose a :class:`JointGrid` directly with
-        :func:`publiplots.histplot` and a 2D plot in the meantime.
     height : float, default 80
         Total grid budget in mm (square).
     ratio : int, default 5
@@ -324,8 +323,7 @@ def jointplot(
     if kind not in _KIND_REGISTRY:
         raise ValueError(
             f"kind={kind!r} not supported. Available kinds: "
-            f"{sorted(_KIND_REGISTRY)}. "
-            f"('hist' will land when publiplots' histplot grows a 2D mode.)"
+            f"{sorted(_KIND_REGISTRY)}."
         )
     joint_fn, marginal_fn = _KIND_REGISTRY[kind]
     grid = JointGrid(data=data, x=x, y=y, height=height, ratio=ratio, space=space)
@@ -350,6 +348,7 @@ def _ensure_kind_registry() -> None:
     _KIND_REGISTRY.update({
         "scatter": (scatterplot,  histplot),
         "hex":     (hexbinplot,   histplot),
+        "hist":    (histplot,     histplot),
         "kde":     (kdeplot,      kdeplot),
         "reg":     (regplot,      histplot),
         "resid":   (residplot,    histplot),

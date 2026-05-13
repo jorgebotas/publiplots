@@ -12,7 +12,7 @@ import pytest
 from matplotlib.axes import Axes
 
 import publiplots as pp
-from publiplots.utils.legend_entries import get_entries
+from publiplots.utils.legend_entries import get_entries, is_continuous_hue
 
 
 @pytest.fixture(autouse=True)
@@ -57,7 +57,7 @@ def test_rejects_figsize(hist_df):
 
 
 def test_requires_x_or_y(hist_df):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="At least one of"):
         pp.histplot(data=hist_df)
 
 
@@ -387,3 +387,88 @@ def test_horizontal_y(hist_df):
     # it to "" by default — but the xlabel should be whatever the stat
     # name resolved to, i.e. not the binned variable).
     assert isinstance(ax.get_ylabel(), str)
+
+
+# ---- 2D mode ----
+
+@pytest.fixture
+def df_2d():
+    rng = np.random.default_rng(0)
+    n = 1000
+    return pd.DataFrame({
+        "x": rng.normal(0, 1, n),
+        "y": rng.normal(0, 1, n),
+        "g": rng.choice(["a", "b"], size=n),
+    })
+
+
+def test_2d_returns_quadmesh(df_2d):
+    from matplotlib.collections import QuadMesh
+    ax = pp.histplot(data=df_2d, x="x", y="y")
+    assert any(isinstance(c, QuadMesh) for c in ax.collections)
+
+
+def test_2d_default_cmap_from_rcparams(df_2d, monkeypatch):
+    from matplotlib.collections import QuadMesh
+    monkeypatch.setitem(plt.rcParams, "image.cmap", "magma")
+    ax = pp.histplot(data=df_2d, x="x", y="y")
+    mesh = next(c for c in ax.collections if isinstance(c, QuadMesh))
+    assert mesh.get_cmap().name == "magma"
+
+
+def test_2d_explicit_cmap(df_2d):
+    from matplotlib.collections import QuadMesh
+    ax = pp.histplot(data=df_2d, x="x", y="y", cmap="rocket")
+    mesh = next(c for c in ax.collections if isinstance(c, QuadMesh))
+    assert mesh.get_cmap().name == "rocket"
+
+
+def test_2d_vmin_vmax(df_2d):
+    from matplotlib.collections import QuadMesh
+    ax = pp.histplot(data=df_2d, x="x", y="y", vmin=0, vmax=10)
+    mesh = next(c for c in ax.collections if isinstance(c, QuadMesh))
+    assert mesh.norm.vmin == 0
+    assert mesh.norm.vmax == 10
+
+
+def test_2d_legend_stashes_continuous_hue_colorbar(df_2d):
+    ax = pp.histplot(data=df_2d, x="x", y="y", stat="density")
+    entries = get_entries(ax)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.kind == "hue"
+    assert is_continuous_hue(entry.handles)
+    assert entry.name == "density"
+
+
+def test_2d_with_hue_stashes_categorical_rectangles(df_2d):
+    ax = pp.histplot(data=df_2d, x="x", y="y", hue="g")
+    entries = get_entries(ax)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.kind == "hue"
+    assert not is_continuous_hue(entry.handles)
+    assert len(entry.handles) == 2  # two hue levels
+
+
+def test_2d_annotate_raises(df_2d):
+    with pytest.raises(NotImplementedError, match="annotate"):
+        pp.histplot(data=df_2d, x="x", y="y", annotate=True)
+
+
+def test_2d_element_step_raises(df_2d):
+    with pytest.raises(NotImplementedError, match="element"):
+        pp.histplot(data=df_2d, x="x", y="y", element="step")
+
+
+def test_2d_alpha_default_is_one(df_2d):
+    from matplotlib.collections import QuadMesh
+    ax = pp.histplot(data=df_2d, x="x", y="y")
+    mesh = next(c for c in ax.collections if isinstance(c, QuadMesh))
+    a = mesh.get_alpha()
+    assert a is None or a == 1.0
+
+
+def test_neither_x_nor_y_raises(df_2d):
+    with pytest.raises(ValueError, match="At least one of"):
+        pp.histplot(data=df_2d)
