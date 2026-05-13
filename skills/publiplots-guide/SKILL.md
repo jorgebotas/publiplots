@@ -18,13 +18,13 @@ publiplots is a publication-ready plotting library with a seaborn-shaped API but
 ## Public API surface (`pp.*`)
 
 ### Plots
-`barplot`, `scatterplot`, `pointplot`, `lineplot`, `regplot`, `residplot`, `boxplot`, `swarmplot`, `stripplot`, `violinplot`, `raincloudplot`, `histplot`, `kdeplot`, `hexbinplot`, `venn`, `upsetplot`, `heatmap`, `complex_heatmap`, `dendrogram`.
+`barplot`, `scatterplot`, `errorbar`, `pointplot`, `lineplot`, `regplot`, `residplot`, `boxplot`, `swarmplot`, `stripplot`, `violinplot`, `raincloudplot`, `histplot`, `kdeplot`, `hexbinplot`, `venn`, `upsetplot`, `heatmap`, `complex_heatmap`, `dendrogram`.
 
 All accept `data=`, `x=`, `y=`, `hue=`, `palette=`, `ax=`, `title=`, `legend_kws={}`. None accept `figsize=` — it raises `TypeError` (see `src/publiplots/layout/subplots.py::reject_figsize`).
 
 By plot family:
 - **Categorical:** `barplot`, `boxplot`, `violinplot`, `raincloudplot`, `stripplot`, `swarmplot`, `pointplot`.
-- **Relational:** `scatterplot`, `lineplot`, `regplot`, `residplot`.
+- **Relational:** `scatterplot`, `lineplot`, `errorbar`, `regplot`, `residplot`.
 - **Distribution:** `histplot`, `kdeplot`, `hexbinplot`.
 - **Matrix:** `heatmap`, `complex_heatmap`, `dendrogram`.
 - **Set:** `venn`, `upsetplot`.
@@ -161,13 +161,13 @@ pp.reset_style()
 
 ## When to read the code directly
 
-publiplots has 19 plot functions plus the `JointGrid` composition, each with kind-specific kwargs. When asked about a specific plot kind, Read `src/publiplots/plot/<kind>.py` for the signature:
+publiplots has 20 plot functions plus the `JointGrid` composition, each with kind-specific kwargs. When asked about a specific plot kind, Read `src/publiplots/plot/<kind>.py` for the signature:
 
 - Categorical: `src/publiplots/plot/{bar,box,violin,raincloud,strip,swarm,point}.py`.
-- Relational: `src/publiplots/plot/{scatter,line,regplot,residplot}.py`.
+- Relational: `src/publiplots/plot/{scatter,line,errorbar,regplot,residplot}.py`.
 - Distribution: `src/publiplots/plot/{hist,kdeplot,hexbin}.py`.
 - Matrix: `src/publiplots/plot/heatmap.py` (also `complex_heatmap` and `dendrogram` in the same file).
 - Set: `src/publiplots/plot/{venn,upset}.py`.
 - Composition: `src/publiplots/layout/jointgrid.py` (`JointGrid` class + `jointplot` wrapper).
 
-For the full `pp.legend()` signature and every `MultiAxesLegendGroup` option, see `src/publiplots/utils/legend_group.py`. For canonical legend patterns with running code, the authoritative reference is `examples/plots/plot_23_legend_placement.py` (14 worked sections). For JointGrid usage patterns, see `examples/plots/plot_08_jointgrid.py` (7 worked sections covering all 5 `kind=` aliases plus the class API).
+For the full `pp.legend()` signature and every `MultiAxesLegendGroup` option, see `src/publiplots/utils/legend_group.py`. For canonical legend patterns with running code, the authoritative reference is `examples/plots/plot_24_legend_placement.py` (14 worked sections). For JointGrid usage patterns, see `examples/plots/plot_09_jointgrid.py` (7 worked sections covering all 5 `kind=` aliases plus the class API). For 2D scatter-with-uncertainty patterns, see `examples/plots/plot_06_errorbar.py` (7 worked sections).
