@@ -23,7 +23,7 @@ publiplots is a publication-ready plotting library with a seaborn-shaped API but
 All accept `data=`, `x=`, `y=`, `hue=`, `palette=`, `ax=`, `title=`, `legend_kws={}`. None accept `figsize=` — it raises `TypeError` (see `src/publiplots/layout/subplots.py::reject_figsize`).
 
 By plot family:
-- **Categorical:** `barplot`, `boxplot`, `violinplot`, `raincloudplot`, `stripplot`, `swarmplot`, `pointplot`.
+- **Categorical:** `barplot`, `boxplot`, `violinplot`, `raincloudplot`, `stripplot`, `swarmplot`, `pointplot`. Since 0.11.2, `boxplot` and `violinplot` also accept univariate calls (only `x=` or only `y=`) — they synthesize a constant categorical column for the missing axis, so all 2D features (`annotate`, `hue`, `dodge`, side-clip, legends) keep working in 1D, and both are usable as `pp.JointGrid.plot_marginals(...)` functions.
 - **Relational:** `scatterplot`, `lineplot`, `errorbarplot`, `regplot`, `residplot`.
 - **Distribution:** `histplot`, `kdeplot`, `hexbinplot`.
 - **Matrix:** `heatmap`, `complex_heatmap`, `dendrogram`.
@@ -124,7 +124,15 @@ pp.jointplot(data=df, x="x", y="y", kind="hex")  # or 'scatter', 'kde', 'reg', '
 g = pp.JointGrid(data=df, x="x", y="y", height=80, ratio=5)
 g.plot_joint(pp.hexbinplot, gridsize=20)
 g.plot_marginals(pp.histplot, bins=30, kde=True)
+
+# Box / violin marginals (since 0.11.2) — explicit class API only;
+# pp.jointplot has no kind="box" / kind="violin" alias yet.
+g = pp.JointGrid(data=df, x="x", y="y")
+g.plot_joint(pp.scatterplot)
+g.plot_marginals(pp.violinplot)   # or pp.boxplot
 ```
+
+Valid `pp.JointGrid.plot_marginals(...)` functions (1D-capable): `pp.histplot`, `pp.kdeplot`, `pp.boxplot`, `pp.violinplot`. The marginal function must accept `data=`, `x=` *or* `y=` (not both), and `ax=`.
 
 **Save a figure.** No implicit tight-crop; the canvas is already mm-precise.
 
