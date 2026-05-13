@@ -83,6 +83,31 @@ def regplot(
     plot loops over hue levels and draws a separate regression per group
     onto the same axes.
 
+    The plot has three independent visual layers, each with its own
+    styling bucket:
+
+    +-------------+-------------------------+-------------------------+
+    | Layer       | Artist                  | Styling kwarg           |
+    +=============+=========================+=========================+
+    | scatter     | ``PathCollection``      | ``scatter_kws``         |
+    +-------------+-------------------------+-------------------------+
+    | fit line    | ``Line2D``              | ``line_kws``            |
+    +-------------+-------------------------+-------------------------+
+    | CI band     | ``FillBetweenPolyColl.``| ``ci_kws``              |
+    +-------------+-------------------------+-------------------------+
+
+    The top-level ``alpha``, ``edgecolor``, ``linewidth``, ``marker`` and
+    ``color`` kwargs are convenience shortcuts that publiplots routes to
+    the appropriate layer's bucket via ``setdefault`` (so anything you
+    pass directly in ``scatter_kws`` / ``line_kws`` / ``ci_kws`` always
+    wins).
+
+    Unlike seaborn's ``regplot``, the ``alpha`` knob applies only to the
+    scatter face — edges stay opaque (the publiplots double-layer
+    convention shared by ``pp.scatterplot``, ``pp.histplot``, etc.). The
+    fit line stays at full opacity, and the CI band keeps seaborn's
+    light alpha unless overridden via ``ci_kws['alpha']``.
+
     Parameters
     ----------
     data : DataFrame
@@ -178,6 +203,29 @@ def regplot(
     Axes
         The axes where the plot was drawn.
 
+    Notes
+    -----
+    **Layer-specific styling**: prefer the per-layer ``*_kws`` buckets
+    when you want fine-grained control. The top-level convenience
+    kwargs only seed defaults via ``setdefault``:
+
+    * scatter face transparency  → ``alpha`` (or ``scatter_kws['alpha']``)
+    * scatter marker shape       → ``marker``
+    * scatter edge stroke        → ``edgecolor`` + ``linewidth``
+    * fit line                   → ``line_kws``  (e.g. ``{'linestyle': '--'}``)
+    * CI band                    → ``ci_kws``    (e.g. ``{'alpha': 0.6}``)
+
+    **statsmodels dependency**: ``lowess=True``, ``robust=True``, and
+    ``logistic=True`` require ``statsmodels``. Install with
+    ``pip install publiplots[regression]``. Without it, those flags
+    raise ``RuntimeError`` from seaborn's ``_check_statsmodels``.
+
+    **Hue handling**: only categorical hue is supported. Numeric hue
+    columns emit ``UserWarning`` and fall back to a single-color
+    regression — a colorbar would not meaningfully composite with N
+    regression lines. Use ``pp.scatterplot(hue=, palette='viridis')``
+    + a separate non-hued ``pp.regplot`` overlay if you need both.
+
     Examples
     --------
     Basic linear fit:
@@ -198,6 +246,45 @@ def regplot(
     ...     data=df, x="x", y="y",
     ...     x_bins=10, x_estimator=np.mean,
     ... )
+
+    Bolder CI band (de-emphasize the regression line, emphasize the
+    uncertainty):
+
+    >>> ax = pp.regplot(data=df, x="x", y="y", ci_kws={"alpha": 0.6})
+
+    De-emphasize CI bands when overlaying multiple groups (full-strength
+    bands stack into mud):
+
+    >>> ax = pp.regplot(
+    ...     data=df, x="x", y="y", hue="group",
+    ...     palette="pastel", ci_kws={"alpha": 0.1},
+    ... )
+
+    Decouple band color from line color (e.g. for accessibility / print
+    contrast):
+
+    >>> ax = pp.regplot(
+    ...     data=df, x="x", y="y",
+    ...     line_kws={"color": "navy"},
+    ...     ci_kws={"color": "#888", "alpha": 0.3},
+    ... )
+
+    Custom marker, transparent face, opaque edge — full publiplots
+    convention:
+
+    >>> ax = pp.regplot(
+    ...     data=df, x="x", y="y",
+    ...     marker="^", alpha=0.4, edgecolor="black",
+    ... )
+
+    Suppress the regression line entirely (scatter + CI only — useful for
+    showing uncertainty without committing to a fit visually):
+
+    >>> ax = pp.regplot(data=df, x="x", y="y", line_kws={"alpha": 0})
+
+    Or suppress just the CI band:
+
+    >>> ax = pp.regplot(data=df, x="x", y="y", ci=None)
 
     See Also
     --------
