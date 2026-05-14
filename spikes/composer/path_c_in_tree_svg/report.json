@@ -1,0 +1,14 @@
+{
+  "path": "C_in_tree_svg",
+  "file_size_bytes": 48394,
+  "root_tag": "{http://www.w3.org/2000/svg}svg",
+  "n_g_elements": 60,
+  "n_text_elements": 2,
+  "n_circle_elements": 2,
+  "manual_checks_required": [
+    "Open path_c_composed.svg in Inkscape: schematic appears in left half, scatter on right.",
+    "Open path_c_composed.svg in Firefox: same.",
+    "Inkscape > Edit > Find: 'test schematic' must hit a text element (vectors preserved).",
+    "Save as a different filename in Inkscape; reopen \u2014 should round-trip cleanly without warnings."
+  ]
+}
