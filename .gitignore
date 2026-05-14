@@ -217,3 +217,8 @@ __marimo__/
 
 # Git worktrees
 .worktrees/
+
+# Composer spike (outputs are throwaway; scripts are committed)
+spikes/composer/outputs/
+spikes/composer/**/__pycache__/
+spikes/composer/**/*.pyc
