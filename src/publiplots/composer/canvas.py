@@ -11,14 +11,9 @@ title decoration reservation (per spike Finding 4 — without it, axis
 decorations clip at the canvas mediabox edge).
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
-import numpy as np
-
-from publiplots.composer.exceptions import (
-    ComposerError,
-    ComposerOverflowError,
-)
+from publiplots.composer.exceptions import ComposerOverflowError
 from publiplots.composer.panels import Panel, PanelAxes
 from publiplots.composer.presets import resolve_preset
 from publiplots.themes.rcparams import resolve_param

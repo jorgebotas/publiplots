@@ -9,7 +9,7 @@ populates; that's the only object that crosses the Python/matplotlib
 boundary, and it's typed as ``Any`` here for layering purity.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal, Optional, Tuple
 
 

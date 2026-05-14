@@ -5,8 +5,6 @@ ValueError) so callers can catch with either the composer-specific or
 standard-library type.
 """
 
-from typing import Optional
-
 
 class ComposerError(ValueError):
     """Base class for all publiplots Composer errors."""
