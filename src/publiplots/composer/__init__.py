@@ -13,8 +13,11 @@ from publiplots.composer.exceptions import (
     ComposerError,
     ComposerOverflowError,
 )
+from publiplots.composer.panels import Panel, PanelAxes
 
 __all__ = [
     "ComposerError",
     "ComposerOverflowError",
+    "Panel",
+    "PanelAxes",
 ]
