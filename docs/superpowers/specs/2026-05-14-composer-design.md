@@ -727,4 +727,4 @@ These are explicit gates on PR 5 readiness, not blockers for PRs 1-4.
 - `composer-guide` skill auto-triggers in Claude Code on a clean session for the canonical "make a Cell 2-col figure with a schematic and a 2×3 grid" prompt.
 - ReadTheDocs gallery includes the 7 composer examples.
 - CHANGELOG entries for each release in the rollout.
-- One real LemurFlow paper figure rebuilt end-to-end with Composer (no Illustrator step) as the dogfooding acceptance test.
+- Author-driven dogfooding: the maintainer exercises the Composer end-to-end on a real external paper figure (no Illustrator step) before tagging the v1 release. Issues found feed a follow-up polish PR rather than blocking the v1 tag.
