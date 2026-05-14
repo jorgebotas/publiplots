@@ -254,3 +254,36 @@ class Canvas:
         )
 
         self._row_added = True
+
+    # ------------------------------------------------------------------
+    # savefig — raster only in PR 1
+    # ------------------------------------------------------------------
+    def savefig(self, path, **kwargs) -> None:
+        """Save the canvas to a file.
+
+        PR 1 supports raster formats (PNG, JPG, TIFF). PDF and SVG raise
+        :class:`NotImplementedError` until PR 5 / PR 6 land the vector
+        compositing pipelines.
+
+        Parameters
+        ----------
+        path : str or Path
+            Output file path. Extension determines the format.
+        **kwargs
+            Forwarded to :func:`publiplots.savefig`.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`add_row` has not been called yet.
+        NotImplementedError
+            If ``path`` ends in ``.pdf`` (PR 5) or ``.svg`` (PR 6).
+        ValueError
+            If the path's extension is not a known raster or vector type.
+        """
+        if self._figure is None:
+            raise RuntimeError(
+                "Canvas has no figure yet; call add_row() before savefig()"
+            )
+        from publiplots.composer._save import dispatch_savefig
+        dispatch_savefig(self._figure, path, **kwargs)
