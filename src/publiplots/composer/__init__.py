@@ -9,6 +9,7 @@ See ``docs/superpowers/specs/2026-05-14-composer-design.md`` for the
 full design.
 """
 
+from publiplots.composer.canvas import Canvas
 from publiplots.composer.exceptions import (
     ComposerError,
     ComposerOverflowError,
@@ -16,6 +17,7 @@ from publiplots.composer.exceptions import (
 from publiplots.composer.panels import Panel, PanelAxes
 
 __all__ = [
+    "Canvas",
     "ComposerError",
     "ComposerOverflowError",
     "Panel",

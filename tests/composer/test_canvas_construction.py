@@ -69,3 +69,44 @@ def test_resolve_preset_rejects_non_positive_width():
         resolve_preset("custom", width=0.0)
     with pytest.raises(ValueError, match="positive"):
         resolve_preset("custom", width=-10.0)
+
+
+# ---------------------------------------------------------------------------
+# Canvas construction — PR 1 only supports preset='custom' with width=
+# ---------------------------------------------------------------------------
+import publiplots as pp
+
+
+def test_canvas_construction_custom_preset_with_width():
+    canvas = pp.Canvas("custom", width=174.0)
+    assert canvas.width_mm == 174.0
+
+
+def test_canvas_construction_custom_requires_width():
+    with pytest.raises(ValueError, match="width"):
+        pp.Canvas("custom")
+
+
+def test_canvas_construction_unknown_preset_raises():
+    with pytest.raises(KeyError, match="unknown preset"):
+        pp.Canvas("not-a-preset", width=100.0)
+
+
+def test_canvas_construction_journal_preset_not_in_pr1():
+    """Journal presets land in PR 2; PR 1 only accepts 'custom'.
+    This test will be REMOVED in PR 2."""
+    with pytest.raises(KeyError):
+        pp.Canvas("cell-2col")
+
+
+def test_canvas_figure_attribute_is_none_until_finalize():
+    """A canvas before any add_row exposes .figure as None — the
+    matplotlib Figure is created lazily when add_row is called.
+    Rationale: a canvas with zero panels has no defined height."""
+    canvas = pp.Canvas("custom", width=174.0)
+    assert canvas.figure is None
+
+
+def test_canvas_figure_size_mm_is_none_until_finalize():
+    canvas = pp.Canvas("custom", width=174.0)
+    assert canvas.figure_size_mm is None
