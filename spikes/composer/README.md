@@ -12,7 +12,7 @@ before PR 1 of the Composer rollout.
 ## Run
 
 ```bash
-uv pip install pypdf cairosvg
+uv pip install --active pypdf cairosvg
 cd spikes/composer
 uv run python fixtures/canvas_with_slot.py
 uv run python path_a_pypdf/compose.py    && uv run python path_a_pypdf/validate.py
