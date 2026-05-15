@@ -19,6 +19,78 @@ _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 _DEFAULT_RASTER_DPI = 300.0
 
 
+def _pillow_to_pdf_bytes(
+    path: Union[str, Path],
+    dpi: float = _DEFAULT_RASTER_DPI,
+) -> bytes:
+    """Render a raster file (PNG/JPG/TIFF/...) to single-page PDF bytes.
+
+    Centralizes the Pillow→PDF conversion that was previously duplicated
+    between :func:`load_schematic_as_pdf_bytes` (raster branch) and
+    :func:`publiplots.composer.compositing.pdf._raster_fallback`. Both
+    callers now delegate here.
+
+    The image is opened via Pillow, mode-converted to ``RGB``/``L`` if
+    needed (Pillow's PDF encoder rejects other modes), and saved via
+    ``Image.save(..., format='PDF', resolution=...)``. Resolution
+    defaults to the PNG/JPG/TIFF embedded ``dpi`` info if present, else
+    falls back to ``dpi``.
+
+    Parameters
+    ----------
+    path
+        Path to a raster file readable by Pillow.
+    dpi
+        Default resolution in dots-per-inch when the file lacks
+        embedded dpi metadata. Used for the PDF mediabox (1 pt = 1/72 in).
+
+    Returns
+    -------
+    bytes
+        A complete single-page PDF starting with ``b"%PDF-"``.
+
+    Raises
+    ------
+    ComposerVectorError
+        Pillow couldn't open or convert the file. The error carries
+        ``path`` and ``source_error``.
+    """
+    p = Path(path)
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise ComposerVectorError(
+            "Pillow is required for raster schematics. "
+            "Install with `pip install publiplots[composer]`.",
+            path=str(p),
+            source_error=str(e),
+        ) from e
+    try:
+        img = Image.open(p)
+        img.load()
+        # Pillow's PDF save needs RGB or L mode.
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        # Prefer the file's embedded dpi if present (Pillow stores it as a
+        # 2-tuple (xdpi, ydpi)); else fall back to caller-supplied dpi.
+        embedded = img.info.get("dpi")
+        if embedded:
+            resolution = float(embedded[0])
+        else:
+            resolution = float(dpi)
+        img.save(buf, format="PDF", resolution=resolution)
+        return buf.getvalue()
+    except ComposerVectorError:
+        raise
+    except Exception as e:
+        raise ComposerVectorError(
+            f"Pillow failed to convert {p.name!r}: {e}",
+            path=str(p),
+            source_error=str(e),
+        ) from e
+
+
 def load_schematic_as_pdf_bytes(
     path: Union[str, Path],
 ) -> Tuple[bytes, str]:
@@ -105,31 +177,7 @@ def load_schematic_as_pdf_bytes(
             ) from e
 
     if ext in _RASTER_EXTS:
-        try:
-            from PIL import Image
-        except ImportError as e:
-            raise ComposerVectorError(
-                "Pillow is required for raster schematics. "
-                "Install with `pip install publiplots[composer]`.",
-                path=str(p),
-                source_error=str(e),
-            ) from e
-        try:
-            img = Image.open(p)
-            img.load()
-            # Pillow's PDF save needs RGB or L mode.
-            if img.mode not in ("RGB", "L"):
-                img = img.convert("RGB")
-            buf = io.BytesIO()
-            dpi = img.info.get("dpi", (_DEFAULT_RASTER_DPI, _DEFAULT_RASTER_DPI))
-            img.save(buf, format="PDF", resolution=float(dpi[0]))
-            return buf.getvalue(), "raster"
-        except Exception as e:
-            raise ComposerVectorError(
-                f"Pillow failed to convert {p.name!r}: {e}",
-                path=str(p),
-                source_error=str(e),
-            ) from e
+        return _pillow_to_pdf_bytes(p), "raster"
 
     raise ComposerVectorError(
         f"unsupported schematic extension {ext!r} for {p.name!r}",

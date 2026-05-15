@@ -154,10 +154,10 @@ src/publiplots/composer/
 
 ### Task 1 — Extract `_pillow_to_pdf_bytes` helper + dedup PDF code path
 
-- [ ] Add `_pillow_to_pdf_bytes(path: Path, dpi: float = _DEFAULT_RASTER_DPI) → bytes` to `_resources.py`. Move the Pillow→PDF logic from `load_schematic_as_pdf_bytes` (raster branch) into the helper. Update the raster branch to call the helper.
-- [ ] Update `pdf.py:_raster_fallback` to call `_resources._pillow_to_pdf_bytes` instead of inlining Pillow.
-- [ ] Add `tests/composer/test_pillow_helper.py` (new, small): unit-test `_pillow_to_pdf_bytes` with PNG, JPG, TIFF inputs; assert bytes start with `b"%PDF-"` and the returned PDF's mediabox matches the expected size.
-- [ ] Verify all PR 5 PDF tests still pass.
+- [x] Add `_pillow_to_pdf_bytes(path: Path, dpi: float = _DEFAULT_RASTER_DPI) → bytes` to `_resources.py`. Move the Pillow→PDF logic from `load_schematic_as_pdf_bytes` (raster branch) into the helper. Update the raster branch to call the helper.
+- [x] Update `pdf.py:_raster_fallback` to call `_resources._pillow_to_pdf_bytes` instead of inlining Pillow.
+- [x] Add `tests/composer/test_pillow_helper.py` (new, small): unit-test `_pillow_to_pdf_bytes` with PNG, JPG, TIFF inputs; assert bytes start with `b"%PDF-"` and the returned PDF's mediabox matches the expected size.
+- [x] Verify all PR 5 PDF tests still pass.
 
 ### Task 2 — Add `_resolve_svg_units` + `compute_svg_transform` to `_geometry.py`
 

@@ -35,6 +35,7 @@ from publiplots.composer.compositing._geometry import (
     compute_pdf_transform,
 )
 from publiplots.composer.compositing._resources import (
+    _pillow_to_pdf_bytes,
     load_schematic_as_pdf_bytes,
 )
 
@@ -190,21 +191,8 @@ def _compose_panel_onto(
 def _raster_fallback(path: Union[str, Path]) -> bytes:
     """Last-ditch raster render when vector load failed.
 
-    Tries to open the file via Pillow regardless of extension; if
-    Pillow can't open it, re-raises :class:`ComposerVectorError`.
+    Delegates to :func:`._resources._pillow_to_pdf_bytes`. If Pillow
+    can't open the file, the helper raises :class:`ComposerVectorError`
+    (with `path`/`source_error` set), which propagates from here.
     """
-    from PIL import Image
-    try:
-        img = Image.open(path)
-        img.load()
-        if img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="PDF", resolution=300.0)
-        return buf.getvalue()
-    except Exception as e:
-        raise ComposerVectorError(
-            f"raster fallback also failed for {path!r}: {e}",
-            path=str(path),
-            source_error=str(e),
-        ) from e
+    return _pillow_to_pdf_bytes(path)
