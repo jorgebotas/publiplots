@@ -160,8 +160,9 @@ class Panel:
         bottom-left corner; ``(w, h)`` matches ``size_mm``.
     """
 
-    label: str
+    label: Any                    # str | None | False
     kind: PanelKind
     ax: Optional[Any]  # matplotlib.axes.Axes | None — typed Any for layering
     size_mm: Tuple[float, float]
     bbox_mm: Tuple[float, float, float, float]
+    resolved_label_style: Optional[Mapping[str, Any]] = None

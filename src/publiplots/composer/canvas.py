@@ -11,7 +11,7 @@ title decoration reservation (per spike Finding 4 — without it, axis
 decorations clip at the canvas mediabox edge).
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from publiplots.composer.exceptions import ComposerOverflowError
 from publiplots.composer.panels import Panel, PanelAxes
@@ -50,15 +50,31 @@ class Canvas:
     raises :class:`NotImplementedError` in PR 1.
     """
 
-    def __init__(self, preset: str, *, width: Optional[float] = None) -> None:
+    def __init__(
+        self,
+        preset: str,
+        *,
+        width: Optional[float] = None,
+        abc: Union[str, bool, Sequence[str], None] = None,
+    ) -> None:
+        from publiplots.composer.abc_labels import DEFAULT_LABEL_STYLE
+
         self._preset_name = preset
         spec = resolve_preset(preset, width=width)
         self._width_mm: float = spec["width_mm"]
         self._max_height_mm: Optional[float] = spec["max_height_mm"]
 
+        # abc resolution: if user passed None, fall back to preset default.
+        self._abc = abc if abc is not None else spec["abc_default"]
+
+        # Initialize label_style from the default + preset's label_size_pt.
+        self._label_style: Dict[str, Any] = dict(DEFAULT_LABEL_STYLE)
+        self._label_style["size"] = spec["label_size_pt"]
+
         # Lazy-initialized on first add_row():
         self._figure = None  # matplotlib.figure.Figure | None
         self._panels: Dict[str, Panel] = {}
+        self._panels_ordered: List[Panel] = []  # insertion-order for int indexing
         self._row_added: bool = False
 
     # ------------------------------------------------------------------
@@ -87,12 +103,39 @@ class Canvas:
     # ------------------------------------------------------------------
     # Indexing
     # ------------------------------------------------------------------
-    def __getitem__(self, label: str) -> Panel:
-        if label not in self._panels:
+    def __getitem__(self, key) -> Panel:
+        if isinstance(key, int) and not isinstance(key, bool):
+            if not self._panels_ordered:
+                raise KeyError("no panels yet; call add_row() first")
+            try:
+                return self._panels_ordered[key]
+            except IndexError:
+                raise KeyError(
+                    f"panel index {key} out of range; "
+                    f"only {len(self._panels_ordered)} panel(s) exist"
+                )
+        if key not in self._panels:
             raise KeyError(
-                f"no panel with label {label!r}; known labels: {sorted(self._panels)}"
+                f"no panel with label {key!r}; "
+                f"known labels: {sorted(self._panels)}"
             )
-        return self._panels[label]
+        return self._panels[key]
+
+    def label_style(self, **kwargs: Any) -> None:
+        """Update the canvas-wide label style.
+
+        Accepts any subset of: ``weight``, ``size``, ``family``, ``loc``,
+        ``pad_mm``, ``border``, ``bbox``. Missing keys are unchanged.
+        ``loc`` must be one of the 8 ultraplot locs (``'ul'``, ``'ur'``,
+        ``'ll'``, ``'lr'``, ``'uc'``, ``'lc'``, ``'cl'``, ``'cr'``).
+        """
+        from publiplots.composer.abc_labels import VALID_LOCS
+
+        if "loc" in kwargs and kwargs["loc"] not in VALID_LOCS:
+            raise ValueError(
+                f"loc must be one of {sorted(VALID_LOCS)}, got {kwargs['loc']!r}"
+            )
+        self._label_style.update(kwargs)
 
     # ------------------------------------------------------------------
     # add_row — single-row layout for PR 1
@@ -140,6 +183,9 @@ class Canvas:
         labels = [p.label for p in panels]
         seen: set = set()
         for lbl in labels:
+            # Only str labels need uniqueness; None/False are fine to repeat.
+            if not isinstance(lbl, str):
+                continue
             if lbl in seen:
                 raise ValueError(f"duplicate panel label: {lbl!r}")
             seen.add(lbl)
@@ -244,6 +290,16 @@ class Canvas:
         self._figure = fig
 
         # --- create axes per panel ----------------------------------
+        # Resolve labels per the canvas's abc mode.
+        from publiplots.composer.abc_labels import (
+            resolve_labels, merge_label_style, render_label,
+        )
+        raw_panel_labels = [p.label for p in panels]
+        resolved_labels = resolve_labels(
+            panel_labels=raw_panel_labels,
+            abc=self._abc,
+        )
+
         for col_idx, panel_input in enumerate(panels):
             x0_frac, y0_frac, w_frac, h_frac = layout.axes_position(0, col_idx)
             ax = fig.add_axes((x0_frac, y0_frac, w_frac, h_frac))
@@ -254,13 +310,31 @@ class Canvas:
                 w_frac * W_mm,
                 h_frac * H_mm,
             )
-            self._panels[panel_input.label] = Panel(
-                label=panel_input.label,
+
+            resolved_label = resolved_labels[col_idx]
+            resolved_style = merge_label_style(
+                self._label_style, panel_input.label_style
+            )
+
+            panel = Panel(
+                label=resolved_label,
                 kind="axes",
                 ax=ax,
                 size_mm=(col_widths[col_idx], panel_input.size[1]),
                 bbox_mm=bbox_mm,
+                resolved_label_style=resolved_style,
             )
+
+            # Render the label if it's a non-empty string.
+            if isinstance(resolved_label, str) and resolved_label:
+                render_label(ax, resolved_label, style=resolved_style)
+
+            # Register by resolved label (so canvas['A'] works for an
+            # auto-letter panel that started as label=None) AND by
+            # insertion order. False/None labels skip the dict registry.
+            if isinstance(resolved_label, str) and resolved_label:
+                self._panels[resolved_label] = panel
+            self._panels_ordered.append(panel)
 
         # --- attach SubplotsAutoLayout reactor (spike Finding 4) ----
         # All four auto-measurable sides start at rcParams defaults and
