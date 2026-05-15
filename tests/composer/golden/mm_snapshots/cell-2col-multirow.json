@@ -1,0 +1,74 @@
+{
+  "figure_size_mm": [
+    174.0,
+    114.0
+  ],
+  "preset": "cell-2col",
+  "rows": [
+    {
+      "panels": [
+        {
+          "bbox_mm": [
+            12.0,
+            67.0,
+            70.0,
+            40.0
+          ],
+          "kind": "axes",
+          "label": "A",
+          "size_mm": [
+            70.0,
+            40.0
+          ]
+        },
+        {
+          "bbox_mm": [
+            97.0,
+            67.0,
+            73.0,
+            40.0
+          ],
+          "kind": "axes",
+          "label": "B",
+          "size_mm": [
+            73.0,
+            40.0
+          ]
+        }
+      ]
+    },
+    {
+      "panels": [
+        {
+          "bbox_mm": [
+            12.0,
+            10.0,
+            70.0,
+            40.0
+          ],
+          "kind": "axes",
+          "label": "C",
+          "size_mm": [
+            70.0,
+            40.0
+          ]
+        },
+        {
+          "bbox_mm": [
+            97.0,
+            10.0,
+            73.0,
+            40.0
+          ],
+          "kind": "text",
+          "label": "D",
+          "size_mm": [
+            73.0,
+            40.0
+          ]
+        }
+      ]
+    }
+  ],
+  "schema_version": 1
+}
