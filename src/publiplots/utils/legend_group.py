@@ -194,6 +194,46 @@ def _resolve_grid_scope(
     return out
 
 
+def _expand_span_with_anchor(
+    fig: Figure,
+    anchor: Axes,
+    span: str,
+) -> List[Axes]:
+    """Expand `span='row'/'col'` against a positional Axes anchor.
+
+    Locates ``anchor`` in ``fig._publiplots_axes`` and returns the full
+    row or column containing it.
+
+    Raises
+    ------
+    ValueError
+        If the figure has no ``_publiplots_axes`` matrix, or if
+        ``anchor`` is not in that matrix.
+    """
+    matrix = getattr(fig, "_publiplots_axes", None)
+    if not matrix:
+        raise ValueError(
+            "pp.legend: `span='row'`/`'col'` requires a figure built by "
+            "`pp.subplots` or `pp.Canvas` (no `_publiplots_axes` matrix on "
+            "this figure)."
+        )
+    target_id = id(anchor)
+    for r, row in enumerate(matrix):
+        for c, ax_in_row in enumerate(row):
+            if id(ax_in_row) == target_id:
+                if span == "row":
+                    return list(row)
+                if span == "col":
+                    return [matrix[rr][c] for rr in range(len(matrix))]
+                raise ValueError(
+                    f"pp.legend: span={span!r} not 'row' or 'col'."
+                )
+    raise ValueError(
+        "pp.legend: positional anchor was not found in this figure's "
+        "`_publiplots_axes` matrix."
+    )
+
+
 class _ScopeAnchor:
     """Decoration-agnostic anchor over a scope of axes.
 
@@ -1214,39 +1254,57 @@ def legend(
     # to a list-of-axes scope (or None for figure-level), then fall through to
     # the existing resolution logic by setting `axes`.
     if rows is not None or cols is not None or span is not None or ax is not None:
-        # Mixing new kwargs with the legacy `axes=` positional is ambiguous —
-        # they're alternative addressing modes. Raise rather than guess.
-        if axes is not None:
+        # span='row'/'col' is the SOLE exception to "new kwargs are mutually
+        # exclusive with the positional `axes=` arg" — those two span values
+        # REQUIRE a positional anchor, so they consume `axes=ax` instead of
+        # raising on it.
+        is_positional_anchor_span = (
+            span in ("row", "col")
+            and isinstance(axes, Axes)
+            and rows is None and cols is None and ax is None
+        )
+
+        if axes is not None and not is_positional_anchor_span:
             raise ValueError(
                 "pp.legend: legacy positional `axes=` is mutually exclusive "
                 "with the new `rows=`/`cols=`/`span=`/`ax=` kwargs. Use one "
                 "addressing mode at a time."
             )
-        # Resolve the figure for the resolver (mirrors the figure-resolution
-        # used later in this function for full-figure scope).
+
         resolver_fig = figure if figure is not None else plt.gcf()
-        resolved_scope = _resolve_grid_scope(
-            resolver_fig, rows=rows, cols=cols, span=span, ax=ax,
-        )
-        if resolved_scope is not None:
-            # Drift guard: if `figure=` was explicit AND the resolved axes
-            # belong to a different figure, bail rather than letting the
-            # downstream group silently switch figures off the resolved
-            # axes' get_figure(). The `ax=` path is the most common way
-            # to hit this — caller passes ax= from one figure but figure=
-            # naming another.
-            if figure is not None:
-                for a in resolved_scope:
-                    if a.get_figure() is not figure:
-                        raise ValueError(
-                            "pp.legend: resolved axes belong to a different "
-                            "Figure than the one passed via `figure=`. "
-                            "Either drop `figure=` or pass axes from that "
-                            "figure."
-                        )
-            # Concrete subset → feed into the existing list-of-axes branch.
-            axes = resolved_scope
-        # else: span='fig' or all-None → leave axes=None (figure-level default).
+
+        if is_positional_anchor_span:
+            # Expand against the anchor; consume `axes` and continue down the
+            # list-of-axes branch.
+            expanded = _expand_span_with_anchor(resolver_fig, axes, span)
+            axes = expanded
+        else:
+            if span in ("row", "col") and not isinstance(axes, Axes):
+                raise ValueError(
+                    f"pp.legend: span={span!r} requires a positional Axes "
+                    "anchor (e.g. `pp.legend(axes[0,1], span='row')`)."
+                )
+            resolved_scope = _resolve_grid_scope(
+                resolver_fig, rows=rows, cols=cols, span=span, ax=ax,
+            )
+            if resolved_scope is not None:
+                # Drift guard: if `figure=` was explicit AND the resolved axes
+                # belong to a different figure, bail rather than letting the
+                # downstream group silently switch figures off the resolved
+                # axes' get_figure(). The `ax=` path is the most common way
+                # to hit this — caller passes ax= from one figure but figure=
+                # naming another.
+                if figure is not None:
+                    for a in resolved_scope:
+                        if a.get_figure() is not figure:
+                            raise ValueError(
+                                "pp.legend: resolved axes belong to a different "
+                                "Figure than the one passed via `figure=`. "
+                                "Either drop `figure=` or pass axes from that "
+                                "figure."
+                            )
+                axes = resolved_scope
+            # else: span='fig' or all-None → leave axes=None.
 
     # Resolve anchor + axes per the rules:
     #   axes=None, anchor=None  -> figure-level (whole grid)

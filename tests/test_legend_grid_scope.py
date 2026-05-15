@@ -245,3 +245,47 @@ def test_legend_factory_grid_scope_renders_without_error():
     buf = io.BytesIO()
     fig.savefig(buf, format="png")  # no exceptions
     assert buf.getbuffer().nbytes > 0
+
+
+# ---------------------------------------------------------------------------
+# `span='row'` / `span='col'` with positional anchor
+# ---------------------------------------------------------------------------
+
+
+def test_legend_span_row_with_anchor_expands_to_row():
+    """pp.legend(axes[1,0], span='row') scopes to all of row 1."""
+    fig, axes = pp.subplots(nrows=2, ncols=3)
+    group = pp.legend(axes[1, 0], span="row", side="top")
+    scope_ids = {id(a) for a in group._scope_axes}
+    assert scope_ids == {id(axes[1, 0]), id(axes[1, 1]), id(axes[1, 2])}
+
+
+def test_legend_span_col_with_anchor_expands_to_col():
+    """pp.legend(axes[0,1], span='col') scopes to all of col 1."""
+    fig, axes = pp.subplots(nrows=3, ncols=2)
+    group = pp.legend(axes[0, 1], span="col", side="right")
+    scope_ids = {id(a) for a in group._scope_axes}
+    assert scope_ids == {id(axes[0, 1]), id(axes[1, 1]), id(axes[2, 1])}
+
+
+def test_legend_span_row_without_anchor_raises():
+    """span='row' without a positional Axes → ValueError."""
+    fig, _ = pp.subplots(nrows=2, ncols=2)
+    with pytest.raises(ValueError, match=r"span='row'.*positional Axes"):
+        pp.legend(span="row", side="top")
+
+
+def test_legend_span_row_with_non_publiplots_anchor_raises():
+    """span='row' on a raw plt figure → ValueError."""
+    fig, axes = plt.subplots(2, 2)
+    with pytest.raises(ValueError, match=r"_publiplots_axes"):
+        pp.legend(axes[0, 0], span="row", side="top")
+
+
+def test_legend_positional_with_rows_and_span_collides():
+    """pp.legend(axes[0,0], rows=0, span='row') — positional + rows + span all
+    set; the is_positional_anchor_span guard requires rows/cols/ax all None,
+    so this falls through to the mutually-exclusive raise."""
+    fig, axes = pp.subplots(nrows=2, ncols=2)
+    with pytest.raises(ValueError, match=r"mutually exclusive"):
+        pp.legend(axes[0, 0], rows=0, span="row", side="top")
