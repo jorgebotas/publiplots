@@ -154,10 +154,10 @@ class Canvas:
         ylabel_space = float(resolve_param("subplots.ylabel_space", None))
         right = float(resolve_param("subplots.right", None))
 
-        col_widths = tuple(p.size[0] for p in panels)
-        # All panels in one row share the row height; PR 1 requires equal
-        # heights (PR 2 adds 'flex'/'match' grammar). Use the max for now;
-        # if heights differ, that's a future-PR issue, not a PR 1 error.
+        # Raw widths — may contain 'flex' sentinels which we'll resolve next.
+        raw_widths = tuple(p.size[0] for p in panels)
+        # All panels in one row share the row height; PR 2 still requires
+        # numeric heights (flex is width-only).
         row_height = max(p.size[1] for p in panels)
 
         ncols = len(panels)
@@ -170,15 +170,40 @@ class Canvas:
             + ncols * right
             + max(ncols - 1, 0) * hpad
         )
-        panels_width = sum(col_widths)
-        requested_width = panels_width + decorations_width
-        if requested_width > self._width_mm + 1e-6:  # 1µm tolerance for float noise
+
+        # --- resolve flex sizing ------------------------------------
+        from publiplots.composer._flex import resolve_flex_widths
+        try:
+            col_widths, n_flex = resolve_flex_widths(
+                raw_widths,
+                canvas_width_mm=self._width_mm,
+                decorations_width_mm=decorations_width,
+            )
+        except ValueError as e:
+            # The resolver raises ValueError when pinned widths alone
+            # overflow. Convert to ComposerOverflowError so the user
+            # gets the suggested-scale-factor advisor.
+            pinned_total = sum(float(w) for w in raw_widths if w != "flex")
+            requested = pinned_total + decorations_width
             raise ComposerOverflowError(
-                f"row width {requested_width:.2f}mm exceeds canvas width "
-                f"{self._width_mm:.2f}mm; reduce panel widths or use a wider canvas",
-                requested_mm=requested_width,
+                str(e),
+                requested_mm=requested,
                 available_mm=self._width_mm,
             )
+
+        # --- pinned-only overflow check (PR 1 path) -----------------
+        if n_flex == 0:
+            panels_width = sum(col_widths)
+            requested_width = panels_width + decorations_width
+            if requested_width > self._width_mm + 1e-6:  # 1µm tolerance
+                raise ComposerOverflowError(
+                    f"row width {requested_width:.2f}mm exceeds canvas width "
+                    f"{self._width_mm:.2f}mm; reduce panel widths or use a wider canvas",
+                    requested_mm=requested_width,
+                    available_mm=self._width_mm,
+                )
+        # When n_flex >= 1, the resolver guarantees figure width == canvas
+        # width exactly (modulo float noise). No additional check needed.
 
         # NOTE: PR 1 does NOT auto-absorb width slack. If the user passes
         # panels that sum to less than the canvas width, the produced
@@ -233,7 +258,7 @@ class Canvas:
                 label=panel_input.label,
                 kind="axes",
                 ax=ax,
-                size_mm=(panel_input.size[0], panel_input.size[1]),
+                size_mm=(col_widths[col_idx], panel_input.size[1]),
                 bbox_mm=bbox_mm,
             )
 
