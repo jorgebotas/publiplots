@@ -286,15 +286,15 @@ src/publiplots/composer/
 
 ### Task 9 — `external_raster` sidecar option for SVG
 
-- [ ] Update `_save.dispatch_savefig` to thread `external_raster: bool = False` to `savefig_svg`.
-- [ ] Update `compositing/svg.py:savefig_svg` + `_compose_panel_into` to thread `external_raster` + the output path (for sidecar resolution).
-- [ ] In `_raster_fallback_to_image_element`, when `external_raster=True`, write sidecar PNG and emit `<image href="...">` with relative path; else emit inline data-URI.
-- [ ] **Failing tests first** in `test_external_raster.py`:
+- [x] Update `_save.dispatch_savefig` to thread `external_raster: bool = False` to `savefig_svg`.
+- [x] Update `compositing/svg.py:savefig_svg` + `_compose_panel_into` to thread `external_raster` + the output path (for sidecar resolution).
+- [x] In `_raster_fallback_to_image_element` AND the load-success-was-raster path, when `external_raster=True`, write sidecar PNG and emit `<image href="...">` with relative path; else emit inline data-URI.
+- [x] **Failing tests first** in `test_external_raster.py`:
   - `test_external_raster_writes_sidecar_png` — Canvas with one PNG-source PanelImage; savefig svg + external_raster=True; verify sidecar PNG exists at expected path.
   - `test_external_raster_emits_relative_href` — XPath finds `<image href>` with relative path (no `data:` URI).
   - `test_external_raster_no_op_for_pdf` — savefig pdf + external_raster=True silently writes PDF (no sidecar).
   - `test_default_external_raster_false_uses_inline` — default behavior unchanged from PR 6a.
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 10 — Goldens + parametrized integration tests + example + CHANGELOG + skill
 

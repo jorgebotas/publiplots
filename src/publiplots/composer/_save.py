@@ -193,6 +193,7 @@ def dispatch_savefig(
                 "CMYK SVG. Convert the matching raster output instead."
             )
         # PR 6a: dispatch to compositing.svg.savefig_svg
+        # PR 6b: thread external_raster through.
         from publiplots.composer.compositing.svg import savefig_svg
         savefig_svg(
             figure,
@@ -200,6 +201,7 @@ def dispatch_savefig(
             panels=list(panels),
             strict_vectors=strict_vectors,
             metadata_date=metadata_date,
+            external_raster=external_raster,
             **kwargs,
         )
         return
