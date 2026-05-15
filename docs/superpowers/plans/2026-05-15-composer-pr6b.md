@@ -215,19 +215,19 @@ src/publiplots/composer/
 
 ### Task 4 — `Canvas.embed_figure` method
 
-- [ ] Add `embed_figure(self, label, figure)` to `Canvas` in `canvas.py`:
+- [x] Add `embed_figure(self, label, figure)` to `Canvas` in `canvas.py`:
   - Trigger lazy finalization first (`self._finalize_if_needed()`).
   - Resolve `label` via the same lookup as `__getitem__`.
   - Validate `panel.kind == "image"` else raise `TypeError`.
   - Validate `panel.embedded_figure is None` else raise `RuntimeError("one-shot per panel")`.
   - Mutate via `object.__setattr__(panel, "embedded_figure", figure)`.
-- [ ] **Failing tests first** in `test_embed_figure.py`:
+- [x] **Failing tests first** in `test_embed_figure.py`:
   - `test_embed_figure_attaches_figure` — happy path: stage empty PanelImage, embed_figure, panel.embedded_figure is the figure.
   - `test_embed_figure_raises_on_axes_panel` — embed_figure on a PanelAxes target raises TypeError.
   - `test_embed_figure_raises_on_double_embed` — embed_figure twice on same panel raises RuntimeError.
   - `test_embed_figure_raises_on_empty_canvas` — embed_figure before any add_row raises RuntimeError.
   - `test_embed_figure_raises_on_unknown_label` — embed_figure with unknown label raises KeyError.
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 5 — `compositing/_embed.py` Figure→bytes helpers
 

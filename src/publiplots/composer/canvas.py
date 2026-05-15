@@ -941,6 +941,88 @@ class Canvas:
         return ax
 
     # ------------------------------------------------------------------
+    # embed_figure — post-staging: attach a Figure into a PanelImage slot
+    # ------------------------------------------------------------------
+    def embed_figure(self, label, figure) -> None:
+        """Attach a matplotlib :class:`~matplotlib.figure.Figure` into a
+        previously-staged PanelImage slot.
+
+        The Figure is rendered to a deterministic PDF/SVG byte buffer at
+        compose time; the existing ``compositing.pdf`` / ``compositing.svg``
+        orchestrators treat it like a vector schematic source. The
+        target panel MUST be ``kind='image'`` (a :class:`PanelImage`)
+        AND not yet have an embedded figure (``embed_figure`` is one-shot
+        per panel — silent overwrites are rejected).
+
+        Parameters
+        ----------
+        label : str or int
+            Panel resolver. Accepts the same values as
+            :meth:`Canvas.__getitem__`: a ``str`` resolved label
+            (post abc-resolution) or an ``int`` insertion index.
+        figure : matplotlib.figure.Figure
+            The figure to embed. Duck-typed: any object that responds to
+            ``figure.savefig(buf, format='pdf'|'svg', ...)`` is accepted.
+            ``embed_figure`` does NOT validate the type; the compositing
+            pipeline calls ``figure.savefig`` and surfaces TypeErrors
+            from non-Figures naturally.
+
+        Raises
+        ------
+        RuntimeError
+            If the canvas has no rows yet (call ``add_row`` first); OR
+            if the resolved panel already has an embedded figure
+            (``embed_figure`` is one-shot per panel).
+        KeyError
+            If ``label`` is not found among staged panels.
+        TypeError
+            If the resolved panel is not ``kind='image'``
+            (``embed_figure`` only attaches to PanelImage slots).
+
+        Notes
+        -----
+        - ``embed_figure`` stores a *reference* to the Figure (not a
+          snapshot). Mutating the Figure between ``embed_figure`` and
+          ``savefig`` will be reflected in the rendered output. Don't
+          call ``fig.tight_layout()`` (per project rule) and don't
+          ``fig.clear()`` it.
+        - The pairing constraint with PanelImage is documented on
+          :class:`PanelImage` itself: a no-path ``PanelImage`` MUST be
+          paired with ``embed_figure`` before ``savefig``, else the
+          composer raises :class:`ComposerVectorError`. ``embed_figure``
+          on a path-bearing PanelImage is also legal — the embedded
+          figure wins over the path.
+        """
+        # Empty canvas → preserve the same RuntimeError semantics that
+        # _finalize_if_needed raises on an empty canvas. This is the
+        # documented "embed_figure before any add_row" branch.
+        if not self._rows and not self._finalized:
+            raise RuntimeError(
+                "Canvas has no rows yet; call add_row() before embed_figure()"
+            )
+        # Trigger lazy finalization so the Panel records exist.
+        self._finalize_if_needed()
+        # Resolve via the existing __getitem__ contract — same KeyError
+        # contract for str / int / out-of-range.
+        panel = self[label]
+        # Validate kind.
+        if panel.kind != "image":
+            raise TypeError(
+                f"embed_figure: target panel {label!r} is "
+                f"kind={panel.kind!r}, not 'image'; embed_figure only "
+                f"attaches to PanelImage slots."
+            )
+        # One-shot per panel — silent overwrites would mask bugs.
+        if panel.embedded_figure is not None:
+            raise RuntimeError(
+                f"embed_figure: panel {label!r} already has an embedded "
+                f"figure; embed_figure is one-shot per panel. Stage a "
+                f"fresh Canvas + PanelImage if you need to retarget."
+            )
+        # Mutate via object.__setattr__ — Panel is a frozen dataclass.
+        object.__setattr__(panel, "embedded_figure", figure)
+
+    # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)
     # ------------------------------------------------------------------
     def savefig(self, path, **kwargs) -> None:
