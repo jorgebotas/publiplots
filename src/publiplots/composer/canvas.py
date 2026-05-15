@@ -26,6 +26,36 @@ from publiplots.composer.presets import resolve_preset
 from publiplots.themes.rcparams import resolve_param
 
 
+def _panel_raw_width(panel) -> Any:
+    """Return the panel's raw width input for flex resolution.
+
+    - PanelAxes / PanelText: ``panel.size[0]`` (float or ``'flex'`` sentinel)
+    - PanelGrid: ``panel.size_mm[0]`` (computed grid outer width; never flex)
+
+    PanelGrid has no ``size`` attribute — its outer width is computed
+    from ``shape`` + ``axes_size`` + spacing via the ``size_mm`` property.
+    Reading ``panel.size[0]`` unconditionally would AttributeError on
+    PanelGrid inputs to :meth:`Canvas.add_row`.
+    """
+    from publiplots.composer.panels import PanelGrid
+    if isinstance(panel, PanelGrid):
+        return panel.size_mm[0]
+    # PanelAxes and PanelText both expose size: (w_or_flex, h)
+    return panel.size[0]
+
+
+def _panel_raw_height(panel) -> float:
+    """Return the panel's height in mm.
+
+    - PanelAxes / PanelText: ``panel.size[1]``
+    - PanelGrid: ``panel.size_mm[1]`` (computed grid outer height)
+    """
+    from publiplots.composer.panels import PanelGrid
+    if isinstance(panel, PanelGrid):
+        return panel.size_mm[1]
+    return panel.size[1]
+
+
 @dataclass
 class _RowStaging:
     """Internal record of an :meth:`Canvas.add_row` call.
@@ -351,7 +381,7 @@ class Canvas:
 
         decorations = self._resolve_decorations()
         ncols = len(panels)
-        raw_widths = tuple(p.size[0] for p in panels)
+        raw_widths = tuple(_panel_raw_width(p) for p in panels)
         decorations_width = self._compute_decorations_width(decorations, ncols)
         try:
             col_widths, n_flex = resolve_flex_widths(
@@ -428,8 +458,8 @@ class Canvas:
         rows_for_geometry = []
         for r_idx, row in enumerate(self._rows):
             ncols = len(row.panels)
-            raw_widths = tuple(p.size[0] for p in row.panels)
-            row_height = max(p.size[1] for p in row.panels)
+            raw_widths = tuple(_panel_raw_width(p) for p in row.panels)
+            row_height = max(_panel_raw_height(p) for p in row.panels)
             decorations_width = self._compute_decorations_width(
                 decorations, ncols
             )
@@ -527,7 +557,7 @@ class Canvas:
                     label=resolved_label,
                     kind="axes",
                     ax=ax,
-                    size_mm=(col_width_resolved, panel_input.size[1]),
+                    size_mm=(col_width_resolved, _panel_raw_height(panel_input)),
                     bbox_mm=(x_mm, y_mm, w_mm, h_mm),
                     resolved_label_style=resolved_style,
                 )
@@ -546,7 +576,7 @@ class Canvas:
             from publiplots.layout.auto_layout import SubplotsAutoLayout
             ncols = len(self._rows[0].panels)
             col_widths = tuple(rect[2] for rect in geometry.row_axes_rects_mm[0])
-            row_height = max(p.size[1] for p in self._rows[0].panels)
+            row_height = max(_panel_raw_height(p) for p in self._rows[0].panels)
             layout = FigureLayout(
                 nrows=1,
                 ncols=ncols,

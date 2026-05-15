@@ -98,3 +98,47 @@ def test_panel_grid_exported_at_top_level():
     assert hasattr(pp, "PanelGrid")
     p = pp.PanelGrid(label="C", shape=(2, 3), axes_size=(40.0, 30.0))
     assert isinstance(p, PanelGrid)
+
+
+# ---------------------------------------------------------------------------
+# Regression: PanelGrid accepted at add_row, rejected at finalize
+# ---------------------------------------------------------------------------
+
+def test_panel_grid_accepted_at_add_row_raises_at_finalize():
+    """PR3 Task 6 contract: PanelGrid is a valid input to add_row, but
+    finalization (until Task 7 lands) raises NotImplementedError.
+
+    Regression test for the AttributeError that was happening when
+    add_row's eager flex/overflow check tried to read PanelGrid.size
+    (which doesn't exist — PanelGrid has size_mm property)."""
+    canvas = pp.Canvas("custom", width=174.0)
+    # Should NOT raise here — PanelGrid is a valid input.
+    canvas.add_row(pp.PanelGrid(label="C", shape=(2, 3), axes_size=(40.0, 30.0)))
+    # But finalization should raise (PR3 Task 6 boundary).
+    with pytest.raises(NotImplementedError, match="PanelGrid"):
+        canvas.finalize()
+
+
+def test_panel_grid_in_multirow_with_panel_axes():
+    """Regression: a row mixing PanelAxes + PanelGrid should also pass
+    add_row's validation. (Finalize still raises NotImplementedError
+    because Task 7 hasn't landed; this just checks the eager-path bug
+    is fixed.)"""
+    canvas = pp.Canvas("custom", width=174.0)
+    # add_row should NOT raise — both panel types are valid inputs.
+    canvas.add_row(pp.PanelAxes(label="A", size=(70.0, 40.0)))
+    canvas.add_row(pp.PanelGrid(label="C", shape=(1, 3), axes_size=(40.0, 30.0)))
+    # Verify both rows are staged.
+    assert len(canvas._rows) == 2
+
+
+def test_panel_grid_overflow_in_add_row():
+    """A PanelGrid wider than the canvas should raise ComposerOverflowError
+    at add_row time (not finalize), same as PanelAxes does."""
+    from publiplots.composer.exceptions import ComposerOverflowError
+    canvas = pp.Canvas("custom", width=174.0)
+    # PanelGrid: 5 cols of 50mm + 4 wspaces of 2mm = 258mm — overflows 174mm.
+    with pytest.raises(ComposerOverflowError):
+        canvas.add_row(
+            pp.PanelGrid(label="C", shape=(2, 5), axes_size=(50.0, 30.0))
+        )
