@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Composer kitchen-sink + raster polish (PR 6b):
+  - `canvas.embed_figure(label, fig)` post-staging API: stage a
+    `PanelImage(label, size)` without a `path=`, then attach a
+    matplotlib Figure (e.g. one built via `pp.subplots`) into the
+    slot. The Figure is rendered to deterministic PDF/SVG bytes at
+    compose time and treated like a vector schematic source —
+    vector-preserved on PDF + SVG outputs.
+  - `PanelImage` accepts construction without a `path=`: the new
+    `path=None` sentinel marks an "unfilled" slot that MUST be
+    paired with `canvas.embed_figure(label, fig)` before savefig
+    (otherwise raises `ComposerVectorError` with an actionable hint).
+    Explicit `path=""` is rejected loudly to prevent reliance on the
+    architect-found `Path("")` -> `PosixPath('.')` quirk.
+  - `canvas.save_multiple(stem, formats=None, **kwargs)` sugar:
+    multi-panel-aware counterpart to the free function
+    `pp.save_multiple`. Default `formats=['png', 'pdf']` matches the
+    free function. Pre-validates the format list AND `cmyk=True`
+    against vector formats BEFORE writing any file (no partial-write
+    state on bad input).
+  - `canvas.savefig(path, *, cmyk=False, tiff_compression='tiff_lzw',
+    external_raster=False)`:
+    - `cmyk=True` converts RGB→CMYK on raster output via Pillow
+      (basic sRGB→CMYK; ICC profile bundling deferred to PR 7,
+      emits `UserWarning` so journal QA users can debug). Valid
+      only for `.tif`/`.tiff`/`.jpg`/`.jpeg`; pairing with PDF /
+      SVG / PNG raises `ValueError` with an actionable hint.
+    - `tiff_compression` knob accepts Pillow's compression vocab
+      (`'tiff_lzw'`, `'tiff_deflate'`, `'raw'`, ...).
+    - `external_raster=True` writes raster PanelImage sources as
+      sidecar PNG files (`<output_stem>-<idx>-<label>.png`) with
+      relative `<image href="...">` references rather than inline
+      base64 data URIs. Avoids multi-MB SVG bloat for high-DPI
+      rasters. Silent no-op for non-SVG outputs.
+  - New shared `compositing/_constants.py` lifts the determinism
+    string literals (`_DEFAULT_CREATION_DATE`, `_DEFAULT_DATE`,
+    `_SVG_HASHSALT`, `_PRODUCER`) so the new `_embed.py` Figure→bytes
+    helpers share the same byte-determinism contract as the canvas
+    savefig pipelines.
 - Vector SVG compositing (PR 6a):
   - `canvas.savefig('fig.svg')` produces a real vector SVG with
     embedded vector schematics via lxml + cairosvg. Replaces the

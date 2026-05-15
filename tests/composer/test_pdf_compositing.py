@@ -116,6 +116,7 @@ from tests.composer.golden._helpers import (
 PDF_GOLDEN_NAMES = [
     "cell-2col-with-svg-schematic",
     "cell-2col-with-png-schematic",
+    "cell-2col-with-embed-figure",
 ]
 
 
@@ -123,11 +124,13 @@ PDF_GOLDEN_NAMES = [
 # to raster/PDF sources because cairosvg-output SVGs are inlined into
 # the canvas content stream by pypdf's merge_transformed_page (no
 # XObject wrapping). For SVG goldens, mediabox + render_compare are
-# the meaningful gates.
+# the meaningful gates. The embed_figure golden also lacks XObjects
+# (matplotlib-PDF inlines content like cairosvg) — mediabox + render_compare.
 PDF_GOLDEN_MODE_PAIRS = [
     ("cell-2col-with-svg-schematic", "mediabox"),
     ("cell-2col-with-png-schematic", "mediabox"),
     ("cell-2col-with-png-schematic", "structure"),
+    ("cell-2col-with-embed-figure", "mediabox"),
 ]
 
 
@@ -171,3 +174,83 @@ def test_pdf_golden_render_compare(name: str) -> None:
     build_fn = dict(COMPOSITIONS)[name]
     canvas = build_fn()
     assert_pdf_matches(canvas, name, mode="render_compare")
+
+
+# ---------------------------------------------------------------------------
+# PR 6b — embed_figure compositing branch
+# ---------------------------------------------------------------------------
+
+def test_savefig_pdf_with_embedded_figure_passes_mediabox_check(tmp_path):
+    """Canvas with one embed_figure'd PanelImage saves to a PDF whose
+    mediabox matches canvas.figure_size_mm × MM2PT (no compositing
+    regression vs. path-based PanelImage)."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._geometry import MM2PT
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig)
+        out = tmp_path / "out.pdf"
+        canvas.savefig(out)
+    finally:
+        plt.close(fig)
+    assert out.exists()
+    reader = pypdf.PdfReader(out)
+    mb = reader.pages[0].mediabox
+    fig_w_mm, fig_h_mm = canvas.figure_size_mm
+    assert abs(float(mb.width) - fig_w_mm * MM2PT) < 1.0
+    assert abs(float(mb.height) - fig_h_mm * MM2PT) < 1.0
+
+
+def test_savefig_pdf_with_embed_figure_strict_vectors_raises_on_no_figure(
+    tmp_path,
+):
+    """Empty PanelImage (no path, no embed_figure) + savefig pdf →
+    ComposerVectorError with the embed_figure hint."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    out = tmp_path / "out.pdf"
+    with pytest.raises(ComposerVectorError, match=r"no path and no embedded figure"):
+        canvas.savefig(out)
+
+
+def test_savefig_pdf_embed_figure_byte_deterministic(tmp_path):
+    """Two saves of the same canvas (with embed_figure) produce identical
+    PDFs. Locks the determinism contract for the embedded-figure branch."""
+    import matplotlib.pyplot as plt
+
+    def build():
+        fig, ax = plt.subplots(figsize=(2.0, 1.5))
+        ax.plot([1, 2, 3], [4, 5, 6])
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig)
+        return canvas, fig
+
+    canvas1, fig1 = build()
+    out1 = tmp_path / "a.pdf"
+    canvas1.savefig(out1)
+    plt.close(fig1)
+
+    canvas2, fig2 = build()
+    out2 = tmp_path / "b.pdf"
+    canvas2.savefig(out2)
+    plt.close(fig2)
+
+    md1 = pypdf.PdfReader(out1).metadata
+    md2 = pypdf.PdfReader(out2).metadata
+    assert md1.get("/CreationDate") == md2.get("/CreationDate")
+    assert md1.get("/Producer") == md2.get("/Producer")
+    assert out1.read_bytes() == out2.read_bytes()

@@ -114,6 +114,27 @@ def _build_cell_2col_with_png_schematic() -> pp.Canvas:
     return canvas
 
 
+def _build_cell_2col_with_embed_figure() -> pp.Canvas:
+    """PR 6b headline composition: PanelAxes scatter + embed_figure of a
+    pp.subplots-built lineplot.
+
+    Demonstrates the "kitchen sink" use case from the design spec:
+    the right slot is filled at compose time by a separately-constructed
+    matplotlib Figure rather than a path-based schematic.
+    """
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    # Build a deterministic side figure using pp.subplots (no rng,
+    # no time, no env).
+    fig, ax = pp.subplots(axes_size=(40, 30))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    canvas.embed_figure("B", fig)
+    return canvas
+
+
 COMPOSITIONS: List[Tuple[str, Callable[[], pp.Canvas]]] = [
     ("cell-2col-simple", _build_cell_2col_simple),
     ("cell-2col-multirow", _build_cell_2col_multirow),
@@ -121,4 +142,5 @@ COMPOSITIONS: List[Tuple[str, Callable[[], pp.Canvas]]] = [
     ("nature-2col-panel-grid", _build_nature_2col_panel_grid),
     ("cell-2col-with-svg-schematic", _build_cell_2col_with_svg_schematic),
     ("cell-2col-with-png-schematic", _build_cell_2col_with_png_schematic),
+    ("cell-2col-with-embed-figure", _build_cell_2col_with_embed_figure),
 ]

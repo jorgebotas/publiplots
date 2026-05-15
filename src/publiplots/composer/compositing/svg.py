@@ -40,10 +40,10 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from publiplots.composer.exceptions import ComposerVectorError
-
-
-_SVG_HASHSALT = "publiplots-composer"
-_DEFAULT_DATE = "2026-01-01T00:00:00"
+from publiplots.composer.compositing._constants import (
+    _DEFAULT_DATE,
+    _SVG_HASHSALT,
+)
 
 
 def _filter_image_panels(panels: Iterable[Any]) -> list[Any]:
@@ -58,6 +58,7 @@ def savefig_svg(
     panels: Sequence[Any],
     strict_vectors: bool = False,
     metadata_date: Optional[str] = None,
+    external_raster: bool = False,
     **savefig_kwargs: Any,
 ) -> None:
     """Vector-compose the canvas Figure to an SVG at ``path``.
@@ -86,6 +87,13 @@ def savefig_svg(
 
         The default is the deterministic literal because byte
         determinism is part of the composer's contract.
+    external_raster
+        When ``True``, raster PanelImage sources are written as sidecar
+        PNG files alongside the SVG (``<output_stem>-<idx>-<label>.png``)
+        and referenced via a relative ``<image href="...">`` rather
+        than inline ``data:image/png;base64,`` URIs. Default ``False``
+        preserves PR 6a's inline-data-URI behavior. Silent no-op when
+        no raster sources are present.
 
     Raises
     ------
@@ -140,6 +148,8 @@ def savefig_svg(
             idx=idx,
             strict_vectors=strict_vectors,
             etree=_lxml_etree,
+            external_raster=external_raster,
+            output_path=output_path,
         )
 
     # Step 4: serialize + write.
@@ -161,6 +171,8 @@ def _compose_panel_into(
     idx: int,
     strict_vectors: bool,
     etree: Any,
+    external_raster: bool = False,
+    output_path: Optional[Path] = None,
 ) -> None:
     """Stamp ``panel``'s schematic into ``canvas_root``.
 
@@ -201,6 +213,7 @@ def _compose_panel_into(
             sanitized = f"_{sanitized}"
         label_str = sanitized or "unlabeled"
     path = panel.image_path
+    embedded_figure = getattr(panel, "embedded_figure", None)
     align = panel.image_align if panel.image_align is not None else "center"
     clip = panel.image_clip if panel.image_clip is not None else "fit"
     bbox_mm = panel.bbox_mm  # (x_mm, y_mm_bottom, w_mm, h_mm)
@@ -216,22 +229,67 @@ def _compose_panel_into(
     slot_y_top_mm = fig_h_mm - slot_y_bottom_mm - slot_h_mm
     slot_bbox_mm_topdown = (slot_x_mm, slot_y_top_mm, slot_w_mm, slot_h_mm)
 
-    try:
-        sch_element, sch_size_mm, _kind = load_schematic_as_svg_element(
-            path, label=raw_label,
+    if embedded_figure is not None:
+        # PR 6b: render the Figure to deterministic SVG bytes, parse
+        # via lxml, treat like a vector schematic. Reuse
+        # _resolve_svg_units to pull the schematic's mm size from its
+        # own viewBox + width/height attrs.
+        from publiplots.composer.compositing._embed import (
+            render_figure_to_svg_bytes,
         )
-    except ComposerVectorError:
-        if strict_vectors:
-            raise
-        warnings.warn(
-            f"PanelImage {label_str!r}: vector load of {path!r} failed; "
-            f"falling back to raster <image> element.",
-            UserWarning,
-            stacklevel=3,
+        sch_bytes = render_figure_to_svg_bytes(embedded_figure)
+        sch_element = etree.fromstring(sch_bytes)
+        sch_vb_x, sch_vb_y, sch_vb_w, sch_vb_h, sch_mm_per_uu = (
+            _resolve_svg_units(sch_element)
         )
-        sch_element, sch_size_mm = _raster_fallback_to_image_element(
-            path, slot_bbox_mm_topdown, etree=etree,
+        sch_size_mm = (sch_vb_w * sch_mm_per_uu, sch_vb_h * sch_mm_per_uu)
+    elif path is None:
+        # Unfilled PanelImage with no embedded figure — actionable error.
+        raise ComposerVectorError(
+            f"PanelImage {label_str!r} has no path and no embedded figure; "
+            f"either pass path= at construction or call "
+            f"canvas.embed_figure(label, fig) before savefig.",
+            panel_label=label_str if label_str != "unlabeled" else None,
         )
+    else:
+        try:
+            sch_element, sch_size_mm, sch_kind = load_schematic_as_svg_element(
+                path, label=raw_label,
+            )
+        except ComposerVectorError:
+            if strict_vectors:
+                raise
+            warnings.warn(
+                f"PanelImage {label_str!r}: vector load of {path!r} failed; "
+                f"falling back to raster <image> element.",
+                UserWarning,
+                stacklevel=3,
+            )
+            sch_element, sch_size_mm = _raster_fallback_to_image_element(
+                path, slot_bbox_mm_topdown, etree=etree,
+                external_raster=external_raster,
+                output_path=output_path,
+                idx=idx,
+                label=label_str,
+            )
+            sch_kind = "raster"
+
+        # PR 6b external_raster: when the schematic loaded as a raster
+        # data-URI, swap the inline href for a sidecar PNG reference.
+        # Vector schematics (SVG) and embedded figures are unaffected.
+        if (
+            external_raster
+            and sch_kind == "raster"
+            and output_path is not None
+        ):
+            _swap_data_uri_for_sidecar(
+                sch_element,
+                source_path=path,
+                output_path=output_path,
+                idx=idx,
+                label=label_str,
+                etree=etree,
+            )
 
     # Compute the wrapper transform.
     sx, sy, tx_uu, ty_uu = compute_svg_transform(
@@ -260,31 +318,108 @@ def _raster_fallback_to_image_element(
     slot_bbox_mm_topdown: tuple,
     *,
     etree: Any,
+    external_raster: bool = False,
+    output_path: Optional[Path] = None,
+    idx: int = 0,
+    label: str = "unlabeled",
 ) -> tuple:
-    """Last-ditch raster fallback: build an ``<image>`` data-URI element.
+    """Last-ditch raster fallback: build an ``<image>`` element.
 
-    Pillow opens the file (regardless of extension), re-saves to PNG
-    bytes, base64-encodes; the returned ``<image>`` element is sized
-    in mm matching the slot dimensions (so the wrapper's
-    ``compute_svg_transform`` math is identity-safe).
+    Pillow opens the file (regardless of extension); the returned
+    ``<image>`` element is sized in mm matching the slot dimensions
+    (so the wrapper's ``compute_svg_transform`` math is identity-safe).
+
+    PR 6b: when ``external_raster=True`` and ``output_path`` is given,
+    write a sidecar PNG instead of inlining a base64 data URI.
 
     Raises ``ComposerVectorError`` if Pillow can't open the file.
     """
-    from publiplots.composer.compositing._resources import (
-        _pillow_to_data_uri,
-    )
     SVG_NS = "http://www.w3.org/2000/svg"
     XLINK_NS = "http://www.w3.org/1999/xlink"
-    data_uri = _pillow_to_data_uri(path)
     _, _, slot_w_mm, slot_h_mm = slot_bbox_mm_topdown
     image = etree.Element(
         f"{{{SVG_NS}}}image",
         nsmap={"xlink": XLINK_NS},
     )
-    image.set(f"{{{XLINK_NS}}}href", data_uri)
+    if external_raster and output_path is not None:
+        sidecar = _write_sidecar_png(
+            source_path=path,
+            output_path=output_path,
+            idx=idx,
+            label=label,
+        )
+        image.set(f"{{{XLINK_NS}}}href", sidecar)
+    else:
+        from publiplots.composer.compositing._resources import (
+            _pillow_to_data_uri,
+        )
+        image.set(f"{{{XLINK_NS}}}href", _pillow_to_data_uri(path))
     image.set("x", "0")
     image.set("y", "0")
     image.set("width", f"{slot_w_mm:.6f}")
     image.set("height", f"{slot_h_mm:.6f}")
     image.set("preserveAspectRatio", "none")
     return image, (slot_w_mm, slot_h_mm)
+
+
+def _write_sidecar_png(
+    *,
+    source_path: Union[str, Path],
+    output_path: Path,
+    idx: int,
+    label: str,
+) -> str:
+    """Write the raster source to a sidecar PNG; return its relative
+    href for use in the SVG ``<image>`` element.
+
+    The sidecar lives next to the SVG: ``<output_stem>-<idx>-<label>.png``.
+    Uses Pillow to re-save (so even non-PNG sources land as PNG, matching
+    the inline data-URI behavior).
+    """
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise ComposerVectorError(
+            "Pillow is required for external_raster sidecar emission. "
+            "Install with `pip install publiplots[composer]`.",
+            source_error=str(e),
+        ) from e
+
+    src = Path(source_path)
+    sidecar_name = f"{output_path.stem}-{idx}-{label}.png"
+    sidecar_path = output_path.parent / sidecar_name
+    img = Image.open(src)
+    img.load()
+    img.save(sidecar_path, format="PNG")
+    return sidecar_name
+
+
+def _swap_data_uri_for_sidecar(
+    sch_element: Any,
+    *,
+    source_path: Union[str, Path],
+    output_path: Path,
+    idx: int,
+    label: str,
+    etree: Any,
+) -> None:
+    """Mutate a raster ``<image>`` element returned by
+    :func:`load_schematic_as_svg_element`: replace its inline data-URI
+    ``xlink:href`` with a sidecar PNG reference.
+
+    Used when the user passed ``external_raster=True`` and the
+    schematic loaded as a raster source.
+    """
+    XLINK_NS = "http://www.w3.org/1999/xlink"
+    sidecar_href = _write_sidecar_png(
+        source_path=source_path,
+        output_path=output_path,
+        idx=idx,
+        label=label,
+    )
+    # The element returned by load_schematic_as_svg_element for raster
+    # sources is the <image> itself.
+    sch_element.set(f"{{{XLINK_NS}}}href", sidecar_href)
+    # Also clear any plain ``href`` (some lxml flows duplicate).
+    if sch_element.get("href") is not None:
+        del sch_element.attrib["href"]

@@ -941,9 +941,220 @@ class Canvas:
         return ax
 
     # ------------------------------------------------------------------
+    # save_multiple — write to many formats from one canvas
+    # ------------------------------------------------------------------
+    def save_multiple(
+        self,
+        stem,
+        formats: Optional[Sequence[str]] = None,
+        **kwargs: Any,
+    ) -> List:
+        """Save the canvas to multiple formats from a shared stem.
+
+        Sugar over a Python loop ``for ext in formats: self.savefig(...)``
+        that pre-validates the ext list to avoid partial writes on
+        invalid input. The default ``formats=['png', 'pdf']`` mirrors
+        the free function :func:`publiplots.save_multiple`.
+
+        Parameters
+        ----------
+        stem : str or Path
+            Output stem. The format extension is appended via
+            ``Path(stem).with_suffix(f".{ext}")``. If ``stem`` already
+            has a suffix it is REPLACED (matching ``Path.with_suffix``
+            semantics) — so ``save_multiple('figure.draft', ['pdf'])``
+            writes ``figure.pdf``, not ``figure.draft.pdf``.
+        formats : sequence of str, optional
+            Format names. Defaults to ``['png', 'pdf']`` (parity with
+            ``pp.save_multiple``). Each entry is a known raster ext
+            (``png``/``jpg``/``jpeg``/``tif``/``tiff``) or vector ext
+            (``pdf``/``svg``); leading dots are accepted (``.pdf`` is
+            equivalent to ``pdf``).
+        **kwargs
+            Forwarded to :meth:`savefig` for every format. ``cmyk=True``
+            is pre-validated against the format list — passing
+            ``cmyk=True + formats=['tif', 'pdf']`` raises ``ValueError``
+            BEFORE writing the ``.tif`` so there's no partial state from
+            cmyk-misuse. Other failure modes (invalid kwarg, disk full,
+            permission denied) cannot be pre-validated and may leave
+            earlier-iteration files written when a later iteration raises.
+
+        Returns
+        -------
+        list of Path
+            The paths actually written, in the same order as ``formats``.
+
+        Raises
+        ------
+        ValueError
+            ``formats`` is empty, contains duplicates, contains a
+            non-string entry, contains an unknown ext, or ``cmyk=True``
+            is paired with a vector ext.
+
+        Notes
+        -----
+        Divergence from the free function ``pp.save_multiple``: the
+        free function is permissive (forwards bad ext through to
+        matplotlib's writers, which raise late). This method is strict
+        because it knows the exact set of supported exts and can give
+        users a better error message up-front.
+        """
+        from publiplots.composer._save import (
+            _RASTER_EXTS, _VECTOR_PDF_EXTS, _VECTOR_SVG_EXTS,
+        )
+        from pathlib import Path as _Path
+
+        if formats is None:
+            formats = ["png", "pdf"]
+        if not formats:
+            raise ValueError(
+                "save_multiple: formats must be a non-empty sequence; "
+                f"got {formats!r}"
+            )
+        # Validate every entry is a string.
+        for f in formats:
+            if not isinstance(f, str):
+                raise ValueError(
+                    f"save_multiple: formats entries must be str; "
+                    f"got {f!r} of type {type(f).__name__}"
+                )
+        # Normalize: strip a leading dot, lowercase.
+        normalized = [f.lstrip(".").lower() for f in formats]
+        # Reject duplicates AFTER normalization so '.pdf' + 'pdf' is one.
+        seen: set = set()
+        for n in normalized:
+            if n in seen:
+                raise ValueError(
+                    f"save_multiple: duplicate format {n!r} in {list(formats)!r}"
+                )
+            seen.add(n)
+        # Validate each ext is known.
+        known = (_RASTER_EXTS | _VECTOR_PDF_EXTS | _VECTOR_SVG_EXTS)
+        for n in normalized:
+            ext = f".{n}"
+            if ext not in known:
+                raise ValueError(
+                    f"save_multiple: unsupported format {n!r}; "
+                    f"supported: {sorted(e.lstrip('.') for e in known)}"
+                )
+        # Pre-validate cmyk vs vector exts. We MUST catch this before
+        # writing the first file so a multi-format save doesn't leave
+        # partial state.
+        if kwargs.get("cmyk", False):
+            non_raster = [
+                n for n in normalized
+                if f".{n}" not in _RASTER_EXTS
+            ]
+            if non_raster:
+                raise ValueError(
+                    f"save_multiple: cmyk=True is only valid for raster "
+                    f"outputs (.tif/.tiff/.jpg/.jpeg); got "
+                    f"non-raster formats {non_raster!r} in formats list. "
+                    f"Drop the vector formats or split into two calls."
+                )
+
+        # Build paths, then iterate self.savefig.
+        out: List[_Path] = []
+        for n in normalized:
+            p = _Path(stem).with_suffix(f".{n}")
+            self.savefig(p, **kwargs)
+            out.append(p)
+        return out
+
+    # ------------------------------------------------------------------
+    # embed_figure — post-staging: attach a Figure into a PanelImage slot
+    # ------------------------------------------------------------------
+    def embed_figure(self, label, figure) -> None:
+        """Attach a matplotlib :class:`~matplotlib.figure.Figure` into a
+        previously-staged PanelImage slot.
+
+        The Figure is rendered to a deterministic PDF/SVG byte buffer at
+        compose time; the existing ``compositing.pdf`` / ``compositing.svg``
+        orchestrators treat it like a vector schematic source. The
+        target panel MUST be ``kind='image'`` (a :class:`PanelImage`)
+        AND not yet have an embedded figure (``embed_figure`` is one-shot
+        per panel — silent overwrites are rejected).
+
+        Parameters
+        ----------
+        label : str or int
+            Panel resolver. Accepts the same values as
+            :meth:`Canvas.__getitem__`: a ``str`` resolved label
+            (post abc-resolution) or an ``int`` insertion index.
+        figure : matplotlib.figure.Figure
+            The figure to embed. Duck-typed: any object that responds to
+            ``figure.savefig(buf, format='pdf'|'svg', ...)`` is accepted.
+            ``embed_figure`` does NOT validate the type; the compositing
+            pipeline calls ``figure.savefig`` and surfaces TypeErrors
+            from non-Figures naturally.
+
+        Raises
+        ------
+        RuntimeError
+            If the canvas has no rows yet (call ``add_row`` first); OR
+            if the resolved panel already has an embedded figure
+            (``embed_figure`` is one-shot per panel).
+        KeyError
+            If ``label`` is not found among staged panels.
+        TypeError
+            If the resolved panel is not ``kind='image'``
+            (``embed_figure`` only attaches to PanelImage slots).
+
+        Notes
+        -----
+        - ``embed_figure`` stores a *reference* to the Figure (not a
+          snapshot). Mutating the Figure between ``embed_figure`` and
+          ``savefig`` will be reflected in the rendered output. Don't
+          call ``fig.tight_layout()`` (per project rule) and don't
+          ``fig.clear()`` it.
+        - The pairing constraint with PanelImage is documented on
+          :class:`PanelImage` itself: a no-path ``PanelImage`` MUST be
+          paired with ``embed_figure`` before ``savefig``, else the
+          composer raises :class:`ComposerVectorError`. ``embed_figure``
+          on a path-bearing PanelImage is also legal — the embedded
+          figure wins over the path.
+        """
+        # Empty canvas → preserve the same RuntimeError semantics that
+        # _finalize_if_needed raises on an empty canvas. This is the
+        # documented "embed_figure before any add_row" branch.
+        if not self._rows and not self._finalized:
+            raise RuntimeError(
+                "Canvas has no rows yet; call add_row() before embed_figure()"
+            )
+        # Trigger lazy finalization so the Panel records exist.
+        self._finalize_if_needed()
+        # Resolve via the existing __getitem__ contract — same KeyError
+        # contract for str / int / out-of-range.
+        panel = self[label]
+        # Validate kind.
+        if panel.kind != "image":
+            raise TypeError(
+                f"embed_figure: target panel {label!r} is "
+                f"kind={panel.kind!r}, not 'image'; embed_figure only "
+                f"attaches to PanelImage slots."
+            )
+        # One-shot per panel — silent overwrites would mask bugs.
+        if panel.embedded_figure is not None:
+            raise RuntimeError(
+                f"embed_figure: panel {label!r} already has an embedded "
+                f"figure; embed_figure is one-shot per panel. Stage a "
+                f"fresh Canvas + PanelImage if you need to retarget."
+            )
+        # Mutate via object.__setattr__ — Panel is a frozen dataclass.
+        object.__setattr__(panel, "embedded_figure", figure)
+
+    # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)
     # ------------------------------------------------------------------
-    def savefig(self, path, **kwargs) -> None:
+    def savefig(
+        self,
+        path,
+        *,
+        cmyk: bool = False,
+        tiff_compression: str = "tiff_lzw",
+        external_raster: bool = False,
+        **kwargs,
+    ) -> None:
         """Save the canvas to a file.
 
         Triggers lazy finalization if the canvas has at least one
@@ -958,6 +1169,23 @@ class Canvas:
         ----------
         path : str or Path
             Output file path. Extension determines the format.
+        cmyk : bool, default False
+            Convert RGB→CMYK on raster output. Valid only for
+            ``.tif``/``.tiff``/``.jpg``/``.jpeg``; pairing with PDF /
+            SVG / PNG raises ``ValueError``. Uses Pillow's basic
+            sRGB→CMYK conversion (no ICC profile in PR 6b — emits a
+            ``UserWarning``).
+        tiff_compression : str, default ``'tiff_lzw'``
+            TIFF compression knob. Other values: ``'tiff_deflate'``,
+            ``'raw'``, ``'tiff_jpeg'``, etc (Pillow's compression
+            vocab). Ignored for non-TIFF exts.
+        external_raster : bool, default False
+            For SVG outputs: when ``True``, write raster sources to
+            sidecar PNG files rather than inline base64 data-URIs.
+            Sidecar files are named ``{stem}-{idx}-{label}.png`` next to
+            the SVG; repeated saves with the same stem overwrite the
+            sidecars (idempotent re-render). Silent no-op for non-SVG
+            outputs.
         **kwargs
             Forwarded to :func:`publiplots.savefig` (raster) or to the
             vector compositor (PDF/SVG).
@@ -967,7 +1195,8 @@ class Canvas:
         RuntimeError
             If :meth:`add_row` has not been called yet.
         ValueError
-            If the path's extension is not a known raster or vector type.
+            If the path's extension is not a known raster or vector type;
+            or ``cmyk=True`` is paired with a non-CMYK-capable format.
         ComposerVectorError
             If a vector schematic fails to load and ``strict_vectors=True``.
         """
@@ -975,11 +1204,34 @@ class Canvas:
             raise RuntimeError(
                 "Canvas has no figure yet; call add_row() before savefig()"
             )
+        # PR 6b: pre-validate cmyk vs ext at the canvas layer (the dispatch
+        # layer also validates defensively, but a clear error message
+        # naming the ext is friendlier here). We do this BEFORE
+        # _finalize_if_needed so a bad cmyk argument doesn't materialize
+        # the figure unnecessarily.
+        from pathlib import Path as _Path
+        ext = _Path(path).suffix.lower()
+        if cmyk:
+            if ext == ".png":
+                raise ValueError(
+                    "PNG does not support CMYK; use .tif/.tiff/.jpg/.jpeg "
+                    "instead."
+                )
+            if ext in {".pdf", ".svg"}:
+                raise ValueError(
+                    f"cmyk=True is only valid for raster outputs "
+                    f"(.tif/.tiff/.jpg/.jpeg); got {ext!r}. "
+                    f"matplotlib's PDF/SVG backends emit RGB; convert "
+                    f"the matching raster output instead."
+                )
         self._finalize_if_needed()
         from publiplots.composer._save import dispatch_savefig
         dispatch_savefig(
             self._figure, path,
             panels=self._panels_list,
             strict_vectors=self._strict_vectors,
+            cmyk=cmyk,
+            tiff_compression=tiff_compression,
+            external_raster=external_raster,
             **kwargs,
         )

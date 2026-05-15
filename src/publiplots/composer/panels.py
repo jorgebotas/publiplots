@@ -184,9 +184,16 @@ class Panel:
     axes: Optional[Any] = None  # numpy ndarray of Axes for kind='axesgrid'
     # PR 5: PanelImage carries schematic-stamp metadata used by the PDF
     # compositing pipeline. None for non-image panels.
-    image_path: Optional[Any] = None
+    # PR 6b: ``image_path`` is now ``Optional[Path]`` — None is the
+    # "unfilled" sentinel paired with ``canvas.embed_figure``.
+    image_path: Optional[Path] = None
     image_align: Optional[str] = None
     image_clip: Optional[str] = None
+    # PR 6b: a matplotlib Figure attached via ``canvas.embed_figure``.
+    # Typed ``Any`` to keep panels.py's import surface free of
+    # matplotlib (panels.py is consumed by tests that only validate
+    # input dataclasses without touching matplotlib).
+    embedded_figure: Optional[Any] = None
 
 
 @dataclass(frozen=True)
@@ -393,9 +400,16 @@ class PanelImage:
     ----------
     label : str | None | False, default None
         Panel label. ``None`` participates in abc auto-sequencing.
-    path : str or Path
+    path : str, Path, or None, default None
         Schematic file. Extension must be one of ``.pdf``, ``.svg``,
         ``.png``, ``.jpg``/``.jpeg``, ``.tif``/``.tiff``.
+
+        ``None`` is the **unfilled-slot** sentinel (PR 6b): the panel is
+        a placeholder that MUST be paired with
+        ``canvas.embed_figure(label, fig)`` before ``canvas.savefig``.
+        Failing to embed a figure into a no-path PanelImage raises
+        ``ComposerVectorError`` at savefig time. Note: explicitly
+        passing ``path=""`` is rejected — use ``path=None`` (the default).
     size : tuple of (width, height)
         Slot size in mm or ``'flex'`` for the width.
     align : str, default 'center'
@@ -411,7 +425,7 @@ class PanelImage:
     """
 
     label: Any = None
-    path: Union[str, Path] = ""
+    path: Optional[Union[str, Path]] = None
     size: Tuple[Union[float, str], Union[float, str]] = (0.0, 0.0)
     align: str = "center"
     clip: str = "fit"
@@ -421,24 +435,39 @@ class PanelImage:
         _validate_panel_label(self.label)
         normalized_size = _validate_panel_size(self.size, allow_flex_width=True)
         object.__setattr__(self, "size", normalized_size)
-        # Path validation
-        if not self.path:
-            raise ValueError("PanelImage: path is required")
-        p = Path(self.path) if not isinstance(self.path, Path) else self.path
-        ext = p.suffix.lower()
-        if ext not in _VALID_IMAGE_EXTS:
+        # Path validation. PR 6b: ``None`` is the "unfilled-slot"
+        # sentinel; the panel will be filled by ``canvas.embed_figure``
+        # before savefig.
+        if self.path is None:
+            # Skip ext + exists checks; leave path=None for finalize
+            # to thread through as the unfilled marker.
+            pass
+        elif self.path == "":
+            # Explicitly reject the legacy empty-string sentinel — this
+            # was the architect-found bug (``Path("")`` resolves to
+            # ``PosixPath('.')`` which silently looked truthy/existing).
+            # Force users onto the explicit ``path=None`` sentinel.
             raise ValueError(
-                f"PanelImage: unsupported extension {ext!r}. "
-                f"Supported: {sorted(_VALID_IMAGE_EXTS)}."
+                "PanelImage: path='' is not a valid sentinel; "
+                "pass path=None for an unfilled slot (paired with "
+                "canvas.embed_figure(label, fig)) or supply a real path."
             )
-        if not p.exists():
-            raise FileNotFoundError(
-                f"PanelImage: schematic not found: {p}"
-            )
-        # Normalize path to Path so downstream callers (Canvas finalize,
-        # _resources.py loader) don't have to re-wrap. Frozen dataclass
-        # → use object.__setattr__.
-        object.__setattr__(self, "path", p)
+        else:
+            p = Path(self.path) if not isinstance(self.path, Path) else self.path
+            ext = p.suffix.lower()
+            if ext not in _VALID_IMAGE_EXTS:
+                raise ValueError(
+                    f"PanelImage: unsupported extension {ext!r}. "
+                    f"Supported: {sorted(_VALID_IMAGE_EXTS)}."
+                )
+            if not p.exists():
+                raise FileNotFoundError(
+                    f"PanelImage: schematic not found: {p}"
+                )
+            # Normalize path to Path so downstream callers (Canvas finalize,
+            # _resources.py loader) don't have to re-wrap. Frozen dataclass
+            # → use object.__setattr__.
+            object.__setattr__(self, "path", p)
         # align/clip validation. align is validated regardless of clip;
         # with clip='stretch' the value is recorded but unused at
         # composite time (architect's #8 — keep defensive validation).
