@@ -178,9 +178,9 @@ src/publiplots/composer/
 
 ### Task 3 — Add `lxml` to `[composer]` extras + import-failure path
 
-- [ ] Add `"lxml>=4.9"` to `pyproject.toml` `[composer]` block (alphabetized between `cairosvg` and `Pillow`).
-- [ ] Add an import-failure path in `compositing/svg.py` mirroring the cairosvg/pypdf patterns: try-except ImportError → raise `ComposerVectorError` with the install-extra hint.
-- [ ] **Failing test first**: `test_svg_compositing.py::test_no_lxml_raises_install_hint` patches `sys.modules['lxml']` to `None` to break subsequent imports, then `importlib.reload(publiplots.composer.compositing.svg)` so the patched ImportError actually bites (since `compositing/svg.py` will already have lxml in its namespace from the first import). Expect `ComposerVectorError` with the `pip install publiplots[composer]` substring.
+- [x] Add `"lxml>=4.9"` to `pyproject.toml` `[composer]` block (alphabetized between `cairosvg` and `Pillow`).
+- [x] Add an import-failure path in `compositing/svg.py` mirroring the cairosvg/pypdf patterns: try-except ImportError → raise `ComposerVectorError` with the install-extra hint.
+- [x] **Failing test first**: `test_svg_compositing.py::test_no_lxml_raises_install_hint` patches `sys.modules['lxml']` to `None` to break subsequent imports, then `importlib.reload(publiplots.composer.compositing.svg)` so the patched ImportError actually bites (since `compositing/svg.py` will already have lxml in its namespace from the first import). Expect `ComposerVectorError` with the `pip install publiplots[composer]` substring.
 
 ### Task 4 — `load_schematic_as_svg_element` in `_resources.py`
 
