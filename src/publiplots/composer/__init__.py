@@ -17,16 +17,25 @@ from publiplots.composer.exceptions import (
     ComposerAlignmentError,
     ComposerError,
     ComposerOverflowError,
+    ComposerVectorError,
 )
-from publiplots.composer.panels import Panel, PanelAxes, PanelGrid, PanelText
+from publiplots.composer.panels import (
+    Panel,
+    PanelAxes,
+    PanelGrid,
+    PanelImage,
+    PanelText,
+)
 
 __all__ = [
     "Canvas",
     "ComposerAlignmentError",
     "ComposerError",
     "ComposerOverflowError",
+    "ComposerVectorError",
     "Panel",
     "PanelAxes",
     "PanelGrid",
+    "PanelImage",
     "PanelText",
 ]

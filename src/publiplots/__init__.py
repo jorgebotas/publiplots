@@ -74,7 +74,14 @@ from publiplots.utils.legend_group import (
 from publiplots.layout import subplots
 from publiplots.layout.jointgrid import JointGrid, jointplot
 # Composer (PR 1: single-row + raster save)
-from publiplots.composer import Canvas, Panel, PanelAxes, PanelGrid, PanelText
+from publiplots.composer import (
+    Canvas,
+    Panel,
+    PanelAxes,
+    PanelGrid,
+    PanelImage,
+    PanelText,
+)
 # Register custom fonts
 from publiplots.utils.fonts import _register_fonts
 _register_fonts()
@@ -159,6 +166,7 @@ __all__ = [
     "PanelAxes",
     "Panel",
     "PanelGrid",
+    "PanelImage",
     "PanelText",
     # Color/palette functions
     "color_palette",

@@ -10,7 +10,8 @@ boundary, and it's typed as ``Any`` here for layering purity.
 """
 
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping, Optional, Tuple
+from pathlib import Path
+from typing import Any, Literal, Mapping, Optional, Tuple, Union
 
 
 PanelKind = Literal["axes", "axesgrid", "image", "text"]  # only "axes" used in PR 1
@@ -362,3 +363,95 @@ class PanelGrid:
         outer_w = nc * w + max(nc - 1, 0) * self.wspace
         outer_h = nr * h + max(nr - 1, 0) * self.hspace
         return (outer_w, outer_h)
+
+
+_VALID_IMAGE_EXTS = {".pdf", ".svg", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
+_VALID_IMAGE_ALIGN = {
+    "top-left", "top", "top-right",
+    "left", "center", "right",
+    "bottom-left", "bottom", "bottom-right",
+}
+_VALID_IMAGE_CLIP = {"fit", "fill", "stretch"}
+
+
+@dataclass(frozen=True)
+class PanelImage:
+    """Input record for an external-schematic panel.
+
+    The schematic file is referenced by ``path``; vector-preserving
+    insertion happens at savefig time via the compositing pipeline
+    (PR 5: PDF; PR 6: SVG). Raster sources (PNG/JPG/TIFF) take a raster
+    fallback path that's still valid for journal submission as long as
+    the schematic was authored at high enough DPI.
+
+    Parameters
+    ----------
+    label : str | None | False, default None
+        Panel label. ``None`` participates in abc auto-sequencing.
+    path : str or Path
+        Schematic file. Extension must be one of ``.pdf``, ``.svg``,
+        ``.png``, ``.jpg``/``.jpeg``, ``.tif``/``.tiff``.
+    size : tuple of (width, height)
+        Slot size in mm or ``'flex'`` for the width.
+    align : str, default 'center'
+        Schematic alignment within the slot when its aspect ratio
+        differs from the slot's. One of nine CSS-``object-position``
+        values.
+    clip : str, default 'fit'
+        How to handle aspect mismatch. ``'fit'`` (preserve aspect, fit
+        inside slot), ``'fill'`` (preserve aspect, fill slot, crop
+        overflow), ``'stretch'`` (ignore aspect; ``align`` ignored).
+    label_style : Mapping, optional
+        Per-panel override of canvas label_style.
+    """
+
+    label: Any = None
+    path: Union[str, Path] = ""
+    size: Tuple[Union[float, str], Union[float, str]] = (0.0, 0.0)
+    align: str = "center"
+    clip: str = "fit"
+    label_style: Optional[Mapping[str, Any]] = None
+
+    def __post_init__(self):
+        _validate_panel_label(self.label)
+        normalized_size = _validate_panel_size(self.size, allow_flex_width=True)
+        object.__setattr__(self, "size", normalized_size)
+        # Path validation
+        if not self.path:
+            raise ValueError("PanelImage: path is required")
+        p = Path(self.path) if not isinstance(self.path, Path) else self.path
+        ext = p.suffix.lower()
+        if ext not in _VALID_IMAGE_EXTS:
+            raise ValueError(
+                f"PanelImage: unsupported extension {ext!r}. "
+                f"Supported: {sorted(_VALID_IMAGE_EXTS)}."
+            )
+        if not p.exists():
+            raise FileNotFoundError(
+                f"PanelImage: schematic not found: {p}"
+            )
+        # Normalize path to Path so downstream callers (Canvas finalize,
+        # _resources.py loader) don't have to re-wrap. Frozen dataclass
+        # → use object.__setattr__.
+        object.__setattr__(self, "path", p)
+        # align/clip validation. align is validated regardless of clip;
+        # with clip='stretch' the value is recorded but unused at
+        # composite time (architect's #8 — keep defensive validation).
+        if self.align not in _VALID_IMAGE_ALIGN:
+            raise ValueError(
+                f"PanelImage: align={self.align!r} invalid. "
+                f"Expected one of 'center'/'top-left'/... (9 values); "
+                f"got {self.align!r}."
+            )
+        if self.clip not in _VALID_IMAGE_CLIP:
+            raise ValueError(
+                f"PanelImage: clip={self.clip!r} invalid. "
+                f"Expected 'fit', 'fill', or 'stretch'."
+            )
+
+        if self.label_style is not None:
+            if not hasattr(self.label_style, "keys"):
+                raise TypeError(
+                    f"label_style must be a Mapping or None, "
+                    f"got {type(self.label_style).__name__}"
+                )
