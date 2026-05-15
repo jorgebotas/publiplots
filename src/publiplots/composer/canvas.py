@@ -166,13 +166,37 @@ class Canvas:
         ComposerOverflowError
             If the row's total width exceeds the canvas budget.
         """
-        # --- guard against multi-row (PR 3 will lift this) ----------
         if self._row_added:
             raise NotImplementedError(
                 "Canvas.add_row called twice; multi-row support lands in PR 3"
             )
+        self._validate_row_inputs(panels)
+        decorations = self._resolve_decorations()
+        ncols = len(panels)
+        raw_widths = tuple(p.size[0] for p in panels)
+        row_height = max(p.size[1] for p in panels)
+        decorations_width = self._compute_decorations_width(decorations, ncols)
+        col_widths, n_flex = self._resolve_row_widths(
+            raw_widths, decorations_width
+        )
+        self._check_pinned_overflow(col_widths, decorations_width, n_flex)
+        layout = self._build_layout(col_widths, row_height, decorations, ncols)
+        fig = self._create_figure(layout)
+        self._figure = fig
+        axes_list = self._create_axes(fig, layout, ncols)
+        self._register_panels(panels, col_widths, axes_list, layout)
+        self._attach_reactor(fig, layout)
+        self._row_added = True
 
-        # --- validate inputs ----------------------------------------
+    # ------------------------------------------------------------------
+    # add_row helpers (private)
+    # ------------------------------------------------------------------
+    def _validate_row_inputs(self, panels):
+        """Zero-panel check, type check, duplicate-label check.
+
+        Skips None/False from duplicate check (only str labels need
+        uniqueness). Raises ValueError or TypeError on validation failure.
+        """
         if len(panels) == 0:
             raise ValueError("Canvas.add_row requires at least one panel")
         for p in panels:
@@ -192,7 +216,12 @@ class Canvas:
                 raise ValueError(f"duplicate panel label: {lbl!r}")
             seen.add(lbl)
 
-        # --- compute geometry ---------------------------------------
+    def _resolve_decorations(self):
+        """Read all the rcParams subplots.* values into a dict.
+
+        Returns dict with keys: outer_pad, hpad, title_space, xlabel_space,
+        ylabel_space, right. (hpad maps to subplots.wspace.)
+        """
         # Use the same rcParams defaults that pp.subplots uses so the
         # initial figure size is consistent with single-grid figures.
         outer_pad = float(resolve_param("subplots.outer_pad", None))
@@ -201,25 +230,32 @@ class Canvas:
         xlabel_space = float(resolve_param("subplots.xlabel_space", None))
         ylabel_space = float(resolve_param("subplots.ylabel_space", None))
         right = float(resolve_param("subplots.right", None))
+        return {
+            "outer_pad": outer_pad,
+            "hpad": hpad,
+            "title_space": title_space,
+            "xlabel_space": xlabel_space,
+            "ylabel_space": ylabel_space,
+            "right": right,
+        }
 
-        # Raw widths — may contain 'flex' sentinels which we'll resolve next.
-        raw_widths = tuple(p.size[0] for p in panels)
-        # All panels in one row share the row height; the Composer still
-        # requires numeric heights (flex is width-only).
-        row_height = max(p.size[1] for p in panels)
-
-        ncols = len(panels)
+    def _compute_decorations_width(self, decorations, ncols):
+        """Compute the row's total decoration width budget."""
         # Canvas width budget: panels + (n-1) hpads + ylabel reservations
         # for each column + right reservation for each column + outer pads.
         # ylabel_space and right are PER-COLUMN per FigureLayout's contract.
-        decorations_width = (
-            2 * outer_pad
-            + ncols * ylabel_space
-            + ncols * right
-            + max(ncols - 1, 0) * hpad
+        return (
+            2 * decorations["outer_pad"]
+            + ncols * decorations["ylabel_space"]
+            + ncols * decorations["right"]
+            + max(ncols - 1, 0) * decorations["hpad"]
         )
 
-        # --- resolve flex sizing ------------------------------------
+    def _resolve_row_widths(self, raw_widths, decorations_width):
+        """Call _flex.resolve_flex_widths; wrap ValueError → ComposerOverflowError.
+
+        Returns (col_widths_tuple, n_flex_int).
+        """
         from publiplots.composer._flex import resolve_flex_widths
         try:
             col_widths, n_flex = resolve_flex_widths(
@@ -238,8 +274,13 @@ class Canvas:
                 requested_mm=requested,
                 available_mm=self._width_mm,
             )
+        return col_widths, n_flex
 
-        # --- pinned-only overflow check -----------------------------
+    def _check_pinned_overflow(self, col_widths, decorations_width, n_flex):
+        """When n_flex == 0, check pinned widths against canvas budget.
+
+        Raises ComposerOverflowError on overflow.
+        """
         if n_flex == 0:
             panels_width = sum(col_widths)
             requested_width = panels_width + decorations_width
@@ -260,10 +301,9 @@ class Canvas:
         # reverse: max-panel-width-per-row = canvas_width - decorations_width)
         # — or use 'flex' panel sizing, which absorbs slack automatically.
 
-        # --- build FigureLayout (1 row × N cols) --------------------
+    def _build_layout(self, col_widths, row_height, decorations, ncols):
+        """Construct the FigureLayout dataclass."""
         from publiplots.layout.figure_layout import FigureLayout
-        from publiplots.layout.auto_layout import SubplotsAutoLayout
-        import matplotlib.pyplot as plt
 
         layout = FigureLayout(
             nrows=1,
@@ -271,31 +311,55 @@ class Canvas:
             axes_size=(col_widths[0], row_height),  # fallback; col_widths overrides
             col_widths=col_widths,
             row_heights=(row_height,),
-            title_space=(title_space,),
-            xlabel_space=(xlabel_space,),
-            ylabel_space=(ylabel_space,) * ncols,
-            right=(right,) * ncols,
+            title_space=(decorations["title_space"],),
+            xlabel_space=(decorations["xlabel_space"],),
+            ylabel_space=(decorations["ylabel_space"],) * ncols,
+            right=(decorations["right"],) * ncols,
             hspace=0.0,           # only 1 row, irrelevant
-            wspace=hpad,
-            outer_pad=outer_pad,
+            wspace=decorations["hpad"],
+            outer_pad=decorations["outer_pad"],
             legend_column=0.0,
             suptitle_space=0.0,
         )
-        W_mm, H_mm = layout.figure_size()
+        return layout
 
-        # --- create the matplotlib figure at the computed mm size ---
+    def _create_figure(self, layout):
+        """Create the matplotlib Figure at the computed mm size.
+
+        Returns the Figure.
+        """
+        import matplotlib.pyplot as plt
+
+        W_mm, H_mm = layout.figure_size()
         _MM2INCH = 1.0 / 25.4
         fig = plt.figure(
             figsize=(W_mm * _MM2INCH, H_mm * _MM2INCH),
             layout=None,
         )
-        self._figure = fig
+        return fig
 
-        # --- create axes per panel ----------------------------------
-        # Resolve labels per the canvas's abc mode.
+    def _create_axes(self, fig, layout, ncols):
+        """Create one matplotlib Axes per panel.
+
+        Returns a list of (Axes, (x0_frac, y0_frac, w_frac, h_frac)) tuples
+        so _register_panels can compute bbox_mm.
+        """
+        axes_list = []
+        for col_idx in range(ncols):
+            x0_frac, y0_frac, w_frac, h_frac = layout.axes_position(0, col_idx)
+            ax = fig.add_axes((x0_frac, y0_frac, w_frac, h_frac))
+            axes_list.append((ax, (x0_frac, y0_frac, w_frac, h_frac)))
+        return axes_list
+
+    def _register_panels(self, panels, col_widths, axes_list, layout):
+        """Resolve labels, merge styles, render labels, populate
+        self._panels and self._panels_ordered.
+        """
         from publiplots.composer.abc_labels import (
             resolve_labels, merge_label_style, render_label,
         )
+
+        W_mm, H_mm = layout.figure_size()
         raw_panel_labels = [p.label for p in panels]
         resolved_labels = resolve_labels(
             panel_labels=raw_panel_labels,
@@ -303,8 +367,7 @@ class Canvas:
         )
 
         for col_idx, panel_input in enumerate(panels):
-            x0_frac, y0_frac, w_frac, h_frac = layout.axes_position(0, col_idx)
-            ax = fig.add_axes((x0_frac, y0_frac, w_frac, h_frac))
+            ax, (x0_frac, y0_frac, w_frac, h_frac) = axes_list[col_idx]
             # bbox_mm is (x_mm, y_mm, w_mm, h_mm) bottom-left origin.
             bbox_mm = (
                 x0_frac * W_mm,
@@ -338,7 +401,10 @@ class Canvas:
                 self._panels[resolved_label] = panel
             self._panels_ordered.append(panel)
 
-        # --- attach SubplotsAutoLayout reactor (spike Finding 4) ----
+    def _attach_reactor(self, fig, layout):
+        """Attach SubplotsAutoLayout to the figure."""
+        from publiplots.layout.auto_layout import SubplotsAutoLayout
+
         # All four auto-measurable sides start at rcParams defaults and
         # auto-grow on first draw to fit decorations. This prevents
         # axis labels from clipping at the canvas mediabox edge — the
@@ -348,8 +414,6 @@ class Canvas:
             locked=set(),               # let all four sides auto-measure
             locked_positions={},
         )
-
-        self._row_added = True
 
     # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)
