@@ -182,6 +182,11 @@ class Panel:
     bbox_mm: Tuple[float, float, float, float]
     resolved_label_style: Optional[Mapping[str, Any]] = None
     axes: Optional[Any] = None  # numpy ndarray of Axes for kind='axesgrid'
+    # PR 5: PanelImage carries schematic-stamp metadata used by the PDF
+    # compositing pipeline. None for non-image panels.
+    image_path: Optional[Any] = None
+    image_align: Optional[str] = None
+    image_clip: Optional[str] = None
 
 
 @dataclass(frozen=True)

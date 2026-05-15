@@ -33,8 +33,8 @@ def small_svg(tmp_path):
 def test_savefig_pdf_writes_file(small_svg, tmp_path):
     canvas = pp.Canvas("cell-2col")
     canvas.add_row(
-        pp.PanelImage(label="A", path=small_svg, size=(80, 50)),
-        pp.PanelAxes(label="B", size=(80, 50)),
+        pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
     )
     out = tmp_path / "out.pdf"
     canvas.savefig(out)  # dispatches to compositing.pdf.savefig_pdf
@@ -44,8 +44,8 @@ def test_savefig_pdf_writes_file(small_svg, tmp_path):
 
 def test_savefig_pdf_one_page(small_svg, tmp_path):
     canvas = pp.Canvas("cell-2col")
-    canvas.add_row(pp.PanelImage(label="A", path=small_svg, size=(80, 50)),
-                   pp.PanelAxes(label="B", size=(80, 50)))
+    canvas.add_row(pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+                   pp.PanelAxes(label="B", size=("flex", 50)))
     out = tmp_path / "out.pdf"
     canvas.savefig(out)
     reader = pypdf.PdfReader(out)
@@ -56,8 +56,8 @@ def test_savefig_pdf_mediabox_matches_figure_size(small_svg, tmp_path):
     """Page mediabox dims (in pt) match canvas.figure_size_mm × MM2PT."""
     from publiplots.composer.compositing._geometry import MM2PT
     canvas = pp.Canvas("cell-2col")
-    canvas.add_row(pp.PanelImage(label="A", path=small_svg, size=(80, 50)),
-                   pp.PanelAxes(label="B", size=(80, 50)))
+    canvas.add_row(pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+                   pp.PanelAxes(label="B", size=("flex", 50)))
     out = tmp_path / "out.pdf"
     canvas.savefig(out)
     reader = pypdf.PdfReader(out)
@@ -70,8 +70,8 @@ def test_savefig_pdf_mediabox_matches_figure_size(small_svg, tmp_path):
 def test_savefig_pdf_with_no_panel_images(tmp_path):
     """A canvas with NO PanelImage panels still saves to PDF (no compositing)."""
     canvas = pp.Canvas("cell-2col")
-    canvas.add_row(pp.PanelAxes(label="A", size=(80, 50)),
-                   pp.PanelAxes(label="B", size=(80, 50)))
+    canvas.add_row(pp.PanelAxes(label="A", size=(70, 50)),
+                   pp.PanelAxes(label="B", size=("flex", 50)))
     out = tmp_path / "out.pdf"
     canvas.savefig(out)
     assert out.exists()
@@ -82,16 +82,16 @@ def test_savefig_pdf_with_no_panel_images(tmp_path):
 def test_savefig_pdf_creation_date_pinned(small_svg, tmp_path):
     """Two saves of the same canvas produce byte-identical PDFs (modulo none)."""
     canvas = pp.Canvas("cell-2col")
-    canvas.add_row(pp.PanelImage(label="A", path=small_svg, size=(80, 50)),
-                   pp.PanelAxes(label="B", size=(80, 50)))
+    canvas.add_row(pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+                   pp.PanelAxes(label="B", size=("flex", 50)))
     out1 = tmp_path / "a.pdf"
     out2 = tmp_path / "b.pdf"
     canvas.savefig(out1)
     # Rebuild canvas because the first canvas was finalized; build a fresh
     # one to avoid stateful effects.
     canvas2 = pp.Canvas("cell-2col")
-    canvas2.add_row(pp.PanelImage(label="A", path=small_svg, size=(80, 50)),
-                    pp.PanelAxes(label="B", size=(80, 50)))
+    canvas2.add_row(pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+                    pp.PanelAxes(label="B", size=("flex", 50)))
     canvas2.savefig(out2)
     # PDFs should be byte-identical given pinned /CreationDate + /Producer.
     # Tolerance: small differences in whitespace are OK; we check that the
