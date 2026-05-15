@@ -145,9 +145,12 @@ class Panel:
     Carries the resolved axes reference and the panel's mm geometry.
     Frozen so users don't accidentally mutate cached metadata.
 
-    For ``kind='axes'``, ``ax`` is a single :class:`matplotlib.axes.Axes`.
-    PR 3 adds ``kind='axesgrid'`` (where ``axes`` is a numpy array) and
-    other panel kinds.
+    For ``kind='axes'``: ``ax`` is a single :class:`matplotlib.axes.Axes`,
+    ``axes`` is None.
+    For ``kind='axesgrid'``: ``ax`` is None, ``axes`` is a 2D numpy
+    ndarray of `Axes`.
+    For ``kind='text'``: ``ax`` is the hidden axes hosting the text;
+    ``axes`` is None.
 
     Attributes
     ----------
@@ -157,13 +160,18 @@ class Panel:
         One of ``'axes'``, ``'axesgrid'``, ``'image'``, ``'text'``.
         PR 1 only emits ``'axes'``.
     ax : matplotlib.axes.Axes or None
-        The underlying axes for ``kind='axes'``. ``None`` for non-axes
-        panels (PR 5+).
+        The underlying axes for ``kind='axes'`` (and the hidden host
+        axes for ``kind='text'``). ``None`` for ``kind='axesgrid'``
+        (use :attr:`axes` instead) and other non-axes panels (PR 5+).
     size_mm : tuple of (width_mm, height_mm)
         Panel mm rect dimensions.
     bbox_mm : tuple of (x_mm, y_mm, w_mm, h_mm)
         Panel mm rect position relative to the canvas. ``(x, y)`` is the
         bottom-left corner; ``(w, h)`` matches ``size_mm``.
+    axes : numpy.ndarray of Axes, or None
+        For ``kind='axesgrid'``: 2D ndarray (shape = ``PanelGrid.shape``)
+        of the inner sub-grid axes. Row 0 is the TOP of the grid (visual
+        convention). ``None`` for all other kinds.
     """
 
     label: Any                    # str | None | False
@@ -172,6 +180,7 @@ class Panel:
     size_mm: Tuple[float, float]
     bbox_mm: Tuple[float, float, float, float]
     resolved_label_style: Optional[Mapping[str, Any]] = None
+    axes: Optional[Any] = None  # numpy ndarray of Axes for kind='axesgrid'
 
 
 @dataclass(frozen=True)

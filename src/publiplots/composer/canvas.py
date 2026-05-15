@@ -435,15 +435,11 @@ class Canvas:
                 "Canvas has no rows yet; call add_row() before finalize()"
             )
 
-        # Reject PanelGrid/PanelText for now (Tasks 7+8 will add them).
+        # Reject PanelText for now (Task 8 will add it). PanelGrid is
+        # handled in the per-panel dispatch loop below (Task 7).
         from publiplots.composer.panels import PanelAxes, PanelGrid, PanelText
         for r_idx, row in enumerate(self._rows):
             for p in row.panels:
-                if isinstance(p, PanelGrid):
-                    raise NotImplementedError(
-                        f"PanelGrid construction lands in PR3 Task 7 "
-                        f"(found PanelGrid in row {r_idx})"
-                    )
                 if isinstance(p, PanelText):
                     raise NotImplementedError(
                         f"PanelText construction lands in PR3 Task 8 "
@@ -530,7 +526,7 @@ class Canvas:
         raw_labels = [p.label for p in flat_panels]
         resolved_labels = resolve_labels(panel_labels=raw_labels, abc=self._abc)
 
-        # Per-panel: create axes, register Panel.
+        # Per-panel: dispatch by panel input type.
         flat_idx = 0
         for r_idx, (row, rects_mm) in enumerate(
             zip(self._rows, geometry.row_axes_rects_mm)
@@ -539,31 +535,52 @@ class Canvas:
                 zip(row.panels, rects_mm)
             ):
                 x_mm, y_mm, w_mm, h_mm = rect_mm
-                rect_frac = (
-                    x_mm / geometry.canvas_width_mm,
-                    y_mm / geometry.canvas_height_mm,
-                    w_mm / geometry.canvas_width_mm,
-                    h_mm / geometry.canvas_height_mm,
-                )
-                ax = fig.add_axes(rect_frac)
-
                 resolved_label = resolved_labels[flat_idx]
                 resolved_style = merge_label_style(
                     self._label_style, panel_input.label_style
                 )
-                # The flex-resolved width comes from the geometry rect.
-                col_width_resolved = w_mm
-                panel = Panel(
-                    label=resolved_label,
-                    kind="axes",
-                    ax=ax,
-                    size_mm=(col_width_resolved, _panel_raw_height(panel_input)),
-                    bbox_mm=(x_mm, y_mm, w_mm, h_mm),
-                    resolved_label_style=resolved_style,
-                )
+
+                if isinstance(panel_input, PanelGrid):
+                    # Build the inner sub-grid of axes inside the panel's
+                    # outer mm rect.
+                    inner_axes = self._build_panel_grid_axes(
+                        panel_input, fig, rect_mm,
+                        geometry.canvas_width_mm, geometry.canvas_height_mm,
+                    )
+                    panel = Panel(
+                        label=resolved_label,
+                        kind="axesgrid",
+                        ax=None,
+                        size_mm=(w_mm, h_mm),
+                        bbox_mm=(x_mm, y_mm, w_mm, h_mm),
+                        resolved_label_style=resolved_style,
+                        axes=inner_axes,
+                    )
+                    # Render the abc label on the TOP-LEFT inner axes
+                    # (the panel's "first" cell visually).
+                    label_target_ax = inner_axes[0, 0]
+                else:
+                    # PanelAxes (PanelText raises above; PanelImage in PR 5).
+                    rect_frac = (
+                        x_mm / geometry.canvas_width_mm,
+                        y_mm / geometry.canvas_height_mm,
+                        w_mm / geometry.canvas_width_mm,
+                        h_mm / geometry.canvas_height_mm,
+                    )
+                    ax = fig.add_axes(rect_frac)
+                    panel = Panel(
+                        label=resolved_label,
+                        kind="axes",
+                        ax=ax,
+                        size_mm=(w_mm, _panel_raw_height(panel_input)),
+                        bbox_mm=(x_mm, y_mm, w_mm, h_mm),
+                        resolved_label_style=resolved_style,
+                        axes=None,
+                    )
+                    label_target_ax = ax
 
                 if isinstance(resolved_label, str) and resolved_label:
-                    render_label(ax, resolved_label, style=resolved_style)
+                    render_label(label_target_ax, resolved_label, style=resolved_style)
                     self._panels_dict[resolved_label] = panel
                 self._panels_list.append(panel)
                 flat_idx += 1
@@ -598,6 +615,84 @@ class Canvas:
             )
 
         self._finalized = True
+
+    # ------------------------------------------------------------------
+    # PanelGrid construction helpers (PR 3 Task 7)
+    # ------------------------------------------------------------------
+    def _build_panel_grid_axes(
+        self,
+        panel_grid,
+        fig,
+        outer_rect_mm,
+        canvas_w_mm,
+        canvas_h_mm,
+    ):
+        """Lay out the inner axes grid inside the panel's mm rect.
+
+        Row 0 sits at the TOP of the panel; the topmost row therefore has
+        the LARGEST y in matplotlib's bottom-left-origin coordinates.
+        ``axes_size`` is the per-cell mm size; ``hspace``/``wspace``
+        separate cells.
+
+        Returns
+        -------
+        axes : numpy.ndarray of shape (nrows, ncols), dtype=object
+            Array of matplotlib Axes objects.
+        """
+        import numpy as np
+
+        nr, nc = panel_grid.shape
+        cell_w, cell_h = panel_grid.axes_size
+        hspace, wspace = panel_grid.hspace, panel_grid.wspace
+
+        x0_mm, y0_mm, _w_mm, _h_mm = outer_rect_mm
+
+        axes = np.empty((nr, nc), dtype=object)
+        for r in range(nr):
+            for c in range(nc):
+                cell_x_mm = x0_mm + c * (cell_w + wspace)
+                # Row 0 sits at the TOP of the panel; in bottom-left
+                # origin coords the topmost row has the LARGEST y.
+                cell_y_mm = y0_mm + (nr - 1 - r) * (cell_h + hspace)
+                rect_frac = (
+                    cell_x_mm / canvas_w_mm,
+                    cell_y_mm / canvas_h_mm,
+                    cell_w / canvas_w_mm,
+                    cell_h / canvas_h_mm,
+                )
+                share_x = self._resolve_panel_grid_share(
+                    panel_grid.sharex, axes, r, c, axis="x"
+                )
+                share_y = self._resolve_panel_grid_share(
+                    panel_grid.sharey, axes, r, c, axis="y"
+                )
+                kwargs = {}
+                if share_x is not None:
+                    kwargs["sharex"] = share_x
+                if share_y is not None:
+                    kwargs["sharey"] = share_y
+                axes[r, c] = fig.add_axes(rect_frac, **kwargs)
+        return axes
+
+    @staticmethod
+    def _resolve_panel_grid_share(share, axes, r, c, *, axis):
+        """Return the axes to share with, or None.
+
+        Mirrors :func:`publiplots.layout.subplots._resolve_shared`.
+        ``share`` has already been validated by :class:`PanelGrid`.
+        """
+        if share in (False, "none"):
+            return None
+        if r == 0 and c == 0:
+            return None
+        if share in (True, "all"):
+            return axes[0, 0]
+        if share == "row":
+            return axes[r, 0] if c > 0 else None
+        if share == "col":
+            return axes[0, c] if r > 0 else None
+        # Unreachable — PanelGrid validates share values up-front.
+        return None
 
     # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)

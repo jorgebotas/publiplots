@@ -104,9 +104,9 @@ def test_panel_grid_exported_at_top_level():
 # Regression: PanelGrid accepted at add_row, rejected at finalize
 # ---------------------------------------------------------------------------
 
-def test_panel_grid_accepted_at_add_row_raises_at_finalize():
-    """PR3 Task 6 contract: PanelGrid is a valid input to add_row, but
-    finalization (until Task 7 lands) raises NotImplementedError.
+def test_panel_grid_accepted_at_add_row_and_finalizes():
+    """PR3 Task 7 contract: PanelGrid is a valid input to add_row AND
+    finalization succeeds (lifting the Task 6 NotImplementedError).
 
     Regression test for the AttributeError that was happening when
     add_row's eager flex/overflow check tried to read PanelGrid.size
@@ -114,16 +114,15 @@ def test_panel_grid_accepted_at_add_row_raises_at_finalize():
     canvas = pp.Canvas("custom", width=174.0)
     # Should NOT raise here — PanelGrid is a valid input.
     canvas.add_row(pp.PanelGrid(label="C", shape=(2, 3), axes_size=(40.0, 30.0)))
-    # But finalization should raise (PR3 Task 6 boundary).
-    with pytest.raises(NotImplementedError, match="PanelGrid"):
-        canvas.finalize()
+    # Finalization should also succeed (Task 7 lifted the boundary).
+    canvas.finalize()
+    assert canvas["C"].kind == "axesgrid"
 
 
 def test_panel_grid_in_multirow_with_panel_axes():
     """Regression: a row mixing PanelAxes + PanelGrid should also pass
-    add_row's validation. (Finalize still raises NotImplementedError
-    because Task 7 hasn't landed; this just checks the eager-path bug
-    is fixed.)"""
+    add_row's validation. (Originally written when Task 7 hadn't landed;
+    kept as a staging-only check that the eager-path bug stays fixed.)"""
     canvas = pp.Canvas("custom", width=174.0)
     # add_row should NOT raise — both panel types are valid inputs.
     canvas.add_row(pp.PanelAxes(label="A", size=(70.0, 40.0)))
@@ -142,3 +141,88 @@ def test_panel_grid_overflow_in_add_row():
         canvas.add_row(
             pp.PanelGrid(label="C", shape=(2, 5), axes_size=(50.0, 30.0))
         )
+
+
+# ---------------------------------------------------------------------------
+# Canvas integration — the panel actually creates a sub-grid of axes
+# ---------------------------------------------------------------------------
+
+import matplotlib
+matplotlib.use("Agg")
+
+
+def test_panel_grid_canvas_axes_attribute_returns_2d_array():
+    """canvas[label].axes returns a 2D numpy array of Axes for a grid panel."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelGrid(label="C", shape=(2, 3), axes_size=(40.0, 30.0)))
+    panel = canvas["C"]
+    import numpy as np
+    from matplotlib.axes import Axes
+    assert isinstance(panel.axes, np.ndarray)
+    assert panel.axes.shape == (2, 3)
+    for row in panel.axes:
+        for ax in row:
+            assert isinstance(ax, Axes)
+
+
+def test_panel_grid_kind_is_axesgrid():
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelGrid(label="C", shape=(2, 3), axes_size=(40.0, 30.0)))
+    assert canvas["C"].kind == "axesgrid"
+
+
+def test_panel_grid_ax_is_none_use_axes_instead():
+    """For PanelGrid, .ax is None — use .axes (2D array) instead."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelGrid(label="C", shape=(2, 3), axes_size=(40.0, 30.0)))
+    panel = canvas["C"]
+    assert panel.ax is None
+    assert panel.axes is not None
+
+
+def test_panel_grid_outer_size_matches_size_mm_property():
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelGrid(label="C", shape=(1, 3), axes_size=(50.0, 30.0)))
+    panel = canvas["C"]
+    # Panel.size_mm reflects the OUTER mm rect of the grid panel
+    # (not the per-cell size).
+    # 3 cols of 50mm + 2 wspaces of 2mm = 154mm wide; 1 row of 30mm = 30mm tall.
+    assert panel.size_mm == (154.0, 30.0)
+
+
+def test_panel_grid_inner_axes_have_correct_per_cell_size():
+    """Each inner axes occupies axes_size mm; verify by reading the
+    per-axes bbox in figure-fraction and converting back to mm."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelGrid(label="C", shape=(1, 3), axes_size=(50.0, 30.0)))
+    canvas.finalize()
+    fig_w_in, fig_h_in = canvas.figure.get_size_inches()
+    for ax in canvas["C"].axes.flat:
+        bbox = ax.get_position()
+        ax_w_mm = bbox.width * fig_w_in * 25.4
+        ax_h_mm = bbox.height * fig_h_in * 25.4
+        assert abs(ax_w_mm - 50.0) < 0.5  # mm precision (publiplots default)
+        assert abs(ax_h_mm - 30.0) < 0.5
+
+
+def test_panel_grid_sharex_propagates_to_inner_axes():
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelGrid(label="C", shape=(2, 3), axes_size=(40.0, 30.0),
+                                 sharex=True))
+    axes = canvas["C"].axes
+    # sharex=True: all 6 axes share the same xaxis with axes[0,0].
+    primary = axes[0, 0].get_shared_x_axes()
+    for r in range(2):
+        for c in range(3):
+            if r == 0 and c == 0:
+                continue
+            assert primary.joined(axes[0, 0], axes[r, c])
+
+
+def test_panel_grid_in_multi_row():
+    """Mix PanelAxes and PanelGrid across rows."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelAxes(label="A", size=(140.0, 40.0)))
+    canvas.add_row(pp.PanelGrid(label="C", shape=(1, 3), axes_size=(40.0, 30.0)))
+    assert canvas["A"].kind == "axes"
+    assert canvas["C"].kind == "axesgrid"
