@@ -42,6 +42,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `canvas[i]` (integer index) returns the i-th panel by insertion order;
   `canvas['<label>']` (str) is unchanged.
 - Two new gallery examples under ``examples/composer/``.
+- `pp.Canvas` multi-row layouts — `add_row` may now be called multiple
+  times. Rows stack top-to-bottom with configurable `vpad`. abc
+  sequencing continues across rows. `canvas[i]` (integer index) walks
+  panels in flat insertion order across rows.
+- `pp.PanelGrid(label, *, shape, axes_size, sharex, sharey, hspace, wspace, label_style)` —
+  a sub-grid of axes inside a single panel. `canvas['<label>'].axes`
+  returns a 2D numpy array of `Axes`. `canvas['<label>'].ax` is `None`
+  for grid panels (use `.axes` instead).
+- `pp.PanelText(label, *, text, size, text_kw, label_style)` — text-only
+  panel (mathtext-supporting). Renders to a hidden axes with one
+  centered `text`.
+- `canvas.align(panels, *, edge, mode='axes', anchor=None)` — explicit
+  alignment override. Edges: `'left'`, `'right'`, `'top'`, `'bottom'`,
+  `'center_x'`, `'center_y'`, `'baseline'`. Modes: `'axes'` /
+  `'tight'`. Slot mm-rects are inviolate; alignment shifts content
+  WITHIN slots. Raises `ComposerAlignmentError` if a shift would push
+  axes outside their slot.
+- `canvas.finalize()` — explicit no-op-if-already-finalized helper to
+  materialize the figure without accessing `.figure`. The figure is
+  also finalized lazily on first access of `canvas.figure`,
+  `canvas.figure_size_mm`, `canvas[label]`, `canvas[i]`, or
+  `canvas.savefig`.
+- `ComposerAlignmentError` — new exception subclass of `ComposerError`,
+  carrying `panels` and `edge` attributes.
+- Two new gallery examples under `examples/composer/` showing
+  multi-row + PanelGrid + PanelText + canvas.align.
 
 ## [0.11.3] - 2026-05-13
 
