@@ -8,7 +8,11 @@ is the primary tool for complex subplot layouts.
 """
 
 import warnings
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple, Union
+
+# PR 4: grid-scope kwargs accept either a single int or an inclusive (start, end)
+# tuple of ints. Defined once to keep the resolver and factory signatures aligned.
+_RowColSpec = Union[int, Tuple[int, int]]
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
@@ -45,6 +49,219 @@ def _handle_repr(handle) -> str:
             except Exception:
                 pass
     return "|".join(parts)
+
+
+def _resolve_grid_scope(
+    fig: Figure,
+    *,
+    rows: Optional[_RowColSpec] = None,
+    cols: Optional[_RowColSpec] = None,
+    span: Optional[str] = None,
+    ax: Optional[Sequence[Axes]] = None,
+) -> Optional[List[Axes]]:
+    """Translate grid-scope kwargs into a concrete axes list.
+
+    Returns
+    -------
+    list of Axes
+        The resolved scope when ``rows``/``cols``/``ax`` produce a
+        concrete subset.
+    None
+        When ``rows``/``cols``/``span``/``ax`` are all None, OR when
+        ``span='fig'`` (both mean "no grid scoping; fall through to
+        figure-level"). Caller's responsibility to dispatch.
+
+    Raises
+    ------
+    ValueError
+        On out-of-range indices, missing ``_publiplots_axes`` matrix
+        when one is required, conflicting kwargs, empty ``ax=`` list,
+        or invalid ``span`` value.
+    """
+    # Normalize: count how many of the four are actually set.
+    rows_set = rows is not None
+    cols_set = cols is not None
+    span_set = span is not None
+    ax_set = ax is not None
+
+    # All-None → fall through.
+    if not (rows_set or cols_set or span_set or ax_set):
+        return None
+
+    # `ax=` is mutually exclusive with all three others.
+    if ax_set and (rows_set or cols_set or span_set):
+        collided = [n for n, s in (("rows", rows_set), ("cols", cols_set),
+                                   ("span", span_set)) if s]
+        raise ValueError(
+            f"pp.legend: `ax=` and `{'`, `'.join(collided)}=` are mutually "
+            "exclusive — they're alternative addressing modes. Pick one."
+        )
+
+    # `span=` is mutually exclusive with explicit rows/cols.
+    if span_set and (rows_set or cols_set):
+        collided = [n for n, s in (("rows", rows_set), ("cols", cols_set)) if s]
+        raise ValueError(
+            f"pp.legend: `span=` and `{'`, `'.join(collided)}=` are mutually "
+            "exclusive. Use `span` for sugar OR `rows`/`cols` for explicit "
+            "scoping."
+        )
+
+    # Explicit ax= path — no _publiplots_axes lookup needed.
+    if ax_set:
+        ax_list = list(ax)
+        if not ax_list:
+            raise ValueError(
+                "pp.legend: `ax=` was an empty sequence. Pass at least one "
+                "Axes, or omit `ax=` for figure-level scoping."
+            )
+        return ax_list
+
+    # `span=` path.
+    if span_set:
+        if span not in ("row", "col", "fig"):
+            raise ValueError(
+                f"pp.legend: span={span!r} invalid. Expected 'row', 'col', "
+                "or 'fig'."
+            )
+        if span == "fig":
+            return None  # full figure → caller falls through
+        # 'row'/'col' need a positional anchor; the caller (`legend()`)
+        # is responsible for passing that context. The resolver itself
+        # raises here because we have no anchor.
+        raise ValueError(
+            f"pp.legend: span={span!r} requires a positional Axes anchor "
+            "(`pp.legend(ax_anchor, span='row')`). Without an anchor, use "
+            f"`rows=`/`cols=` for explicit indices or `span='fig'` for the "
+            "full figure."
+        )
+
+    # `rows=`/`cols=` path — needs the _publiplots_axes matrix.
+    # Note: pp.Canvas does NOT currently attach _publiplots_axes (PR 7
+    # territory). The error message therefore points only at pp.subplots.
+    matrix = getattr(fig, "_publiplots_axes", None)
+    if not matrix:
+        raise ValueError(
+            "pp.legend: `rows=`/`cols=` requires a figure built by "
+            "`pp.subplots` (no `_publiplots_axes` matrix on this figure). "
+            "For raw matplotlib figures or pp.Canvas figures, use "
+            "`ax=[ax1, ax2, ...]` instead."
+        )
+
+    n_rows = len(matrix)
+    n_cols = len(matrix[0]) if matrix else 0
+
+    def _is_int_like(v: object) -> bool:
+        # Accept Python int + numpy integer; reject bool, float, str, etc.
+        # Bool is a subclass of int in Python — reject explicitly.
+        if isinstance(v, bool):
+            return False
+        if isinstance(v, int):
+            return True
+        try:
+            import numpy as _np
+            return isinstance(v, _np.integer)
+        except ImportError:
+            return False
+
+    def _normalize_range(name: str, value: object, length: int) -> tuple[int, int]:
+        if isinstance(value, tuple):
+            if len(value) != 2:
+                raise ValueError(
+                    f"pp.legend: `{name}=` tuple must be (start, end) — got "
+                    f"{value!r}."
+                )
+            start, end = value
+            if not (_is_int_like(start) and _is_int_like(end)):
+                raise ValueError(
+                    f"pp.legend: `{name}={value!r}` — tuple elements must be "
+                    f"integers (got types {type(start).__name__}, "
+                    f"{type(end).__name__})."
+                )
+            start = int(start)
+            end = int(end)
+        elif _is_int_like(value):
+            start = end = int(value)
+        else:
+            raise ValueError(
+                f"pp.legend: `{name}={value!r}` — must be int or "
+                f"(start, end) tuple of ints (got {type(value).__name__})."
+            )
+        # Disallow negative indices: explicit, no Python wrap-around.
+        if start < 0 or end < 0:
+            last = length - 1
+            raise ValueError(
+                f"pp.legend: `{name}={value!r}` — negative indices are not "
+                f"supported. Use `{name}={last}` for the last "
+                f"{'row' if name == 'rows' else 'column'}."
+            )
+        # Disallow inverted ranges with a clearer message than "out of range".
+        if start > end:
+            raise ValueError(
+                f"pp.legend: `{name}={value!r}` has start > end. Use "
+                f"`{name}=({end}, {start})` to specify an inclusive range."
+            )
+        if not (start < length and end < length):
+            raise ValueError(
+                f"pp.legend: `{name}={value!r}` out of range for "
+                f"_publiplots_axes shape ({n_rows}, {n_cols})."
+            )
+        return start, end
+
+    if rows_set:
+        r_start, r_end = _normalize_range("rows", rows, n_rows)
+    else:
+        r_start, r_end = 0, n_rows - 1
+
+    if cols_set:
+        c_start, c_end = _normalize_range("cols", cols, n_cols)
+    else:
+        c_start, c_end = 0, n_cols - 1
+
+    out: List[Axes] = []
+    for r in range(r_start, r_end + 1):
+        for c in range(c_start, c_end + 1):
+            out.append(matrix[r][c])
+    return out
+
+
+def _expand_span_with_anchor(
+    fig: Figure,
+    anchor: Axes,
+    span: str,
+) -> List[Axes]:
+    """Expand `span='row'/'col'` against a positional Axes anchor.
+
+    Locates ``anchor`` in ``fig._publiplots_axes`` and returns the full
+    row or column containing it.
+
+    Raises
+    ------
+    ValueError
+        If the figure has no ``_publiplots_axes`` matrix, or if
+        ``anchor`` is not in that matrix.
+    """
+    matrix = getattr(fig, "_publiplots_axes", None)
+    if not matrix:
+        raise ValueError(
+            "pp.legend: `span='row'`/`'col'` requires a figure built by "
+            "`pp.subplots` or `pp.Canvas` (no `_publiplots_axes` matrix on "
+            "this figure)."
+        )
+    target_id = id(anchor)
+    for r, row in enumerate(matrix):
+        for c, ax_in_row in enumerate(row):
+            if id(ax_in_row) == target_id:
+                if span == "row":
+                    return list(row)
+                if span == "col":
+                    return [matrix[rr][c] for rr in range(len(matrix))]
+                raise ValueError(
+                    f"pp.legend: span={span!r} not 'row' or 'col'."
+                )
+    raise ValueError(
+        "pp.legend: positional anchor was not found in this figure's "
+        "`_publiplots_axes` matrix."
+    )
 
 
 class _ScopeAnchor:
@@ -989,6 +1206,11 @@ def legend(
     column_spacing: float = 5,
     vpad: Optional[float] = None,
     max_width: Optional[float] = None,
+    # PR 4: grid-scope kwargs (additive; all default None → existing behavior)
+    rows: Optional[_RowColSpec] = None,
+    cols: Optional[_RowColSpec] = None,
+    span: Optional[str] = None,
+    ax: Optional[Sequence[Axes]] = None,
 ) -> MultiAxesLegendGroup:
     """Create a publication-ready legend for one axes, a subset, or the full figure.
 
@@ -1058,6 +1280,62 @@ def legend(
     differ under ``pp.subplots`` where the distinction controls which
     reservation the layout reactor grows.
     """
+    # PR 4: if any of the new grid-scope kwargs are set, resolve them up-front
+    # to a list-of-axes scope (or None for figure-level), then fall through to
+    # the existing resolution logic by setting `axes`.
+    if rows is not None or cols is not None or span is not None or ax is not None:
+        # span='row'/'col' is the SOLE exception to "new kwargs are mutually
+        # exclusive with the positional `axes=` arg" — those two span values
+        # REQUIRE a positional anchor, so they consume `axes=ax` instead of
+        # raising on it.
+        is_positional_anchor_span = (
+            span in ("row", "col")
+            and isinstance(axes, Axes)
+            and rows is None and cols is None and ax is None
+        )
+
+        if axes is not None and not is_positional_anchor_span:
+            raise ValueError(
+                "pp.legend: legacy positional `axes=` is mutually exclusive "
+                "with the new `rows=`/`cols=`/`span=`/`ax=` kwargs. Use one "
+                "addressing mode at a time."
+            )
+
+        resolver_fig = figure if figure is not None else plt.gcf()
+
+        if is_positional_anchor_span:
+            # Expand against the anchor; consume `axes` and continue down the
+            # list-of-axes branch.
+            expanded = _expand_span_with_anchor(resolver_fig, axes, span)
+            axes = expanded
+        else:
+            if span in ("row", "col") and not isinstance(axes, Axes):
+                raise ValueError(
+                    f"pp.legend: span={span!r} requires a positional Axes "
+                    "anchor (e.g. `pp.legend(axes[0,1], span='row')`)."
+                )
+            resolved_scope = _resolve_grid_scope(
+                resolver_fig, rows=rows, cols=cols, span=span, ax=ax,
+            )
+            if resolved_scope is not None:
+                # Drift guard: if `figure=` was explicit AND the resolved axes
+                # belong to a different figure, bail rather than letting the
+                # downstream group silently switch figures off the resolved
+                # axes' get_figure(). The `ax=` path is the most common way
+                # to hit this — caller passes ax= from one figure but figure=
+                # naming another.
+                if figure is not None:
+                    for a in resolved_scope:
+                        if a.get_figure() is not figure:
+                            raise ValueError(
+                                "pp.legend: resolved axes belong to a different "
+                                "Figure than the one passed via `figure=`. "
+                                "Either drop `figure=` or pass axes from that "
+                                "figure."
+                            )
+                axes = resolved_scope
+            # else: span='fig' or all-None → leave axes=None.
+
     # Resolve anchor + axes per the rules:
     #   axes=None, anchor=None  -> figure-level (whole grid)
     #   axes=None, anchor=ax    -> scope=[ax]   (back-compat: old legend_group(anchor=ax),
