@@ -941,6 +941,124 @@ class Canvas:
         return ax
 
     # ------------------------------------------------------------------
+    # save_multiple — write to many formats from one canvas
+    # ------------------------------------------------------------------
+    def save_multiple(
+        self,
+        stem,
+        formats: Optional[Sequence[str]] = None,
+        **kwargs: Any,
+    ) -> List:
+        """Save the canvas to multiple formats from a shared stem.
+
+        Sugar over a Python loop ``for ext in formats: self.savefig(...)``
+        that pre-validates the ext list to avoid partial writes on
+        invalid input. The default ``formats=['png', 'pdf']`` mirrors
+        the free function :func:`publiplots.save_multiple`.
+
+        Parameters
+        ----------
+        stem : str or Path
+            Output stem. The format extension is appended via
+            ``Path(stem).with_suffix(f".{ext}")``. If ``stem`` already
+            has a suffix it is REPLACED (matching ``Path.with_suffix``
+            semantics) — so ``save_multiple('figure.draft', ['pdf'])``
+            writes ``figure.pdf``, not ``figure.draft.pdf``.
+        formats : sequence of str, optional
+            Format names. Defaults to ``['png', 'pdf']`` (parity with
+            ``pp.save_multiple``). Each entry is a known raster ext
+            (``png``/``jpg``/``jpeg``/``tif``/``tiff``) or vector ext
+            (``pdf``/``svg``); leading dots are accepted (``.pdf`` is
+            equivalent to ``pdf``).
+        **kwargs
+            Forwarded to :meth:`savefig` for every format. ``cmyk=True``
+            is pre-validated against the format list — passing
+            ``cmyk=True + formats=['tif', 'pdf']`` raises ``ValueError``
+            BEFORE writing the ``.tif`` so there's no partial state.
+
+        Returns
+        -------
+        list of Path
+            The paths actually written, in the same order as ``formats``.
+
+        Raises
+        ------
+        ValueError
+            ``formats`` is empty, contains duplicates, contains a
+            non-string entry, contains an unknown ext, or ``cmyk=True``
+            is paired with a vector ext.
+
+        Notes
+        -----
+        Divergence from the free function ``pp.save_multiple``: the
+        free function is permissive (forwards bad ext through to
+        matplotlib's writers, which raise late). This method is strict
+        because it knows the exact set of supported exts and can give
+        users a better error message up-front.
+        """
+        from publiplots.composer._save import (
+            _RASTER_EXTS, _VECTOR_PDF_EXTS, _VECTOR_SVG_EXTS,
+        )
+        from pathlib import Path as _Path
+
+        if formats is None:
+            formats = ["png", "pdf"]
+        if not formats:
+            raise ValueError(
+                "save_multiple: formats must be a non-empty sequence; "
+                f"got {formats!r}"
+            )
+        # Validate every entry is a string.
+        for f in formats:
+            if not isinstance(f, str):
+                raise ValueError(
+                    f"save_multiple: formats entries must be str; "
+                    f"got {f!r} of type {type(f).__name__}"
+                )
+        # Normalize: strip a leading dot, lowercase.
+        normalized = [f.lstrip(".").lower() for f in formats]
+        # Reject duplicates AFTER normalization so '.pdf' + 'pdf' is one.
+        seen: set = set()
+        for n in normalized:
+            if n in seen:
+                raise ValueError(
+                    f"save_multiple: duplicate format {n!r} in {list(formats)!r}"
+                )
+            seen.add(n)
+        # Validate each ext is known.
+        known = (_RASTER_EXTS | _VECTOR_PDF_EXTS | _VECTOR_SVG_EXTS)
+        for n in normalized:
+            ext = f".{n}"
+            if ext not in known:
+                raise ValueError(
+                    f"save_multiple: unsupported format {n!r}; "
+                    f"supported: {sorted(e.lstrip('.') for e in known)}"
+                )
+        # Pre-validate cmyk vs vector exts. We MUST catch this before
+        # writing the first file so a multi-format save doesn't leave
+        # partial state.
+        if kwargs.get("cmyk", False):
+            non_raster = [
+                n for n in normalized
+                if f".{n}" not in _RASTER_EXTS
+            ]
+            if non_raster:
+                raise ValueError(
+                    f"save_multiple: cmyk=True is only valid for raster "
+                    f"outputs (.tif/.tiff/.jpg/.jpeg); got "
+                    f"non-raster formats {non_raster!r} in formats list. "
+                    f"Drop the vector formats or split into two calls."
+                )
+
+        # Build paths, then iterate self.savefig.
+        out: List[_Path] = []
+        for n in normalized:
+            p = _Path(stem).with_suffix(f".{n}")
+            self.savefig(p, **kwargs)
+            out.append(p)
+        return out
+
+    # ------------------------------------------------------------------
     # embed_figure — post-staging: attach a Figure into a PanelImage slot
     # ------------------------------------------------------------------
     def embed_figure(self, label, figure) -> None:

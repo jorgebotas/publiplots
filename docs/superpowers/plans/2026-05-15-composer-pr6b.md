@@ -254,12 +254,12 @@ src/publiplots/composer/
 
 ### Task 7 — `Canvas.save_multiple` method
 
-- [ ] Add `save_multiple(self, stem, formats=None, **kwargs) → List[Path]` to `Canvas`:
+- [x] Add `save_multiple(self, stem, formats=None, **kwargs) → List[Path]` to `Canvas`:
   - Default `formats=None` → `['png', 'pdf']` (parity with `pp.save_multiple`).
   - **Pre-validate** all formats BEFORE writing: non-empty, str type, no duplicates, all in known ext sets. Pre-validate `cmyk=True` against the format list (raise if any ext is non-raster). Raises `ValueError` listing the offending ext(s).
   - For each `ext`, build `path = Path(stem).with_suffix(f".{ext.lstrip('.')}")`, call `self.savefig(path, **kwargs)`.
   - Return list of paths written.
-- [ ] **Failing tests first** in `test_save_multiple.py`:
+- [x] **Failing tests first** in `test_save_multiple.py`:
   - `test_save_multiple_writes_all_formats` — `formats=['pdf', 'svg', 'png']` writes 3 files.
   - `test_save_multiple_default_formats` — `formats=None` writes png + pdf.
   - `test_save_multiple_returns_paths` — return value matches written paths.
@@ -267,7 +267,7 @@ src/publiplots/composer/
   - `test_save_multiple_unknown_ext_raises_pre_write` — `formats=['xyz']` raises ValueError; no file written.
   - `test_save_multiple_duplicates_raise` — `formats=['png', 'png']` raises ValueError.
   - `test_save_multiple_cmyk_with_vector_format_raises_pre_write` — `cmyk=True + formats=['tif','pdf']` raises ValueError BEFORE writing the .tif (no partial state).
-- [ ] Implement.
+- [x] Implement. (cmyk-only-raster end-to-end success test deferred to Task 8 — the pre-validate gate landed here, but the actual CMYK file write requires Task 8's raster branch.)
 
 ### Task 8 — CMYK + TIFF compression on raster branch
 
