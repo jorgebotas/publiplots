@@ -207,11 +207,11 @@ src/publiplots/composer/
 
 ### Task 3 — Add `embedded_figure` branch to `Panel` finalization
 
-- [ ] Update `Canvas._finalize_if_needed` in `canvas.py:738-762` (the PanelImage finalize branch):
+- [x] Update `Canvas._finalize_if_needed` in `canvas.py:738-762` (the PanelImage finalize branch):
   - When the staged `PanelImage` has `path is None`, set `image_path=None` (the unfilled sentinel) and leave `embedded_figure=None` (default).
   - When path IS provided, finalize as before with `image_path=panel_input.path` (already a `Path`).
-- [ ] **Failing test first**: `test_embed_figure.py::test_panel_image_no_path_finalizes_to_unfilled` — finalize an unfilled PanelImage; the Panel record has `embedded_figure=None` and `image_path is None`.
-- [ ] Implement.
+- [x] **Failing test first**: `test_embed_figure.py::test_panel_image_no_path_finalizes_to_unfilled` — finalize an unfilled PanelImage; the Panel record has `embedded_figure=None` and `image_path is None`.
+- [x] Implement. (Trivially satisfied: existing finalize path threads ``panel_input.path`` directly into ``image_path``; with PR 6b's relaxed PanelImage default, ``None`` flows through unchanged.)
 
 ### Task 4 — `Canvas.embed_figure` method
 
