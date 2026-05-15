@@ -149,3 +149,183 @@ def test_embed_figure_index_out_of_range(side_figure):
     )
     with pytest.raises(KeyError, match=r"out of range"):
         canvas.embed_figure(5, side_figure)
+
+
+# ---------------------------------------------------------------------------
+# Task 5 — render_figure_to_{pdf,svg}_bytes helpers
+# ---------------------------------------------------------------------------
+
+def _build_simple_figure(figsize=(2.0, 1.5)):
+    """Helper: a deterministic side figure (no rng, no time, no env)."""
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.plot([1, 2, 3], [4, 5, 6])
+    return fig
+
+
+def test_render_figure_to_pdf_bytes_starts_with_pdf_marker():
+    """The PDF bytes start with ``%PDF-`` (magic header)."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        render_figure_to_pdf_bytes,
+    )
+
+    fig = _build_simple_figure()
+    try:
+        pdf_bytes = render_figure_to_pdf_bytes(fig)
+    finally:
+        plt.close(fig)
+    assert pdf_bytes.startswith(b"%PDF-")
+
+
+def test_render_figure_to_pdf_bytes_deterministic():
+    """Two renders of the same Figure produce byte-identical PDFs."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        render_figure_to_pdf_bytes,
+    )
+
+    fig1 = _build_simple_figure()
+    fig2 = _build_simple_figure()
+    try:
+        b1 = render_figure_to_pdf_bytes(fig1)
+        b2 = render_figure_to_pdf_bytes(fig2)
+    finally:
+        plt.close(fig1)
+        plt.close(fig2)
+    assert b1 == b2
+
+
+def test_render_figure_to_pdf_bytes_pinned_metadata():
+    """The PDF bytes carry the pinned ``/CreationDate`` + ``/Producer``
+    literals (``D:20260101000000Z`` / ``publiplots-composer``)."""
+    import io
+    import matplotlib.pyplot as plt
+    import pypdf
+    from publiplots.composer.compositing._embed import (
+        render_figure_to_pdf_bytes,
+    )
+
+    fig = _build_simple_figure()
+    try:
+        pdf_bytes = render_figure_to_pdf_bytes(fig)
+    finally:
+        plt.close(fig)
+    md = pypdf.PdfReader(io.BytesIO(pdf_bytes)).metadata
+    assert md.get("/CreationDate") == "D:20260101000000Z"
+    assert md.get("/Producer") == "publiplots-composer"
+
+
+def test_render_figure_to_svg_bytes_parses_via_lxml():
+    """The SVG bytes parse cleanly via lxml.etree.fromstring."""
+    import matplotlib.pyplot as plt
+    from lxml import etree as _lxml_etree
+    from publiplots.composer.compositing._embed import (
+        render_figure_to_svg_bytes,
+    )
+
+    fig = _build_simple_figure()
+    try:
+        svg_bytes = render_figure_to_svg_bytes(fig)
+    finally:
+        plt.close(fig)
+    root = _lxml_etree.fromstring(svg_bytes)
+    assert root.tag.endswith("svg")
+    assert root.get("viewBox") is not None
+
+
+def test_render_figure_to_svg_bytes_deterministic():
+    """Two renders of the same Figure produce byte-identical SVGs."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        render_figure_to_svg_bytes,
+    )
+
+    fig1 = _build_simple_figure()
+    fig2 = _build_simple_figure()
+    try:
+        b1 = render_figure_to_svg_bytes(fig1)
+        b2 = render_figure_to_svg_bytes(fig2)
+    finally:
+        plt.close(fig1)
+        plt.close(fig2)
+    assert b1 == b2
+
+
+def test_render_figure_to_svg_bytes_carries_default_dc_date():
+    """The SVG bytes contain ``<dc:date>2026-01-01T00:00:00</dc:date>``."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        render_figure_to_svg_bytes,
+    )
+
+    fig = _build_simple_figure()
+    try:
+        svg_bytes = render_figure_to_svg_bytes(fig)
+    finally:
+        plt.close(fig)
+    text = svg_bytes.decode("utf-8")
+    assert "<dc:date>2026-01-01T00:00:00</dc:date>" in text
+
+
+def test_render_figure_to_pdf_bytes_pp_subplots_deterministic_100x():
+    """Architect-required: 100× round-trip a ``pp.subplots``-built figure
+    through render_figure_to_pdf_bytes; all 100 outputs byte-identical.
+
+    The SubplotsAutoLayout reactor is allowed to run AT MOST ONCE per
+    render. If the reactor measured differently each time (e.g. due to
+    font cache state), 100 successive renders of the same figure would
+    drift and this test would fail.
+    """
+    import matplotlib.pyplot as plt
+    import publiplots as pp
+    from publiplots.composer.compositing._embed import (
+        render_figure_to_pdf_bytes,
+    )
+
+    rendered = []
+    figs = []
+    try:
+        for _ in range(100):
+            fig, ax = pp.subplots(axes_size=(40, 30))
+            ax.plot([1, 2, 3], [4, 5, 6])
+            figs.append(fig)
+            rendered.append(render_figure_to_pdf_bytes(fig))
+    finally:
+        for f in figs:
+            plt.close(f)
+
+    first = rendered[0]
+    for i, b in enumerate(rendered[1:], start=1):
+        assert b == first, (
+            f"render_figure_to_pdf_bytes is non-deterministic for "
+            f"pp.subplots-built figures: render #{i} drifted from #0."
+        )
+
+
+def test_render_figure_to_svg_bytes_pp_subplots_deterministic_100x():
+    """Same as PDF test, but for the SVG path."""
+    import matplotlib.pyplot as plt
+    import publiplots as pp
+    from publiplots.composer.compositing._embed import (
+        render_figure_to_svg_bytes,
+    )
+
+    rendered = []
+    figs = []
+    try:
+        for _ in range(100):
+            fig, ax = pp.subplots(axes_size=(40, 30))
+            ax.plot([1, 2, 3], [4, 5, 6])
+            figs.append(fig)
+            rendered.append(render_figure_to_svg_bytes(fig))
+    finally:
+        for f in figs:
+            plt.close(f)
+
+    first = rendered[0]
+    for i, b in enumerate(rendered[1:], start=1):
+        assert b == first, (
+            f"render_figure_to_svg_bytes is non-deterministic for "
+            f"pp.subplots-built figures: render #{i} drifted from #0."
+        )

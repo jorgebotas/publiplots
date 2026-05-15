@@ -231,15 +231,16 @@ src/publiplots/composer/
 
 ### Task 5 — `compositing/_embed.py` Figure→bytes helpers
 
-- [ ] Create `compositing/_embed.py` with:
+- [x] Create `compositing/_embed.py` with:
   - `render_figure_to_pdf_bytes(figure, *, metadata_creation_date=None, **savefig_kwargs) → bytes` — uses `_DEFAULT_CREATION_DATE` from `_constants`. Calls `figure.savefig(buf, format='pdf', metadata={"CreationDate": None}, **savefig_kwargs)`; opens via pypdf to inject pinned `/Producer` + `/CreationDate`; returns bytes.
   - `render_figure_to_svg_bytes(figure, *, metadata_date=None, **savefig_kwargs) → bytes` — uses `_DEFAULT_DATE` + `_SVG_HASHSALT` from `_constants`. Wraps in `plt.rc_context({"svg.hashsalt": _SVG_HASHSALT})` + `metadata={"Date": ...}` per the same 3-state semantics as PR 6a's `savefig_svg`.
-- [ ] **Failing tests first** in `test_embed_figure.py`:
+- [x] **Failing tests first** in `test_embed_figure.py`:
   - `test_render_figure_to_pdf_bytes_deterministic` — render same figure twice, byte-identical.
   - `test_render_figure_to_svg_bytes_deterministic` — render same figure twice, byte-identical.
   - `test_render_figure_to_pdf_bytes_starts_with_pdf_marker` — bytes start with `b"%PDF-"`.
   - `test_render_figure_to_svg_bytes_parses_via_lxml` — bytes parse cleanly via `lxml.etree.fromstring`.
-- [ ] Implement.
+  - Architect-required: 100× round-trip a `pp.subplots`-built figure and assert byte-identity (settles SubplotsAutoLayout reactor before savefig).
+- [x] Implement.
 
 ### Task 6 — Wire `embedded_figure` branch in `compositing/pdf.py` + `compositing/svg.py`
 
