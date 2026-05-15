@@ -399,3 +399,110 @@ def test_metadata_date_literal_writes_supplied_value(small_svg, tmp_path):
     assert "<dc:date>2024-12-31T23:59:59</dc:date>" in text, (
         "metadata_date literal should write through to <dc:date>."
     )
+
+
+# ---------------------------------------------------------------------------
+# PR 6b — embed_figure compositing branch
+# ---------------------------------------------------------------------------
+
+def test_savefig_svg_with_embedded_figure_passes_viewbox_check(tmp_path):
+    """Canvas with embed_figure'd PanelImage saves to SVG with a viewBox
+    matching the canvas figure size."""
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig)
+        out = tmp_path / "out.svg"
+        canvas.savefig(out)
+    finally:
+        plt.close(fig)
+    assert out.exists()
+    tree = lxml_etree.parse(str(out))
+    root = tree.getroot()
+    vb = root.get("viewBox")
+    assert vb is not None
+    parts = [float(s) for s in vb.replace(",", " ").split()]
+    assert len(parts) == 4
+    assert parts[2] > 0
+    assert parts[3] > 0
+
+
+def test_savefig_svg_with_embedded_figure_emits_wrapper_g(tmp_path):
+    """The embed_figure branch produces a publiplots-panel-image wrapper
+    <g> just like the path-based PanelImage branch."""
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig)
+        out = tmp_path / "out.svg"
+        canvas.savefig(out)
+    finally:
+        plt.close(fig)
+    tree = lxml_etree.parse(str(out))
+    SVG_NS = "http://www.w3.org/2000/svg"
+    groups = tree.getroot().xpath(
+        "//svg:g[starts-with(@id, 'publiplots-panel-image-')]",
+        namespaces={"svg": SVG_NS},
+    )
+    assert len(groups) == 1
+    assert groups[0].get("id") == "publiplots-panel-image-0-B"
+
+
+def test_savefig_svg_with_embed_figure_strict_vectors_raises_on_no_figure(
+    tmp_path,
+):
+    """Empty PanelImage + no embed_figure + savefig svg →
+    ComposerVectorError with embed_figure hint."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    out = tmp_path / "out.svg"
+    with pytest.raises(ComposerVectorError, match=r"no path and no embedded figure"):
+        canvas.savefig(out)
+
+
+def test_savefig_svg_embed_figure_byte_deterministic(tmp_path):
+    """Two saves of the same canvas (with embed_figure) produce
+    byte-identical SVGs."""
+    import matplotlib.pyplot as plt
+
+    def build():
+        fig, ax = plt.subplots(figsize=(2.0, 1.5))
+        ax.plot([1, 2, 3], [4, 5, 6])
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig)
+        return canvas, fig
+
+    canvas1, fig1 = build()
+    out1 = tmp_path / "a.svg"
+    canvas1.savefig(out1)
+    plt.close(fig1)
+
+    canvas2, fig2 = build()
+    out2 = tmp_path / "b.svg"
+    canvas2.savefig(out2)
+    plt.close(fig2)
+
+    assert out1.read_bytes() == out2.read_bytes(), (
+        "embed_figure SVG output is not byte-deterministic"
+    )

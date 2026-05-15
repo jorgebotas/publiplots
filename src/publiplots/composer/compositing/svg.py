@@ -201,6 +201,7 @@ def _compose_panel_into(
             sanitized = f"_{sanitized}"
         label_str = sanitized or "unlabeled"
     path = panel.image_path
+    embedded_figure = getattr(panel, "embedded_figure", None)
     align = panel.image_align if panel.image_align is not None else "center"
     clip = panel.image_clip if panel.image_clip is not None else "fit"
     bbox_mm = panel.bbox_mm  # (x_mm, y_mm_bottom, w_mm, h_mm)
@@ -216,22 +217,45 @@ def _compose_panel_into(
     slot_y_top_mm = fig_h_mm - slot_y_bottom_mm - slot_h_mm
     slot_bbox_mm_topdown = (slot_x_mm, slot_y_top_mm, slot_w_mm, slot_h_mm)
 
-    try:
-        sch_element, sch_size_mm, _kind = load_schematic_as_svg_element(
-            path, label=raw_label,
+    if embedded_figure is not None:
+        # PR 6b: render the Figure to deterministic SVG bytes, parse
+        # via lxml, treat like a vector schematic. Reuse
+        # _resolve_svg_units to pull the schematic's mm size from its
+        # own viewBox + width/height attrs.
+        from publiplots.composer.compositing._embed import (
+            render_figure_to_svg_bytes,
         )
-    except ComposerVectorError:
-        if strict_vectors:
-            raise
-        warnings.warn(
-            f"PanelImage {label_str!r}: vector load of {path!r} failed; "
-            f"falling back to raster <image> element.",
-            UserWarning,
-            stacklevel=3,
+        sch_bytes = render_figure_to_svg_bytes(embedded_figure)
+        sch_element = etree.fromstring(sch_bytes)
+        sch_vb_x, sch_vb_y, sch_vb_w, sch_vb_h, sch_mm_per_uu = (
+            _resolve_svg_units(sch_element)
         )
-        sch_element, sch_size_mm = _raster_fallback_to_image_element(
-            path, slot_bbox_mm_topdown, etree=etree,
+        sch_size_mm = (sch_vb_w * sch_mm_per_uu, sch_vb_h * sch_mm_per_uu)
+    elif path is None:
+        # Unfilled PanelImage with no embedded figure — actionable error.
+        raise ComposerVectorError(
+            f"PanelImage {label_str!r} has no path and no embedded figure; "
+            f"either pass path= at construction or call "
+            f"canvas.embed_figure(label, fig) before savefig.",
+            panel_label=label_str if label_str != "unlabeled" else None,
         )
+    else:
+        try:
+            sch_element, sch_size_mm, _kind = load_schematic_as_svg_element(
+                path, label=raw_label,
+            )
+        except ComposerVectorError:
+            if strict_vectors:
+                raise
+            warnings.warn(
+                f"PanelImage {label_str!r}: vector load of {path!r} failed; "
+                f"falling back to raster <image> element.",
+                UserWarning,
+                stacklevel=3,
+            )
+            sch_element, sch_size_mm = _raster_fallback_to_image_element(
+                path, slot_bbox_mm_topdown, etree=etree,
+            )
 
     # Compute the wrapper transform.
     sx, sy, tx_uu, ty_uu = compute_svg_transform(

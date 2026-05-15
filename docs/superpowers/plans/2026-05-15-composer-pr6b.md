@@ -244,13 +244,13 @@ src/publiplots/composer/
 
 ### Task 6 — Wire `embedded_figure` branch in `compositing/pdf.py` + `compositing/svg.py`
 
-- [ ] In `pdf.py:_compose_panel_onto`, add the early `if panel.embedded_figure is not None:` branch that calls `render_figure_to_pdf_bytes`.
-- [ ] In `svg.py:_compose_panel_into`, add the analogous branch using `render_figure_to_svg_bytes` + `lxml.etree.fromstring` to get the schematic root element.
-- [ ] **Failing tests first** in `test_pdf_compositing.py` + `test_svg_compositing.py`:
+- [x] In `pdf.py:_compose_panel_onto`, add the early `if panel.embedded_figure is not None:` branch that calls `render_figure_to_pdf_bytes`.
+- [x] In `svg.py:_compose_panel_into`, add the analogous branch using `render_figure_to_svg_bytes` + `lxml.etree.fromstring` to get the schematic root element.
+- [x] **Failing tests first** in `test_pdf_compositing.py` + `test_svg_compositing.py`:
   - `test_savefig_pdf_with_embedded_figure_passes_mediabox_check` — Canvas with one embed_figure'd PanelImage saved to PDF; mediabox matches expected.
   - `test_savefig_svg_with_embedded_figure_passes_viewbox_check` — analogous for SVG.
   - `test_savefig_pdf_with_embed_figure_strict_vectors_raises_on_no_figure` — empty-path PanelImage + no embed_figure + savefig pdf → ComposerVectorError with embed_figure hint.
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 7 — `Canvas.save_multiple` method
 

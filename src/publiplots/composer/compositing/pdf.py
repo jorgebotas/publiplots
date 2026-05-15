@@ -151,25 +151,47 @@ def _compose_panel_onto(
     ``panel.bbox_mm``, and ``panel.label`` from the post-finalize Panel
     result record (NOT the PanelImage input dataclass — Canvas finalize
     translates the input to a Panel record carrying the image_* fields).
+
+    PR 6b: when ``panel.embedded_figure`` is set (via
+    ``canvas.embed_figure``), the embedded figure wins over any path —
+    the figure is rendered to deterministic PDF bytes and stamped just
+    like a vector schematic.
     """
     label = getattr(panel, "label", None) or "<unlabeled>"
     path = panel.image_path
+    embedded_figure = getattr(panel, "embedded_figure", None)
     align = panel.image_align if panel.image_align is not None else "center"
     clip = panel.image_clip if panel.image_clip is not None else "fit"
     bbox_mm = panel.bbox_mm
 
-    try:
-        pdf_bytes, _kind = load_schematic_as_pdf_bytes(path)
-    except ComposerVectorError as e:
-        if strict_vectors:
-            raise
-        warnings.warn(
-            f"PanelImage {label!r}: vector load of {path!r} failed "
-            f"({e}); falling back to raster.",
-            UserWarning,
-            stacklevel=3,
+    if embedded_figure is not None:
+        # PR 6b embedded-figure branch — render the Figure to a
+        # deterministic PDF buffer and treat like a vector schematic.
+        from publiplots.composer.compositing._embed import (
+            render_figure_to_pdf_bytes,
         )
-        pdf_bytes = _raster_fallback(path)
+        pdf_bytes = render_figure_to_pdf_bytes(embedded_figure)
+    elif path is None:
+        # Unfilled PanelImage with no embedded figure — actionable error.
+        raise ComposerVectorError(
+            f"PanelImage {label!r} has no path and no embedded figure; "
+            f"either pass path= at construction or call "
+            f"canvas.embed_figure(label, fig) before savefig.",
+            panel_label=label if isinstance(label, str) else None,
+        )
+    else:
+        try:
+            pdf_bytes, _kind = load_schematic_as_pdf_bytes(path)
+        except ComposerVectorError as e:
+            if strict_vectors:
+                raise
+            warnings.warn(
+                f"PanelImage {label!r}: vector load of {path!r} failed "
+                f"({e}); falling back to raster.",
+                UserWarning,
+                stacklevel=3,
+            )
+            pdf_bytes = _raster_fallback(path)
 
     schematic_reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
     schematic_page = schematic_reader.pages[0]
