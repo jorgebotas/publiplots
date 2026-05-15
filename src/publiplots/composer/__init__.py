@@ -18,7 +18,7 @@ from publiplots.composer.exceptions import (
     ComposerError,
     ComposerOverflowError,
 )
-from publiplots.composer.panels import Panel, PanelAxes
+from publiplots.composer.panels import Panel, PanelAxes, PanelText
 
 __all__ = [
     "Canvas",
@@ -27,4 +27,5 @@ __all__ = [
     "ComposerOverflowError",
     "Panel",
     "PanelAxes",
+    "PanelText",
 ]
