@@ -211,10 +211,10 @@ src/publiplots/composer/
 
 ### Task 6 — Wire `_save.dispatch_savefig` SVG branch + add `metadata_date` kwarg
 
-- [ ] Replace the SVG branch in `_save.py` with a `from publiplots.composer.compositing.svg import savefig_svg; savefig_svg(...)` call.
-- [ ] Add `metadata_date: Optional[str] = None` to `dispatch_savefig` signature, alongside the existing `metadata_creation_date`. Update docstring.
-- [ ] `Canvas.savefig` does NOT need a new kwarg — `metadata_date` flows through `**kwargs`. Verify by reading `canvas.py:946-983`. (PR 5 also kept `metadata_creation_date` out of the `Canvas.savefig` signature; it's a tests-only knob.)
-- [ ] **Failing test first** in `test_strict_vectors.py`: extend `test_strict_vectors_raises_on_corrupt_svg` to cover the SVG output path AND the PDF output path (currently PDF only).
+- [x] Replace the SVG branch in `_save.py` with a `from publiplots.composer.compositing.svg import savefig_svg; savefig_svg(...)` call.
+- [x] Add `metadata_date: Optional[str] = None` to `dispatch_savefig` signature, alongside the existing `metadata_creation_date`. Update docstring.
+- [x] `Canvas.savefig` does NOT need a new kwarg — `metadata_date` flows through `**kwargs`. Verify by reading `canvas.py:946-983`. (PR 5 also kept `metadata_creation_date` out of the `Canvas.savefig` signature; it's a tests-only knob.)
+- [x] **Failing test first** in `test_strict_vectors.py`: extend `test_strict_vectors_raises_on_corrupt_svg` to cover the SVG output path AND the PDF output path (currently PDF only).
 
 ### Task 7 — Golden-SVG infrastructure + assert_svg_matches
 

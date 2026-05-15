@@ -33,6 +33,39 @@ def test_strict_vectors_true_raises_on_corrupt_svg(corrupt_svg, tmp_path):
         canvas.savefig(out)
 
 
+def test_strict_vectors_true_raises_on_corrupt_svg_to_svg_output(
+    corrupt_svg, tmp_path,
+):
+    """SVG output path must honour strict_vectors=True the same way PDF does."""
+    canvas = pp.Canvas("cell-2col", strict_vectors=True)
+    canvas.add_row(
+        pp.PanelImage(label="A", path=corrupt_svg, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    out = tmp_path / "out.svg"
+    with pytest.raises(ComposerVectorError):
+        canvas.savefig(out)
+
+
+def test_canvas_savefig_svg_dispatch_writes_file(tmp_path):
+    """canvas.savefig('*.svg') dispatches to compositing.svg.savefig_svg."""
+    svg_path = tmp_path / "schematic.svg"
+    svg_path.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" '
+        'width="40mm" height="30mm" viewBox="0 0 40 30">'
+        '<rect width="40" height="30" fill="red"/></svg>'
+    )
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=svg_path, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    out = tmp_path / "out.svg"
+    canvas.savefig(out)
+    assert out.exists()
+    assert b"<svg" in out.read_bytes()
+
+
 def test_strict_vectors_false_happy_png_no_warning(tmp_path):
     """A valid PNG schematic with strict_vectors=False writes PDF cleanly.
 
