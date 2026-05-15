@@ -10,7 +10,7 @@ boundary, and it's typed as ``Any`` here for layering purity.
 """
 
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Tuple
+from typing import Any, Literal, Mapping, Optional, Tuple
 
 
 PanelKind = Literal["axes", "axesgrid", "image", "text"]  # only "axes" used in PR 1
@@ -26,30 +26,57 @@ class PanelAxes:
 
     Parameters
     ----------
-    label : str
-        Caption-addressable identifier (``'A'``, ``'B'``, ``'a.i'``, ...).
-        PR 1 requires an explicit string; PR 2 adds auto-letter
-        sequencing for ``label=None``.
-    size : tuple of (width_mm, height_mm)
-        Panel mm rect. Both dimensions must be positive numerics. PR 2
-        adds ``'flex'`` for the width to absorb leftover row space.
+    label : str, None, or False
+        Caption-addressable identifier:
+
+        - ``str`` — verbatim label (e.g., ``'A'``, ``'B.i'``).
+        - ``None`` — auto-letter slot. The canvas's ``abc=`` template
+          resolves it to the next sequence value (``'A'`` if
+          ``abc='upper'``, ``'a'`` if ``'lower'``, etc.).
+        - ``False`` — explicitly suppress label rendering and skip from
+          the auto-letter sequence.
+    size : tuple of (width, height_mm)
+        Panel mm rect:
+
+        - ``(w_mm, h_mm)`` — both pinned (PR 1 contract).
+        - ``('flex', h_mm)`` — width grows to absorb leftover row width.
+          Multiple flex panels in a row split the leftover equally.
+
+        The height must always be a positive numeric. PR 2 does NOT
+        introduce flex heights.
+    label_style : Mapping or None, default None
+        Per-panel override of the canvas-wide ``label_style``. Accepts
+        any subset of the canvas-wide keys (``loc``, ``size``,
+        ``weight``, ``family``, ``pad_mm``, ``border``, ``bbox``).
+        Missing keys fall through to the canvas default.
 
     Notes
     -----
     Frozen dataclass — instances are immutable and hashable.
     """
 
-    label: str
-    size: Tuple[float, float]
+    label: Any            # str | None | False (type-narrowing in __post_init__)
+    size: Tuple[Any, Any]  # (float | 'flex', float)
+    label_style: Optional[Mapping[str, Any]] = None
 
     def __post_init__(self) -> None:
-        # Validate label
-        if not isinstance(self.label, str):
+        # Validate label: must be str, None, or False (NOT True).
+        # Reject the ambiguous bool-True case BEFORE the str check
+        # because bool is a subclass of int, but `isinstance(True, str)`
+        # is False — so the ambiguity is in the "is not False" path.
+        if self.label is True:
             raise TypeError(
-                f"label must be a string, got {type(self.label).__name__}"
+                "label must be a str, None (auto-letter), or False "
+                "(no label); got True (did you mean abc=True on the Canvas?)"
             )
+        if self.label is not None and self.label is not False:
+            if not isinstance(self.label, str):
+                raise TypeError(
+                    f"label must be a str, None (auto-letter), or False "
+                    f"(no label); got {type(self.label).__name__}"
+                )
 
-        # Validate size: must be a 2-tuple of positive numerics
+        # Validate size: must be a 2-tuple
         try:
             n = len(self.size)
         except TypeError:
@@ -60,23 +87,49 @@ class PanelAxes:
             raise ValueError(
                 f"size must be a 2-tuple of (width_mm, height_mm), got length {n}"
             )
-        w, h = self.size
-        for name, v in (("width", w), ("height", h)):
-            if isinstance(v, str):
-                raise ValueError(
-                    f"size {name} must be numeric (PR 2 will add 'flex'), got {v!r}"
-                )
-            try:
-                fv = float(v)
-            except (TypeError, ValueError):
-                raise ValueError(
-                    f"size {name} must be numeric, got {v!r}"
-                )
-            if fv <= 0:
-                raise ValueError(f"size {name} must be positive, got {fv}")
 
-        # Coerce to floats. dataclass(frozen=True) requires object.__setattr__.
-        object.__setattr__(self, "size", (float(w), float(h)))
+        w, h = self.size
+
+        # Validate width: 'flex' string OR positive numeric
+        if isinstance(w, str):
+            if w != "flex":
+                raise ValueError(
+                    f"size width must be numeric or 'flex', got {w!r}"
+                )
+            # 'flex' width is OK — leave as the string sentinel.
+        else:
+            try:
+                fw = float(w)
+            except (TypeError, ValueError):
+                raise ValueError(f"size width must be numeric or 'flex', got {w!r}")
+            if fw <= 0:
+                raise ValueError(f"size width must be positive, got {fw}")
+            w = fw  # coerce int → float
+
+        # Validate height: must be positive numeric (no 'flex' in PR 2)
+        if isinstance(h, str):
+            raise ValueError(
+                f"size height must be numeric, got {h!r} "
+                "('flex' is width-only in PR 2)"
+            )
+        try:
+            fh = float(h)
+        except (TypeError, ValueError):
+            raise ValueError(f"size height must be numeric, got {h!r}")
+        if fh <= 0:
+            raise ValueError(f"size height must be positive, got {fh}")
+        h = fh
+
+        # Validate label_style: must be Mapping or None
+        if self.label_style is not None:
+            if not hasattr(self.label_style, "keys"):
+                raise TypeError(
+                    f"label_style must be a Mapping or None, "
+                    f"got {type(self.label_style).__name__}"
+                )
+
+        # Coerce normalized values onto the frozen instance.
+        object.__setattr__(self, "size", (w, h))
 
 
 @dataclass(frozen=True)
