@@ -1143,7 +1143,15 @@ class Canvas:
     # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)
     # ------------------------------------------------------------------
-    def savefig(self, path, **kwargs) -> None:
+    def savefig(
+        self,
+        path,
+        *,
+        cmyk: bool = False,
+        tiff_compression: str = "tiff_lzw",
+        external_raster: bool = False,
+        **kwargs,
+    ) -> None:
         """Save the canvas to a file.
 
         Triggers lazy finalization if the canvas has at least one
@@ -1158,6 +1166,20 @@ class Canvas:
         ----------
         path : str or Path
             Output file path. Extension determines the format.
+        cmyk : bool, default False
+            Convert RGB→CMYK on raster output. Valid only for
+            ``.tif``/``.tiff``/``.jpg``/``.jpeg``; pairing with PDF /
+            SVG / PNG raises ``ValueError``. Uses Pillow's basic
+            sRGB→CMYK conversion (no ICC profile in PR 6b — emits a
+            ``UserWarning``).
+        tiff_compression : str, default ``'tiff_lzw'``
+            TIFF compression knob. Other values: ``'tiff_deflate'``,
+            ``'raw'``, ``'tiff_jpeg'``, etc (Pillow's compression
+            vocab). Ignored for non-TIFF exts.
+        external_raster : bool, default False
+            For SVG outputs: when ``True``, write raster sources to
+            sidecar PNG files rather than inline base64 data-URIs.
+            Silent no-op for non-SVG outputs.
         **kwargs
             Forwarded to :func:`publiplots.savefig` (raster) or to the
             vector compositor (PDF/SVG).
@@ -1167,7 +1189,8 @@ class Canvas:
         RuntimeError
             If :meth:`add_row` has not been called yet.
         ValueError
-            If the path's extension is not a known raster or vector type.
+            If the path's extension is not a known raster or vector type;
+            or ``cmyk=True`` is paired with a non-CMYK-capable format.
         ComposerVectorError
             If a vector schematic fails to load and ``strict_vectors=True``.
         """
@@ -1175,11 +1198,34 @@ class Canvas:
             raise RuntimeError(
                 "Canvas has no figure yet; call add_row() before savefig()"
             )
+        # PR 6b: pre-validate cmyk vs ext at the canvas layer (the dispatch
+        # layer also validates defensively, but a clear error message
+        # naming the ext is friendlier here). We do this BEFORE
+        # _finalize_if_needed so a bad cmyk argument doesn't materialize
+        # the figure unnecessarily.
+        from pathlib import Path as _Path
+        ext = _Path(path).suffix.lower()
+        if cmyk:
+            if ext == ".png":
+                raise ValueError(
+                    "PNG does not support CMYK; use .tif/.tiff/.jpg/.jpeg "
+                    "instead."
+                )
+            if ext in {".pdf", ".svg"}:
+                raise ValueError(
+                    f"cmyk=True is only valid for raster outputs "
+                    f"(.tif/.tiff/.jpg/.jpeg); got {ext!r}. "
+                    f"matplotlib's PDF/SVG backends emit RGB; convert "
+                    f"the matching raster output instead."
+                )
         self._finalize_if_needed()
         from publiplots.composer._save import dispatch_savefig
         dispatch_savefig(
             self._figure, path,
             panels=self._panels_list,
             strict_vectors=self._strict_vectors,
+            cmyk=cmyk,
+            tiff_compression=tiff_compression,
+            external_raster=external_raster,
             **kwargs,
         )

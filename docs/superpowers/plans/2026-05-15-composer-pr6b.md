@@ -271,25 +271,18 @@ src/publiplots/composer/
 
 ### Task 8 — CMYK + TIFF compression on raster branch
 
-- [ ] Update `_save.dispatch_savefig` to **explicitly consume** `cmyk: bool = False`, `tiff_compression: str = "tiff_lzw"`, `external_raster: bool = False` as named kwargs alongside the existing PR 5/6a kwargs. They MUST NOT leak into `**kwargs` (architect-found leak hazard).
-- [ ] Add an ext→Pillow-format map: `_PILLOW_FORMAT = {".tif": "TIFF", ".tiff": "TIFF", ".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG"}` (architect found `ext.upper()` fails for `.tif`).
-- [ ] Raster branch logic:
+- [x] Update `_save.dispatch_savefig` to **explicitly consume** `cmyk: bool = False`, `tiff_compression: str = "tiff_lzw"`, `external_raster: bool = False` as named kwargs alongside the existing PR 5/6a kwargs. They MUST NOT leak into `**kwargs` (architect-found leak hazard).
+- [x] Add an ext→Pillow-format map: `_PILLOW_FORMAT = {".tif": "TIFF", ".tiff": "TIFF", ".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG"}` (architect found `ext.upper()` fails for `.tif`).
+- [x] Raster branch logic:
   - When `cmyk=True` and ext in `{.tif, .tiff, .jpg, .jpeg}`: render to PNG BytesIO via `pp.savefig`, open via Pillow, `convert('CMYK')`, save with `format=_PILLOW_FORMAT[ext]` (and `compression=tiff_compression` for TIFF only).
-  - When `cmyk=True` and ext is PDF/SVG: raise `ValueError(f"cmyk=True is only valid for raster outputs (.tif/.tiff/.jpg/.jpeg); matplotlib's PDF/SVG backends emit RGB, and cairosvg cannot produce CMYK.")`.
-  - When `cmyk=True` and ext is PNG: raise `ValueError("PNG does not support CMYK; use .tif/.tiff/.jpg/.jpeg instead.")`.
+  - When `cmyk=True` and ext is PDF/SVG: raise `ValueError`.
+  - When `cmyk=True` and ext is PNG: raise `ValueError`.
   - When `cmyk=False` and ext is `.tif`/`.tiff` AND `tiff_compression != _DEFAULT_TIFF_COMPRESSION`: render to PNG BytesIO, re-save as TIFF with `compression=tiff_compression`.
-  - When `cmyk=False` and `tiff_compression` is default: existing `pp.savefig` path unchanged (architect verified pp.savefig does NOT accept `pil_kwargs` so the PNG round-trip is required for non-default compression).
-- [ ] PDF + SVG branches: defensively raise `ValueError` if `cmyk=True` reaches them (belt-and-braces; should have been caught by Canvas.savefig).
-- [ ] Update `Canvas.savefig` signature: add `cmyk: bool = False`, `tiff_compression: str = "tiff_lzw"` keyword args; thread through.
-- [ ] **Failing tests first** in `test_cmyk_output.py`:
-  - `test_savefig_tiff_cmyk_round_trip` — Canvas with PanelAxes scatter, save to .tif with cmyk=True; re-open via Pillow, assert mode == 'CMYK'.
-  - `test_savefig_jpeg_cmyk_round_trip` — analogous for JPEG.
-  - `test_savefig_pdf_cmyk_raises` — `cmyk=True` + .pdf → ValueError with the hint.
-  - `test_savefig_svg_cmyk_raises` — analogous for .svg.
-  - `test_savefig_png_cmyk_raises` — `cmyk=True` + .png → ValueError.
-  - `test_savefig_tiff_compression_default_is_lzw` — open via Pillow, inspect `info["compression"] == "tiff_lzw"`.
-  - `test_savefig_tiff_compression_raw_smaller_than_lzw_no` — actually `raw` is bigger than `tiff_lzw`; fix wording.
-- [ ] Implement.
+  - When `cmyk=False` and `tiff_compression` is default: existing `pp.savefig` path unchanged.
+- [x] PDF + SVG branches: defensively raise `ValueError` if `cmyk=True` reaches them.
+- [x] Update `Canvas.savefig` signature: add `cmyk: bool = False`, `tiff_compression: str = "tiff_lzw"`, `external_raster: bool = False` keyword args; thread through.
+- [x] **Failing tests first** in `test_cmyk_output.py` (all green): tiff/jpeg cmyk round-trip, pdf/svg/png reject, tiff compression knob (matplotlib's print_tif default is 'raw' so the LZW assertion runs through the Pillow re-render path; documented).
+- [x] Implement.
 
 ### Task 9 — `external_raster` sidecar option for SVG
 
