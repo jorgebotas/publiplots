@@ -108,3 +108,31 @@ def test_canvas_figure_attribute_is_none_until_finalize():
 def test_canvas_figure_size_mm_is_none_until_finalize():
     canvas = pp.Canvas("custom", width=174.0)
     assert canvas.figure_size_mm is None
+
+
+# ---------------------------------------------------------------------------
+# PR 3: ComposerAlignmentError — subclass of ComposerError
+# ---------------------------------------------------------------------------
+
+def test_composer_alignment_error_is_composer_error_subclass():
+    """ComposerAlignmentError inherits from ComposerError so callers can
+    catch all composer errors with one except clause."""
+    from publiplots.composer.exceptions import (
+        ComposerError,
+        ComposerAlignmentError,
+    )
+    assert issubclass(ComposerAlignmentError, ComposerError)
+
+
+def test_composer_alignment_error_carries_panels_and_edge():
+    """ComposerAlignmentError exposes which panels and edge failed
+    so callers can format helpful messages without re-parsing the str."""
+    from publiplots.composer.exceptions import ComposerAlignmentError
+    err = ComposerAlignmentError(
+        "alignment shift would push panel A's left edge outside its slot",
+        panels=("A", "B"),
+        edge="left",
+    )
+    assert err.panels == ("A", "B")
+    assert err.edge == "left"
+    assert "A" in str(err)
