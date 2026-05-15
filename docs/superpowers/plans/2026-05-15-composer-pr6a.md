@@ -184,12 +184,12 @@ src/publiplots/composer/
 
 ### Task 4 — `load_schematic_as_svg_element` in `_resources.py`
 
-- [ ] Implement `load_schematic_as_svg_element(path) → (element, intrinsic_size_mm, source_kind)`:
+- [x] Implement `load_schematic_as_svg_element(path) → (element, intrinsic_size_mm, source_kind)`:
   - `.svg`: lxml-parse, root element is the schematic. Use `_resolve_svg_units` for intrinsic size. Return `(root, (vb_w_mm, vb_h_mm), 'vector')`.
   - `.png`/`.jpg`/etc: build a synthetic `<image xlink:href="data:image/png;base64,..." width="..." height="..."/>` element via lxml. Use `_pillow_to_data_uri` (new helper, also in `_resources.py`). Compute intrinsic mm size from pixel dims × `(25.4 / dpi)`. Return `(image_element, (w_mm, h_mm), 'raster')`.
   - `.pdf`: explicitly raise `ComposerVectorError(f"PanelImage {label!r}: PDF schematic {path.name!r} cannot be embedded in SVG output. PDF→SVG vector round-trip is not supported by cairosvg or any in-tree library. Either (a) convert {path.name!r} to SVG first, or (b) use canvas.savefig('fig.pdf') for PDF output where this PanelImage works as expected.")` (panel label and output format both named in the error to make the failure mode obvious). Document the limitation in `PanelImage.path` docstring extension. **Strict-vectors+raster-fallback combo:** even with `strict_vectors=False`, PDF-in-SVG output errors. We do NOT auto-rasterize via pdf2image (poppler) because pdf2image is not in `[composer]`; that's a PR 7 polish if users hit it.
-- [ ] Implement `_pillow_to_data_uri(path, dpi=_DEFAULT_RASTER_DPI) → str`: open via Pillow → re-save to PNG bytes (normalizes color profile; Illustrator-exported PNGs sometimes have non-sRGB profiles that break browsers) → base64-encode → return `"data:image/png;base64,..."`.
-- [ ] **Failing tests first** in `test_compositing_resources.py` (extend the existing PR 5 file): all 3 branches × happy-path; `.pdf`-in-SVG raises; corrupt SVG raises wrapped `ComposerVectorError`; missing viewBox in SVG schematic raises (Task 2 helper coverage).
+- [x] Implement `_pillow_to_data_uri(path, dpi=_DEFAULT_RASTER_DPI) → str`: open via Pillow → re-save to PNG bytes (normalizes color profile; Illustrator-exported PNGs sometimes have non-sRGB profiles that break browsers) → base64-encode → return `"data:image/png;base64,..."`.
+- [x] **Failing tests first** in `test_compositing_resources.py` (extend the existing PR 5 file): all 3 branches × happy-path; `.pdf`-in-SVG raises; corrupt SVG raises wrapped `ComposerVectorError`; missing viewBox in SVG schematic raises (Task 2 helper coverage).
 
 ### Task 5 — `compositing/svg.py` — `savefig_svg` orchestrator
 
