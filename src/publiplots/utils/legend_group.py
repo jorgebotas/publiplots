@@ -47,6 +47,153 @@ def _handle_repr(handle) -> str:
     return "|".join(parts)
 
 
+def _resolve_grid_scope(
+    fig: Figure,
+    *,
+    rows: Optional[object] = None,
+    cols: Optional[object] = None,
+    span: Optional[str] = None,
+    ax: Optional[Sequence[Axes]] = None,
+) -> Optional[List[Axes]]:
+    """Translate grid-scope kwargs into a concrete axes list.
+
+    Returns
+    -------
+    list of Axes
+        The resolved scope when ``rows``/``cols``/``ax`` produce a
+        concrete subset.
+    None
+        When ``rows``/``cols``/``span``/``ax`` are all None, OR when
+        ``span='fig'`` (both mean "no grid scoping; fall through to
+        figure-level"). Caller's responsibility to dispatch.
+
+    Raises
+    ------
+    ValueError
+        On out-of-range indices, missing ``_publiplots_axes`` matrix
+        when one is required, conflicting kwargs, empty ``ax=`` list,
+        or invalid ``span`` value.
+    """
+    # Normalize: count how many of the four are actually set.
+    rows_set = rows is not None
+    cols_set = cols is not None
+    span_set = span is not None
+    ax_set = ax is not None
+
+    # All-None → fall through.
+    if not (rows_set or cols_set or span_set or ax_set):
+        return None
+
+    # `ax=` is mutually exclusive with all three others.
+    if ax_set and (rows_set or cols_set or span_set):
+        collided = [n for n, s in (("rows", rows_set), ("cols", cols_set),
+                                   ("span", span_set)) if s]
+        raise ValueError(
+            f"pp.legend: `ax=` and `{'`, `'.join(collided)}=` are mutually "
+            "exclusive — they're alternative addressing modes. Pick one."
+        )
+
+    # `span=` is mutually exclusive with explicit rows/cols.
+    if span_set and (rows_set or cols_set):
+        collided = [n for n, s in (("rows", rows_set), ("cols", cols_set)) if s]
+        raise ValueError(
+            f"pp.legend: `span=` and `{'`, `'.join(collided)}=` are mutually "
+            "exclusive. Use `span` for sugar OR `rows`/`cols` for explicit "
+            "scoping."
+        )
+
+    # Explicit ax= path — no _publiplots_axes lookup needed.
+    if ax_set:
+        ax_list = list(ax)
+        if not ax_list:
+            raise ValueError(
+                "pp.legend: `ax=` was an empty sequence. Pass at least one "
+                "Axes, or omit `ax=` for figure-level scoping."
+            )
+        return ax_list
+
+    # `span=` path.
+    if span_set:
+        if span not in ("row", "col", "fig"):
+            raise ValueError(
+                f"pp.legend: span={span!r} invalid. Expected 'row', 'col', "
+                "or 'fig'."
+            )
+        if span == "fig":
+            return None  # full figure → caller falls through
+        # 'row'/'col' need a positional anchor; the caller (`legend()`)
+        # is responsible for passing that context. The resolver itself
+        # raises here because we have no anchor.
+        raise ValueError(
+            f"pp.legend: span={span!r} requires a positional Axes anchor "
+            "(`pp.legend(ax_anchor, span='row')`). Without an anchor, use "
+            f"`rows=`/`cols=` for explicit indices or `span='fig'` for the "
+            "full figure."
+        )
+
+    # `rows=`/`cols=` path — needs the _publiplots_axes matrix.
+    # Note: pp.Canvas does NOT currently attach _publiplots_axes (PR 7
+    # territory). The error message therefore points only at pp.subplots.
+    matrix = getattr(fig, "_publiplots_axes", None)
+    if not matrix:
+        raise ValueError(
+            "pp.legend: `rows=`/`cols=` requires a figure built by "
+            "`pp.subplots` (no `_publiplots_axes` matrix on this figure). "
+            "For raw matplotlib figures or pp.Canvas figures, use "
+            "`ax=[ax1, ax2, ...]` instead."
+        )
+
+    n_rows = len(matrix)
+    n_cols = len(matrix[0]) if matrix else 0
+
+    def _normalize_range(name: str, value: object, length: int) -> tuple[int, int]:
+        if isinstance(value, tuple):
+            if len(value) != 2:
+                raise ValueError(
+                    f"pp.legend: `{name}=` tuple must be (start, end) — got "
+                    f"{value!r}."
+                )
+            start, end = value
+        else:
+            start = end = int(value)  # type: ignore[arg-type]
+        # Disallow negative indices: explicit, no Python wrap-around.
+        if start < 0 or end < 0:
+            last = length - 1
+            raise ValueError(
+                f"pp.legend: `{name}={value!r}` — negative indices are not "
+                f"supported. Use `{name}={last}` for the last "
+                f"{'row' if name == 'rows' else 'column'}."
+            )
+        # Disallow inverted ranges with a clearer message than "out of range".
+        if start > end:
+            raise ValueError(
+                f"pp.legend: `{name}={value!r}` has start > end. Use "
+                f"`{name}=({end}, {start})` to specify an inclusive range."
+            )
+        if not (start < length and end < length):
+            raise ValueError(
+                f"pp.legend: `{name}={value!r}` out of range for "
+                f"_publiplots_axes shape ({n_rows}, {n_cols})."
+            )
+        return start, end
+
+    if rows_set:
+        r_start, r_end = _normalize_range("rows", rows, n_rows)
+    else:
+        r_start, r_end = 0, n_rows - 1
+
+    if cols_set:
+        c_start, c_end = _normalize_range("cols", cols, n_cols)
+    else:
+        c_start, c_end = 0, n_cols - 1
+
+    out: List[Axes] = []
+    for r in range(r_start, r_end + 1):
+        for c in range(c_start, c_end + 1):
+            out.append(matrix[r][c])
+    return out
+
+
 class _ScopeAnchor:
     """Decoration-agnostic anchor over a scope of axes.
 
