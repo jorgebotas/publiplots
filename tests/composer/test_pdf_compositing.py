@@ -119,13 +119,41 @@ PDF_GOLDEN_NAMES = [
 ]
 
 
-@pytest.mark.parametrize("mode", ["mediabox", "structure"])
-@pytest.mark.parametrize("name", PDF_GOLDEN_NAMES)
+# (name, mode) pairs. mediabox applies to all goldens; structure ONLY
+# to raster/PDF sources because cairosvg-output SVGs are inlined into
+# the canvas content stream by pypdf's merge_transformed_page (no
+# XObject wrapping). For SVG goldens, mediabox + render_compare are
+# the meaningful gates.
+PDF_GOLDEN_MODE_PAIRS = [
+    ("cell-2col-with-svg-schematic", "mediabox"),
+    ("cell-2col-with-png-schematic", "mediabox"),
+    ("cell-2col-with-png-schematic", "structure"),
+]
+
+
+@pytest.mark.parametrize("name,mode", PDF_GOLDEN_MODE_PAIRS)
 def test_pdf_golden_matches(name: str, mode: str) -> None:
     """Composition `name` matches its golden PDF in `mode`."""
     build_fn = dict(COMPOSITIONS)[name]
     canvas = build_fn()
     assert_pdf_matches(canvas, name, mode=mode)
+
+
+def test_assert_pdf_matches_structure_rejects_svg_source(tmp_path):
+    """Regression guard: structure mode MUST fail for SVG-source goldens
+    if a future relaxation removes the n_xobj >= 1 strict check.
+
+    Spec-reviewer empirically showed that matplotlib's empty axes alone
+    produces ~1.7-3 KB of content stream — large enough to falsely pass
+    a `content_stream_len >= 200 bytes` heuristic even when the SVG was
+    silently dropped. This test pins the contract: structure mode
+    requires an XObject, period.
+    """
+    build_fn = dict(COMPOSITIONS)["cell-2col-with-svg-schematic"]
+    canvas = build_fn()
+    with pytest.raises(AssertionError, match=r"structure check failed"):
+        assert_pdf_matches(canvas, "cell-2col-with-svg-schematic",
+                           mode="structure")
 
 
 @pytest.mark.parametrize("name", PDF_GOLDEN_NAMES)

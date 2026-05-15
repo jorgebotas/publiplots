@@ -388,13 +388,23 @@ def assert_pdf_matches(
             assert len(reader.pages) == 1, (
                 f"PDF {name!r}: expected 1 page, got {len(reader.pages)}"
             )
-            # Vector compositing evidence: either ≥1 XObject in resources
-            # (raster/PDF sources contribute these) OR a non-trivial
-            # content stream length (cairosvg-output SVGs have no
-            # XObjects of their own — pypdf inlines their content into
-            # the canvas page's content stream rather than wrapping in a
-            # Form XObject). Either signal proves the schematic was
-            # stamped, not silently dropped.
+            # Structure mode asserts ≥1 XObject in the page's resources
+            # — this is meaningful evidence that a raster or PDF
+            # schematic was stamped (their content lands as a Form
+            # XObject reference, distinct from the matplotlib axes
+            # primitives in the page's content stream).
+            #
+            # IMPORTANT: this mode is NOT meaningful for SVG sources.
+            # cairosvg's output PDFs contain no XObjects of their own,
+            # and pypdf's `merge_transformed_page` INLINES the SVG's
+            # content stream into the canvas page rather than wrapping
+            # it as a Form XObject. So an SVG-source canvas would have
+            # the same XObject count whether the SVG was stamped or
+            # silently dropped. Spec reviewer empirically measured this
+            # (matplotlib's empty axes alone contributes ~1.7-3 KB of
+            # content stream commands). Callers should use mediabox +
+            # render_compare for SVG-source goldens; structure is for
+            # raster/PDF sources only.
             page = reader.pages[0]
             resources = page.get("/Resources", {})
             if hasattr(resources, "get_object"):
@@ -403,21 +413,11 @@ def assert_pdf_matches(
             if hasattr(xobjs, "get_object"):
                 xobjs = xobjs.get_object()
             n_xobj = len(xobjs) if xobjs else 0
-            # Approximate content-stream size as a fallback heuristic for
-            # SVG sources. matplotlib's empty-canvas content is tiny;
-            # adding even a small SVG bumps it well past 200 bytes.
-            try:
-                content = page.get_contents()
-                if content is not None:
-                    content_data = content.get_data() if hasattr(content, "get_data") else b""
-                    content_len = len(content_data)
-                else:
-                    content_len = 0
-            except Exception:
-                content_len = 0
-            assert n_xobj >= 1 or content_len >= 200, (
-                f"PDF {name!r}: structure check failed — XObjects={n_xobj}, "
-                f"content_stream_len={content_len} (was the schematic stamped?)"
+            assert n_xobj >= 1, (
+                f"PDF {name!r}: structure check failed — XObjects={n_xobj} "
+                f"(was a raster/PDF schematic stamped? Note: SVG sources "
+                f"don't produce XObjects; use mode='mediabox' or "
+                f"'render_compare' for SVG goldens.)"
             )
             return
 
