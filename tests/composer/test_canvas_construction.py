@@ -40,12 +40,17 @@ def test_composer_overflow_error_carries_offending_dim():
 from publiplots.composer.presets import PRESETS, resolve_preset
 
 
-def test_only_custom_preset_in_pr1():
-    """PR 1 ships ONLY the 'custom' preset. Journal presets (cell, nature,
-    nature-methods, science) land in PR 2. This test will be UPDATED by
-    PR 2; in PR 1 it pins the preset list to exactly {'custom'} so we
-    don't accidentally ship a half-baked Cell preset."""
-    assert set(PRESETS.keys()) == {"custom"}
+def test_full_journal_preset_set_in_pr2():
+    """PR 2 ships Cell / Nature / Nat Methods / Science presets plus
+    the 'custom' escape hatch. PR 1 only had 'custom'."""
+    expected = {
+        "custom",
+        "cell-1col", "cell-1.5col", "cell-2col",
+        "nature-1col", "nature-1.5col", "nature-2col",
+        "nature-methods-1col", "nature-methods-1.5col", "nature-methods-2col",
+        "science-1col", "science-1.5col", "science-2col",
+    }
+    assert set(PRESETS.keys()) == expected
 
 
 def test_resolve_preset_custom_requires_width():
@@ -90,13 +95,6 @@ def test_canvas_construction_custom_requires_width():
 def test_canvas_construction_unknown_preset_raises():
     with pytest.raises(KeyError, match="unknown preset"):
         pp.Canvas("not-a-preset", width=100.0)
-
-
-def test_canvas_construction_journal_preset_not_in_pr1():
-    """Journal presets land in PR 2; PR 1 only accepts 'custom'.
-    This test will be REMOVED in PR 2."""
-    with pytest.raises(KeyError):
-        pp.Canvas("cell-2col")
 
 
 def test_canvas_figure_attribute_is_none_until_finalize():
