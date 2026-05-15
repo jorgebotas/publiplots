@@ -88,7 +88,7 @@ def _save_raster_via_pillow(
         _warn.warn(
             "cmyk=True: using Pillow's basic RGB→CMYK conversion "
             "(no ICC profile). Journal-grade FOGRA39 / SWOP v2 profile "
-            "bundling is deferred to a follow-up PR. Verify the output "
+            "bundling is deferred to PR 7. Verify the output "
             "with your target journal's pre-flight tooling.",
             UserWarning,
             stacklevel=4,
@@ -141,12 +141,9 @@ def dispatch_savefig(
             raise ValueError(
                 "PNG does not support CMYK; use .tif/.tiff/.jpg/.jpeg instead."
             )
-        # CMYK or non-default TIFF compression → Pillow re-render path.
-        non_default_tiff = (
-            ext in {".tif", ".tiff"}
-            and tiff_compression != _DEFAULT_TIFF_COMPRESSION
-        )
-        if cmyk or non_default_tiff:
+        # CMYK → Pillow re-render path (only library that can do RGB→CMYK
+        # on raster output; matplotlib's TIFF/JPEG backend is RGB-only).
+        if cmyk:
             _save_raster_via_pillow(
                 figure, p,
                 cmyk=cmyk,
@@ -154,18 +151,25 @@ def dispatch_savefig(
                 **kwargs,
             )
             return
-        # TIFF default-compression path: matplotlib writes via
-        # FigureCanvasAgg.print_tif which uses Pillow under the hood;
-        # the result is already LZW-compressed. JPEG default path
-        # similarly hands off to Pillow.
+        # TIFF: thread `tiff_compression` through to matplotlib's PIL
+        # backend via `pil_kwargs={"compression": ...}`. matplotlib's
+        # default TIFF is RAW (uncompressed); without this thread-through,
+        # the documented `tiff_compression='tiff_lzw'` default would be
+        # silently ignored, producing 10–20× larger files than expected.
+        if ext in {".tif", ".tiff"}:
+            tiff_pil_kwargs = dict(kwargs.pop("pil_kwargs", {}))
+            tiff_pil_kwargs.setdefault("compression", tiff_compression)
+            _pp_savefig(str(p), pil_kwargs=tiff_pil_kwargs, **kwargs)
+            return
+        # PNG / JPEG default path — matplotlib backend handles directly.
         _pp_savefig(str(p), **kwargs)
         return
 
     if ext in _VECTOR_PDF_EXTS:
-        # Defensive raise: cmyk=True should have been caught by
-        # Canvas.savefig pre-validate. Belt-and-braces here so a
-        # future caller bypassing canvas.savefig can't slip CMYK
-        # through.
+        # Belt-and-braces: ``Canvas.savefig`` already pre-validates this,
+        # but ``dispatch_savefig`` is a semi-public dispatch boundary
+        # (importable from compositing/) — guard against direct callers
+        # that bypass Canvas.
         if cmyk:
             raise ValueError(
                 "cmyk=True is only valid for raster outputs "

@@ -101,32 +101,41 @@ def test_savefig_png_cmyk_raises(simple_canvas, tmp_path):
 # TIFF compression knob
 # ---------------------------------------------------------------------------
 
-def test_savefig_tiff_compression_default(simple_canvas, tmp_path):
-    """Default ``tiff_compression='tiff_lzw'`` is used when the user
-    doesn't override AND a non-default-triggering condition fires
-    (cmyk=True). When NEITHER cmyk NOR a custom compression is set,
-    matplotlib's print_tif takes the fast path which writes raw TIFF
-    by default — that's PR 6b's "no surprise" contract: only the
-    Pillow re-render path applies the LZW compression."""
+def test_savefig_tiff_compression_default_is_lzw(simple_canvas, tmp_path):
+    """Bare ``canvas.savefig('out.tif')`` produces LZW-compressed output.
+
+    Reviewer-required regression: matplotlib's TIFF backend defaults to
+    RAW (uncompressed); without explicit thread-through of the
+    ``tiff_compression='tiff_lzw'`` default kwarg via
+    ``pil_kwargs={"compression": ...}``, the documented default would
+    be silently ignored — producing 10–20× larger files than promised.
+    """
     from PIL import Image
     out = tmp_path / "fig.tif"
-    # Custom compression triggers Pillow re-render → LZW gets applied.
-    simple_canvas.savefig(out, tiff_compression="tiff_lzw", cmyk=True)
+    # No kwargs → API default tiff_compression='tiff_lzw' MUST take effect.
+    simple_canvas.savefig(out)
     with Image.open(out) as img:
         compression = img.info.get("compression")
         assert compression in ("tiff_lzw", "lzw"), (
-            f"expected LZW compression, got {compression!r}"
+            f"bare-default canvas.savefig('out.tif') should produce LZW; "
+            f"got {compression!r}"
         )
 
 
-def test_savefig_tiff_compression_raw_flow_through(simple_canvas, tmp_path):
-    """Pass tiff_compression='raw' → matplotlib's default-fast path
-    (raw/uncompressed)."""
+def test_savefig_tiff_compression_explicit_lzw(simple_canvas, tmp_path):
+    """Explicit ``tiff_compression='tiff_lzw'`` is also LZW (parity)."""
     from PIL import Image
     out = tmp_path / "fig.tif"
-    # ``raw`` is the matplotlib default; pp.savefig path. Either path
-    # surfaces 'raw' from Pillow.
-    simple_canvas.savefig(out, tiff_compression="raw", cmyk=True)
+    simple_canvas.savefig(out, tiff_compression="tiff_lzw")
+    with Image.open(out) as img:
+        assert img.info.get("compression") in ("tiff_lzw", "lzw")
+
+
+def test_savefig_tiff_compression_raw_flow_through(simple_canvas, tmp_path):
+    """``tiff_compression='raw'`` → uncompressed TIFF (no LZW applied)."""
+    from PIL import Image
+    out = tmp_path / "fig.tif"
+    simple_canvas.savefig(out, tiff_compression="raw")
     with Image.open(out) as img:
         compression = img.info.get("compression")
         assert compression in ("raw", None), (

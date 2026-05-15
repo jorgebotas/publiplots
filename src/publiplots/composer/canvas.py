@@ -974,7 +974,10 @@ class Canvas:
             Forwarded to :meth:`savefig` for every format. ``cmyk=True``
             is pre-validated against the format list — passing
             ``cmyk=True + formats=['tif', 'pdf']`` raises ``ValueError``
-            BEFORE writing the ``.tif`` so there's no partial state.
+            BEFORE writing the ``.tif`` so there's no partial state from
+            cmyk-misuse. Other failure modes (invalid kwarg, disk full,
+            permission denied) cannot be pre-validated and may leave
+            earlier-iteration files written when a later iteration raises.
 
         Returns
         -------
@@ -1179,7 +1182,10 @@ class Canvas:
         external_raster : bool, default False
             For SVG outputs: when ``True``, write raster sources to
             sidecar PNG files rather than inline base64 data-URIs.
-            Silent no-op for non-SVG outputs.
+            Sidecar files are named ``{stem}-{idx}-{label}.png`` next to
+            the SVG; repeated saves with the same stem overwrite the
+            sidecars (idempotent re-render). Silent no-op for non-SVG
+            outputs.
         **kwargs
             Forwarded to :func:`publiplots.savefig` (raster) or to the
             vector compositor (PDF/SVG).
