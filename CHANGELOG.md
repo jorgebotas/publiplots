@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Vector SVG compositing (PR 6a):
+  - `canvas.savefig('fig.svg')` produces a real vector SVG with
+    embedded vector schematics via lxml + cairosvg. Replaces the
+    previous `NotImplementedError` placeholder. Output bytes are
+    deterministic across saves (pinned `svg.hashsalt` rcParam +
+    pinned `metadata={'Date': ...}`).
+  - SVG-source `PanelImage` schematics are spliced in-tree via lxml,
+    preserving vector text and shapes (selectable in browsers).
+    Raster-source schematics (PNG/JPG/TIFF) embed as base64
+    `<image>` data URIs.
+  - PDF-source schematics in SVG output raise a clear
+    `ComposerVectorError` — no in-tree library round-trips PDF→SVG
+    with vector preservation. Use `canvas.savefig('fig.pdf')` for
+    PDF schematics.
+  - `[composer]` install extra now pulls `lxml >= 4.9` (NEW —
+    ~5 MB additional install footprint over PR 5). Core install is
+    unchanged.
+  - `tests/composer/golden/svg/` populated with 2 golden SVGs;
+    `assert_svg_matches` modes: `viewbox`, `structure`,
+    `render_compare`.
 - Vector PDF compositing (PR 5):
   - `canvas.savefig('fig.pdf')` produces a real vector PDF with
     embedded vector schematics via pypdf + cairosvg.

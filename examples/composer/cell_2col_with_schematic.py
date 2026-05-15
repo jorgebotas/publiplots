@@ -1,7 +1,8 @@
-"""Cell 2-col figure: PanelImage SVG schematic + PanelAxes scatter → vector PDF.
+"""Cell 2-col figure: PanelImage SVG schematic + PanelAxes scatter → vector PDF + SVG.
 
-PR 5's headline use case. Saves to BOTH PDF (vector-preserving) and
-PNG (for at-a-glance viewing).
+PR 5's headline use case (PDF) plus PR 6a's vector-SVG output. Saves
+to PDF (vector-preserving), SVG (vector-preserving), and PNG (for
+at-a-glance viewing).
 """
 from pathlib import Path
 
@@ -30,6 +31,7 @@ def main() -> None:
     out_dir = Path(__file__).resolve().parents[2] / "docs" / "images" / "composer"
     out_dir.mkdir(parents=True, exist_ok=True)
     canvas.savefig(out_dir / "cell-2col-with-schematic.pdf")
+    canvas.savefig(out_dir / "cell-2col-with-schematic.svg")
     # Re-create a fresh canvas for PNG to avoid finalize-state issues.
     canvas2 = pp.Canvas("cell-2col")
     canvas2.add_row(
@@ -40,7 +42,7 @@ def main() -> None:
                              s=4, alpha=0.6)
     canvas2["B"].ax.set_xlabel("x"); canvas2["B"].ax.set_ylabel("y")
     canvas2.savefig(out_dir / "cell-2col-with-schematic.png")
-    print(f"wrote {out_dir / 'cell-2col-with-schematic.pdf'}")
+    print(f"wrote {out_dir / 'cell-2col-with-schematic.pdf'}, .svg, .png")
 
 
 if __name__ == "__main__":

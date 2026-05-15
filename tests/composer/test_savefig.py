@@ -56,14 +56,20 @@ def test_savefig_pdf_writes_pdf(tmp_path):
     assert out.read_bytes().startswith(b"%PDF-")
 
 
-def test_savefig_svg_raises_not_implemented(tmp_path):
-    """SVG vector pipeline lands in PR 6."""
+def test_savefig_svg_writes_svg(tmp_path):
+    """PR 6a lands the in-tree SVG composer.
+
+    Replaces the prior NotImplementedError contract — saving to .svg
+    now produces a valid SVG (axes-only canvases stamp no schematics).
+    """
     canvas = pp.Canvas("custom", width=174.0)
     canvas.add_row(pp.PanelAxes(label="A", size=(70.0, 40.0)))
 
     out = tmp_path / "fig.svg"
-    with pytest.raises(NotImplementedError, match="PR 6"):
-        canvas.savefig(out)
+    canvas.savefig(out)
+    assert out.exists()
+    text = out.read_bytes()
+    assert b"<svg" in text
 
 
 def test_savefig_unknown_extension_raises(tmp_path):

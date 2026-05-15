@@ -53,6 +53,7 @@ GOLDEN_DIR = Path(__file__).parent
 SNAPSHOT_DIR = GOLDEN_DIR / "mm_snapshots"
 PNG_DIR = GOLDEN_DIR / "png"
 PDF_DIR = GOLDEN_DIR / "pdf"
+SVG_DIR = GOLDEN_DIR / "svg"
 
 REGEN_ENV = "PUBLIPLOTS_REGEN_GOLDEN"
 SCHEMA_VERSION = 1
@@ -505,3 +506,144 @@ def _pdf_rasterizer_available() -> bool:
         pass
     import shutil
     return shutil.which("pdftocairo") is not None
+
+
+# ---------------------------------------------------------------------------
+# PR 6a: SVG golden helpers
+# ---------------------------------------------------------------------------
+
+def _svg_renderer_available() -> bool:
+    """True iff cairosvg + Pillow are importable for ``render_compare`` mode."""
+    try:
+        import cairosvg  # noqa: F401
+        from PIL import Image  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _rasterize_svg(svg_path: Path, out_png: Path, *, dpi: int = 200) -> None:
+    """Rasterize an SVG to PNG at ``dpi`` for visual comparison via cairosvg."""
+    import cairosvg
+    cairosvg.svg2png(url=str(svg_path), write_to=str(out_png), dpi=float(dpi))
+
+
+def assert_svg_matches(
+    canvas: "pp.Canvas",
+    name: str,
+    *,
+    mode: str = "viewbox",
+    tol_user: float = 0.5,
+    tol_image: float = 20,
+) -> None:
+    """Assert canvas-rendered SVG matches the committed golden.
+
+    Modes
+    -----
+    'viewbox'
+        Output SVG root has a parseable ``viewBox`` whose width/height
+        match ``canvas.figure_size_mm × mm_per_user_unit`` to
+        ``tol_user`` user units.
+    'structure'
+        Run XPath ``//svg:g[starts-with(@id, 'publiplots-panel-image-')]``;
+        assert match count equals the number of PanelImage panels in
+        the canvas.
+    'render_compare'
+        Rasterize both produced and golden SVGs via ``cairosvg.svg2png``
+        at 200 DPI; compare via ``compare_images`` with ``tol=tol_image``.
+
+    Regen behaviour mirrors :func:`assert_pdf_matches`: if the golden
+    is missing AND ``PUBLIPLOTS_REGEN_GOLDEN=1`` is set, the file is
+    written and the assertion passes.
+    """
+    import tempfile
+
+    SVG_DIR.mkdir(parents=True, exist_ok=True)
+    golden = SVG_DIR / f"{name}.svg"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        actual = Path(tmpdir) / f"{name}.svg"
+        canvas.savefig(str(actual))
+
+        if not golden.exists():
+            if os.environ.get(REGEN_ENV) == "1":
+                golden.write_bytes(actual.read_bytes())
+                return
+            raise AssertionError(
+                f"SVG golden missing for {name!r}. "
+                f"Run `python tools/composer/regen_fixtures.py --only {name}` "
+                f"to create it (or set PUBLIPLOTS_REGEN_GOLDEN=1)."
+            )
+
+        if mode == "viewbox":
+            from lxml import etree as _lxml_etree
+            from publiplots.composer.compositing._geometry import (
+                _resolve_svg_units,
+            )
+            tree = _lxml_etree.parse(str(actual))
+            root = tree.getroot()
+            _, _, vb_w, vb_h, mm_per_uu = _resolve_svg_units(root)
+            fig_w_mm, fig_h_mm = canvas.figure_size_mm
+            expected_vb_w = fig_w_mm / mm_per_uu
+            expected_vb_h = fig_h_mm / mm_per_uu
+            assert abs(vb_w - expected_vb_w) < tol_user, (
+                f"SVG {name!r} viewBox width {vb_w} vs expected "
+                f"{expected_vb_w} (tol={tol_user})"
+            )
+            assert abs(vb_h - expected_vb_h) < tol_user, (
+                f"SVG {name!r} viewBox height {vb_h} vs expected "
+                f"{expected_vb_h} (tol={tol_user})"
+            )
+            return
+
+        if mode == "structure":
+            from lxml import etree as _lxml_etree
+            tree = _lxml_etree.parse(str(actual))
+            SVG_NS = "http://www.w3.org/2000/svg"
+            groups = tree.getroot().xpath(
+                "//svg:g[starts-with(@id, 'publiplots-panel-image-')]",
+                namespaces={"svg": SVG_NS},
+            )
+            # Expected count: number of image panels in the canvas.
+            n_image = sum(
+                1 for p in canvas._panels_list  # noqa: SLF001
+                if getattr(p, "kind", None) == "image"
+            )
+            assert len(groups) == n_image, (
+                f"SVG {name!r}: structure check failed — "
+                f"found {len(groups)} publiplots-panel-image-* group(s), "
+                f"expected {n_image}."
+            )
+            # Defend against id-uniqueness regressions (SVG ids must be
+            # unique per document; the orchestrator's idx-suffix scheme
+            # guarantees this, but a refactor could break it silently).
+            ids = [g.get("id") for g in groups]
+            assert len(set(ids)) == len(ids), (
+                f"SVG {name!r}: duplicate publiplots-panel-image-* "
+                f"id(s) found: {[i for i in ids if ids.count(i) > 1]}. "
+                f"SVG ids must be unique per document."
+            )
+            return
+
+        if mode == "render_compare":
+            from matplotlib.testing.compare import compare_images
+            actual_png = Path(tmpdir) / f"{name}-actual.png"
+            golden_png = Path(tmpdir) / f"{name}-golden.png"
+            _rasterize_svg(actual, actual_png, dpi=200)
+            _rasterize_svg(golden, golden_png, dpi=200)
+            result = compare_images(str(golden_png), str(actual_png),
+                                    tol=tol_image)
+            if result is None:
+                return
+            if os.environ.get(REGEN_ENV) == "1":
+                golden.write_bytes(actual.read_bytes())
+                return
+            raise AssertionError(
+                f"SVG render_compare regression for {name!r}: {result}\n"
+                f"Run `python tools/composer/regen_fixtures.py --only {name}`."
+            )
+
+        raise ValueError(
+            f"assert_svg_matches: unknown mode={mode!r}. "
+            f"Expected 'viewbox', 'structure', or 'render_compare'."
+        )

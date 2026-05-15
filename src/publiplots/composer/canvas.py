@@ -109,9 +109,9 @@ class Canvas:
 
     Notes
     -----
-    Vector PDF/SVG save dispatches land in PR 5/PR 6.
-    ``canvas.savefig('fig.pdf')`` raises :class:`NotImplementedError`
-    in the current release (until PR 5/PR 6 land).
+    Vector PDF (PR 5) and vector SVG (PR 6a) save dispatches are
+    wired. ``canvas.savefig('fig.pdf')`` and ``canvas.savefig('fig.svg')``
+    composite any PanelImage slots into the output.
     """
 
     def __init__(
@@ -949,25 +949,27 @@ class Canvas:
         Triggers lazy finalization if the canvas has at least one
         staged row but has not yet been finalized.
 
-        Currently supports raster formats (PNG, JPG, TIFF). PDF and SVG
-        raise :class:`NotImplementedError` until PR 5 / PR 6 land the
-        vector compositing pipelines.
+        Supports raster formats (PNG, JPG, TIFF) plus vector PDF (PR 5)
+        and vector SVG (PR 6a). For vector outputs, any PanelImage
+        slots are composited via the appropriate pipeline (pypdf for
+        PDF, lxml for SVG).
 
         Parameters
         ----------
         path : str or Path
             Output file path. Extension determines the format.
         **kwargs
-            Forwarded to :func:`publiplots.savefig`.
+            Forwarded to :func:`publiplots.savefig` (raster) or to the
+            vector compositor (PDF/SVG).
 
         Raises
         ------
         RuntimeError
             If :meth:`add_row` has not been called yet.
-        NotImplementedError
-            If ``path`` ends in ``.pdf`` (PR 5) or ``.svg`` (PR 6).
         ValueError
             If the path's extension is not a known raster or vector type.
+        ComposerVectorError
+            If a vector schematic fails to load and ``strict_vectors=True``.
         """
         if not self._rows and not self._finalized:
             raise RuntimeError(

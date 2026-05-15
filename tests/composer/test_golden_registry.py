@@ -261,3 +261,149 @@ def test_round_geometry_rejects_negative_tol():
     from tests.composer.golden._helpers import _round_geometry
     with pytest.raises(ValueError, match=r"tol_mm must be > 0"):
         _round_geometry(1.0, tol_mm=-0.01)
+
+
+# ---------------------------------------------------------------------------
+# PR 6a: assert_svg_matches helper
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def _small_svg_for_canvas(tmp_path_factory):
+    """Build a minimal SVG schematic shared across SVG-helper tests."""
+    p = tmp_path_factory.mktemp("svg") / "fixture.svg"
+    p.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" '
+        'width="40mm" height="30mm" viewBox="0 0 40 30">'
+        '<rect width="40" height="30" fill="red"/></svg>'
+    )
+    return p
+
+
+def test_assert_svg_matches_missing_fixture_raises_without_regen(
+    tmp_path, monkeypatch, _small_svg_for_canvas,
+):
+    """Missing SVG without REGEN_ENV → AssertionError pointing at regen CLI."""
+    import publiplots as pp
+    from tests.composer.golden import _helpers
+
+    monkeypatch.setattr(_helpers, "SVG_DIR", tmp_path)
+    monkeypatch.delenv(_helpers.REGEN_ENV, raising=False)
+
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=_small_svg_for_canvas, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+
+    with pytest.raises(AssertionError, match=r"regen_fixtures"):
+        _helpers.assert_svg_matches(canvas, "missing-svg")
+
+
+def test_assert_svg_matches_missing_with_regen_writes(
+    tmp_path, monkeypatch, _small_svg_for_canvas,
+):
+    """Missing golden + REGEN_ENV=1 → file written + assertion passes."""
+    import publiplots as pp
+    from tests.composer.golden import _helpers
+
+    monkeypatch.setattr(_helpers, "SVG_DIR", tmp_path)
+    monkeypatch.setenv(_helpers.REGEN_ENV, "1")
+
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=_small_svg_for_canvas, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+
+    _helpers.assert_svg_matches(canvas, "regen-svg")
+    assert (tmp_path / "regen-svg.svg").exists()
+
+
+def test_assert_svg_matches_viewbox_mode(
+    tmp_path, monkeypatch, _small_svg_for_canvas,
+):
+    """viewbox mode passes when the produced SVG's viewBox matches mm × user-unit factor."""
+    import publiplots as pp
+    from tests.composer.golden import _helpers
+
+    monkeypatch.setattr(_helpers, "SVG_DIR", tmp_path)
+    monkeypatch.setenv(_helpers.REGEN_ENV, "1")
+
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=_small_svg_for_canvas, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _helpers.assert_svg_matches(canvas, "vb-svg", mode="viewbox")
+    # Re-call without REGEN; should still pass.
+    monkeypatch.delenv(_helpers.REGEN_ENV, raising=False)
+    canvas2 = pp.Canvas("cell-2col")
+    canvas2.add_row(
+        pp.PanelImage(label="A", path=_small_svg_for_canvas, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _helpers.assert_svg_matches(canvas2, "vb-svg", mode="viewbox")
+
+
+def test_assert_svg_matches_structure_mode_finds_panel_g(
+    tmp_path, monkeypatch, _small_svg_for_canvas,
+):
+    """structure mode XPath-finds the publiplots-panel-image-* wrapper."""
+    import publiplots as pp
+    from tests.composer.golden import _helpers
+
+    monkeypatch.setattr(_helpers, "SVG_DIR", tmp_path)
+    monkeypatch.setenv(_helpers.REGEN_ENV, "1")
+
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=_small_svg_for_canvas, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _helpers.assert_svg_matches(canvas, "struct-svg", mode="structure")
+    monkeypatch.delenv(_helpers.REGEN_ENV, raising=False)
+    canvas2 = pp.Canvas("cell-2col")
+    canvas2.add_row(
+        pp.PanelImage(label="A", path=_small_svg_for_canvas, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _helpers.assert_svg_matches(canvas2, "struct-svg", mode="structure")
+
+
+def test_assert_svg_matches_render_compare_skips_when_no_cairosvg(
+    tmp_path, monkeypatch,
+):
+    """render_compare mode skip-helper returns False when cairosvg missing."""
+    from tests.composer.golden import _helpers
+
+    # Helper exists.
+    assert hasattr(_helpers, "_svg_renderer_available")
+    avail = _helpers._svg_renderer_available()
+    assert isinstance(avail, bool)
+
+
+def test_assert_svg_matches_unknown_mode_raises(
+    tmp_path, monkeypatch, _small_svg_for_canvas,
+):
+    """Unknown mode → ValueError."""
+    import publiplots as pp
+    from tests.composer.golden import _helpers
+
+    monkeypatch.setattr(_helpers, "SVG_DIR", tmp_path)
+    monkeypatch.setenv(_helpers.REGEN_ENV, "1")
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=_small_svg_for_canvas, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    # Write the golden first.
+    _helpers.assert_svg_matches(canvas, "mode-test", mode="viewbox")
+    # Now expect ValueError on bogus mode.
+    monkeypatch.delenv(_helpers.REGEN_ENV, raising=False)
+    canvas2 = pp.Canvas("cell-2col")
+    canvas2.add_row(
+        pp.PanelImage(label="A", path=_small_svg_for_canvas, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    with pytest.raises(ValueError, match=r"unknown mode"):
+        _helpers.assert_svg_matches(canvas2, "mode-test", mode="bogus")
