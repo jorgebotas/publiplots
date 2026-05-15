@@ -325,3 +325,40 @@ def test_svg_golden_render_compare(name: str) -> None:
     build_fn = dict(COMPOSITIONS)[name]
     canvas = build_fn()
     assert_svg_matches(canvas, name, mode="render_compare")
+
+
+# ---------------------------------------------------------------------------
+# Task 9 — byte-determinism regression
+# ---------------------------------------------------------------------------
+
+def test_savefig_svg_byte_deterministic(small_svg, tmp_path):
+    """Two saves of the same canvas produce byte-identical SVGs.
+
+    Spike Finding 2: matplotlib's SVG writer emits `<defs>` IDs whose
+    suffixes are derived from the rcParam `svg.hashsalt` AND a
+    `<dc:date>` driven from `metadata['Date']`. With both pinned, the
+    output bytes are reproducible. This test guards the contract from
+    future regressions (e.g., a new matplotlib release adding a third
+    randomness source).
+    """
+    canvas1 = pp.Canvas("cell-2col")
+    canvas1.add_row(
+        pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    out1 = tmp_path / "a.svg"
+    canvas1.savefig(out1)
+
+    canvas2 = pp.Canvas("cell-2col")
+    canvas2.add_row(
+        pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    out2 = tmp_path / "b.svg"
+    canvas2.savefig(out2)
+
+    assert out1.read_bytes() == out2.read_bytes(), (
+        "Two saves of the same canvas produced different SVG bytes; "
+        "byte-determinism contract broken (svg.hashsalt + metadata={'Date'}"
+        " were expected to suffice)."
+    )

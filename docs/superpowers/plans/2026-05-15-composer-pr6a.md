@@ -236,11 +236,11 @@ src/publiplots/composer/
 
 ### Task 9 — Determinism regression guard + example + CHANGELOG + skill
 
-- [ ] `test_svg_compositing.py::test_savefig_svg_byte_deterministic` — render twice; assert byte-identical.
-- [ ] Extend `examples/composer/cell_2col_with_schematic.py` to ALSO save to SVG (`canvas.savefig(out / 'fig.svg')`).
-- [ ] CHANGELOG `[Unreleased] / Added` entry.
-- [ ] `skills/publiplots-guide/SKILL.md` — one-line addition: "vector SVG works (PR 6a)".
-- [ ] **Final test run**: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q` should report 1338 + new SVG tests = ~1400 total; 1 residplot pre-existing failure unchanged.
+- [x] `test_svg_compositing.py::test_savefig_svg_byte_deterministic` — render twice; assert byte-identical.
+- [x] Extend `examples/composer/cell_2col_with_schematic.py` to ALSO save to SVG (`canvas.savefig(out / 'fig.svg')`).
+- [x] CHANGELOG `[Unreleased] / Added` entry.
+- [x] `skills/publiplots-guide/SKILL.md` — one-line addition: "vector SVG works (PR 6a)".
+- [x] **Final test run**: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q` should report 1338 + new SVG tests = ~1400 total; 1 residplot pre-existing failure unchanged.
 
 ---
 
