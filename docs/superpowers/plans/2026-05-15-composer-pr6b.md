@@ -179,16 +179,16 @@ src/publiplots/composer/
 
 ### Task 1 — Extract `_constants.py` for shared determinism strings
 
-- [ ] Create `src/publiplots/composer/compositing/_constants.py` with:
+- [x] Create `src/publiplots/composer/compositing/_constants.py` with:
   ```python
   _DEFAULT_CREATION_DATE = "D:20260101000000Z"  # PDF /CreationDate pin
   _DEFAULT_DATE = "2026-01-01T00:00:00"          # SVG <dc:date> pin
   _SVG_HASHSALT = "publiplots-composer"          # SVG defs-id pin
   _PRODUCER = "publiplots-composer"              # PDF /Producer pin
   ```
-- [ ] Update `compositing/pdf.py` to import from `_constants` instead of module-local constants.
-- [ ] Update `compositing/svg.py` to import from `_constants`.
-- [ ] **Failing test first**: `test_constants.py::test_determinism_constants_consistent` — assert constants from PR 5 + PR 6a still produce byte-identical PDFs/SVGs (regenerates 2 golden PDFs + 2 golden SVGs and diffs). Then implement the extraction.
+- [x] Update `compositing/pdf.py` to import from `_constants` instead of module-local constants.
+- [x] Update `compositing/svg.py` to import from `_constants`.
+- [x] **Failing test first**: `test_constants.py::test_determinism_constants_consistent` — assert constants from PR 5 + PR 6a still produce byte-identical PDFs/SVGs (regenerates 2 golden PDFs + 2 golden SVGs and diffs). Then implement the extraction.
 
 ### Task 2 — Relax `PanelImage` path-required validation
 

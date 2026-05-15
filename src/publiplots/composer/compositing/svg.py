@@ -40,10 +40,10 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from publiplots.composer.exceptions import ComposerVectorError
-
-
-_SVG_HASHSALT = "publiplots-composer"
-_DEFAULT_DATE = "2026-01-01T00:00:00"
+from publiplots.composer.compositing._constants import (
+    _DEFAULT_DATE,
+    _SVG_HASHSALT,
+)
 
 
 def _filter_image_panels(panels: Iterable[Any]) -> list[Any]:

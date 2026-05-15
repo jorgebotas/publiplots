@@ -30,6 +30,10 @@ from typing import Any, Iterable, Optional, Sequence, Union
 from matplotlib.figure import Figure
 
 from publiplots.composer.exceptions import ComposerVectorError
+from publiplots.composer.compositing._constants import (
+    _DEFAULT_CREATION_DATE,
+    _PRODUCER,
+)
 from publiplots.composer.compositing._geometry import (
     MM2PT,
     compute_pdf_transform,
@@ -38,10 +42,6 @@ from publiplots.composer.compositing._resources import (
     _pillow_to_pdf_bytes,
     load_schematic_as_pdf_bytes,
 )
-
-
-_DEFAULT_CREATION_DATE = "D:20260101000000Z"
-_PRODUCER = "publiplots-composer"
 
 
 def _filter_image_panels(panels: Iterable[Any]) -> list[Any]:
