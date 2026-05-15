@@ -435,16 +435,9 @@ class Canvas:
                 "Canvas has no rows yet; call add_row() before finalize()"
             )
 
-        # Reject PanelText for now (Task 8 will add it). PanelGrid is
-        # handled in the per-panel dispatch loop below (Task 7).
+        # Per-panel dispatch handles all three panel kinds (PanelAxes,
+        # PanelGrid, PanelText) in the loop below. PanelImage lands in PR 5.
         from publiplots.composer.panels import PanelAxes, PanelGrid, PanelText
-        for r_idx, row in enumerate(self._rows):
-            for p in row.panels:
-                if isinstance(p, PanelText):
-                    raise NotImplementedError(
-                        f"PanelText construction lands in PR3 Task 8 "
-                        f"(found PanelText in row {r_idx})"
-                    )
 
         # Resolve decorations once (shared across rows).
         decorations = self._resolve_decorations()
@@ -559,8 +552,28 @@ class Canvas:
                     # Render the abc label on the TOP-LEFT inner axes
                     # (the panel's "first" cell visually).
                     label_target_ax = inner_axes[0, 0]
+                elif isinstance(panel_input, PanelText):
+                    rect_frac = (
+                        x_mm / geometry.canvas_width_mm,
+                        y_mm / geometry.canvas_height_mm,
+                        w_mm / geometry.canvas_width_mm,
+                        h_mm / geometry.canvas_height_mm,
+                    )
+                    ax = self._build_panel_text_axes(
+                        panel_input, fig, rect_frac,
+                    )
+                    panel = Panel(
+                        label=resolved_label,
+                        kind="text",
+                        ax=ax,
+                        size_mm=(w_mm, h_mm),
+                        bbox_mm=(x_mm, y_mm, w_mm, h_mm),
+                        resolved_label_style=resolved_style,
+                        axes=None,
+                    )
+                    label_target_ax = ax
                 else:
-                    # PanelAxes (PanelText raises above; PanelImage in PR 5).
+                    # PanelAxes (PanelImage lands in PR 5).
                     rect_frac = (
                         x_mm / geometry.canvas_width_mm,
                         y_mm / geometry.canvas_height_mm,
@@ -693,6 +706,32 @@ class Canvas:
             return axes[0, c] if r > 0 else None
         # Unreachable — PanelGrid validates share values up-front.
         return None
+
+    # ------------------------------------------------------------------
+    # PanelText construction helper (PR 3 Task 8)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _build_panel_text_axes(panel_text, fig, rect_frac):
+        """Create a hidden axes for a text panel and place the text artist.
+
+        The text is centered at (0.5, 0.5) in axes-fraction with
+        ha='center', va='center' by default; user-supplied ``text_kw``
+        can override these.
+        """
+        ax = fig.add_axes(rect_frac)
+        ax.set_axis_off()
+        ax.patch.set_visible(False)
+        # set_axis_off() sets axison=False (skips drawing) but does NOT
+        # flip per-spine visibility flags; explicitly hide spines so
+        # introspection (and any save path that bypasses axison) sees a
+        # clean text-only axes.
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        text_kw = {"ha": "center", "va": "center"}
+        text_kw.update(panel_text.text_kw or {})
+        ax.text(0.5, 0.5, panel_text.text, transform=ax.transAxes, **text_kw)
+        return ax
 
     # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)
