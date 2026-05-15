@@ -228,11 +228,11 @@ src/publiplots/composer/
 
 ### Task 8 — Golden SVG goldens + parametrized compositing tests
 
-- [ ] Generate `cell-2col-with-svg-schematic.svg` and `cell-2col-with-png-schematic.svg` via `python tools/composer/regen_fixtures.py --only cell-2col-with-svg-schematic --only cell-2col-with-png-schematic`. Inspect manually:
+- [x] Generate `cell-2col-with-svg-schematic.svg` and `cell-2col-with-png-schematic.svg` via `python tools/composer/regen_fixtures.py --only cell-2col-with-svg-schematic --only cell-2col-with-png-schematic`. Inspect manually:
   - SVG schematic golden: open in Firefox; verify the `"PR5-svg-marker"` text is selectable AND positioned in the schematic slot (NOT at world origin like spike Path C bug).
   - PNG schematic golden: open in Firefox; verify the `<image>` is in the slot, no aspect distortion (clip='fit' default).
-- [ ] Commit both goldens.
-- [ ] `test_svg_compositing.py` parametrized over `[(name, mode) for name in ['cell-2col-with-svg-schematic', 'cell-2col-with-png-schematic'] for mode in ['viewbox', 'structure', 'render_compare']]`. Note: structure mode IS meaningful for SVG (we ID-tag the wrapper `<g>`), unlike the PDF path where structure-on-SVG-source was rejected as defensively useless.
+- [x] Commit both goldens.
+- [x] `test_svg_compositing.py` parametrized over `[(name, mode) for name in ['cell-2col-with-svg-schematic', 'cell-2col-with-png-schematic'] for mode in ['viewbox', 'structure', 'render_compare']]`. Note: structure mode IS meaningful for SVG (we ID-tag the wrapper `<g>`), unlike the PDF path where structure-on-SVG-source was rejected as defensively useless.
 
 ### Task 9 — Determinism regression guard + example + CHANGELOG + skill
 

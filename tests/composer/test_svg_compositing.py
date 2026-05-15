@@ -278,3 +278,50 @@ def test_savefig_svg_strict_vectors_false_falls_back_with_warning(
         f"expected vector-fallback UserWarning; got: "
         f"{[str(w.message) for w in caught]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Task 8 — golden-SVG parametrized regression tests
+# ---------------------------------------------------------------------------
+
+from tests.composer.golden._compositions import COMPOSITIONS
+from tests.composer.golden._helpers import (
+    _svg_renderer_available,
+    assert_svg_matches,
+)
+
+
+SVG_GOLDEN_NAMES = [
+    "cell-2col-with-svg-schematic",
+    "cell-2col-with-png-schematic",
+]
+
+
+# (name, mode) pairs. viewbox + structure are meaningful for both
+# schematic types. render_compare adds a visual gate when cairosvg is
+# available.
+SVG_GOLDEN_MODE_PAIRS = [
+    (name, mode)
+    for name in SVG_GOLDEN_NAMES
+    for mode in ("viewbox", "structure")
+]
+
+
+@pytest.mark.parametrize("name,mode", SVG_GOLDEN_MODE_PAIRS)
+def test_svg_golden_matches(name: str, mode: str) -> None:
+    """Composition `name` matches its golden SVG in `mode`."""
+    build_fn = dict(COMPOSITIONS)[name]
+    canvas = build_fn()
+    assert_svg_matches(canvas, name, mode=mode)
+
+
+@pytest.mark.parametrize("name", SVG_GOLDEN_NAMES)
+@pytest.mark.skipif(
+    not _svg_renderer_available(),
+    reason="cairosvg/Pillow unavailable for SVG render_compare.",
+)
+def test_svg_golden_render_compare(name: str) -> None:
+    """Composition `name` renders pixel-equivalently to its golden SVG."""
+    build_fn = dict(COMPOSITIONS)[name]
+    canvas = build_fn()
+    assert_svg_matches(canvas, name, mode="render_compare")
