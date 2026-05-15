@@ -55,10 +55,9 @@ def compute_pdf_transform(
     Raises
     ------
     ValueError
-        If ``schematic_size_pt`` has any zero or negative dimension, or
-        ``clip`` is invalid. ``align`` is validated by PanelImage's
-        constructor; passing an unknown value here returns the
-        ``'center'`` translation as a graceful fallback.
+        If ``schematic_size_pt`` has any zero or negative dimension,
+        ``clip`` is invalid, or ``align`` is invalid (when ``clip``
+        != 'stretch'; for 'stretch' align is unused and unvalidated).
     """
     sch_w_pt, sch_h_pt = schematic_size_pt
     if sch_w_pt <= 0 or sch_h_pt <= 0:
@@ -69,6 +68,18 @@ def compute_pdf_transform(
     if clip not in ("fit", "fill", "stretch"):
         raise ValueError(
             f"clip={clip!r} invalid. Expected 'fit', 'fill', or 'stretch'."
+        )
+    # For non-stretch clips, validate align defensively. PanelImage's
+    # __post_init__ already validates, but this helper is callable
+    # directly; reject typos rather than silently centering.
+    _VALID_ALIGN = {
+        "top-left", "top", "top-right",
+        "left", "center", "right",
+        "bottom-left", "bottom", "bottom-right",
+    }
+    if clip != "stretch" and align not in _VALID_ALIGN:
+        raise ValueError(
+            f"align={align!r} invalid. Expected one of {sorted(_VALID_ALIGN)}."
         )
 
     slot_x_mm, slot_y_mm, slot_w_mm, slot_h_mm = slot_bbox_mm
@@ -101,7 +112,7 @@ def compute_pdf_transform(
         ox = 0.0
     elif align in ("top-right", "right", "bottom-right"):
         ox = slack_w_pt
-    else:  # 'top', 'bottom', 'center', or unknown
+    else:  # 'top', 'bottom', 'center'
         ox = slack_w_pt / 2.0
 
     # Vertical: PDF y is BOTTOM-UP. 'bottom'-words → 0; 'top'-words → full slack.
@@ -109,7 +120,7 @@ def compute_pdf_transform(
         oy = 0.0
     elif align in ("top-left", "top", "top-right"):
         oy = slack_h_pt
-    else:  # 'left', 'right', 'center', or unknown
+    else:  # 'left', 'right', 'center'
         oy = slack_h_pt / 2.0
 
     return sx, sy, slot_x_pt + ox, slot_y_pt + oy

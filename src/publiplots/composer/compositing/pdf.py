@@ -146,14 +146,16 @@ def _compose_panel_onto(
 ) -> None:
     """Stamp ``panel``'s schematic onto ``target_page``.
 
-    Reads ``panel.path``, ``panel.bbox_mm``, ``panel.align``,
-    ``panel.clip``, and ``panel.label``.
+    Reads ``panel.image_path``, ``panel.image_align``, ``panel.image_clip``,
+    ``panel.bbox_mm``, and ``panel.label`` from the post-finalize Panel
+    result record (NOT the PanelImage input dataclass — Canvas finalize
+    translates the input to a Panel record carrying the image_* fields).
     """
     label = getattr(panel, "label", None) or "<unlabeled>"
-    path = getattr(panel, "image_path", None) or getattr(panel, "path", None)
-    align = getattr(panel, "image_align", None) or getattr(panel, "align", "center")
-    clip = getattr(panel, "image_clip", None) or getattr(panel, "clip", "fit")
-    bbox_mm = getattr(panel, "bbox_mm")
+    path = panel.image_path
+    align = panel.image_align if panel.image_align is not None else "center"
+    clip = panel.image_clip if panel.image_clip is not None else "fit"
+    bbox_mm = panel.bbox_mm
 
     try:
         pdf_bytes, _kind = load_schematic_as_pdf_bytes(path)
