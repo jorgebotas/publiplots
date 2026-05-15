@@ -15,16 +15,8 @@ def test_panel_axes_basic_construction():
     assert p.size == (70.0, 40.0)
 
 
-def test_panel_axes_label_required_in_pr1():
-    """PR 2 will introduce auto-letter sequencing (label=None → 'A','B',...).
-    PR 1 requires an explicit label string. This test will be UPDATED in
-    PR 2 to allow label=None; pin to required-string for now."""
-    with pytest.raises(TypeError):
-        PanelAxes(size=(70.0, 40.0))  # no label
-
-
 def test_panel_axes_label_must_be_str():
-    with pytest.raises(TypeError, match="label must be a string"):
+    with pytest.raises(TypeError, match="label must be"):
         PanelAxes(label=123, size=(70.0, 40.0))
 
 
@@ -47,11 +39,6 @@ def test_panel_axes_size_must_be_positive():
         PanelAxes(label="A", size=(0.0, 40.0))
     with pytest.raises(ValueError, match="positive"):
         PanelAxes(label="A", size=(80.0, -1.0))
-
-
-def test_panel_axes_size_must_be_numeric():
-    with pytest.raises(ValueError, match="numeric"):
-        PanelAxes(label="A", size=("flex", 40.0))
 
 
 def test_panel_axes_size_coerces_to_floats():
@@ -98,3 +85,97 @@ def test_panel_is_immutable():
               size_mm=(70.0, 40.0), bbox_mm=(5.0, 5.0, 70.0, 40.0))
     with pytest.raises((AttributeError, Exception)):  # FrozenInstanceError or AttributeError
         p.label = "B"
+
+
+# ---------------------------------------------------------------------------
+# PR 2: flex sizing — size=('flex', h_mm) is now valid
+# ---------------------------------------------------------------------------
+
+def test_panel_axes_size_accepts_flex_width():
+    p = PanelAxes(label="A", size=("flex", 40.0))
+    assert p.size == ("flex", 40.0)
+
+
+def test_panel_axes_flex_width_height_must_still_be_positive_numeric():
+    with pytest.raises(ValueError, match="positive"):
+        PanelAxes(label="A", size=("flex", 0.0))
+    with pytest.raises(ValueError, match="positive"):
+        PanelAxes(label="A", size=("flex", -1.0))
+
+
+def test_panel_axes_flex_height_must_be_numeric():
+    with pytest.raises(ValueError, match="numeric"):
+        PanelAxes(label="A", size=("flex", "flex"))
+
+
+def test_panel_axes_flex_width_only_keyword_accepted():
+    """The ONLY string accepted in the width slot is 'flex'. Anything else
+    is still rejected as non-numeric."""
+    with pytest.raises(ValueError, match="numeric|flex"):
+        PanelAxes(label="A", size=("auto", 40.0))
+
+
+def test_panel_axes_size_height_cannot_be_flex():
+    """PR 2 does NOT add flex height (PR 3 might — for vfill policies).
+    Flex is width-only in PR 2."""
+    with pytest.raises(ValueError, match="numeric|flex"):
+        PanelAxes(label="A", size=(70.0, "flex"))
+
+
+# ---------------------------------------------------------------------------
+# PR 2: label modes — None (auto), False (no label), str (verbatim)
+# ---------------------------------------------------------------------------
+
+def test_panel_axes_label_none_is_auto_slot():
+    """label=None reserves an auto-letter slot; resolution happens in
+    canvas.add_row() based on the canvas's abc=. PR 1 required str;
+    PR 2 makes None valid."""
+    p = PanelAxes(label=None, size=(70.0, 40.0))
+    assert p.label is None
+
+
+def test_panel_axes_label_false_is_no_label():
+    """label=False explicitly suppresses any label rendering and is
+    skipped from the auto-letter sequence."""
+    p = PanelAxes(label=False, size=(70.0, 40.0))
+    assert p.label is False
+
+
+def test_panel_axes_label_str_unchanged():
+    """The PR 1 contract for str labels is preserved verbatim."""
+    p = PanelAxes(label="B.i", size=(70.0, 40.0))
+    assert p.label == "B.i"
+
+
+def test_panel_axes_label_other_types_rejected():
+    """label must be None, False, or a str. int/float/list/etc. raise."""
+    with pytest.raises(TypeError, match="label must be"):
+        PanelAxes(label=123, size=(70.0, 40.0))
+    with pytest.raises(TypeError, match="label must be"):
+        PanelAxes(label=["A", "B"], size=(70.0, 40.0))
+
+
+def test_panel_axes_label_true_rejected():
+    """label=True isn't a meaningful state and we don't want users
+    confusing it with abc=True (which lives on the Canvas, not the panel)."""
+    with pytest.raises(TypeError, match="label must be"):
+        PanelAxes(label=True, size=(70.0, 40.0))
+
+
+# ---------------------------------------------------------------------------
+# PR 2: label_style override at panel construction
+# ---------------------------------------------------------------------------
+
+def test_panel_axes_accepts_label_style_dict():
+    p = PanelAxes(label="A", size=(70.0, 40.0), label_style={"loc": "ur", "size": 11})
+    assert p.label_style == {"loc": "ur", "size": 11}
+
+
+def test_panel_axes_label_style_defaults_to_none():
+    p = PanelAxes(label="A", size=(70.0, 40.0))
+    assert p.label_style is None
+
+
+def test_panel_axes_label_style_must_be_mapping_or_none():
+    with pytest.raises(TypeError, match="label_style"):
+        PanelAxes(label="A", size=(70.0, 40.0), label_style="not-a-dict")

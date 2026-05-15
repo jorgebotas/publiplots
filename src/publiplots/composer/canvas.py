@@ -1,8 +1,8 @@
 """Canvas — the Composer's top-level orchestrator.
 
-PR 1 supports single-row layouts via :meth:`Canvas.add_row` and raster
-:meth:`Canvas.savefig`. The figure is created lazily when ``add_row``
-runs; ``Canvas(...)`` itself just records configuration.
+Currently supports single-row layouts via :meth:`Canvas.add_row` and
+raster :meth:`Canvas.savefig`. The figure is created lazily when
+``add_row`` runs; ``Canvas(...)`` itself just records configuration.
 
 Internally, the canvas builds a 1-row × N-column :class:`FigureLayout`
 where each column's mm width matches one panel's declared width. The
@@ -11,7 +11,7 @@ title decoration reservation (per spike Finding 4 — without it, axis
 decorations clip at the canvas mediabox edge).
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from publiplots.composer.exceptions import ComposerOverflowError
 from publiplots.composer.panels import Panel, PanelAxes
@@ -25,8 +25,9 @@ class Canvas:
     Parameters
     ----------
     preset : str
-        Preset name. PR 1 only supports ``'custom'``; journal presets
-        (Cell, Nature, Nature Methods, Science) land in PR 2.
+        Preset name. Supports the 12 journal presets (Cell, Nature,
+        Nature Methods, Science families) plus ``'custom'`` as an
+        escape hatch for arbitrary widths.
     width : float, optional
         Canvas width in millimeters. Required for ``preset='custom'``.
 
@@ -47,18 +48,35 @@ class Canvas:
     -----
     Multi-row layouts and ``add_column`` land in PR 3. Vector PDF/SVG
     save dispatches land in PR 5/PR 6. ``canvas.savefig('fig.pdf')``
-    raises :class:`NotImplementedError` in PR 1.
+    raises :class:`NotImplementedError` in the current release (until
+    PR 5/PR 6 land).
     """
 
-    def __init__(self, preset: str, *, width: Optional[float] = None) -> None:
+    def __init__(
+        self,
+        preset: str,
+        *,
+        width: Optional[float] = None,
+        abc: Union[str, bool, Sequence[str], None] = None,
+    ) -> None:
+        from publiplots.composer.abc_labels import DEFAULT_LABEL_STYLE
+
         self._preset_name = preset
         spec = resolve_preset(preset, width=width)
         self._width_mm: float = spec["width_mm"]
         self._max_height_mm: Optional[float] = spec["max_height_mm"]
 
+        # abc resolution: if user passed None, fall back to preset default.
+        self._abc = abc if abc is not None else spec["abc_default"]
+
+        # Initialize label_style from the default + preset's label_size_pt.
+        self._label_style: Dict[str, Any] = dict(DEFAULT_LABEL_STYLE)
+        self._label_style["size"] = spec["label_size_pt"]
+
         # Lazy-initialized on first add_row():
         self._figure = None  # matplotlib.figure.Figure | None
         self._panels: Dict[str, Panel] = {}
+        self._panels_ordered: List[Panel] = []  # insertion-order for int indexing
         self._row_added: bool = False
 
     # ------------------------------------------------------------------
@@ -87,12 +105,39 @@ class Canvas:
     # ------------------------------------------------------------------
     # Indexing
     # ------------------------------------------------------------------
-    def __getitem__(self, label: str) -> Panel:
-        if label not in self._panels:
+    def __getitem__(self, key) -> Panel:
+        if isinstance(key, int) and not isinstance(key, bool):
+            if not self._panels_ordered:
+                raise KeyError("no panels yet; call add_row() first")
+            try:
+                return self._panels_ordered[key]
+            except IndexError:
+                raise KeyError(
+                    f"panel index {key} out of range; "
+                    f"only {len(self._panels_ordered)} panel(s) exist"
+                )
+        if key not in self._panels:
             raise KeyError(
-                f"no panel with label {label!r}; known labels: {sorted(self._panels)}"
+                f"no panel with label {key!r}; "
+                f"known labels: {sorted(self._panels)}"
             )
-        return self._panels[label]
+        return self._panels[key]
+
+    def label_style(self, **kwargs: Any) -> None:
+        """Update the canvas-wide label style.
+
+        Accepts any subset of: ``weight``, ``size``, ``family``, ``loc``,
+        ``pad_mm``, ``border``, ``bbox``. Missing keys are unchanged.
+        ``loc`` must be one of the 8 ultraplot locs (``'ul'``, ``'ur'``,
+        ``'ll'``, ``'lr'``, ``'uc'``, ``'lc'``, ``'cl'``, ``'cr'``).
+        """
+        from publiplots.composer.abc_labels import VALID_LOCS
+
+        if "loc" in kwargs and kwargs["loc"] not in VALID_LOCS:
+            raise ValueError(
+                f"loc must be one of {sorted(VALID_LOCS)}, got {kwargs['loc']!r}"
+            )
+        self._label_style.update(kwargs)
 
     # ------------------------------------------------------------------
     # add_row — single-row layout for PR 1
@@ -121,7 +166,7 @@ class Canvas:
         ComposerOverflowError
             If the row's total width exceeds the canvas budget.
         """
-        # --- guard against multi-row in PR 1 ------------------------
+        # --- guard against multi-row (PR 3 will lift this) ----------
         if self._row_added:
             raise NotImplementedError(
                 "Canvas.add_row called twice; multi-row support lands in PR 3"
@@ -133,13 +178,16 @@ class Canvas:
         for p in panels:
             if not isinstance(p, PanelAxes):
                 raise TypeError(
-                    f"Canvas.add_row only accepts PanelAxes in PR 1, "
+                    f"Canvas.add_row only accepts PanelAxes, "
                     f"got {type(p).__name__} (PanelGrid/PanelText land in PR 3, "
                     f"PanelImage in PR 5)"
                 )
         labels = [p.label for p in panels]
         seen: set = set()
         for lbl in labels:
+            # Only str labels need uniqueness; None/False are fine to repeat.
+            if not isinstance(lbl, str):
+                continue
             if lbl in seen:
                 raise ValueError(f"duplicate panel label: {lbl!r}")
             seen.add(lbl)
@@ -154,10 +202,10 @@ class Canvas:
         ylabel_space = float(resolve_param("subplots.ylabel_space", None))
         right = float(resolve_param("subplots.right", None))
 
-        col_widths = tuple(p.size[0] for p in panels)
-        # All panels in one row share the row height; PR 1 requires equal
-        # heights (PR 2 adds 'flex'/'match' grammar). Use the max for now;
-        # if heights differ, that's a future-PR issue, not a PR 1 error.
+        # Raw widths — may contain 'flex' sentinels which we'll resolve next.
+        raw_widths = tuple(p.size[0] for p in panels)
+        # All panels in one row share the row height; the Composer still
+        # requires numeric heights (flex is width-only).
         row_height = max(p.size[1] for p in panels)
 
         ncols = len(panels)
@@ -170,22 +218,47 @@ class Canvas:
             + ncols * right
             + max(ncols - 1, 0) * hpad
         )
-        panels_width = sum(col_widths)
-        requested_width = panels_width + decorations_width
-        if requested_width > self._width_mm + 1e-6:  # 1µm tolerance for float noise
+
+        # --- resolve flex sizing ------------------------------------
+        from publiplots.composer._flex import resolve_flex_widths
+        try:
+            col_widths, n_flex = resolve_flex_widths(
+                raw_widths,
+                canvas_width_mm=self._width_mm,
+                decorations_width_mm=decorations_width,
+            )
+        except ValueError as e:
+            # The resolver raises ValueError when pinned widths alone
+            # overflow. Convert to ComposerOverflowError so the user
+            # gets the suggested-scale-factor advisor.
+            pinned_total = sum(float(w) for w in raw_widths if w != "flex")
+            requested = pinned_total + decorations_width
             raise ComposerOverflowError(
-                f"row width {requested_width:.2f}mm exceeds canvas width "
-                f"{self._width_mm:.2f}mm; reduce panel widths or use a wider canvas",
-                requested_mm=requested_width,
+                str(e),
+                requested_mm=requested,
                 available_mm=self._width_mm,
             )
 
-        # NOTE: PR 1 does NOT auto-absorb width slack. If the user passes
-        # panels that sum to less than the canvas width, the produced
-        # figure is narrower than `self._width_mm`. Callers can size
-        # panels to fit exactly (use the overflow-error math in reverse:
-        # max-panel-width-per-row = (canvas_width - decorations_width)).
-        # PR 2 adds 'flex' panel sizing which absorbs slack automatically.
+        # --- pinned-only overflow check -----------------------------
+        if n_flex == 0:
+            panels_width = sum(col_widths)
+            requested_width = panels_width + decorations_width
+            if requested_width > self._width_mm + 1e-6:  # 1µm tolerance
+                raise ComposerOverflowError(
+                    f"row width {requested_width:.2f}mm exceeds canvas width "
+                    f"{self._width_mm:.2f}mm; reduce panel widths or use a wider canvas",
+                    requested_mm=requested_width,
+                    available_mm=self._width_mm,
+                )
+        # When n_flex >= 1, the resolver guarantees figure width == canvas
+        # width exactly (modulo float noise). No additional check needed.
+
+        # NOTE: pinned-only rows do NOT auto-absorb width slack. If the
+        # user passes panels that sum to less than the canvas width, the
+        # produced figure is narrower than `self._width_mm`. Callers can
+        # size panels to fit exactly (use the overflow-error math in
+        # reverse: max-panel-width-per-row = canvas_width - decorations_width)
+        # — or use 'flex' panel sizing, which absorbs slack automatically.
 
         # --- build FigureLayout (1 row × N cols) --------------------
         from publiplots.layout.figure_layout import FigureLayout
@@ -219,6 +292,16 @@ class Canvas:
         self._figure = fig
 
         # --- create axes per panel ----------------------------------
+        # Resolve labels per the canvas's abc mode.
+        from publiplots.composer.abc_labels import (
+            resolve_labels, merge_label_style, render_label,
+        )
+        raw_panel_labels = [p.label for p in panels]
+        resolved_labels = resolve_labels(
+            panel_labels=raw_panel_labels,
+            abc=self._abc,
+        )
+
         for col_idx, panel_input in enumerate(panels):
             x0_frac, y0_frac, w_frac, h_frac = layout.axes_position(0, col_idx)
             ax = fig.add_axes((x0_frac, y0_frac, w_frac, h_frac))
@@ -229,13 +312,31 @@ class Canvas:
                 w_frac * W_mm,
                 h_frac * H_mm,
             )
-            self._panels[panel_input.label] = Panel(
-                label=panel_input.label,
+
+            resolved_label = resolved_labels[col_idx]
+            resolved_style = merge_label_style(
+                self._label_style, panel_input.label_style
+            )
+
+            panel = Panel(
+                label=resolved_label,
                 kind="axes",
                 ax=ax,
-                size_mm=(panel_input.size[0], panel_input.size[1]),
+                size_mm=(col_widths[col_idx], panel_input.size[1]),
                 bbox_mm=bbox_mm,
+                resolved_label_style=resolved_style,
             )
+
+            # Render the label if it's a non-empty string.
+            if isinstance(resolved_label, str) and resolved_label:
+                render_label(ax, resolved_label, style=resolved_style)
+
+            # Register by resolved label (so canvas['A'] works for an
+            # auto-letter panel that started as label=None) AND by
+            # insertion order. False/None labels skip the dict registry.
+            if isinstance(resolved_label, str) and resolved_label:
+                self._panels[resolved_label] = panel
+            self._panels_ordered.append(panel)
 
         # --- attach SubplotsAutoLayout reactor (spike Finding 4) ----
         # All four auto-measurable sides start at rcParams defaults and
@@ -251,14 +352,14 @@ class Canvas:
         self._row_added = True
 
     # ------------------------------------------------------------------
-    # savefig — raster only in PR 1
+    # savefig — raster only (vector lands in PR 5/PR 6)
     # ------------------------------------------------------------------
     def savefig(self, path, **kwargs) -> None:
         """Save the canvas to a file.
 
-        PR 1 supports raster formats (PNG, JPG, TIFF). PDF and SVG raise
-        :class:`NotImplementedError` until PR 5 / PR 6 land the vector
-        compositing pipelines.
+        Currently supports raster formats (PNG, JPG, TIFF). PDF and SVG
+        raise :class:`NotImplementedError` until PR 5 / PR 6 land the
+        vector compositing pipelines.
 
         Parameters
         ----------

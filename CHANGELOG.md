@@ -18,6 +18,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `canvas['<label>'].ax` returns the panel's `matplotlib.axes.Axes`.
   Plotting with `pp.scatterplot(..., ax=canvas['A'].ax)` etc. is the
   canonical idiom. See `docs/superpowers/specs/2026-05-14-composer-design.md`.
+- `pp.Canvas('cell-2col' | 'nature-2col' | 'science-2col' | 'nature-methods-2col' | …)` —
+  Composer journal presets (Cell, Nature, Nature Methods, Science) with
+  verified mm widths, max-height bounds, and per-preset label-size
+  defaults. Twelve presets total; ``Canvas('custom', width=N)`` remains
+  the escape hatch.
+- `pp.PanelAxes(label, size=('flex', h_mm))` — flex panel sizing. The
+  width grows to fill the row's leftover canvas budget; multiple flex
+  panels split equally. When ≥1 flex panel exists, the figure width
+  exactly matches `Canvas(width=N)`.
+- `ComposerOverflowError` now carries a `scale_to_fit` attribute and
+  appends a "multiply panel widths by 0.870 to fit" advisor to its
+  message string when the row overflows.
+- `pp.PanelAxes(label=None | False | str)` — three label modes:
+  ``None`` reserves an auto-letter slot, ``False`` suppresses the
+  label and is skipped from the sequence, ``str`` is verbatim. Plus
+  per-panel ``label_style={...}`` override.
+- `pp.Canvas(..., abc='upper' | 'lower' | 'A.' | False | ['i','ii',...])` —
+  auto-letter panel labels with per-canvas `canvas.label_style(...)`
+  setter using the ultraplot ``loc`` vocabulary
+  (``'ul'``, ``'ur'``, ``'ll'``, ``'lr'``, ``'uc'``, ``'lc'``, ``'cl'``,
+  ``'cr'``) and optional ``border`` outline + ``bbox`` background.
+- `canvas[i]` (integer index) returns the i-th panel by insertion order;
+  `canvas['<label>']` (str) is unchanged.
+- Two new gallery examples under ``examples/composer/``.
 
 ## [0.11.3] - 2026-05-13
 

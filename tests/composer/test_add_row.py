@@ -205,3 +205,77 @@ def test_add_row_panels_preserve_ordering_in_dict():
         pp.PanelAxes(label="B", size=(40.0, 30.0)),
     )
     assert list(canvas._panels.keys()) == ["C", "A", "B"]
+
+
+# ---------------------------------------------------------------------------
+# PR 2: flex sizing geometry
+# ---------------------------------------------------------------------------
+
+def test_add_row_with_flex_panel_fills_canvas_width_exactly():
+    """When ≥1 flex panel exists, figure_width equals canvas.width_mm
+    exactly (modulo float noise) — the slack is absorbed."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(60.0, 40.0)),
+        pp.PanelAxes(label="B", size=("flex", 40.0)),
+    )
+    w_mm, _ = canvas.figure_size_mm
+    assert abs(w_mm - 174.0) < MM_TOL
+
+
+def test_add_row_with_flex_panel_resolves_to_leftover_width():
+    """One pinned 60mm panel + one flex panel in a 174mm canvas.
+    Decorations: 2 + 10 + 60 + 2 + 3 + 10 + flex + 2 + 2 = 91 + flex
+    Setting equal to 174: flex = 83mm."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(60.0, 40.0)),
+        pp.PanelAxes(label="B", size=("flex", 40.0)),
+    )
+    a_w = canvas["A"].size_mm[0]
+    b_w = canvas["B"].size_mm[0]
+    assert abs(a_w - 60.0) < MM_TOL
+    assert abs(b_w - 83.0) < MM_TOL
+
+
+def test_add_row_two_flex_panels_split_leftover_equally():
+    """Two flex panels in a 174mm canvas with no pinned panels.
+    Decorations: 2 + 10 + flex + 2 + 3 + 10 + flex + 2 + 2 = 31 + 2*flex
+    Setting equal to 174: each flex = 71.5mm."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=("flex", 40.0)),
+        pp.PanelAxes(label="B", size=("flex", 40.0)),
+    )
+    a_w = canvas["A"].size_mm[0]
+    b_w = canvas["B"].size_mm[0]
+    assert abs(a_w - 71.5) < MM_TOL
+    assert abs(b_w - 71.5) < MM_TOL
+
+
+def test_add_row_flex_with_pinned_overflow_raises():
+    """If pinned panels alone overflow the canvas, the flex resolver
+    refuses to make flex panels go to ≤0 mm."""
+    canvas = pp.Canvas("custom", width=174.0)
+    with pytest.raises((ComposerOverflowError, ValueError)) as exc_info:
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(150.0, 40.0)),
+            pp.PanelAxes(label="B", size=("flex", 40.0)),
+        )
+    # Either error type is acceptable; the message should mention flex
+    # or non-positive.
+    msg = str(exc_info.value).lower()
+    assert "flex" in msg or "non-positive" in msg or "exceed" in msg
+
+
+def test_add_row_pinned_only_still_uses_pr1_overflow_path():
+    """If no flex panels, the overflow check + advisor from Task 1 fires."""
+    canvas = pp.Canvas("custom", width=174.0)
+    with pytest.raises(ComposerOverflowError) as exc_info:
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(100.0, 40.0)),
+            pp.PanelAxes(label="B", size=(100.0, 40.0)),
+        )
+    msg = str(exc_info.value)
+    # Task 1 advisor mentioned scaling — verify it's still in the message.
+    assert "multiply" in msg.lower() or "0.7" in msg

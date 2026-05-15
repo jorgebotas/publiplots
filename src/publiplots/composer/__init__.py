@@ -1,9 +1,12 @@
 """publiplots Composer — multi-panel paper-figure builder.
 
-Public API for PR 1 (single-row, axes-only):
-- :class:`Canvas` — programmatic mm-precise canvas
-- :class:`PanelAxes` — axes panel constructor
-- :class:`Panel` — result type returned by ``canvas[label]``
+Public API:
+- :class:`Canvas` — programmatic mm-precise canvas (12 journal
+  presets + ``'custom'`` escape hatch)
+- :class:`PanelAxes` — axes panel constructor (pinned mm or ``'flex'``
+  width; auto-letter / verbatim / suppressed labels)
+- :class:`Panel` — result type returned by ``canvas[label]`` or
+  ``canvas[i]``
 
 See ``docs/superpowers/specs/2026-05-14-composer-design.md`` for the
 full design.
