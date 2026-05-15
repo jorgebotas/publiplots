@@ -55,17 +55,90 @@ _helpers = _load_module(
 COMPOSITIONS = _compositions.COMPOSITIONS
 PNG_DIR = _helpers.PNG_DIR
 SNAPSHOT_DIR = _helpers.SNAPSHOT_DIR
+PDF_DIR = _helpers.PDF_DIR
 snapshot = _helpers.snapshot
 
 
+def _pdf_structure_signature(pdf_bytes: bytes) -> tuple:
+    """Cheap, deterministic signature for PDF diff detection in --check mode.
+
+    Returns (page_count, mediabox_w_pt, mediabox_h_pt, xobject_count_page0).
+    Mediabox values are rounded to 1 decimal place to absorb pypdf's
+    sub-point float noise.
+    """
+    import io
+    import pypdf
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    n_pages = len(reader.pages)
+    if n_pages == 0:
+        return (0, 0.0, 0.0, 0)
+    page0 = reader.pages[0]
+    mb = page0.mediabox
+    resources = page0.get("/Resources", {})
+    if hasattr(resources, "get_object"):
+        resources = resources.get_object()
+    xobjs = resources.get("/XObject", {}) if resources else {}
+    if hasattr(xobjs, "get_object"):
+        xobjs = xobjs.get_object()
+    return (
+        n_pages,
+        round(float(mb.width), 1),
+        round(float(mb.height), 1),
+        len(xobjs) if xobjs else 0,
+    )
+
+
+def _regen_one_pdf(name: str, build_fn, *, check: bool) -> bool:
+    """Render the composition to PDF; return True iff a regen would change it.
+
+    In --check mode, compares structure signatures (not bytes) — bytes
+    differ across pypdf patch versions even with pinned /CreationDate.
+    """
+    canvas = build_fn()
+    pdf_path = PDF_DIR / f"{name}.pdf"
+    PDF_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pdf_out = Path(tmpdir) / f"{name}.pdf"
+        canvas.savefig(str(pdf_out))
+        new_bytes = pdf_out.read_bytes()
+    if not pdf_path.exists():
+        pdf_diff = True
+    else:
+        # In check mode, compare structure signatures.
+        if check:
+            existing_sig = _pdf_structure_signature(pdf_path.read_bytes())
+            new_sig = _pdf_structure_signature(new_bytes)
+            pdf_diff = existing_sig != new_sig
+        else:
+            # In write mode, always rewrite if bytes differ — the
+            # idempotent skip-write check at byte level is a cheap win.
+            pdf_diff = pdf_path.read_bytes() != new_bytes
+    if not check and pdf_diff:
+        pdf_path.write_bytes(new_bytes)
+    return pdf_diff
+
+
+def _composition_has_pdf_golden(name: str) -> bool:
+    """Compositions that exercise the PDF golden gate (PR 5+).
+
+    PR 5 ships PDF goldens only for the two PanelImage compositions.
+    Other compositions don't have a PDF golden and shouldn't be checked.
+    """
+    return name in {
+        "cell-2col-with-svg-schematic",
+        "cell-2col-with-png-schematic",
+    }
+
+
 def _regen_one(name: str, build_fn, *, check: bool) -> bool:
-    """Regen JSON + PNG for one composition.
+    """Regen JSON + PNG (+ PDF for PR 5 goldens) for one composition.
 
     In check mode: returns True iff the live output DIFFERS from the
     committed golden. JSON uses byte equality (deterministic);
     PNG uses ``compare_images(tol=10)`` to match the test gate (font
     cache rebuilds + matplotlib timestamp metadata can shift PNG bytes
-    without visible changes).
+    without visible changes); PDF uses a structure-tuple signature
+    (page count + mediabox + XObject count) to absorb pypdf patch noise.
     """
     from matplotlib.testing.compare import compare_images
 
@@ -96,15 +169,19 @@ def _regen_one(name: str, build_fn, *, check: bool) -> bool:
             cmp = compare_images(str(png_path), str(out), tol=10)
             png_diff = cmp is not None
 
+    pdf_diff = False
+    if _composition_has_pdf_golden(name):
+        pdf_diff = _regen_one_pdf(name, build_fn, check=check)
+
     if check:
-        return snap_diff or png_diff
+        return snap_diff or png_diff or pdf_diff
 
     if snap_diff:
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
         snap_path.write_text(snap_text, encoding="utf-8")
     if png_diff:
         png_path.write_bytes(new_bytes)
-    return snap_diff or png_diff
+    return snap_diff or png_diff or pdf_diff
 
 
 def main(argv: list[str] | None = None) -> int:

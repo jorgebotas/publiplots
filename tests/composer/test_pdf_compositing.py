@@ -100,3 +100,46 @@ def test_savefig_pdf_creation_date_pinned(small_svg, tmp_path):
     md2 = pypdf.PdfReader(out2).metadata
     assert md1.get("/CreationDate") == md2.get("/CreationDate")
     assert md1.get("/Producer") == md2.get("/Producer")
+
+
+# ---------------------------------------------------------------------------
+# Golden PDF parametrized tests
+# ---------------------------------------------------------------------------
+
+from tests.composer.golden._compositions import COMPOSITIONS
+from tests.composer.golden._helpers import (
+    _pdf_rasterizer_available,
+    assert_pdf_matches,
+)
+
+
+PDF_GOLDEN_NAMES = [
+    "cell-2col-with-svg-schematic",
+    "cell-2col-with-png-schematic",
+]
+
+
+@pytest.mark.parametrize("mode", ["mediabox", "structure"])
+@pytest.mark.parametrize("name", PDF_GOLDEN_NAMES)
+def test_pdf_golden_matches(name: str, mode: str) -> None:
+    """Composition `name` matches its golden PDF in `mode`."""
+    build_fn = dict(COMPOSITIONS)[name]
+    canvas = build_fn()
+    assert_pdf_matches(canvas, name, mode=mode)
+
+
+@pytest.mark.parametrize("name", PDF_GOLDEN_NAMES)
+@pytest.mark.skipif(
+    not _pdf_rasterizer_available(),
+    reason="No PDF rasterizer (pdf2image or pdftocairo) available."
+)
+def test_pdf_golden_render_compare(name: str) -> None:
+    """Composition `name` renders pixel-equivalently to its golden PDF.
+
+    Forgiving comparison via `compare_images(tol=20)` after rasterizing
+    both PDFs at 200 DPI. The mediabox + structure tests above are the
+    primary CI gates; this is the visual regression backstop.
+    """
+    build_fn = dict(COMPOSITIONS)[name]
+    canvas = build_fn()
+    assert_pdf_matches(canvas, name, mode="render_compare")
