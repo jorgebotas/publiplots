@@ -77,6 +77,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit list with handle dedupe by label. All four are
   mutually-exclusive addressing modes; existing call signatures
   unchanged.
+- Composer test infrastructure (PR 4.5):
+  - mm-precision snapshot framework — `tests/composer/golden/_helpers.py`
+    extracts canvas + panel mm geometry to 0.01 mm tolerance and
+    asserts against committed JSON snapshots in
+    `tests/composer/golden/mm_snapshots/`.
+  - PNG visual-regression — `assert_png_matches(canvas, name, tol=10)`
+    via `matplotlib.testing.compare_images`. Goldens in
+    `tests/composer/golden/png/`.
+  - `tools/composer/regen_fixtures.py` CLI — single-command fixture
+    regeneration with `--only NAME` filter and `--check` dry-run mode.
+  - 4 canonical compositions registered: `cell-2col-simple`,
+    `cell-2col-multirow`, `nature-2col-abc`, `nature-2col-panel-grid`.
+  - PR 5 will populate `tests/composer/golden/pdf/` (currently empty
+    placeholder) and add `assert_pdf_matches`.
+  - **Note:** the `PUBLIPLOTS_REGEN_GOLDEN=1` env var is for developer
+    use only. In CI runs it would silently mask drift; CI must NEVER
+    set this variable.
 
 ## [0.11.3] - 2026-05-13
 
