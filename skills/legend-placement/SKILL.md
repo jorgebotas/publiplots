@@ -152,6 +152,42 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
                    ax=axes[r, c])
 ```
 
+## Grid scoping (PR 4 / v0.12)
+
+For figures built by `pp.subplots` or `pp.Canvas`, `pp.legend` accepts
+four kwargs that resolve to a sub-rect of the grid:
+
+```python
+# Row-scoped band over row 0 (e.g., a top-row group legend)
+pp.legend(rows=0, side='top')
+
+# Inclusive row range × specific column
+pp.legend(rows=(1, 3), cols=2, side='right')
+
+# Sugar: full-figure band (alternative to default kwargs)
+pp.legend(span='fig', side='bottom')
+
+# Sugar: full-row band keyed off a positional Axes anchor
+pp.legend(axes[0, 1], span='row', side='top')
+
+# Explicit list with handle dedupe
+pp.legend(ax=[ax_a, ax_b, ax_c], side='top')
+```
+
+**Mutual exclusivity:** `rows=`/`cols=`/`span=`/`ax=` are alternative
+addressing modes. Mixing them (other than `span='row'`/`'col'` with a
+positional anchor) raises `ValueError`. The legacy positional `axes=`
+arg is also exclusive with the new kwargs except for the
+positional-anchor `span` form.
+
+**Out-of-range indices** raise with the actual `_publiplots_axes`
+shape so the message points at the cause: e.g.,
+`pp.legend(rows=5)` on a 2×3 grid → `rows=5 out of range for shape (2, 3)`.
+
+**Raw matplotlib figures:** `rows=`/`cols=` need the publiplots-built
+matrix; on raw `plt.subplots()` figures use `ax=[ax1, ax2, ...]`
+instead.
+
 ## Further reading
 
 For the full factory signature (every kwarg: `orientation`, `align`, `x_offset`, `y_offset`, `gap`, `column_spacing`, `vpad`, `max_width`, `figure`), see `src/publiplots/utils/legend_group.py`. For 14 worked examples covering every scope mode, see `examples/plots/plot_24_legend_placement.py`.

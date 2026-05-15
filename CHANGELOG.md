@@ -68,6 +68,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carrying `panels` and `edge` attributes.
 - Two new gallery examples under `examples/composer/` showing
   multi-row + PanelGrid + PanelText + canvas.align.
+- `pp.legend(rows=, cols=, span=, ax=)` — grid-scope kwargs for
+  figure legends. `rows`/`cols` resolve over the
+  `pp.subplots`/`pp.Canvas` axes matrix to a single index or inclusive
+  `(start, end)` range. `span='fig'` is sugar for the full-figure
+  default; `span='row'`/`'col'` with a positional Axes anchor expands
+  to that anchor's row or column. `ax=[a1, a2, ...]` collects from an
+  explicit list with handle dedupe by label. All four are
+  mutually-exclusive addressing modes; existing call signatures
+  unchanged.
 
 ## [0.11.3] - 2026-05-13
 
