@@ -153,9 +153,12 @@ def render_label(
     center) + cl, cr (left/right middle).
 
     The pad_mm offset shifts the label INWARD from the chosen anchor,
-    converted from mm to axes-fraction via the figure's dpi at draw
-    time; for PR 2 we use a fixed 1mm = ~0.01 axes-fraction approximation
-    (refine in PR 3 if needed).
+    converted from mm to axes-fraction via the figure's dpi and the
+    panel's pixel bbox. The conversion is correct for the panel's
+    rendered size at the time render_label runs (after the figure
+    has been laid out by SubplotsAutoLayout). If the bbox is
+    degenerate (zero-sized — possible before any draw), pad_mm
+    silently becomes a no-op.
     """
     loc = style["loc"]
     if loc not in VALID_LOCS:

@@ -1,8 +1,8 @@
 """Canvas — the Composer's top-level orchestrator.
 
-PR 1 supports single-row layouts via :meth:`Canvas.add_row` and raster
-:meth:`Canvas.savefig`. The figure is created lazily when ``add_row``
-runs; ``Canvas(...)`` itself just records configuration.
+Currently supports single-row layouts via :meth:`Canvas.add_row` and
+raster :meth:`Canvas.savefig`. The figure is created lazily when
+``add_row`` runs; ``Canvas(...)`` itself just records configuration.
 
 Internally, the canvas builds a 1-row × N-column :class:`FigureLayout`
 where each column's mm width matches one panel's declared width. The
@@ -25,8 +25,9 @@ class Canvas:
     Parameters
     ----------
     preset : str
-        Preset name. PR 1 only supports ``'custom'``; journal presets
-        (Cell, Nature, Nature Methods, Science) land in PR 2.
+        Preset name. Supports the 12 journal presets (Cell, Nature,
+        Nature Methods, Science families) plus ``'custom'`` as an
+        escape hatch for arbitrary widths.
     width : float, optional
         Canvas width in millimeters. Required for ``preset='custom'``.
 
@@ -47,7 +48,8 @@ class Canvas:
     -----
     Multi-row layouts and ``add_column`` land in PR 3. Vector PDF/SVG
     save dispatches land in PR 5/PR 6. ``canvas.savefig('fig.pdf')``
-    raises :class:`NotImplementedError` in PR 1.
+    raises :class:`NotImplementedError` in the current release (until
+    PR 5/PR 6 land).
     """
 
     def __init__(
@@ -164,7 +166,7 @@ class Canvas:
         ComposerOverflowError
             If the row's total width exceeds the canvas budget.
         """
-        # --- guard against multi-row in PR 1 ------------------------
+        # --- guard against multi-row (PR 3 will lift this) ----------
         if self._row_added:
             raise NotImplementedError(
                 "Canvas.add_row called twice; multi-row support lands in PR 3"
@@ -176,7 +178,7 @@ class Canvas:
         for p in panels:
             if not isinstance(p, PanelAxes):
                 raise TypeError(
-                    f"Canvas.add_row only accepts PanelAxes in PR 1, "
+                    f"Canvas.add_row only accepts PanelAxes, "
                     f"got {type(p).__name__} (PanelGrid/PanelText land in PR 3, "
                     f"PanelImage in PR 5)"
                 )
@@ -202,8 +204,8 @@ class Canvas:
 
         # Raw widths — may contain 'flex' sentinels which we'll resolve next.
         raw_widths = tuple(p.size[0] for p in panels)
-        # All panels in one row share the row height; PR 2 still requires
-        # numeric heights (flex is width-only).
+        # All panels in one row share the row height; the Composer still
+        # requires numeric heights (flex is width-only).
         row_height = max(p.size[1] for p in panels)
 
         ncols = len(panels)
@@ -237,7 +239,7 @@ class Canvas:
                 available_mm=self._width_mm,
             )
 
-        # --- pinned-only overflow check (PR 1 path) -----------------
+        # --- pinned-only overflow check -----------------------------
         if n_flex == 0:
             panels_width = sum(col_widths)
             requested_width = panels_width + decorations_width
@@ -251,12 +253,12 @@ class Canvas:
         # When n_flex >= 1, the resolver guarantees figure width == canvas
         # width exactly (modulo float noise). No additional check needed.
 
-        # NOTE: PR 1 does NOT auto-absorb width slack. If the user passes
-        # panels that sum to less than the canvas width, the produced
-        # figure is narrower than `self._width_mm`. Callers can size
-        # panels to fit exactly (use the overflow-error math in reverse:
-        # max-panel-width-per-row = (canvas_width - decorations_width)).
-        # PR 2 adds 'flex' panel sizing which absorbs slack automatically.
+        # NOTE: pinned-only rows do NOT auto-absorb width slack. If the
+        # user passes panels that sum to less than the canvas width, the
+        # produced figure is narrower than `self._width_mm`. Callers can
+        # size panels to fit exactly (use the overflow-error math in
+        # reverse: max-panel-width-per-row = canvas_width - decorations_width)
+        # — or use 'flex' panel sizing, which absorbs slack automatically.
 
         # --- build FigureLayout (1 row × N cols) --------------------
         from publiplots.layout.figure_layout import FigureLayout
@@ -350,14 +352,14 @@ class Canvas:
         self._row_added = True
 
     # ------------------------------------------------------------------
-    # savefig — raster only in PR 1
+    # savefig — raster only (vector lands in PR 5/PR 6)
     # ------------------------------------------------------------------
     def savefig(self, path, **kwargs) -> None:
         """Save the canvas to a file.
 
-        PR 1 supports raster formats (PNG, JPG, TIFF). PDF and SVG raise
-        :class:`NotImplementedError` until PR 5 / PR 6 land the vector
-        compositing pipelines.
+        Currently supports raster formats (PNG, JPG, TIFF). PDF and SVG
+        raise :class:`NotImplementedError` until PR 5 / PR 6 land the
+        vector compositing pipelines.
 
         Parameters
         ----------
