@@ -8,7 +8,11 @@ is the primary tool for complex subplot layouts.
 """
 
 import warnings
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple, Union
+
+# PR 4: grid-scope kwargs accept either a single int or an inclusive (start, end)
+# tuple of ints. Defined once to keep the resolver and factory signatures aligned.
+_RowColSpec = Union[int, Tuple[int, int]]
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
@@ -50,8 +54,8 @@ def _handle_repr(handle) -> str:
 def _resolve_grid_scope(
     fig: Figure,
     *,
-    rows: Optional[object] = None,
-    cols: Optional[object] = None,
+    rows: Optional[_RowColSpec] = None,
+    cols: Optional[_RowColSpec] = None,
     span: Optional[str] = None,
     ax: Optional[Sequence[Axes]] = None,
 ) -> Optional[List[Axes]]:
@@ -146,6 +150,19 @@ def _resolve_grid_scope(
     n_rows = len(matrix)
     n_cols = len(matrix[0]) if matrix else 0
 
+    def _is_int_like(v: object) -> bool:
+        # Accept Python int + numpy integer; reject bool, float, str, etc.
+        # Bool is a subclass of int in Python — reject explicitly.
+        if isinstance(v, bool):
+            return False
+        if isinstance(v, int):
+            return True
+        try:
+            import numpy as _np
+            return isinstance(v, _np.integer)
+        except ImportError:
+            return False
+
     def _normalize_range(name: str, value: object, length: int) -> tuple[int, int]:
         if isinstance(value, tuple):
             if len(value) != 2:
@@ -154,8 +171,21 @@ def _resolve_grid_scope(
                     f"{value!r}."
                 )
             start, end = value
+            if not (_is_int_like(start) and _is_int_like(end)):
+                raise ValueError(
+                    f"pp.legend: `{name}={value!r}` — tuple elements must be "
+                    f"integers (got types {type(start).__name__}, "
+                    f"{type(end).__name__})."
+                )
+            start = int(start)
+            end = int(end)
+        elif _is_int_like(value):
+            start = end = int(value)
         else:
-            start = end = int(value)  # type: ignore[arg-type]
+            raise ValueError(
+                f"pp.legend: `{name}={value!r}` — must be int or "
+                f"(start, end) tuple of ints (got {type(value).__name__})."
+            )
         # Disallow negative indices: explicit, no Python wrap-around.
         if start < 0 or end < 0:
             last = length - 1
@@ -1177,8 +1207,8 @@ def legend(
     vpad: Optional[float] = None,
     max_width: Optional[float] = None,
     # PR 4: grid-scope kwargs (additive; all default None → existing behavior)
-    rows: Optional[object] = None,
-    cols: Optional[object] = None,
+    rows: Optional[_RowColSpec] = None,
+    cols: Optional[_RowColSpec] = None,
     span: Optional[str] = None,
     ax: Optional[Sequence[Axes]] = None,
 ) -> MultiAxesLegendGroup:

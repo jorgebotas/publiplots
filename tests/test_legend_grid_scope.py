@@ -137,6 +137,56 @@ def test_resolve_grid_scope_ax_empty_raises():
         _resolve_grid_scope(fig, rows=None, cols=None, span=None, ax=[])
 
 
+def test_resolve_grid_scope_rows_float_raises():
+    """rows=1.7 → ValueError; floats are not silently truncated."""
+    fig, _ = pp.subplots(nrows=3, ncols=3)
+    with pytest.raises(ValueError, match=r"must be int.*float"):
+        _resolve_grid_scope(fig, rows=1.7, cols=None, span=None, ax=None)
+
+
+def test_resolve_grid_scope_rows_string_raises():
+    """rows='0' → ValueError; strings are not silently coerced."""
+    fig, _ = pp.subplots(nrows=3, ncols=3)
+    with pytest.raises(ValueError, match=r"must be int"):
+        _resolve_grid_scope(fig, rows="0", cols=None, span=None, ax=None)
+
+
+def test_resolve_grid_scope_rows_bool_raises():
+    """rows=True → ValueError; bool is rejected even though it's int-subclass."""
+    fig, _ = pp.subplots(nrows=3, ncols=3)
+    with pytest.raises(ValueError, match=r"must be int.*bool"):
+        _resolve_grid_scope(fig, rows=True, cols=None, span=None, ax=None)
+
+
+def test_resolve_grid_scope_rows_list_raises_with_value_error():
+    """rows=[0, 1] → ValueError (not TypeError); only tuple is the range form."""
+    fig, _ = pp.subplots(nrows=3, ncols=3)
+    with pytest.raises(ValueError, match=r"must be int.*tuple"):
+        _resolve_grid_scope(fig, rows=[0, 1], cols=None, span=None, ax=None)
+
+
+def test_resolve_grid_scope_rows_tuple_with_float_raises():
+    """rows=(0, 1.5) → ValueError; tuple elements must be int."""
+    fig, _ = pp.subplots(nrows=3, ncols=3)
+    with pytest.raises(ValueError, match=r"tuple elements must be integers"):
+        _resolve_grid_scope(fig, rows=(0, 1.5), cols=None, span=None, ax=None)
+
+
+def test_resolve_grid_scope_rows_tuple_wrong_arity_raises():
+    """rows=(0,) → ValueError; tuple must have exactly 2 elements."""
+    fig, _ = pp.subplots(nrows=3, ncols=3)
+    with pytest.raises(ValueError, match=r"tuple must be \(start, end\)"):
+        _resolve_grid_scope(fig, rows=(0,), cols=None, span=None, ax=None)
+
+
+def test_resolve_grid_scope_rows_numpy_int_accepted():
+    """rows=np.int64(0) → works; numpy ints are int-like."""
+    import numpy as np
+    fig, axes = pp.subplots(nrows=2, ncols=3)
+    result = _resolve_grid_scope(fig, rows=np.int64(0), cols=None, span=None, ax=None)
+    assert len(result) == 3
+
+
 def test_resolve_grid_scope_ax_with_rows_raises():
     """ax= is mutually exclusive with rows/cols/span."""
     fig, axes = pp.subplots(nrows=2, ncols=2)
@@ -200,12 +250,22 @@ def test_legend_factory_ax_list_dedupes_handles_by_label():
     stash_entry(axes[1], LegendEntry.build(name="hue", kind="hue",
                                            handles=[h_red2], labels=["A"]))
     group = pp.legend(ax=[axes[0], axes[1]], side="top")
-    # Two stashes with same label + same color → group dedupes to one entry.
-    # Implementation detail: _merge_entries handles this; we just assert
-    # no warnings fire (mismatched-handle path would warn).
+    # Two stashes with same label + same color → _merge_entries should
+    # produce a single legend element. Without dedupe, _materialize would
+    # render two separate per-axes legends OR one combined legend with
+    # duplicate "A" entries.
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         group._materialize()  # triggers entry collection + merge
+    # Exactly one rendered legend artist (the merged one).
+    legend_elements = [e for e in group._builder.elements if e[0] == "legend"]
+    assert len(legend_elements) == 1, (
+        f"expected 1 merged legend, got {len(legend_elements)}"
+    )
+    legend_artist = legend_elements[0][1]
+    # And exactly one entry inside it (label "A"), not two.
+    labels = [t.get_text() for t in legend_artist.get_texts()]
+    assert labels == ["A"], f"expected ['A'], got {labels}"
 
 
 def test_legend_factory_span_fig_equals_axes_none():
