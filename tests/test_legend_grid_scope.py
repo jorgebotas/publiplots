@@ -162,3 +162,86 @@ def test_resolve_grid_scope_span_with_rows_raises():
     fig, _ = pp.subplots(nrows=2, ncols=2)
     with pytest.raises(ValueError, match=r"mutually exclusive"):
         _resolve_grid_scope(fig, rows=0, cols=None, span="fig", ax=None)
+
+
+# ---------------------------------------------------------------------------
+# `pp.legend(rows=, cols=, span=, ax=)` factory integration
+# ---------------------------------------------------------------------------
+
+
+def test_legend_factory_rows_int_returns_group_with_correct_scope():
+    """pp.legend(rows=0) returns a MultiAxesLegendGroup whose scope is row 0."""
+    fig, axes = pp.subplots(nrows=2, ncols=3)
+    group = pp.legend(rows=0, side="top")
+    assert isinstance(group, MultiAxesLegendGroup)
+    scope_ids = {id(a) for a in group._scope_axes}  # internal: list of scoped axes
+    assert scope_ids == {id(axes[0, 0]), id(axes[0, 1]), id(axes[0, 2])}
+
+
+def test_legend_factory_rows_tuple_and_cols_int():
+    """pp.legend(rows=(0,1), cols=2) → axes[0,2] and axes[1,2]."""
+    fig, axes = pp.subplots(nrows=3, ncols=3)
+    group = pp.legend(rows=(0, 1), cols=2, side="right")
+    scope_ids = {id(a) for a in group._scope_axes}
+    assert scope_ids == {id(axes[0, 2]), id(axes[1, 2])}
+
+
+def test_legend_factory_ax_list_dedupes_handles_by_label():
+    """pp.legend(ax=[ax1, ax2]) collects from those axes; same-label/handle dedupes."""
+    from publiplots.utils.legend_entries import LegendEntry, stash_entry
+    from matplotlib.patches import Rectangle
+
+    # NB: pp.subplots squeezes a 1-row layout to 1D, so use [0] not [0,0].
+    fig, axes = pp.subplots(nrows=1, ncols=2)
+    h_red = Rectangle((0, 0), 1, 1, facecolor="red", label="A")
+    h_red2 = Rectangle((0, 0), 1, 1, facecolor="red", label="A")
+    stash_entry(axes[0], LegendEntry.build(name="hue", kind="hue",
+                                           handles=[h_red], labels=["A"]))
+    stash_entry(axes[1], LegendEntry.build(name="hue", kind="hue",
+                                           handles=[h_red2], labels=["A"]))
+    group = pp.legend(ax=[axes[0], axes[1]], side="top")
+    # Two stashes with same label + same color → group dedupes to one entry.
+    # Implementation detail: _merge_entries handles this; we just assert
+    # no warnings fire (mismatched-handle path would warn).
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        group._materialize()  # triggers entry collection + merge
+
+
+def test_legend_factory_span_fig_equals_axes_none():
+    """pp.legend(span='fig') is sugar for the figure-level default."""
+    fig, _ = pp.subplots(nrows=2, ncols=2)
+    group_span = pp.legend(span="fig", side="bottom")
+    plt.close(fig)
+    fig, _ = pp.subplots(nrows=2, ncols=2)
+    group_default = pp.legend(side="bottom")
+    # Both should produce a group with scope=None (full grid).
+    assert group_span._scope_axes is None
+    assert group_default._scope_axes is None
+
+
+def test_legend_factory_rows_with_legacy_axes_positional_raises():
+    """Mixing the new `rows=` with the old positional `axes=` is a TypeError-equivalent."""
+    fig, axes = pp.subplots(nrows=2, ncols=2)
+    # Implementation message: "...`axes=` is mutually exclusive with the new `rows=`..."
+    with pytest.raises(ValueError, match=r"`axes=`.*mutually exclusive.*`rows=`"):
+        pp.legend(axes[0, 0], rows=0, side="top")
+
+
+def test_legend_factory_grid_scope_renders_without_error():
+    """Smoke: a row-scoped band on a 2x3 grid actually renders to PNG."""
+    import io
+    from publiplots.utils.legend_entries import LegendEntry, stash_entry
+    from matplotlib.patches import Rectangle
+
+    fig, axes = pp.subplots(nrows=2, ncols=3)
+    for ax in axes.flat:
+        stash_entry(ax, LegendEntry.build(name="hue", kind="hue",
+                                          handles=[Rectangle((0,0),1,1,
+                                                             facecolor="C0",
+                                                             label="A")],
+                                          labels=["A"]))
+    pp.legend(rows=0, side="top")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")  # no exceptions
+    assert buf.getbuffer().nbytes > 0

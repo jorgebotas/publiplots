@@ -1136,6 +1136,11 @@ def legend(
     column_spacing: float = 5,
     vpad: Optional[float] = None,
     max_width: Optional[float] = None,
+    # PR 4: grid-scope kwargs (additive; all default None → existing behavior)
+    rows: Optional[object] = None,
+    cols: Optional[object] = None,
+    span: Optional[str] = None,
+    ax: Optional[Sequence[Axes]] = None,
 ) -> MultiAxesLegendGroup:
     """Create a publication-ready legend for one axes, a subset, or the full figure.
 
@@ -1205,6 +1210,44 @@ def legend(
     differ under ``pp.subplots`` where the distinction controls which
     reservation the layout reactor grows.
     """
+    # PR 4: if any of the new grid-scope kwargs are set, resolve them up-front
+    # to a list-of-axes scope (or None for figure-level), then fall through to
+    # the existing resolution logic by setting `axes`.
+    if rows is not None or cols is not None or span is not None or ax is not None:
+        # Mixing new kwargs with the legacy `axes=` positional is ambiguous —
+        # they're alternative addressing modes. Raise rather than guess.
+        if axes is not None:
+            raise ValueError(
+                "pp.legend: legacy positional `axes=` is mutually exclusive "
+                "with the new `rows=`/`cols=`/`span=`/`ax=` kwargs. Use one "
+                "addressing mode at a time."
+            )
+        # Resolve the figure for the resolver (mirrors the figure-resolution
+        # used later in this function for full-figure scope).
+        resolver_fig = figure if figure is not None else plt.gcf()
+        resolved_scope = _resolve_grid_scope(
+            resolver_fig, rows=rows, cols=cols, span=span, ax=ax,
+        )
+        if resolved_scope is not None:
+            # Drift guard: if `figure=` was explicit AND the resolved axes
+            # belong to a different figure, bail rather than letting the
+            # downstream group silently switch figures off the resolved
+            # axes' get_figure(). The `ax=` path is the most common way
+            # to hit this — caller passes ax= from one figure but figure=
+            # naming another.
+            if figure is not None:
+                for a in resolved_scope:
+                    if a.get_figure() is not figure:
+                        raise ValueError(
+                            "pp.legend: resolved axes belong to a different "
+                            "Figure than the one passed via `figure=`. "
+                            "Either drop `figure=` or pass axes from that "
+                            "figure."
+                        )
+            # Concrete subset → feed into the existing list-of-axes branch.
+            axes = resolved_scope
+        # else: span='fig' or all-None → leave axes=None (figure-level default).
+
     # Resolve anchor + axes per the rules:
     #   axes=None, anchor=None  -> figure-level (whole grid)
     #   axes=None, anchor=ax    -> scope=[ax]   (back-compat: old legend_group(anchor=ax),
