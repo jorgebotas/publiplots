@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pp.Canvas('custom', width=N)` + `pp.PanelAxes(label, size=(w_mm, h_mm))`
+  — first PR of the Composer rollout. Single-row layouts of axes panels
+  with mm-precise width and auto-grow height that reserves
+  xlabel/ylabel/title decoration space (per spike Finding 4). Raster
+  save (PNG/JPG/TIFF) works; PDF and SVG raise `NotImplementedError`
+  pending the vector compositing pipelines in PR 5/6. Indexing via
+  `canvas['<label>'].ax` returns the panel's `matplotlib.axes.Axes`.
+  Plotting with `pp.scatterplot(..., ax=canvas['A'].ax)` etc. is the
+  canonical idiom. See `docs/superpowers/specs/2026-05-14-composer-design.md`.
+
 ## [0.11.3] - 2026-05-13
 
 ### Added
