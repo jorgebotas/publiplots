@@ -34,3 +34,22 @@ def test_canvas_indexing_keyerror_lists_known_labels():
     )
     with pytest.raises(KeyError, match=r"\['A', 'C'\]"):
         canvas["B"]
+
+
+def test_int_indexing_spans_multiple_rows():
+    """canvas[i] iterates panels in flat insertion order across rows."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(60.0, 40.0)),
+        pp.PanelAxes(label="B", size=(60.0, 40.0)),
+    )
+    canvas.add_row(
+        pp.PanelAxes(label="C", size=(60.0, 40.0)),
+        pp.PanelAxes(label="D", size=(60.0, 40.0)),
+    )
+    assert canvas[0].label == "A"
+    assert canvas[1].label == "B"
+    assert canvas[2].label == "C"
+    assert canvas[3].label == "D"
+    with pytest.raises(KeyError):
+        canvas[4]

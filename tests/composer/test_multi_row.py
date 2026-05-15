@@ -123,3 +123,96 @@ def test_zero_rows_raises():
             outer_pad=2.0, ylabel_space=10.0, right=2.0, wspace=3.0,
             title_space=5.0, xlabel_space=8.0,
         )
+
+
+# ---------------------------------------------------------------------------
+# PR 3: multi-row Canvas integration
+# ---------------------------------------------------------------------------
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
+MM_TOL = 0.01
+
+
+def test_add_row_called_twice_succeeds():
+    """PR 3 lifts PR 1's NotImplementedError on multi-call add_row."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelAxes(label="A", size=(70.0, 40.0)))
+    canvas.add_row(pp.PanelAxes(label="B", size=(70.0, 40.0)))
+    # Triggers finalization via panel access:
+    a = canvas["A"]
+    b = canvas["B"]
+    assert a.label == "A" and b.label == "B"
+
+
+def test_two_row_canvas_figure_height_grows():
+    """Two rows of 40mm panels — figure height should be roughly
+    2 * (panel + xlabel + title) + outer_pad×2 + vpad."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelAxes(label="A", size=(70.0, 40.0)))
+    canvas.add_row(pp.PanelAxes(label="B", size=(70.0, 40.0)))
+    w_mm, h_mm = canvas.figure_size_mm
+    # Per the geometry helper:
+    # height = 2 (outer top)
+    #        + 5 (title) + 40 (row 0) + 8 (xlabel)
+    #        + vpad (default 4) + 5 + 40 + 8
+    #        + 2 (outer bottom)
+    # Total: 114
+    assert h_mm > 100  # rough lower bound
+
+
+def test_canvas_indexing_int_spans_rows():
+    """canvas[0] is the FIRST panel by insertion order (across rows).
+    canvas[2] is the third panel even if it's in a different row."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70.0, 40.0)),
+        pp.PanelAxes(label="B", size=(70.0, 40.0)),
+    )
+    canvas.add_row(pp.PanelAxes(label="C", size=(140.0, 30.0)))
+    assert canvas[0].label == "A"
+    assert canvas[1].label == "B"
+    assert canvas[2].label == "C"
+
+
+def test_canvas_abc_sequencing_continues_across_rows():
+    """abc='upper' produces 'A','B','C',... across all rows in
+    insertion order (row 0 first, then row 1, etc.)."""
+    canvas = pp.Canvas("cell-2col", abc="upper")
+    canvas.add_row(
+        pp.PanelAxes(label=None, size=(60.0, 40.0)),
+        pp.PanelAxes(label=None, size=(60.0, 40.0)),
+    )
+    canvas.add_row(
+        pp.PanelAxes(label=None, size=(60.0, 40.0)),
+    )
+    assert canvas[0].label == "A"
+    assert canvas[1].label == "B"
+    assert canvas[2].label == "C"
+
+
+def test_canvas_two_rows_panels_have_correct_y_ordering():
+    """Row 0 panel sits HIGHER on the canvas than row 1 panel.
+    bbox_mm uses bottom-left origin, so row 0's y > row 1's y."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(pp.PanelAxes(label="A", size=(70.0, 40.0)))
+    canvas.add_row(pp.PanelAxes(label="B", size=(70.0, 40.0)))
+    a_y = canvas["A"].bbox_mm[1]
+    b_y = canvas["B"].bbox_mm[1]
+    assert a_y > b_y
+
+
+def test_canvas_heterogeneous_row_widths():
+    """Row 0: 2 panels of 60mm; Row 1: 1 panel of 130mm.
+    No errors, geometry sane."""
+    canvas = pp.Canvas("custom", width=174.0)
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(60.0, 40.0)),
+        pp.PanelAxes(label="B", size=(60.0, 40.0)),
+    )
+    canvas.add_row(pp.PanelAxes(label="C", size=(130.0, 30.0)))
+    assert canvas["A"].size_mm == (60.0, 40.0)
+    assert canvas["C"].size_mm == (130.0, 30.0)
