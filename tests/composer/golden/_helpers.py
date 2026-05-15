@@ -52,6 +52,7 @@ import publiplots as pp
 GOLDEN_DIR = Path(__file__).parent
 SNAPSHOT_DIR = GOLDEN_DIR / "mm_snapshots"
 PNG_DIR = GOLDEN_DIR / "png"
+PDF_DIR = GOLDEN_DIR / "pdf"
 
 REGEN_ENV = "PUBLIPLOTS_REGEN_GOLDEN"
 SCHEMA_VERSION = 1
@@ -327,9 +328,180 @@ def assert_png_matches(
         )
 
 
-# PR 5 territory — declared here to keep the import surface stable.
-def assert_pdf_matches(*args, **kwargs):  # noqa: D401
-    """Stub — PR 5 will replace this with the pypdf-based comparator."""
-    raise NotImplementedError(
-        "assert_pdf_matches lands in PR 5 (vector-PDF compositing)."
+def assert_pdf_matches(
+    canvas: pp.Canvas, name: str, *, mode: str = "mediabox",
+    tol_pt: float = 0.5, tol_image: float = 20,
+) -> None:
+    """Assert canvas-rendered PDF matches the committed golden.
+
+    Modes
+    -----
+    'mediabox'
+        Page mediabox (in pt) matches ``canvas.figure_size_mm * MM2PT``
+        within ``tol_pt``.
+    'structure'
+        Page count == 1 AND the produced PDF contains at least one
+        XObject (proves vector compositing happened, not a rasterized
+        re-render).
+    'render_compare'
+        Rasterize both the produced PDF and the golden via Pillow at
+        200 DPI; compare via ``compare_images`` with ``tol=tol_image``.
+
+    Regen behaviour mirrors :func:`assert_snapshot_matches` and
+    :func:`assert_png_matches`.
+    """
+    import io
+    import tempfile
+
+    from publiplots.composer.compositing._geometry import MM2PT
+    import pypdf
+    PDF_DIR.mkdir(parents=True, exist_ok=True)
+    golden = PDF_DIR / f"{name}.pdf"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        actual = Path(tmpdir) / f"{name}.pdf"
+        canvas.savefig(str(actual))
+
+        if not golden.exists():
+            if os.environ.get(REGEN_ENV) == "1":
+                golden.write_bytes(actual.read_bytes())
+                return
+            raise AssertionError(
+                f"PDF golden missing for {name!r}. "
+                f"Run `python tools/composer/regen_fixtures.py --only {name}` "
+                f"to create it (or set PUBLIPLOTS_REGEN_GOLDEN=1)."
+            )
+
+        if mode == "mediabox":
+            reader = pypdf.PdfReader(actual)
+            mb = reader.pages[0].mediabox
+            fig_w_mm, fig_h_mm = canvas.figure_size_mm
+            assert abs(float(mb.width) - fig_w_mm * MM2PT) < tol_pt, (
+                f"PDF {name!r} mediabox width {float(mb.width)}pt vs "
+                f"expected {fig_w_mm * MM2PT}pt (tol={tol_pt}pt)"
+            )
+            assert abs(float(mb.height) - fig_h_mm * MM2PT) < tol_pt
+            return
+
+        if mode == "structure":
+            reader = pypdf.PdfReader(actual)
+            assert len(reader.pages) == 1, (
+                f"PDF {name!r}: expected 1 page, got {len(reader.pages)}"
+            )
+            # Structure mode asserts ≥1 XObject in the page's resources
+            # — this is meaningful evidence that a raster or PDF
+            # schematic was stamped (their content lands as a Form
+            # XObject reference, distinct from the matplotlib axes
+            # primitives in the page's content stream).
+            #
+            # IMPORTANT: this mode is NOT meaningful for SVG sources.
+            # cairosvg's output PDFs contain no XObjects of their own,
+            # and pypdf's `merge_transformed_page` INLINES the SVG's
+            # content stream into the canvas page rather than wrapping
+            # it as a Form XObject. So an SVG-source canvas would have
+            # the same XObject count whether the SVG was stamped or
+            # silently dropped. Spec reviewer empirically measured this
+            # (matplotlib's empty axes alone contributes ~1.7-3 KB of
+            # content stream commands). Callers should use mediabox +
+            # render_compare for SVG-source goldens; structure is for
+            # raster/PDF sources only.
+            page = reader.pages[0]
+            resources = page.get("/Resources", {})
+            if hasattr(resources, "get_object"):
+                resources = resources.get_object()
+            xobjs = resources.get("/XObject", {}) if resources else {}
+            if hasattr(xobjs, "get_object"):
+                xobjs = xobjs.get_object()
+            n_xobj = len(xobjs) if xobjs else 0
+            assert n_xobj >= 1, (
+                f"PDF {name!r}: structure check failed — XObjects={n_xobj} "
+                f"(was a raster/PDF schematic stamped? Note: SVG sources "
+                f"don't produce XObjects; use mode='mediabox' or "
+                f"'render_compare' for SVG goldens.)"
+            )
+            return
+
+        if mode == "render_compare":
+            from matplotlib.testing.compare import compare_images
+            actual_png = Path(tmpdir) / f"{name}-actual.png"
+            golden_png = Path(tmpdir) / f"{name}-golden.png"
+            _rasterize_pdf(actual, actual_png, dpi=200)
+            _rasterize_pdf(golden, golden_png, dpi=200)
+            result = compare_images(str(golden_png), str(actual_png),
+                                    tol=tol_image)
+            if result is None:
+                return
+            if os.environ.get(REGEN_ENV) == "1":
+                golden.write_bytes(actual.read_bytes())
+                return
+            raise AssertionError(
+                f"PDF render_compare regression for {name!r}: {result}\n"
+                f"Run `python tools/composer/regen_fixtures.py --only {name}`."
+            )
+
+        raise ValueError(
+            f"assert_pdf_matches: unknown mode={mode!r}. "
+            f"Expected 'mediabox', 'structure', or 'render_compare'."
+        )
+
+
+def _rasterize_pdf(pdf_path: Path, out_png: Path, *, dpi: int = 200) -> None:
+    """Rasterize a PDF page 0 to PNG at ``dpi`` for visual comparison.
+
+    Tries in order:
+      1. ``pdf2image.convert_from_path`` (Python wrapper around poppler)
+      2. ``pdftocairo`` subprocess (poppler binary; usually present
+         alongside matplotlib's PDF backend on conda envs)
+
+    Raises ``RuntimeError`` if no viable rasterizer is available. The
+    helper deliberately does NOT silently fall back to a blank PNG —
+    that would let ``render_compare`` mode silently pass on regressions.
+    Callers (e.g. test parametrization) should check
+    :func:`_pdf_rasterizer_available` and ``pytest.skip()`` rather than
+    hit this RuntimeError.
+    """
+    # Option 1: pdf2image (poppler) — the high-fidelity path.
+    try:
+        from pdf2image import convert_from_path
+        images = convert_from_path(str(pdf_path), dpi=dpi,
+                                    first_page=1, last_page=1)
+        images[0].save(out_png)
+        return
+    except ImportError:
+        pass
+
+    # Option 2: pdftocairo subprocess — present alongside matplotlib's
+    # poppler-backed PDF tooling on most conda/system installs.
+    import shutil
+    import subprocess
+    if shutil.which("pdftocairo") is not None:
+        # pdftocairo writes "<prefix>.png" given "-png" + "-singlefile".
+        prefix = out_png.with_suffix("")
+        subprocess.run(
+            ["pdftocairo", "-png", "-singlefile", "-r", str(dpi),
+             str(pdf_path), str(prefix)],
+            check=True,
+            capture_output=True,
+        )
+        return
+
+    raise RuntimeError(
+        "No PDF rasterizer available for `assert_pdf_matches(mode='render_compare')`. "
+        "Install pdf2image (`pip install pdf2image`) or ensure pdftocairo is on PATH. "
+        "Use mode='mediabox' or 'structure' for poppler-free CI."
     )
+
+
+def _pdf_rasterizer_available() -> bool:
+    """True iff `_rasterize_pdf` has a viable backend.
+
+    Tests can use this to conditionally skip ``render_compare`` mode
+    rather than raising RuntimeError.
+    """
+    try:
+        import pdf2image  # noqa: F401
+        return True
+    except ImportError:
+        pass
+    import shutil
+    return shutil.which("pdftocairo") is not None

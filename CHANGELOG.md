@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Vector PDF compositing (PR 5):
+  - `canvas.savefig('fig.pdf')` produces a real vector PDF with
+    embedded vector schematics via pypdf + cairosvg.
+  - `PanelImage(label, *, path, size, align='center', clip='fit')`
+    panel kind. Accepts `.pdf`, `.svg`, `.png`, `.jpg`, `.jpeg`,
+    `.tif`, `.tiff`. SVG / PDF inputs preserve vectors; raster inputs
+    take a raster fallback path.
+  - `Canvas(strict_vectors=True)` raises `ComposerVectorError` on any
+    schematic load failure instead of falling back to raster.
+  - New `[composer]` install extra: `pip install publiplots[composer]`
+    pulls in pypdf >= 6.0, cairosvg >= 2.7, Pillow >= 10.0. Core install
+    is unchanged.
+  - `tests/composer/golden/pdf/` populated with 2 golden PDFs;
+    `assert_pdf_matches` modes: `mediabox`, `structure`, `render_compare`.
 - `pp.Canvas('custom', width=N)` + `pp.PanelAxes(label, size=(w_mm, h_mm))`
   — first PR of the Composer rollout. Single-row layouts of axes panels
   with mm-precise width and auto-grow height that reserves

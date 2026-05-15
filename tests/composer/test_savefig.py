@@ -41,15 +41,19 @@ def test_savefig_tiff_works(tmp_path):
     assert out.exists()
 
 
-def test_savefig_pdf_raises_not_implemented(tmp_path):
-    """PR 1 doesn't ship the PDF compositing pipeline (lands in PR 5).
-    A clear NotImplementedError is better than a silent rasterized PDF."""
+def test_savefig_pdf_writes_pdf(tmp_path):
+    """PR 5 lands the vector PDF compositing pipeline.
+
+    Replaces the prior NotImplementedError contract — saving to .pdf
+    now produces a valid PDF (axes-only canvases stamp no schematics).
+    """
     canvas = pp.Canvas("custom", width=174.0)
     canvas.add_row(pp.PanelAxes(label="A", size=(70.0, 40.0)))
 
     out = tmp_path / "fig.pdf"
-    with pytest.raises(NotImplementedError, match="PR 5"):
-        canvas.savefig(out)
+    canvas.savefig(out)
+    assert out.exists()
+    assert out.read_bytes().startswith(b"%PDF-")
 
 
 def test_savefig_svg_raises_not_implemented(tmp_path):

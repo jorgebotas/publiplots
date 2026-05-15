@@ -12,6 +12,7 @@ to write the JSON + PNG fixtures.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable, List, Tuple
 
 import publiplots as pp
@@ -86,9 +87,38 @@ def _build_nature_2col_panel_grid() -> pp.Canvas:
     return canvas
 
 
+# Fixtures for PR 5 PanelImage compositions live under
+# `tests/composer/golden/fixtures/`. The build_fns below use absolute paths
+# resolved relative to this module so the goldens are reproducible from
+# any CWD.
+_FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def _build_cell_2col_with_svg_schematic() -> pp.Canvas:
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=_FIXTURES_DIR / "schematic.svg",
+                      size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    return canvas
+
+
+def _build_cell_2col_with_png_schematic() -> pp.Canvas:
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=_FIXTURES_DIR / "schematic.png",
+                      size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    return canvas
+
+
 COMPOSITIONS: List[Tuple[str, Callable[[], pp.Canvas]]] = [
     ("cell-2col-simple", _build_cell_2col_simple),
     ("cell-2col-multirow", _build_cell_2col_multirow),
     ("nature-2col-abc", _build_nature_2col_abc),
     ("nature-2col-panel-grid", _build_nature_2col_panel_grid),
+    ("cell-2col-with-svg-schematic", _build_cell_2col_with_svg_schematic),
+    ("cell-2col-with-png-schematic", _build_cell_2col_with_png_schematic),
 ]

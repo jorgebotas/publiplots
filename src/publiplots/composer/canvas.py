@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from publiplots.composer.exceptions import ComposerOverflowError
-from publiplots.composer.panels import Panel, PanelAxes
+from publiplots.composer.panels import Panel, PanelAxes, PanelImage
 from publiplots.composer.presets import resolve_preset
 from publiplots.themes.rcparams import resolve_param
 
@@ -29,7 +29,7 @@ from publiplots.themes.rcparams import resolve_param
 def _panel_raw_width(panel) -> Any:
     """Return the panel's raw width input for flex resolution.
 
-    - PanelAxes / PanelText: ``panel.size[0]`` (float or ``'flex'`` sentinel)
+    - PanelAxes / PanelText / PanelImage: ``panel.size[0]`` (float or ``'flex'`` sentinel)
     - PanelGrid: ``panel.size_mm[0]`` (computed grid outer width; never flex)
 
     PanelGrid has no ``size`` attribute — its outer width is computed
@@ -40,14 +40,14 @@ def _panel_raw_width(panel) -> Any:
     from publiplots.composer.panels import PanelGrid
     if isinstance(panel, PanelGrid):
         return panel.size_mm[0]
-    # PanelAxes and PanelText both expose size: (w_or_flex, h)
+    # PanelAxes, PanelText, PanelImage all expose size: (w_or_flex, h)
     return panel.size[0]
 
 
 def _panel_raw_height(panel) -> float:
     """Return the panel's height in mm.
 
-    - PanelAxes / PanelText: ``panel.size[1]``
+    - PanelAxes / PanelText / PanelImage: ``panel.size[1]``
     - PanelGrid: ``panel.size_mm[1]`` (computed grid outer height)
     """
     from publiplots.composer.panels import PanelGrid
@@ -120,7 +120,26 @@ class Canvas:
         *,
         width: Optional[float] = None,
         abc: Union[str, bool, Sequence[str], None] = None,
+        strict_vectors: bool = False,
     ) -> None:
+        """Initialize the canvas.
+
+        Parameters
+        ----------
+        preset : str
+            Preset name (12 journal presets or ``'custom'``).
+        width : float, optional
+            Canvas width in mm. Required for ``preset='custom'``.
+        abc : str, bool, or sequence, optional
+            abc auto-letter mode override.
+        strict_vectors : bool, default False
+            When True, ``canvas.savefig('fig.pdf')`` raises
+            :class:`ComposerVectorError` if any PanelImage schematic
+            fails to load as vector (corrupt SVG, missing optional dep,
+            malformed PDF). When False (default), failed vector loads
+            fall back to a raster re-render of the schematic and emit a
+            ``UserWarning``.
+        """
         from publiplots.composer.abc_labels import DEFAULT_LABEL_STYLE
 
         self._preset_name = preset
@@ -134,6 +153,10 @@ class Canvas:
         # Initialize label_style from the default + preset's label_size_pt.
         self._label_style: Dict[str, Any] = dict(DEFAULT_LABEL_STYLE)
         self._label_style["size"] = spec["label_size_pt"]
+
+        # PR 5: strict_vectors gates the vector-PDF compositing pipeline's
+        # behavior on schematic-load failure.
+        self._strict_vectors: bool = bool(strict_vectors)
 
         # Lazy state — figure is materialized on first finalization trigger.
         self._figure = None  # matplotlib.figure.Figure | None
@@ -393,16 +416,18 @@ class Canvas:
         Walks both already-staged rows and the new ones being added so
         duplicate-label checks span across rows.
         """
-        from publiplots.composer.panels import PanelAxes, PanelGrid, PanelText
+        from publiplots.composer.panels import (
+            PanelAxes, PanelGrid, PanelImage, PanelText,
+        )
 
         if len(panels) == 0:
             raise ValueError("Canvas.add_row requires at least one panel")
-        accepted = (PanelAxes, PanelGrid, PanelText)
+        accepted = (PanelAxes, PanelGrid, PanelText, PanelImage)
         for p in panels:
             if not isinstance(p, accepted):
                 raise TypeError(
-                    f"Canvas.add_row accepts PanelAxes, PanelGrid, or PanelText "
-                    f"in PR 3, got {type(p).__name__} (PanelImage lands in PR 5)"
+                    f"add_row panels must be PanelAxes / PanelGrid / PanelText / "
+                    f"PanelImage; got {type(p).__name__}"
                 )
         # Duplicate label check ACROSS already-staged rows + new ones.
         seen: set = set()
@@ -519,9 +544,11 @@ class Canvas:
                 "Canvas has no rows yet; call add_row() before finalize()"
             )
 
-        # Per-panel dispatch handles all three panel kinds (PanelAxes,
-        # PanelGrid, PanelText) in the loop below. PanelImage lands in PR 5.
-        from publiplots.composer.panels import PanelAxes, PanelGrid, PanelText
+        # Per-panel dispatch handles all four panel kinds (PanelAxes,
+        # PanelGrid, PanelText, PanelImage) in the loop below.
+        from publiplots.composer.panels import (
+            PanelAxes, PanelGrid, PanelImage, PanelText,
+        )
 
         # Resolve decorations once (shared across rows).
         decorations = self._resolve_decorations()
@@ -708,8 +735,33 @@ class Canvas:
                         axes=None,
                     )
                     label_target_ax = ax
+                elif isinstance(panel_input, PanelImage):
+                    # PanelImage: hidden axes reserves the slot during
+                    # matplotlib's render. The actual schematic gets
+                    # stamped POST-savefig by the PDF compositing pipeline
+                    # (see compositing/pdf.py).
+                    rect_frac = (
+                        x_mm / geometry.canvas_width_mm,
+                        y_mm / geometry.canvas_height_mm,
+                        w_mm / geometry.canvas_width_mm,
+                        h_mm / geometry.canvas_height_mm,
+                    )
+                    ax = self._build_panel_image_axes(fig, rect_frac)
+                    panel = Panel(
+                        label=resolved_label,
+                        kind="image",
+                        ax=ax,
+                        size_mm=(w_mm, h_mm),
+                        bbox_mm=(x_mm, y_mm, w_mm, h_mm),
+                        resolved_label_style=resolved_style,
+                        axes=None,
+                        image_path=panel_input.path,
+                        image_align=panel_input.align,
+                        image_clip=panel_input.clip,
+                    )
+                    label_target_ax = ax
                 else:
-                    # PanelAxes (PanelImage lands in PR 5).
+                    # PanelAxes.
                     rect_frac = (
                         x_mm / geometry.canvas_width_mm,
                         y_mm / geometry.canvas_height_mm,
@@ -870,6 +922,25 @@ class Canvas:
         return ax
 
     # ------------------------------------------------------------------
+    # PanelImage construction helper (PR 5)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _build_panel_image_axes(fig, rect_frac):
+        """Create a hidden axes that reserves a slot for a PanelImage.
+
+        The schematic itself is stamped post-savefig by the PDF
+        compositing pipeline (see :mod:`compositing.pdf`). This axes
+        only reserves the mm rect during matplotlib's render to PDF
+        buffer.
+        """
+        ax = fig.add_axes(rect_frac)
+        ax.set_axis_off()
+        ax.patch.set_visible(False)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        return ax
+
+    # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)
     # ------------------------------------------------------------------
     def savefig(self, path, **kwargs) -> None:
@@ -904,4 +975,9 @@ class Canvas:
             )
         self._finalize_if_needed()
         from publiplots.composer._save import dispatch_savefig
-        dispatch_savefig(self._figure, path, **kwargs)
+        dispatch_savefig(
+            self._figure, path,
+            panels=self._panels_list,
+            strict_vectors=self._strict_vectors,
+            **kwargs,
+        )

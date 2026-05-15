@@ -5,6 +5,8 @@ ValueError) so callers can catch with either the composer-specific or
 standard-library type.
 """
 
+from typing import Optional
+
 
 class ComposerError(ValueError):
     """Base class for all publiplots Composer errors."""
@@ -68,3 +70,28 @@ class ComposerAlignmentError(ComposerError):
         super().__init__(message)
         self.panels = tuple(panels)
         self.edge = str(edge)
+
+
+class ComposerVectorError(ComposerError):
+    """Raised when the vector compositing pipeline can't preserve a schematic.
+
+    The most common causes are: a corrupt or unsupported schematic file,
+    a cairosvg failure parsing an Illustrator-exported SVG, a pypdf
+    failure on a malformed source PDF, or a missing optional dep (pypdf
+    / cairosvg / Pillow). The ``panel_label`` + ``path`` + ``source_error``
+    attributes let callers format helpful messages without re-parsing
+    the message text.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        panel_label: Optional[str] = None,
+        path: Optional[str] = None,
+        source_error: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.panel_label = panel_label
+        self.path = path
+        self.source_error = source_error
