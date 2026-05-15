@@ -122,24 +122,26 @@ def _regen_one_pdf(name: str, build_fn, *, check: bool) -> bool:
 def _composition_has_pdf_golden(name: str) -> bool:
     """Compositions that exercise the PDF golden gate (PR 5+).
 
-    PR 5 ships PDF goldens only for the two PanelImage compositions.
-    Other compositions don't have a PDF golden and shouldn't be checked.
+    PR 5 ships PDF goldens for the two PanelImage compositions; PR 6b
+    adds the embed_figure golden.
     """
     return name in {
         "cell-2col-with-svg-schematic",
         "cell-2col-with-png-schematic",
+        "cell-2col-with-embed-figure",
     }
 
 
 def _composition_has_svg_golden(name: str) -> bool:
     """Compositions that exercise the SVG golden gate (PR 6a+).
 
-    Same set as the PDF goldens — both PanelImage compositions are
-    saved to PDF + SVG so users can compare the two vector formats.
+    Same set as the PDF goldens — both PanelImage compositions and the
+    PR 6b embed_figure composition are saved to PDF + SVG.
     """
     return name in {
         "cell-2col-with-svg-schematic",
         "cell-2col-with-png-schematic",
+        "cell-2col-with-embed-figure",
     }
 
 

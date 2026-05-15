@@ -294,11 +294,14 @@ from tests.composer.golden._helpers import (
 SVG_GOLDEN_NAMES = [
     "cell-2col-with-svg-schematic",
     "cell-2col-with-png-schematic",
+    "cell-2col-with-embed-figure",
 ]
 
 
-# (name, mode) pairs. viewbox + structure are meaningful for both
-# schematic types. render_compare adds a visual gate when cairosvg is
+# (name, mode) pairs. viewbox + structure are meaningful for all
+# composition types — the structure mode just checks for one
+# publiplots-panel-image wrapper <g>, which the embed_figure branch
+# also produces. render_compare adds a visual gate when cairosvg is
 # available.
 SVG_GOLDEN_MODE_PAIRS = [
     (name, mode)

@@ -116,6 +116,7 @@ from tests.composer.golden._helpers import (
 PDF_GOLDEN_NAMES = [
     "cell-2col-with-svg-schematic",
     "cell-2col-with-png-schematic",
+    "cell-2col-with-embed-figure",
 ]
 
 
@@ -123,11 +124,13 @@ PDF_GOLDEN_NAMES = [
 # to raster/PDF sources because cairosvg-output SVGs are inlined into
 # the canvas content stream by pypdf's merge_transformed_page (no
 # XObject wrapping). For SVG goldens, mediabox + render_compare are
-# the meaningful gates.
+# the meaningful gates. The embed_figure golden also lacks XObjects
+# (matplotlib-PDF inlines content like cairosvg) — mediabox + render_compare.
 PDF_GOLDEN_MODE_PAIRS = [
     ("cell-2col-with-svg-schematic", "mediabox"),
     ("cell-2col-with-png-schematic", "mediabox"),
     ("cell-2col-with-png-schematic", "structure"),
+    ("cell-2col-with-embed-figure", "mediabox"),
 ]
 
 

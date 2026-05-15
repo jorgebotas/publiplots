@@ -15,8 +15,9 @@ def test_registry_imports():
     """`COMPOSITIONS` is exported from _compositions.py."""
     from tests.composer.golden._compositions import COMPOSITIONS
     assert isinstance(COMPOSITIONS, list)
-    # PR 4.5: 4 compositions; PR 5: +2 PanelImage compositions = 6.
-    assert len(COMPOSITIONS) == 6
+    # PR 4.5: 4 compositions; PR 5: +2 PanelImage compositions = 6;
+    # PR 6b: +1 embed_figure composition = 7.
+    assert len(COMPOSITIONS) == 7
 
 
 def test_registry_entry_shape():

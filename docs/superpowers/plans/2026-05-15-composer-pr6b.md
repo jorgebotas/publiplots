@@ -298,17 +298,17 @@ src/publiplots/composer/
 
 ### Task 10 — Goldens + parametrized integration tests + example + CHANGELOG + skill
 
-- [ ] Add `cell-2col-with-embed-figure` composition to `_compositions.py`:
+- [x] Add `cell-2col-with-embed-figure` composition to `_compositions.py`:
   - Stage `pp.PanelAxes('A', size=(70, 50))` + `pp.PanelImage('B', size=(70, 50))`.
   - Build a side-figure: `fig, ax = pp.subplots(); ax.plot([1,2,3], [4,5,6])`.
   - `canvas.embed_figure('B', fig)`.
-- [ ] Generate `cell-2col-with-embed-figure.{pdf,svg}` via regen tool.
-- [ ] Manual viewer check: open both in Adobe Illustrator (PDF) and Firefox (SVG); verify the embedded figure renders correctly in the slot, vector-preserved.
-- [ ] Extend `test_pdf_compositing.py` + `test_svg_compositing.py` parametrize with the new composition × 3 modes each.
-- [ ] Create `examples/composer/cell_2col_with_embed.py`.
-- [ ] CHANGELOG `[Unreleased] / Added` entry covering: embed_figure + save_multiple + cmyk + tiff_compression + external_raster.
-- [ ] `skills/publiplots-guide/SKILL.md` — one-line update.
-- [ ] **Final test run**: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q`. Should pass; ~487 total tests.
+- [x] Generate `cell-2col-with-embed-figure.{pdf,svg,png,json}` via regen tool.
+- [ ] Manual viewer check: open both in Adobe Illustrator (PDF) and Firefox (SVG); verify the embedded figure renders correctly in the slot, vector-preserved. (Deferred to reviewer — implementer has no Illustrator/Firefox in CI.)
+- [x] Extend `test_pdf_compositing.py` + `test_svg_compositing.py` parametrize with the new composition (mediabox + viewbox + structure modes).
+- [x] Create `examples/composer/cell_2col_with_embed.py` (kitchen sink with save_multiple).
+- [x] CHANGELOG `[Unreleased] / Added` entry covering: embed_figure + save_multiple + cmyk + tiff_compression + external_raster.
+- [x] `skills/publiplots-guide/SKILL.md` — one-line update.
+- [x] **Final test run**: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q`. 477 passed (+70 new tests).
 
 ---
 
