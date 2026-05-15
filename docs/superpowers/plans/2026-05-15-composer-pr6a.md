@@ -161,20 +161,20 @@ src/publiplots/composer/
 
 ### Task 2 — Add `_resolve_svg_units` + `compute_svg_transform` to `_geometry.py`
 
-- [ ] Implement `_resolve_svg_units(svg_root: lxml.etree._Element) → (vb_x: float, vb_y: float, vb_w: float, vb_h: float, mm_per_user_unit: float)`. Logic:
+- [x] Implement `_resolve_svg_units(svg_root: lxml.etree._Element) → (vb_x: float, vb_y: float, vb_w: float, vb_h: float, mm_per_user_unit: float)`. Logic:
   - Read `viewBox` attribute (`min-x min-y width height`). Required — raise `ComposerVectorError` if missing.
   - Inspect `width`/`height` attributes for explicit units (`mm`, `pt`, `px`, `in`, `cm`, unitless).
   - Resolve mm-per-user-unit by parsing `width` (preferred) or `height` (fallback) and dividing by viewBox dimension.
   - If width/height unitless or absent: assume user units = px @ 96 DPI (mm-per-user-unit ≈ 25.4 / 96 = 0.2646).
   - If width/height present but their unit-derived mm-per-user-unit disagrees with another's by > 1%, emit `UserWarning` and prefer width.
   - Reject relative units (`em`, `ex`, `%`) on `width`/`height` — raise `ComposerVectorError("width/height with relative units {unit!r} cannot be resolved without font/parent context; use absolute units (mm/pt/px/cm/in) or remove the attributes to fall back to px @ 96 DPI.")`.
-- [ ] Implement `compute_svg_transform(slot_bbox_mm, schematic_size_mm, canvas_mm_per_user_unit, canvas_vb_origin, *, align, clip) → (sx, sy, tx_user, ty_user)`. Parallel to `compute_pdf_transform` but:
+- [x] Implement `compute_svg_transform(slot_bbox_mm, schematic_size_mm, canvas_mm_per_user_unit, canvas_vb_origin, *, align, clip) → (sx, sy, tx_user, ty_user)`. Parallel to `compute_pdf_transform` but:
   - **SVG y-axis is TOP-DOWN** — `'top'`-words → 0, `'bottom'`-words → full slack (opposite of PDF).
   - Output is in canvas user-unit space (not pt).
   - `canvas_vb_origin = (vb_x, vb_y)` is added to the slot's user-unit position to handle non-zero-origin viewBoxes.
   - Same 9 × 3 align×clip matrix.
-- [ ] Reuse the existing `_VALID_ALIGN` set + defensive align validation when `clip != 'stretch'`.
-- [ ] **Failing tests first** in `test_compositing_geometry.py` covering: 4 unit cases for `_resolve_svg_units` (pt/mm/px/unitless), missing-viewBox raise, relative-unit raise (`em`/`%`), non-zero-origin viewBox round-trip, width/height-disagreement warning, all 9 × 3 align × clip combos for `compute_svg_transform` including non-zero canvas origin. Then implement.
+- [x] Reuse the existing `_VALID_ALIGN` set + defensive align validation when `clip != 'stretch'`.
+- [x] **Failing tests first** in `test_compositing_geometry.py` covering: 4 unit cases for `_resolve_svg_units` (pt/mm/px/unitless), missing-viewBox raise, relative-unit raise (`em`/`%`), non-zero-origin viewBox round-trip, width/height-disagreement warning, all 9 × 3 align × clip combos for `compute_svg_transform` including non-zero canvas origin. Then implement.
 
 ### Task 3 — Add `lxml` to `[composer]` extras + import-failure path
 
