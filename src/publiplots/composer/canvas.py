@@ -1,22 +1,77 @@
 """Canvas — the Composer's top-level orchestrator.
 
-Currently supports single-row layouts via :meth:`Canvas.add_row` and
-raster :meth:`Canvas.savefig`. The figure is created lazily when
-``add_row`` runs; ``Canvas(...)`` itself just records configuration.
+Supports multi-row layouts via repeated :meth:`Canvas.add_row` calls
+(PR 3) and raster :meth:`Canvas.savefig`. Figure creation is LAZY:
+``add_row`` only stages a row record; the matplotlib :class:`Figure`
+is materialized on first access of ``canvas.figure``,
+``canvas[label]``/``canvas[i]``, or ``canvas.savefig`` (or via an
+explicit :meth:`Canvas.finalize` call).
 
-Internally, the canvas builds a 1-row × N-column :class:`FigureLayout`
-where each column's mm width matches one panel's declared width. The
-existing :class:`SubplotsAutoLayout` reactor handles xlabel / ylabel /
-title decoration reservation (per spike Finding 4 — without it, axis
-decorations clip at the canvas mediabox edge).
+Internally, the canvas builds an N-row × C-column geometry
+(via :func:`compute_canvas_geometry`) where each row has its own
+panel widths and a per-row ``vpad`` (mm above the row).
+
+For single-row canvases, a :class:`SubplotsAutoLayout` reactor is
+attached so axis decorations (xlabel/ylabel/title) auto-grow on first
+draw to fit decorations. Multi-row canvases skip the reactor and use
+static rcParams reservations (refined in PR 4.5).
 """
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from publiplots.composer.exceptions import ComposerOverflowError
 from publiplots.composer.panels import Panel, PanelAxes
 from publiplots.composer.presets import resolve_preset
 from publiplots.themes.rcparams import resolve_param
+
+
+def _panel_raw_width(panel) -> Any:
+    """Return the panel's raw width input for flex resolution.
+
+    - PanelAxes / PanelText: ``panel.size[0]`` (float or ``'flex'`` sentinel)
+    - PanelGrid: ``panel.size_mm[0]`` (computed grid outer width; never flex)
+
+    PanelGrid has no ``size`` attribute — its outer width is computed
+    from ``shape`` + ``axes_size`` + spacing via the ``size_mm`` property.
+    Reading ``panel.size[0]`` unconditionally would AttributeError on
+    PanelGrid inputs to :meth:`Canvas.add_row`.
+    """
+    from publiplots.composer.panels import PanelGrid
+    if isinstance(panel, PanelGrid):
+        return panel.size_mm[0]
+    # PanelAxes and PanelText both expose size: (w_or_flex, h)
+    return panel.size[0]
+
+
+def _panel_raw_height(panel) -> float:
+    """Return the panel's height in mm.
+
+    - PanelAxes / PanelText: ``panel.size[1]``
+    - PanelGrid: ``panel.size_mm[1]`` (computed grid outer height)
+    """
+    from publiplots.composer.panels import PanelGrid
+    if isinstance(panel, PanelGrid):
+        return panel.size_mm[1]
+    return panel.size[1]
+
+
+@dataclass
+class _RowStaging:
+    """Internal record of an :meth:`Canvas.add_row` call.
+
+    Attributes
+    ----------
+    panels : tuple of PanelAxes (or PanelGrid/PanelText in PR 3 Tasks 7+)
+        Panel input records as supplied by the user.
+    vpad_mm : float
+        Vertical pad in mm above this row. Set to 0.0 for the first
+        row regardless of the user-supplied value (avoids extra top
+        padding); user-supplied for subsequent rows.
+    """
+
+    panels: tuple
+    vpad_mm: float
 
 
 class Canvas:
@@ -44,12 +99,19 @@ class Canvas:
     >>> pp.scatterplot(data=df, x="x", y="y", ax=canvas["A"].ax)
     >>> canvas.savefig("fig.png")
 
+    Multi-row layouts (PR 3):
+
+    >>> canvas = pp.Canvas("custom", width=174.0)
+    >>> canvas.add_row(pp.PanelAxes(label="A", size=(70, 40)),
+    ...                pp.PanelAxes(label="B", size=(70, 40)))
+    >>> canvas.add_row(pp.PanelAxes(label="C", size=(140, 30)))
+    >>> canvas.savefig("fig.png")  # triggers figure finalization
+
     Notes
     -----
-    Multi-row layouts and ``add_column`` land in PR 3. Vector PDF/SVG
-    save dispatches land in PR 5/PR 6. ``canvas.savefig('fig.pdf')``
-    raises :class:`NotImplementedError` in the current release (until
-    PR 5/PR 6 land).
+    Vector PDF/SVG save dispatches land in PR 5/PR 6.
+    ``canvas.savefig('fig.pdf')`` raises :class:`NotImplementedError`
+    in the current release (until PR 5/PR 6 land).
     """
 
     def __init__(
@@ -73,11 +135,17 @@ class Canvas:
         self._label_style: Dict[str, Any] = dict(DEFAULT_LABEL_STYLE)
         self._label_style["size"] = spec["label_size_pt"]
 
-        # Lazy-initialized on first add_row():
+        # Lazy state — figure is materialized on first finalization trigger.
         self._figure = None  # matplotlib.figure.Figure | None
-        self._panels: Dict[str, Panel] = {}
-        self._panels_ordered: List[Panel] = []  # insertion-order for int indexing
-        self._row_added: bool = False
+        self._rows: List[_RowStaging] = []         # staged rows
+        # Internal panel storage — populated by _finalize_if_needed.
+        # The PUBLIC-ish read accessors (_panels, _panels_ordered) below
+        # trigger finalization on access so tests/code that touched the
+        # PR 1+2 names continue to work.
+        self._panels_dict: Dict[str, Panel] = {}
+        self._panels_list: List[Panel] = []
+        self._alignments: List = []  # List[_AlignmentRequest]; initialized empty
+        self._finalized: bool = False
 
     # ------------------------------------------------------------------
     # Read-only attributes
@@ -89,13 +157,49 @@ class Canvas:
 
     @property
     def figure(self):
-        """The underlying matplotlib :class:`Figure`, or ``None`` until
-        :meth:`add_row` runs."""
+        """The underlying matplotlib :class:`Figure`.
+
+        Accessing this property triggers lazy finalization if the
+        canvas has at least one staged row but has not yet been
+        finalized. Returns ``None`` if no rows have been staged.
+        """
+        if not self._finalized and self._rows:
+            self._finalize_if_needed()
         return self._figure
 
     @property
+    def _panels(self) -> Dict[str, Panel]:
+        """Resolved-label-keyed panel dict. Triggers lazy finalization
+        if rows are staged but not yet finalized.
+
+        Used internally by ``__getitem__``; PR 1+2 tests also touched
+        this attribute directly (via ``canvas._panels``), so the
+        accessor preserves that contract.
+        """
+        if not self._finalized and self._rows:
+            self._finalize_if_needed()
+        return self._panels_dict
+
+    @property
+    def _panels_ordered(self) -> List[Panel]:
+        """Insertion-ordered panel list (across all rows). Triggers
+        lazy finalization if rows are staged but not yet finalized.
+        """
+        if not self._finalized and self._rows:
+            self._finalize_if_needed()
+        return self._panels_list
+
+    @property
     def figure_size_mm(self) -> Optional[Tuple[float, float]]:
-        """``(width_mm, height_mm)`` after :meth:`add_row`, else ``None``."""
+        """``(width_mm, height_mm)`` once the figure has been finalized,
+        else ``None``.
+
+        Triggers lazy finalization if at least one row has been staged.
+        Returns ``None`` only when no rows have been added yet (the
+        canvas has not yet committed to any geometry).
+        """
+        if not self._finalized and self._rows:
+            self._finalize_if_needed()
         if self._figure is None:
             return None
         # Convert mpl figure size (inches) back to mm.
@@ -106,22 +210,32 @@ class Canvas:
     # Indexing
     # ------------------------------------------------------------------
     def __getitem__(self, key) -> Panel:
+        # Empty canvas — preserve KeyError contract from PR 1+2 instead
+        # of letting _finalize_if_needed raise RuntimeError.
+        if not self._rows and not self._finalized:
+            if isinstance(key, int) and not isinstance(key, bool):
+                raise KeyError("no panels yet; call add_row() first")
+            raise KeyError(
+                f"no panel with label {key!r}; "
+                f"known labels: []"
+            )
+        self._finalize_if_needed()
         if isinstance(key, int) and not isinstance(key, bool):
-            if not self._panels_ordered:
+            if not self._panels_list:
                 raise KeyError("no panels yet; call add_row() first")
             try:
-                return self._panels_ordered[key]
+                return self._panels_list[key]
             except IndexError:
                 raise KeyError(
                     f"panel index {key} out of range; "
-                    f"only {len(self._panels_ordered)} panel(s) exist"
+                    f"only {len(self._panels_list)} panel(s) exist"
                 )
-        if key not in self._panels:
+        if key not in self._panels_dict:
             raise KeyError(
                 f"no panel with label {key!r}; "
-                f"known labels: {sorted(self._panels)}"
+                f"known labels: {sorted(self._panels_dict)}"
             )
-        return self._panels[key]
+        return self._panels_dict[key]
 
     def label_style(self, **kwargs: Any) -> None:
         """Update the canvas-wide label style.
@@ -140,87 +254,219 @@ class Canvas:
         self._label_style.update(kwargs)
 
     # ------------------------------------------------------------------
-    # add_row — single-row layout for PR 1
+    # align — record an explicit alignment override
     # ------------------------------------------------------------------
-    def add_row(self, *panels: PanelAxes) -> None:
-        """Add a row of axes panels to the canvas.
-
-        PR 1 supports calling ``add_row`` exactly once per canvas
-        (single-row layouts only). PR 3 will lift this restriction.
+    def align(
+        self,
+        panels,
+        *,
+        edge: str,
+        mode: str = "axes",
+        anchor=None,
+    ) -> None:
+        """Record an alignment request to apply at finalize time.
 
         Parameters
         ----------
-        *panels : PanelAxes
-            One or more :class:`PanelAxes` instances. Their declared
-            widths plus inter-panel ``hpad`` (3 mm by default from
-            rcParams) plus outer + ylabel + right reservations must fit
-            in the canvas width.
+        panels : sequence of str
+            Panel labels to align. The labels must match panels staged
+            via add_row (verbatim str labels; abc-resolved auto-letters
+            are NOT yet known at align-time so use canvas[i] indexing
+            via the FIRST panel's verbatim label as the anchor if needed).
+        edge : str
+            One of ``'left'``, ``'right'``, ``'top'``, ``'bottom'``,
+            ``'center_x'``, ``'center_y'``, ``'baseline'``.
+        mode : str, default ``'axes'``
+            ``'axes'`` (axes-bbox edges) or ``'tight'`` (tightbbox edges).
+            PR 3 ships axes-bbox primarily; tight uses the same path
+            until PR 4.5 lands proper tightbbox measurement.
+        anchor : str, optional
+            If given, this panel's edge is the reference. Otherwise the
+            leftmost / rightmost / topmost / bottommost panel's edge wins
+            per edge type.
 
         Raises
         ------
-        NotImplementedError
-            If ``add_row`` was already called on this canvas.
+        RuntimeError
+            If the canvas was already finalized.
         ValueError
-            If no panels are passed, or if duplicate labels appear, or
-            if a non-:class:`PanelAxes` argument is passed.
-        ComposerOverflowError
-            If the row's total width exceeds the canvas budget.
+            If the edge or mode is unknown, or if anchor isn't in panels.
+        KeyError
+            If any panel label isn't found among staged rows.
         """
-        # --- guard against multi-row (PR 3 will lift this) ----------
-        if self._row_added:
-            raise NotImplementedError(
-                "Canvas.add_row called twice; multi-row support lands in PR 3"
+        from publiplots.composer.alignment import (
+            VALID_EDGES, VALID_MODES, _AlignmentRequest,
+        )
+        if self._finalized:
+            raise RuntimeError(
+                "Canvas already finalized; align() must be called before "
+                "any figure access (canvas.figure, canvas[...], canvas.savefig)"
             )
+        if edge not in VALID_EDGES:
+            raise ValueError(
+                f"edge must be one of {sorted(VALID_EDGES)}, got {edge!r}"
+            )
+        if mode not in VALID_MODES:
+            raise ValueError(
+                f"mode must be one of {sorted(VALID_MODES)}, got {mode!r}"
+            )
+        # Verify the panels are known. Walk staged rows for str labels.
+        # (None / False labels aren't addressable by str; users wanting
+        # to align them should give them explicit str labels for now.)
+        known_labels = set()
+        for row in self._rows:
+            for p in row.panels:
+                if isinstance(p.label, str):
+                    known_labels.add(p.label)
+        for p in panels:
+            if p not in known_labels:
+                raise KeyError(
+                    f"panel {p!r} not found among staged rows; "
+                    f"known str-labeled panels: {sorted(known_labels)}"
+                )
+        if anchor is not None and anchor not in panels:
+            raise ValueError(
+                f"anchor must be one of the panels in the request; "
+                f"got anchor={anchor!r}, panels={list(panels)}"
+            )
+        self._alignments.append(_AlignmentRequest(
+            panels=tuple(panels),
+            edge=edge,
+            mode=mode,
+            anchor=anchor,
+        ))
 
-        # --- validate inputs ----------------------------------------
+    # ------------------------------------------------------------------
+    # add_row — stages a row; figure creation is deferred to finalize
+    # ------------------------------------------------------------------
+    def add_row(self, *panels, vpad: float = 4.0) -> None:
+        """Add a row of panels to the canvas.
+
+        PR 3 supports calling ``add_row`` multiple times. Rows stack
+        top-to-bottom; the first row uses ``vpad=0`` regardless of the
+        kwarg; subsequent rows use the user-supplied ``vpad``
+        (default 4 mm).
+
+        Lazy finalization: the matplotlib :class:`Figure` is created on
+        first access of ``canvas.figure`` / ``canvas[label]`` /
+        ``canvas[i]`` / ``canvas.savefig`` (or via an explicit
+        :meth:`finalize` call). ``add_row`` itself only stages the row
+        record — no matplotlib work happens here.
+
+        Parameters
+        ----------
+        *panels : PanelAxes (or PanelGrid/PanelText in Tasks 7+)
+            One or more panel input records.
+        vpad : float, default 4.0
+            Vertical pad in mm above this row. Ignored (forced to 0)
+            for the FIRST row to avoid extra top padding.
+
+        Raises
+        ------
+        RuntimeError
+            If the canvas was already finalized.
+        ValueError, TypeError, ComposerOverflowError
+            Same input-validation errors as PR 2's ``add_row``
+            (overflow checks defer to finalization).
+        """
+        if self._finalized:
+            raise RuntimeError(
+                "Canvas already finalized; add_row() must be called BEFORE "
+                "any figure access (canvas.figure, canvas[...], canvas.savefig)"
+            )
+        self._validate_row_inputs(panels)
+        # Eager overflow / flex resolution. We don't STORE the resolved
+        # widths here (compute them again in _finalize_if_needed) — this
+        # is purely a fail-fast check so users see overflow errors at
+        # the offending add_row call, not at finalize time.
+        self._check_row_overflow_eager(panels)
+        # vpad=0 for the first row — avoids extra top padding.
+        effective_vpad = 0.0 if not self._rows else float(vpad)
+        self._rows.append(_RowStaging(panels=tuple(panels), vpad_mm=effective_vpad))
+
+    # ------------------------------------------------------------------
+    # add_row helpers (private)
+    # ------------------------------------------------------------------
+    def _validate_row_inputs(self, panels):
+        """Zero-panel check, type check, duplicate-label check.
+
+        Walks both already-staged rows and the new ones being added so
+        duplicate-label checks span across rows.
+        """
+        from publiplots.composer.panels import PanelAxes, PanelGrid, PanelText
+
         if len(panels) == 0:
             raise ValueError("Canvas.add_row requires at least one panel")
+        accepted = (PanelAxes, PanelGrid, PanelText)
         for p in panels:
-            if not isinstance(p, PanelAxes):
+            if not isinstance(p, accepted):
                 raise TypeError(
-                    f"Canvas.add_row only accepts PanelAxes, "
-                    f"got {type(p).__name__} (PanelGrid/PanelText land in PR 3, "
-                    f"PanelImage in PR 5)"
+                    f"Canvas.add_row accepts PanelAxes, PanelGrid, or PanelText "
+                    f"in PR 3, got {type(p).__name__} (PanelImage lands in PR 5)"
                 )
-        labels = [p.label for p in panels]
+        # Duplicate label check ACROSS already-staged rows + new ones.
         seen: set = set()
-        for lbl in labels:
-            # Only str labels need uniqueness; None/False are fine to repeat.
-            if not isinstance(lbl, str):
-                continue
-            if lbl in seen:
-                raise ValueError(f"duplicate panel label: {lbl!r}")
-            seen.add(lbl)
+        for row in self._rows:
+            for p in row.panels:
+                if isinstance(p.label, str):
+                    seen.add(p.label)
+        for p in panels:
+            if isinstance(p.label, str):
+                if p.label in seen:
+                    raise ValueError(f"duplicate panel label: {p.label!r}")
+                seen.add(p.label)
 
-        # --- compute geometry ---------------------------------------
-        # Use the same rcParams defaults that pp.subplots uses so the
-        # initial figure size is consistent with single-grid figures.
+    def _resolve_decorations(self):
+        """Read all the rcParams subplots.* values into a dict.
+
+        Returns dict with keys: outer_pad, hpad, title_space, xlabel_space,
+        ylabel_space, right. (hpad maps to subplots.wspace.)
+        """
         outer_pad = float(resolve_param("subplots.outer_pad", None))
         hpad = float(resolve_param("subplots.wspace", None))  # inter-panel gap
         title_space = float(resolve_param("subplots.title_space", None))
         xlabel_space = float(resolve_param("subplots.xlabel_space", None))
         ylabel_space = float(resolve_param("subplots.ylabel_space", None))
         right = float(resolve_param("subplots.right", None))
+        return {
+            "outer_pad": outer_pad,
+            "hpad": hpad,
+            "title_space": title_space,
+            "xlabel_space": xlabel_space,
+            "ylabel_space": ylabel_space,
+            "right": right,
+        }
 
-        # Raw widths — may contain 'flex' sentinels which we'll resolve next.
-        raw_widths = tuple(p.size[0] for p in panels)
-        # All panels in one row share the row height; the Composer still
-        # requires numeric heights (flex is width-only).
-        row_height = max(p.size[1] for p in panels)
+    def _compute_decorations_width(self, decorations, ncols):
+        """Compute a row's total decoration width budget.
 
-        ncols = len(panels)
-        # Canvas width budget: panels + (n-1) hpads + ylabel reservations
-        # for each column + right reservation for each column + outer pads.
-        # ylabel_space and right are PER-COLUMN per FigureLayout's contract.
-        decorations_width = (
-            2 * outer_pad
-            + ncols * ylabel_space
-            + ncols * right
-            + max(ncols - 1, 0) * hpad
+        ylabel_space and right are PER-COLUMN per the FigureLayout
+        contract; outer_pad is once on each side; hpad applies between
+        adjacent panels.
+        """
+        return (
+            2 * decorations["outer_pad"]
+            + ncols * decorations["ylabel_space"]
+            + ncols * decorations["right"]
+            + max(ncols - 1, 0) * decorations["hpad"]
         )
 
-        # --- resolve flex sizing ------------------------------------
+    def _check_row_overflow_eager(self, panels):
+        """Resolve flex widths + check pinned-row overflow at add_row
+        time so users see the error AT the offending call (not deferred
+        to finalize).
+
+        Wraps :class:`ValueError` from the resolver into
+        :class:`ComposerOverflowError`. Re-raises for finalize to
+        recompute (cheaper to recompute than to thread the resolved
+        widths through staging state).
+        """
         from publiplots.composer._flex import resolve_flex_widths
+
+        decorations = self._resolve_decorations()
+        ncols = len(panels)
+        raw_widths = tuple(_panel_raw_width(p) for p in panels)
+        decorations_width = self._compute_decorations_width(decorations, ncols)
         try:
             col_widths, n_flex = resolve_flex_widths(
                 raw_widths,
@@ -228,9 +474,6 @@ class Canvas:
                 decorations_width_mm=decorations_width,
             )
         except ValueError as e:
-            # The resolver raises ValueError when pinned widths alone
-            # overflow. Convert to ComposerOverflowError so the user
-            # gets the suggested-scale-factor advisor.
             pinned_total = sum(float(w) for w in raw_widths if w != "flex")
             requested = pinned_total + decorations_width
             raise ComposerOverflowError(
@@ -238,124 +481,402 @@ class Canvas:
                 requested_mm=requested,
                 available_mm=self._width_mm,
             )
-
-        # --- pinned-only overflow check -----------------------------
         if n_flex == 0:
             panels_width = sum(col_widths)
             requested_width = panels_width + decorations_width
-            if requested_width > self._width_mm + 1e-6:  # 1µm tolerance
+            if requested_width > self._width_mm + 1e-6:
+                row_idx = len(self._rows)
                 raise ComposerOverflowError(
-                    f"row width {requested_width:.2f}mm exceeds canvas width "
-                    f"{self._width_mm:.2f}mm; reduce panel widths or use a wider canvas",
+                    f"row {row_idx} width {requested_width:.2f}mm exceeds "
+                    f"canvas width {self._width_mm:.2f}mm; reduce panel "
+                    f"widths or use a wider canvas",
                     requested_mm=requested_width,
                     available_mm=self._width_mm,
                 )
-        # When n_flex >= 1, the resolver guarantees figure width == canvas
-        # width exactly (modulo float noise). No additional check needed.
 
-        # NOTE: pinned-only rows do NOT auto-absorb width slack. If the
-        # user passes panels that sum to less than the canvas width, the
-        # produced figure is narrower than `self._width_mm`. Callers can
-        # size panels to fit exactly (use the overflow-error math in
-        # reverse: max-panel-width-per-row = canvas_width - decorations_width)
-        # — or use 'flex' panel sizing, which absorbs slack automatically.
+    # ------------------------------------------------------------------
+    # finalize — materialize the matplotlib Figure from staged rows
+    # ------------------------------------------------------------------
+    def finalize(self) -> None:
+        """Materialize the matplotlib Figure from staged rows.
 
-        # --- build FigureLayout (1 row × N cols) --------------------
-        from publiplots.layout.figure_layout import FigureLayout
-        from publiplots.layout.auto_layout import SubplotsAutoLayout
-        import matplotlib.pyplot as plt
+        Idempotent — a second call is a no-op. Raises ``RuntimeError``
+        if no rows have been staged yet.
+        """
+        self._finalize_if_needed()
 
-        layout = FigureLayout(
-            nrows=1,
-            ncols=ncols,
-            axes_size=(col_widths[0], row_height),  # fallback; col_widths overrides
-            col_widths=col_widths,
-            row_heights=(row_height,),
-            title_space=(title_space,),
-            xlabel_space=(xlabel_space,),
-            ylabel_space=(ylabel_space,) * ncols,
-            right=(right,) * ncols,
-            hspace=0.0,           # only 1 row, irrelevant
-            wspace=hpad,
-            outer_pad=outer_pad,
-            legend_column=0.0,
-            suptitle_space=0.0,
+    def _finalize_if_needed(self) -> None:
+        """Build the matplotlib Figure from the staged rows.
+
+        After this runs, ``self._figure`` is the Figure,
+        ``self._panels`` and ``self._panels_ordered`` are populated,
+        and ``self._finalized=True``.
+        """
+        if self._finalized:
+            return
+        if not self._rows:
+            raise RuntimeError(
+                "Canvas has no rows yet; call add_row() before finalize()"
+            )
+
+        # Per-panel dispatch handles all three panel kinds (PanelAxes,
+        # PanelGrid, PanelText) in the loop below. PanelImage lands in PR 5.
+        from publiplots.composer.panels import PanelAxes, PanelGrid, PanelText
+
+        # Resolve decorations once (shared across rows).
+        decorations = self._resolve_decorations()
+
+        # Per-row: resolve flex, check overflow, compute row_height.
+        from publiplots.composer._flex import resolve_flex_widths
+        rows_for_geometry = []
+        for r_idx, row in enumerate(self._rows):
+            ncols = len(row.panels)
+            raw_widths = tuple(_panel_raw_width(p) for p in row.panels)
+            row_height = max(_panel_raw_height(p) for p in row.panels)
+            decorations_width = self._compute_decorations_width(
+                decorations, ncols
+            )
+            try:
+                col_widths, n_flex = resolve_flex_widths(
+                    raw_widths,
+                    canvas_width_mm=self._width_mm,
+                    decorations_width_mm=decorations_width,
+                )
+            except ValueError as e:
+                pinned_total = sum(float(w) for w in raw_widths if w != "flex")
+                requested = pinned_total + decorations_width
+                raise ComposerOverflowError(
+                    str(e),
+                    requested_mm=requested,
+                    available_mm=self._width_mm,
+                )
+            if n_flex == 0:
+                panels_width = sum(col_widths)
+                requested_width = panels_width + decorations_width
+                if requested_width > self._width_mm + 1e-6:
+                    raise ComposerOverflowError(
+                        f"row {r_idx} width {requested_width:.2f}mm exceeds "
+                        f"canvas width {self._width_mm:.2f}mm; reduce panel "
+                        f"widths or use a wider canvas",
+                        requested_mm=requested_width,
+                        available_mm=self._width_mm,
+                    )
+            rows_for_geometry.append({
+                "panel_widths_mm": col_widths,
+                "row_height_mm": row_height,
+                "vpad_mm": row.vpad_mm,
+            })
+
+        # Compute multi-row geometry.
+        from publiplots.composer._layout import compute_canvas_geometry
+        geometry = compute_canvas_geometry(
+            rows=rows_for_geometry,
+            canvas_width_mm=self._width_mm,
+            outer_pad=decorations["outer_pad"],
+            ylabel_space=decorations["ylabel_space"],
+            right=decorations["right"],
+            wspace=decorations["hpad"],
+            title_space=decorations["title_space"],
+            xlabel_space=decorations["xlabel_space"],
         )
-        W_mm, H_mm = layout.figure_size()
 
-        # --- create the matplotlib figure at the computed mm size ---
+        # Apply alignment requests (if any). Each shifts panel rects
+        # WITHIN their original slot bounds; raises ComposerAlignmentError
+        # if a shift would exit the slot.
+        if self._alignments:
+            from publiplots.composer.alignment import apply_alignments
+            from publiplots.composer._layout import CanvasGeometry
+
+            # Build dict[label, rect_mm] for label-keyed lookup, plus
+            # the inviolate slot dict. Both start identical (the slot
+            # IS the panel's natural rect from geometry).
+            panel_rects_mm = {}
+            for r_idx, (row, rects_mm) in enumerate(
+                zip(self._rows, geometry.row_axes_rects_mm)
+            ):
+                for c_idx, (panel_input, rect_mm) in enumerate(
+                    zip(row.panels, rects_mm)
+                ):
+                    if isinstance(panel_input.label, str):
+                        panel_rects_mm[panel_input.label] = rect_mm
+            slot_rects_mm = dict(panel_rects_mm)
+
+            updated_rects = apply_alignments(
+                requests=self._alignments,
+                panel_rects_mm=panel_rects_mm,
+                slot_rects_mm=slot_rects_mm,
+            )
+
+            # Re-thread updated rects back into geometry.row_axes_rects_mm
+            # by label match.
+            new_row_rects = []
+            for r_idx, (row, rects_mm) in enumerate(
+                zip(self._rows, geometry.row_axes_rects_mm)
+            ):
+                row_new = []
+                for c_idx, (panel_input, rect_mm) in enumerate(
+                    zip(row.panels, rects_mm)
+                ):
+                    if (
+                        isinstance(panel_input.label, str)
+                        and panel_input.label in updated_rects
+                    ):
+                        row_new.append(updated_rects[panel_input.label])
+                    else:
+                        row_new.append(rect_mm)
+                new_row_rects.append(row_new)
+            # CanvasGeometry is frozen; rebuild it with the updated rects.
+            geometry = CanvasGeometry(
+                canvas_width_mm=geometry.canvas_width_mm,
+                canvas_height_mm=geometry.canvas_height_mm,
+                row_axes_rects_mm=new_row_rects,
+            )
+
+        # Create the matplotlib figure at the computed mm size.
+        import matplotlib.pyplot as plt
         _MM2INCH = 1.0 / 25.4
         fig = plt.figure(
-            figsize=(W_mm * _MM2INCH, H_mm * _MM2INCH),
+            figsize=(
+                geometry.canvas_width_mm * _MM2INCH,
+                geometry.canvas_height_mm * _MM2INCH,
+            ),
             layout=None,
         )
         self._figure = fig
 
-        # --- create axes per panel ----------------------------------
-        # Resolve labels per the canvas's abc mode.
+        # Resolve labels FLAT across all rows (abc spans rows).
         from publiplots.composer.abc_labels import (
             resolve_labels, merge_label_style, render_label,
         )
-        raw_panel_labels = [p.label for p in panels]
-        resolved_labels = resolve_labels(
-            panel_labels=raw_panel_labels,
-            abc=self._abc,
-        )
+        flat_panels = []
+        for row in self._rows:
+            for p in row.panels:
+                flat_panels.append(p)
+        raw_labels = [p.label for p in flat_panels]
+        resolved_labels = resolve_labels(panel_labels=raw_labels, abc=self._abc)
 
-        for col_idx, panel_input in enumerate(panels):
-            x0_frac, y0_frac, w_frac, h_frac = layout.axes_position(0, col_idx)
-            ax = fig.add_axes((x0_frac, y0_frac, w_frac, h_frac))
-            # bbox_mm is (x_mm, y_mm, w_mm, h_mm) bottom-left origin.
-            bbox_mm = (
-                x0_frac * W_mm,
-                y0_frac * H_mm,
-                w_frac * W_mm,
-                h_frac * H_mm,
+        # Per-panel: dispatch by panel input type.
+        flat_idx = 0
+        for r_idx, (row, rects_mm) in enumerate(
+            zip(self._rows, geometry.row_axes_rects_mm)
+        ):
+            for c_idx, (panel_input, rect_mm) in enumerate(
+                zip(row.panels, rects_mm)
+            ):
+                x_mm, y_mm, w_mm, h_mm = rect_mm
+                resolved_label = resolved_labels[flat_idx]
+                resolved_style = merge_label_style(
+                    self._label_style, panel_input.label_style
+                )
+
+                if isinstance(panel_input, PanelGrid):
+                    # Build the inner sub-grid of axes inside the panel's
+                    # outer mm rect.
+                    inner_axes = self._build_panel_grid_axes(
+                        panel_input, fig, rect_mm,
+                        geometry.canvas_width_mm, geometry.canvas_height_mm,
+                    )
+                    panel = Panel(
+                        label=resolved_label,
+                        kind="axesgrid",
+                        ax=None,
+                        size_mm=(w_mm, h_mm),
+                        bbox_mm=(x_mm, y_mm, w_mm, h_mm),
+                        resolved_label_style=resolved_style,
+                        axes=inner_axes,
+                    )
+                    # Render the abc label on the TOP-LEFT inner axes
+                    # (the panel's "first" cell visually).
+                    label_target_ax = inner_axes[0, 0]
+                elif isinstance(panel_input, PanelText):
+                    rect_frac = (
+                        x_mm / geometry.canvas_width_mm,
+                        y_mm / geometry.canvas_height_mm,
+                        w_mm / geometry.canvas_width_mm,
+                        h_mm / geometry.canvas_height_mm,
+                    )
+                    ax = self._build_panel_text_axes(
+                        panel_input, fig, rect_frac,
+                    )
+                    panel = Panel(
+                        label=resolved_label,
+                        kind="text",
+                        ax=ax,
+                        size_mm=(w_mm, h_mm),
+                        bbox_mm=(x_mm, y_mm, w_mm, h_mm),
+                        resolved_label_style=resolved_style,
+                        axes=None,
+                    )
+                    label_target_ax = ax
+                else:
+                    # PanelAxes (PanelImage lands in PR 5).
+                    rect_frac = (
+                        x_mm / geometry.canvas_width_mm,
+                        y_mm / geometry.canvas_height_mm,
+                        w_mm / geometry.canvas_width_mm,
+                        h_mm / geometry.canvas_height_mm,
+                    )
+                    ax = fig.add_axes(rect_frac)
+                    panel = Panel(
+                        label=resolved_label,
+                        kind="axes",
+                        ax=ax,
+                        size_mm=(w_mm, _panel_raw_height(panel_input)),
+                        bbox_mm=(x_mm, y_mm, w_mm, h_mm),
+                        resolved_label_style=resolved_style,
+                        axes=None,
+                    )
+                    label_target_ax = ax
+
+                if isinstance(resolved_label, str) and resolved_label:
+                    render_label(label_target_ax, resolved_label, style=resolved_style)
+                    self._panels_dict[resolved_label] = panel
+                self._panels_list.append(panel)
+                flat_idx += 1
+
+        # Reactor: ONLY for single-row canvases. Multi-row canvases
+        # skip the reactor (use static rcParams reservations) — refined
+        # in PR 4.5 if user feedback demands per-row auto-grow.
+        if len(self._rows) == 1:
+            from publiplots.layout.figure_layout import FigureLayout
+            from publiplots.layout.auto_layout import SubplotsAutoLayout
+            ncols = len(self._rows[0].panels)
+            col_widths = tuple(rect[2] for rect in geometry.row_axes_rects_mm[0])
+            row_height = max(_panel_raw_height(p) for p in self._rows[0].panels)
+            layout = FigureLayout(
+                nrows=1,
+                ncols=ncols,
+                axes_size=(col_widths[0], row_height),
+                col_widths=col_widths,
+                row_heights=(row_height,),
+                title_space=(decorations["title_space"],),
+                xlabel_space=(decorations["xlabel_space"],),
+                ylabel_space=(decorations["ylabel_space"],) * ncols,
+                right=(decorations["right"],) * ncols,
+                hspace=0.0,
+                wspace=decorations["hpad"],
+                outer_pad=decorations["outer_pad"],
+                legend_column=0.0,
+                suptitle_space=0.0,
+            )
+            fig._publiplots_auto_layout = SubplotsAutoLayout(
+                fig, layout, locked=set(), locked_positions={}
             )
 
-            resolved_label = resolved_labels[col_idx]
-            resolved_style = merge_label_style(
-                self._label_style, panel_input.label_style
-            )
+        self._finalized = True
 
-            panel = Panel(
-                label=resolved_label,
-                kind="axes",
-                ax=ax,
-                size_mm=(col_widths[col_idx], panel_input.size[1]),
-                bbox_mm=bbox_mm,
-                resolved_label_style=resolved_style,
-            )
+    # ------------------------------------------------------------------
+    # PanelGrid construction helpers (PR 3 Task 7)
+    # ------------------------------------------------------------------
+    def _build_panel_grid_axes(
+        self,
+        panel_grid,
+        fig,
+        outer_rect_mm,
+        canvas_w_mm,
+        canvas_h_mm,
+    ):
+        """Lay out the inner axes grid inside the panel's mm rect.
 
-            # Render the label if it's a non-empty string.
-            if isinstance(resolved_label, str) and resolved_label:
-                render_label(ax, resolved_label, style=resolved_style)
+        Row 0 sits at the TOP of the panel; the topmost row therefore has
+        the LARGEST y in matplotlib's bottom-left-origin coordinates.
+        ``axes_size`` is the per-cell mm size; ``hspace``/``wspace``
+        separate cells.
 
-            # Register by resolved label (so canvas['A'] works for an
-            # auto-letter panel that started as label=None) AND by
-            # insertion order. False/None labels skip the dict registry.
-            if isinstance(resolved_label, str) and resolved_label:
-                self._panels[resolved_label] = panel
-            self._panels_ordered.append(panel)
+        Returns
+        -------
+        axes : numpy.ndarray of shape (nrows, ncols), dtype=object
+            Array of matplotlib Axes objects.
+        """
+        import numpy as np
 
-        # --- attach SubplotsAutoLayout reactor (spike Finding 4) ----
-        # All four auto-measurable sides start at rcParams defaults and
-        # auto-grow on first draw to fit decorations. This prevents
-        # axis labels from clipping at the canvas mediabox edge — the
-        # exact bug the spike's bare-mpl fixture exhibited.
-        fig._publiplots_auto_layout = SubplotsAutoLayout(
-            fig, layout,
-            locked=set(),               # let all four sides auto-measure
-            locked_positions={},
-        )
+        nr, nc = panel_grid.shape
+        cell_w, cell_h = panel_grid.axes_size
+        hspace, wspace = panel_grid.hspace, panel_grid.wspace
 
-        self._row_added = True
+        x0_mm, y0_mm, _w_mm, _h_mm = outer_rect_mm
+
+        axes = np.empty((nr, nc), dtype=object)
+        for r in range(nr):
+            for c in range(nc):
+                cell_x_mm = x0_mm + c * (cell_w + wspace)
+                # Row 0 sits at the TOP of the panel; in bottom-left
+                # origin coords the topmost row has the LARGEST y.
+                cell_y_mm = y0_mm + (nr - 1 - r) * (cell_h + hspace)
+                rect_frac = (
+                    cell_x_mm / canvas_w_mm,
+                    cell_y_mm / canvas_h_mm,
+                    cell_w / canvas_w_mm,
+                    cell_h / canvas_h_mm,
+                )
+                share_x = self._resolve_panel_grid_share(
+                    panel_grid.sharex, axes, r, c, axis="x"
+                )
+                share_y = self._resolve_panel_grid_share(
+                    panel_grid.sharey, axes, r, c, axis="y"
+                )
+                kwargs = {}
+                if share_x is not None:
+                    kwargs["sharex"] = share_x
+                if share_y is not None:
+                    kwargs["sharey"] = share_y
+                axes[r, c] = fig.add_axes(rect_frac, **kwargs)
+        return axes
+
+    @staticmethod
+    def _resolve_panel_grid_share(share, axes, r, c, *, axis):
+        """Return the axes to share with, or None.
+
+        Mirrors :func:`publiplots.layout.subplots._resolve_shared`.
+        ``share`` has already been validated by :class:`PanelGrid`.
+        """
+        if share in (False, "none"):
+            return None
+        if r == 0 and c == 0:
+            return None
+        if share in (True, "all"):
+            return axes[0, 0]
+        if share == "row":
+            return axes[r, 0] if c > 0 else None
+        if share == "col":
+            return axes[0, c] if r > 0 else None
+        # Unreachable — PanelGrid validates share values up-front.
+        return None
+
+    # ------------------------------------------------------------------
+    # PanelText construction helper (PR 3 Task 8)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _build_panel_text_axes(panel_text, fig, rect_frac):
+        """Create a hidden axes for a text panel and place the text artist.
+
+        The text is centered at (0.5, 0.5) in axes-fraction with
+        ha='center', va='center' by default; user-supplied ``text_kw``
+        can override these.
+        """
+        ax = fig.add_axes(rect_frac)
+        ax.set_axis_off()
+        ax.patch.set_visible(False)
+        # set_axis_off() sets axison=False (skips drawing) but does NOT
+        # flip per-spine visibility flags; explicitly hide spines so
+        # introspection (and any save path that bypasses axison) sees a
+        # clean text-only axes.
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        text_kw = {"ha": "center", "va": "center"}
+        text_kw.update(panel_text.text_kw or {})
+        ax.text(0.5, 0.5, panel_text.text, transform=ax.transAxes, **text_kw)
+        return ax
 
     # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)
     # ------------------------------------------------------------------
     def savefig(self, path, **kwargs) -> None:
         """Save the canvas to a file.
+
+        Triggers lazy finalization if the canvas has at least one
+        staged row but has not yet been finalized.
 
         Currently supports raster formats (PNG, JPG, TIFF). PDF and SVG
         raise :class:`NotImplementedError` until PR 5 / PR 6 land the
@@ -377,9 +898,10 @@ class Canvas:
         ValueError
             If the path's extension is not a known raster or vector type.
         """
-        if self._figure is None:
+        if not self._rows and not self._finalized:
             raise RuntimeError(
                 "Canvas has no figure yet; call add_row() before savefig()"
             )
+        self._finalize_if_needed()
         from publiplots.composer._save import dispatch_savefig
         dispatch_savefig(self._figure, path, **kwargs)

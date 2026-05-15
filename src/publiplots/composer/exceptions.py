@@ -47,3 +47,24 @@ class ComposerOverflowError(ComposerError):
             super().__init__(message + advisor)
         else:
             super().__init__(message)
+
+
+class ComposerAlignmentError(ComposerError):
+    """Raised when a `canvas.align()` request can't be satisfied.
+
+    The most common cause is that the requested shift would push a
+    panel's content outside its (inviolate) slot mm-rect. The panels
+    + edge attributes let callers format helpful messages without
+    re-parsing the message text.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        panels: tuple,
+        edge: str,
+    ) -> None:
+        super().__init__(message)
+        self.panels = tuple(panels)
+        self.edge = str(edge)

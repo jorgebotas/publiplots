@@ -68,18 +68,6 @@ def test_add_row_three_panels():
 
 
 # ---------------------------------------------------------------------------
-# Multi-call add_row is rejected in PR 1
-# ---------------------------------------------------------------------------
-
-def test_add_row_called_twice_raises():
-    """PR 3 adds multi-row support; PR 1 rejects it with a clear hint."""
-    canvas = pp.Canvas("custom", width=174.0)
-    canvas.add_row(pp.PanelAxes(label="A", size=(70.0, 40.0)))
-    with pytest.raises(NotImplementedError, match="multi-row"):
-        canvas.add_row(pp.PanelAxes(label="B", size=(70.0, 40.0)))
-
-
-# ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 

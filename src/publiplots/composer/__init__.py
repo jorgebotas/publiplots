@@ -14,15 +14,19 @@ full design.
 
 from publiplots.composer.canvas import Canvas
 from publiplots.composer.exceptions import (
+    ComposerAlignmentError,
     ComposerError,
     ComposerOverflowError,
 )
-from publiplots.composer.panels import Panel, PanelAxes
+from publiplots.composer.panels import Panel, PanelAxes, PanelGrid, PanelText
 
 __all__ = [
     "Canvas",
+    "ComposerAlignmentError",
     "ComposerError",
     "ComposerOverflowError",
     "Panel",
     "PanelAxes",
+    "PanelGrid",
+    "PanelText",
 ]
