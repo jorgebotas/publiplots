@@ -218,13 +218,13 @@ src/publiplots/composer/
 
 ### Task 7 — Golden-SVG infrastructure + assert_svg_matches
 
-- [ ] Add `assert_svg_matches(canvas, name, *, mode='viewbox', tol_user=0.5, tol_image=20)` to `tests/composer/golden/_helpers.py`. Modes: `viewbox`, `structure` (XPath presence of `//svg:g[@id='publiplots-panel-image-{label}']`), `render_compare` (cairosvg.svg2png both → compare_images).
-- [ ] Add `_svg_renderer_available()` helper for skip-when-cairosvg-missing on `render_compare` mode.
-- [ ] `tests/composer/golden/svg/.gitkeep` placeholder; goldens generated via regen workflow.
-- [ ] Extend `tools/composer/regen_fixtures.py`:
+- [x] Add `assert_svg_matches(canvas, name, *, mode='viewbox', tol_user=0.5, tol_image=20)` to `tests/composer/golden/_helpers.py`. Modes: `viewbox`, `structure` (XPath presence of `//svg:g[@id='publiplots-panel-image-{label}']`), `render_compare` (cairosvg.svg2png both → compare_images).
+- [x] Add `_svg_renderer_available()` helper for skip-when-cairosvg-missing on `render_compare` mode.
+- [x] `tests/composer/golden/svg/.gitkeep` placeholder; goldens generated via regen workflow.
+- [x] Extend `tools/composer/regen_fixtures.py`:
   - Add `_svg_structure_signature(svg_path) → (root_tag, viewbox, n_image_groups: int)` for non-byte-equality `--check` diff (analogous to `_pdf_structure_signature`).
   - Re-generate the 2 goldens under `tests/composer/golden/svg/` when the SVG path is touched.
-- [ ] **Failing tests first**: `test_golden_registry::test_assert_svg_matches_viewbox_mode_passes_for_known_good`, `test_assert_svg_matches_structure_mode_finds_panel_g`, `test_assert_svg_matches_render_compare_skips_when_no_cairosvg`.
+- [x] **Failing tests first**: `test_golden_registry::test_assert_svg_matches_viewbox_mode_passes_for_known_good`, `test_assert_svg_matches_structure_mode_finds_panel_g`, `test_assert_svg_matches_render_compare_skips_when_no_cairosvg`.
 
 ### Task 8 — Golden SVG goldens + parametrized compositing tests
 

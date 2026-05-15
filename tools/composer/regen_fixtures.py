@@ -56,6 +56,7 @@ COMPOSITIONS = _compositions.COMPOSITIONS
 PNG_DIR = _helpers.PNG_DIR
 SNAPSHOT_DIR = _helpers.SNAPSHOT_DIR
 PDF_DIR = _helpers.PDF_DIR
+SVG_DIR = _helpers.SVG_DIR
 snapshot = _helpers.snapshot
 
 
@@ -130,6 +131,78 @@ def _composition_has_pdf_golden(name: str) -> bool:
     }
 
 
+def _composition_has_svg_golden(name: str) -> bool:
+    """Compositions that exercise the SVG golden gate (PR 6a+).
+
+    Same set as the PDF goldens — both PanelImage compositions are
+    saved to PDF + SVG so users can compare the two vector formats.
+    """
+    return name in {
+        "cell-2col-with-svg-schematic",
+        "cell-2col-with-png-schematic",
+    }
+
+
+def _svg_structure_signature(svg_bytes: bytes) -> tuple:
+    """Cheap, deterministic signature for SVG diff detection in --check mode.
+
+    Returns (root_tag, viewbox_tuple, n_panel_image_groups).
+    The viewBox is rounded to 1 decimal place to absorb matplotlib
+    sub-pt float noise; the panel-image group count is a structural
+    invariant we never want to lose.
+    """
+    from lxml import etree as _lxml_etree
+    root = _lxml_etree.fromstring(svg_bytes)
+    SVG_NS = "http://www.w3.org/2000/svg"
+    vb = root.get("viewBox") or ""
+    parts = vb.replace(",", " ").split()
+    if len(parts) == 4:
+        vb_tuple = tuple(round(float(p), 1) for p in parts)
+    else:
+        vb_tuple = ()
+    n_panel = len(root.xpath(
+        "//svg:g[starts-with(@id, 'publiplots-panel-image-')]",
+        namespaces={"svg": SVG_NS},
+    ))
+    # Strip Clark-style namespace prefix from root tag for legibility.
+    tag = root.tag
+    if tag.startswith("{"):
+        tag = tag.split("}", 1)[1]
+    return (tag, vb_tuple, n_panel)
+
+
+def _regen_one_svg(name: str, build_fn, *, check: bool) -> bool:
+    """Render the composition to SVG; return True iff regen would change it.
+
+    In --check mode, compares structure signatures (not bytes) — bytes
+    can shift across matplotlib patch versions even with pinned
+    hashsalt + Date.
+    """
+    canvas = build_fn()
+    svg_path = SVG_DIR / f"{name}.svg"
+    SVG_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        svg_out = Path(tmpdir) / f"{name}.svg"
+        canvas.savefig(str(svg_out))
+        new_bytes = svg_out.read_bytes()
+    if not svg_path.exists():
+        diff = True
+    else:
+        if check:
+            try:
+                existing_sig = _svg_structure_signature(svg_path.read_bytes())
+                new_sig = _svg_structure_signature(new_bytes)
+                diff = existing_sig != new_sig
+            except Exception:
+                # Malformed existing → diff
+                diff = True
+        else:
+            diff = svg_path.read_bytes() != new_bytes
+    if not check and diff:
+        svg_path.write_bytes(new_bytes)
+    return diff
+
+
 def _regen_one(name: str, build_fn, *, check: bool) -> bool:
     """Regen JSON + PNG (+ PDF for PR 5 goldens) for one composition.
 
@@ -173,15 +246,19 @@ def _regen_one(name: str, build_fn, *, check: bool) -> bool:
     if _composition_has_pdf_golden(name):
         pdf_diff = _regen_one_pdf(name, build_fn, check=check)
 
+    svg_diff = False
+    if _composition_has_svg_golden(name):
+        svg_diff = _regen_one_svg(name, build_fn, check=check)
+
     if check:
-        return snap_diff or png_diff or pdf_diff
+        return snap_diff or png_diff or pdf_diff or svg_diff
 
     if snap_diff:
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
         snap_path.write_text(snap_text, encoding="utf-8")
     if png_diff:
         png_path.write_bytes(new_bytes)
-    return snap_diff or png_diff or pdf_diff
+    return snap_diff or png_diff or pdf_diff or svg_diff
 
 
 def main(argv: list[str] | None = None) -> int:
