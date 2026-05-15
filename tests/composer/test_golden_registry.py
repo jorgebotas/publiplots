@@ -74,3 +74,70 @@ def test_registry_includes_expected_canonical_names():
         "nature-2col-panel-grid",
     }
     assert expected.issubset(names), f"missing: {expected - names}"
+
+
+# ---------------------------------------------------------------------------
+# Task 2: snapshot helper
+# ---------------------------------------------------------------------------
+
+
+def test_round_geometry_rounds_to_tolerance():
+    """_round_geometry(value, tol_mm) snaps to the nearest tolerance step."""
+    from tests.composer.golden._helpers import _round_geometry
+    assert _round_geometry(123.456, 0.01) == 123.46
+    assert _round_geometry(123.454, 0.01) == 123.45
+    assert _round_geometry(0.0, 0.01) == 0.0
+
+
+def test_snapshot_returns_documented_shape():
+    """snapshot(canvas) returns the documented dict shape."""
+    from tests.composer.golden._compositions import COMPOSITIONS
+    from tests.composer.golden._helpers import snapshot
+
+    _, build_fn = COMPOSITIONS[0]  # cell-2col-simple
+    canvas = build_fn()
+    snap = snapshot(canvas)
+
+    assert snap["schema_version"] == 1
+    assert snap["preset"] == "cell-2col"
+    assert isinstance(snap["figure_size_mm"], list) and len(snap["figure_size_mm"]) == 2
+    assert isinstance(snap["rows"], list) and len(snap["rows"]) >= 1
+
+    row0 = snap["rows"][0]
+    assert "panels" in row0
+    assert len(row0["panels"]) == 2  # cell-2col-simple has A, B
+    p0 = row0["panels"][0]
+    assert set(p0.keys()) == {"label", "kind", "size_mm", "bbox_mm"}
+    assert p0["label"] == "A"
+    assert p0["kind"] == "axes"
+    assert isinstance(p0["size_mm"], list) and len(p0["size_mm"]) == 2
+    assert isinstance(p0["bbox_mm"], list) and len(p0["bbox_mm"]) == 4
+
+
+def test_snapshot_is_deterministic():
+    """snapshot(canvas) == snapshot(build_fn()) for the same composition."""
+    from tests.composer.golden._compositions import COMPOSITIONS
+    from tests.composer.golden._helpers import snapshot
+
+    name, build_fn = COMPOSITIONS[0]
+    snap1 = snapshot(build_fn())
+    snap2 = snapshot(build_fn())
+    assert snap1 == snap2, f"{name!r}: snapshot not deterministic"
+
+
+def test_snapshot_values_are_rounded_to_001mm():
+    """All numeric fields in the snapshot are rounded to 0.01 mm."""
+    from tests.composer.golden._compositions import COMPOSITIONS
+    from tests.composer.golden._helpers import snapshot
+
+    _, build_fn = COMPOSITIONS[0]
+    snap = snapshot(build_fn())
+    for v in snap["figure_size_mm"]:
+        # round to 2 dp ↔ 0.01 mm tolerance
+        assert v == round(v, 2)
+    for row in snap["rows"]:
+        for panel in row["panels"]:
+            for v in panel["size_mm"]:
+                assert v == round(v, 2)
+            for v in panel["bbox_mm"]:
+                assert v == round(v, 2)
