@@ -614,6 +614,15 @@ def assert_svg_matches(
                 f"found {len(groups)} publiplots-panel-image-* group(s), "
                 f"expected {n_image}."
             )
+            # Defend against id-uniqueness regressions (SVG ids must be
+            # unique per document; the orchestrator's idx-suffix scheme
+            # guarantees this, but a refactor could break it silently).
+            ids = [g.get("id") for g in groups]
+            assert len(set(ids)) == len(ids), (
+                f"SVG {name!r}: duplicate publiplots-panel-image-* "
+                f"id(s) found: {[i for i in ids if ids.count(i) > 1]}. "
+                f"SVG ids must be unique per document."
+            )
             return
 
         if mode == "render_compare":

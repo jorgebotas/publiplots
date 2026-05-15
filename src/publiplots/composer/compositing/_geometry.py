@@ -133,13 +133,19 @@ def _resolve_svg_units(
 
     def _mm_per_uu_from(attr: str, vb_dim: float) -> "float | None":
         """Resolve mm-per-uu from a width/height attribute. Returns None
-        if the attribute is absent. Raises ComposerVectorError on
-        relative-unit input."""
+        if the attribute is absent or malformed (with warning). Raises
+        ComposerVectorError on relative-unit input."""
         if attr is None:
             return None
         try:
             value, unit = _parse_svg_length(attr)
-        except ValueError:
+        except ValueError as e:
+            warnings.warn(
+                f"SVG width/height attribute {attr!r} is malformed "
+                f"({e}); falling back to viewBox-derived px @ 96 DPI.",
+                UserWarning,
+                stacklevel=4,
+            )
             return None
         if unit in _RELATIVE_UNITS:
             raise ComposerVectorError(

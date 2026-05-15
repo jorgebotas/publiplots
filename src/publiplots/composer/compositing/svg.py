@@ -178,12 +178,12 @@ def _compose_panel_into(
     """
     # Imports lazy: keep _resources's lxml/cairosvg/Pillow imports
     # inside its own functions (mirrors PR 5).
+    import re
     from publiplots.composer.compositing._geometry import (
         _resolve_svg_units,
         compute_svg_transform,
     )
     from publiplots.composer.compositing._resources import (
-        _pillow_to_data_uri,
         load_schematic_as_svg_element,
     )
 
@@ -191,7 +191,15 @@ def _compose_panel_into(
     if raw_label in (None, False):
         label_str = "unlabeled"
     else:
-        label_str = str(raw_label)
+        # Sanitize for SVG id-attribute safety: XML ids must match
+        # [A-Za-z_][\w.\-]*. Replace any other char with `_`; prefix `_`
+        # if the result starts with a digit. Labels like "Panel 1",
+        # "(i)", "a:b" all become valid ids without collision risk
+        # because the wrapper id also carries the panel's idx suffix.
+        sanitized = re.sub(r"[^\w.\-]", "_", str(raw_label))
+        if sanitized and sanitized[0].isdigit():
+            sanitized = f"_{sanitized}"
+        label_str = sanitized or "unlabeled"
     path = panel.image_path
     align = panel.image_align if panel.image_align is not None else "center"
     clip = panel.image_clip if panel.image_clip is not None else "fit"

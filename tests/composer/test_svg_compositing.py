@@ -362,3 +362,40 @@ def test_savefig_svg_byte_deterministic(small_svg, tmp_path):
         "byte-determinism contract broken (svg.hashsalt + metadata={'Date'}"
         " were expected to suffice)."
     )
+
+
+def test_metadata_date_omit_strips_dc_date(small_svg, tmp_path):
+    """`metadata_date='omit'` removes <dc:date> from the output entirely.
+
+    Distinct from the default (`metadata_date=None` → `_DEFAULT_DATE`),
+    which writes a deterministic timestamp; `'omit'` writes nothing.
+    """
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    out = tmp_path / "omit.svg"
+    canvas.savefig(out, metadata_date="omit")
+
+    text = out.read_text(encoding="utf-8")
+    assert "<dc:date>" not in text, (
+        "metadata_date='omit' should strip the <dc:date> element "
+        "entirely; matplotlib treats Date=None as the suppress sentinel."
+    )
+
+
+def test_metadata_date_literal_writes_supplied_value(small_svg, tmp_path):
+    """A literal `metadata_date` string flows through to <dc:date>."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    out = tmp_path / "literal.svg"
+    canvas.savefig(out, metadata_date="2024-12-31T23:59:59")
+
+    text = out.read_text(encoding="utf-8")
+    assert "<dc:date>2024-12-31T23:59:59</dc:date>" in text, (
+        "metadata_date literal should write through to <dc:date>."
+    )

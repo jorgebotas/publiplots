@@ -92,8 +92,6 @@ def _pillow_to_pdf_bytes(
             resolution = float(dpi)
         img.save(buf, format="PDF", resolution=resolution)
         return buf.getvalue()
-    except ComposerVectorError:
-        raise
     except Exception as e:
         raise ComposerVectorError(
             f"Pillow failed to convert {p.name!r}: {e}",
