@@ -193,21 +193,21 @@ src/publiplots/composer/
 
 ### Task 5 — `compositing/svg.py` — `savefig_svg` orchestrator
 
-- [ ] Implement `savefig_svg(figure, path, *, panels, strict_vectors=False, metadata_date=None, **savefig_kwargs)`:
+- [x] Implement `savefig_svg(figure, path, *, panels, strict_vectors=False, metadata_date=None, **savefig_kwargs)`:
   - Step 1: filter `panels` to image kind → `image_panels`.
   - Step 2: render Figure to SVG buffer via `plt.rc_context({"svg.hashsalt": _SVG_HASHSALT})` + `metadata={"Date": metadata_date or _DEFAULT_DATE}`.
   - Step 3: lxml-parse the canvas SVG buffer.
   - Step 4: for each PanelImage, call `_compose_panel_into(canvas_root, panel, strict_vectors=strict_vectors)`.
   - Step 5: serialize via `lxml.etree.tostring(canvas_tree, pretty_print=False, xml_declaration=True, standalone=False)` → write bytes to `path`.
-- [ ] Implement `_compose_panel_into(canvas_root, panel, *, strict_vectors)`:
+- [x] Implement `_compose_panel_into(canvas_root, panel, *, strict_vectors)`:
   - Read `panel.image_path`, `panel.image_align`, `panel.image_clip`, `panel.bbox_mm`, `panel.label`.
   - Try `load_schematic_as_svg_element(path)`. On `ComposerVectorError`: if `strict_vectors=True`, re-raise; else emit `UserWarning` + call `_raster_fallback_to_image_element(path, slot_bbox_mm)`.
   - Compute mm-per-user-unit on the canvas via `_resolve_svg_units(canvas_root)`.
   - Compute transform via `compute_svg_transform(panel.bbox_mm, intrinsic_size_mm, canvas_mm_per_user_unit, align=, clip=)`.
   - Build `<g id="publiplots-panel-image-{idx}-{label_or_unlabeled}" transform="translate({tx}, {ty}) scale({sx}, {sy})">` wrapper, where `idx` is the panel's 0-based position in `image_panels` and `label_or_unlabeled = label if label not in (None, False) else 'unlabeled'`. (Mirrors the PDF orchestrator's `<unlabeled>` precedent at `pdf.py:154` while ensuring SVG `id` uniqueness.) Append the schematic element as a child.
   - Append the `<g>` to `canvas_root`.
-- [ ] Implement `_raster_fallback_to_image_element(path, slot_bbox_mm)` — last-ditch path: open via Pillow → re-save to PNG → base64-encode → build an `<image>` element sized to `slot_bbox_mm` (in canvas user units). On Pillow failure: raise `ComposerVectorError`.
-- [ ] **Failing tests first** in `test_svg_compositing.py`: golden-SVG match (mode=viewbox + structure); strict_vectors=True raises on corrupt SVG; strict_vectors=False warns + emits `<image>`; deterministic byte-equality across two saves.
+- [x] Implement `_raster_fallback_to_image_element(path, slot_bbox_mm)` — last-ditch path: open via Pillow → re-save to PNG → base64-encode → build an `<image>` element sized to `slot_bbox_mm` (in canvas user units). On Pillow failure: raise `ComposerVectorError`.
+- [x] **Failing tests first** in `test_svg_compositing.py`: golden-SVG match (mode=viewbox + structure); strict_vectors=True raises on corrupt SVG; strict_vectors=False warns + emits `<image>`; deterministic byte-equality across two saves.
 
 ### Task 6 — Wire `_save.dispatch_savefig` SVG branch + add `metadata_date` kwarg
 

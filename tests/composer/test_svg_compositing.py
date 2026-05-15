@@ -15,6 +15,32 @@ import pytest
 import publiplots as pp
 from publiplots.composer.exceptions import ComposerVectorError
 
+lxml_etree = pytest.importorskip("lxml.etree")
+
+
+@pytest.fixture
+def small_svg(tmp_path):
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" '
+        'width="40mm" height="30mm" viewBox="0 0 40 30">'
+        '<circle cx="20" cy="15" r="10" fill="red"/>'
+        '<text x="2" y="28" font-size="3">PR6a-svg-marker</text>'
+        '</svg>'
+    )
+    p = tmp_path / "schematic.svg"
+    p.write_text(svg)
+    return p
+
+
+@pytest.fixture
+def small_png(tmp_path):
+    from PIL import Image
+    p = tmp_path / "schematic.png"
+    Image.new("RGB", (300, 200), color="white").save(
+        p, dpi=(300, 300),
+    )
+    return p
+
 
 # ---------------------------------------------------------------------------
 # Task 3 — lxml ImportError → install hint
@@ -48,3 +74,207 @@ def test_no_lxml_raises_install_hint(monkeypatch, tmp_path):
     # broken state.
     monkeypatch.undo()
     importlib.reload(svg_mod)
+
+
+# ---------------------------------------------------------------------------
+# Task 5 — savefig_svg orchestrator
+# ---------------------------------------------------------------------------
+
+def _build_canvas_with_panels(small_svg):
+    """Helper: build + finalize a 2-col canvas with one PanelImage."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=small_svg, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _ = canvas.figure  # force finalization
+    return canvas
+
+
+def _save_svg_directly(canvas, out, **kwargs):
+    """Call savefig_svg directly, bypassing dispatch (Task 6 wires it)."""
+    from publiplots.composer.compositing.svg import savefig_svg
+    savefig_svg(
+        canvas.figure, out,
+        panels=list(canvas._panels_list),
+        strict_vectors=getattr(canvas, "_strict_vectors", False),
+        **kwargs,
+    )
+
+
+def test_savefig_svg_writes_file(small_svg, tmp_path):
+    canvas = _build_canvas_with_panels(small_svg)
+    out = tmp_path / "out.svg"
+    _save_svg_directly(canvas, out)
+    assert out.exists()
+    text = out.read_bytes()
+    assert b"<svg" in text
+
+
+def test_savefig_svg_root_has_viewbox(small_svg, tmp_path):
+    """Output SVG root carries a viewBox in matplotlib's pt-based user units."""
+    canvas = _build_canvas_with_panels(small_svg)
+    out = tmp_path / "out.svg"
+    _save_svg_directly(canvas, out)
+    tree = lxml_etree.parse(str(out))
+    root = tree.getroot()
+    vb = root.get("viewBox")
+    assert vb is not None
+    parts = [float(s) for s in vb.replace(",", " ").split()]
+    assert len(parts) == 4
+    assert parts[2] > 0
+    assert parts[3] > 0
+
+
+def test_savefig_svg_no_panel_images(tmp_path):
+    """A canvas with NO PanelImage panels still saves to SVG (no compositing)."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _ = canvas.figure
+    out = tmp_path / "out.svg"
+    _save_svg_directly(canvas, out)
+    assert out.exists()
+    tree = lxml_etree.parse(str(out))
+    SVG_NS = "http://www.w3.org/2000/svg"
+    groups = tree.getroot().xpath(
+        "//svg:g[starts-with(@id, 'publiplots-panel-image-')]",
+        namespaces={"svg": SVG_NS},
+    )
+    assert groups == []
+
+
+def test_savefig_svg_panel_image_wraps_in_g_with_id(small_svg, tmp_path):
+    """Each PanelImage produces a wrapper <g id='publiplots-panel-image-...'>."""
+    canvas = _build_canvas_with_panels(small_svg)
+    out = tmp_path / "out.svg"
+    _save_svg_directly(canvas, out)
+    tree = lxml_etree.parse(str(out))
+    SVG_NS = "http://www.w3.org/2000/svg"
+    groups = tree.getroot().xpath(
+        "//svg:g[starts-with(@id, 'publiplots-panel-image-')]",
+        namespaces={"svg": SVG_NS},
+    )
+    assert len(groups) == 1
+    assert groups[0].get("id") == "publiplots-panel-image-0-A"
+    transform = groups[0].get("transform")
+    assert "translate(" in transform
+    assert "scale(" in transform
+
+
+def test_savefig_svg_panel_image_unlabeled_id(small_svg, tmp_path):
+    """PanelImage with label=False gets the 'unlabeled' suffix."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label=False, path=small_svg, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _ = canvas.figure
+    out = tmp_path / "out.svg"
+    _save_svg_directly(canvas, out)
+    tree = lxml_etree.parse(str(out))
+    SVG_NS = "http://www.w3.org/2000/svg"
+    groups = tree.getroot().xpath(
+        "//svg:g[starts-with(@id, 'publiplots-panel-image-')]",
+        namespaces={"svg": SVG_NS},
+    )
+    assert len(groups) == 1
+    assert groups[0].get("id") == "publiplots-panel-image-0-unlabeled"
+
+
+def test_savefig_svg_png_panel_uses_image_data_uri(small_png, tmp_path):
+    """PNG-source PanelImage produces an embedded <image> data URI."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", path=small_png, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _ = canvas.figure
+    out = tmp_path / "out.svg"
+    _save_svg_directly(canvas, out)
+    tree = lxml_etree.parse(str(out))
+    SVG_NS = "http://www.w3.org/2000/svg"
+    XLINK_NS = "http://www.w3.org/1999/xlink"
+    images = tree.getroot().xpath(
+        "//svg:g[starts-with(@id, 'publiplots-panel-image-')]//svg:image",
+        namespaces={"svg": SVG_NS},
+    )
+    assert len(images) == 1
+    href = images[0].get(f"{{{XLINK_NS}}}href") or images[0].get("href")
+    assert href is not None
+    assert href.startswith("data:image/png;base64,")
+
+
+def test_savefig_svg_strict_vectors_raises_on_corrupt_svg(tmp_path):
+    """strict_vectors=True + corrupt SVG → ComposerVectorError."""
+    p = tmp_path / "corrupt.svg"
+    p.write_text("not svg <<<")
+    canvas = pp.Canvas("cell-2col", strict_vectors=True)
+    canvas.add_row(
+        pp.PanelImage(label="A", path=p, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _ = canvas.figure
+    from publiplots.composer.compositing.svg import savefig_svg
+    out = tmp_path / "out.svg"
+    with pytest.raises(ComposerVectorError):
+        savefig_svg(
+            canvas.figure, out,
+            panels=list(canvas._panels_list),
+            strict_vectors=True,
+        )
+
+
+def test_savefig_svg_strict_vectors_false_falls_back_with_warning(
+    monkeypatch, tmp_path,
+):
+    """strict_vectors=False + simulated SVG loader failure → UserWarning +
+    raster <image> fallback. The caller's PNG path is the actual fallback
+    target (Pillow can open it)."""
+    import warnings as _w
+    from PIL import Image
+    from publiplots.composer.compositing import _resources as res_mod
+    from publiplots.composer.exceptions import ComposerVectorError
+
+    png_path = tmp_path / "real.png"
+    Image.new("RGB", (200, 200), color="green").save(
+        png_path, dpi=(300, 300),
+    )
+
+    def fake_loader(path, *, label=None):
+        raise ComposerVectorError(
+            "simulated svg load failure",
+            panel_label=str(label) if label not in (None, False) else None,
+            path=str(path),
+            source_error="forced",
+        )
+
+    monkeypatch.setattr(res_mod, "load_schematic_as_svg_element", fake_loader)
+
+    canvas = pp.Canvas("cell-2col", strict_vectors=False)
+    canvas.add_row(
+        pp.PanelImage(label="A", path=png_path, size=(70, 50)),
+        pp.PanelAxes(label="B", size=("flex", 50)),
+    )
+    _ = canvas.figure
+    out = tmp_path / "out.svg"
+    from publiplots.composer.compositing.svg import savefig_svg
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        savefig_svg(
+            canvas.figure, out,
+            panels=list(canvas._panels_list),
+            strict_vectors=False,
+        )
+    assert out.exists()
+    fallback_warnings = [
+        w for w in caught
+        if "vector load" in str(w.message)
+        and "raster" in str(w.message).lower()
+    ]
+    assert fallback_warnings, (
+        f"expected vector-fallback UserWarning; got: "
+        f"{[str(w.message) for w in caught]}"
+    )
