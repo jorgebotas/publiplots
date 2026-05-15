@@ -141,3 +141,41 @@ def test_snapshot_values_are_rounded_to_001mm():
                 assert v == round(v, 2)
             for v in panel["bbox_mm"]:
                 assert v == round(v, 2)
+
+
+# ---------------------------------------------------------------------------
+# Task 3: PNG visual regression
+# ---------------------------------------------------------------------------
+
+
+def test_assert_png_matches_missing_fixture_raises_without_regen(tmp_path, monkeypatch):
+    """Missing PNG without REGEN_ENV → clear AssertionError pointing at regen CLI."""
+    import publiplots as pp
+    from tests.composer.golden import _helpers
+
+    # Redirect golden dir to a temp location for this test.
+    monkeypatch.setattr(_helpers, "PNG_DIR", tmp_path)
+    monkeypatch.delenv(_helpers.REGEN_ENV, raising=False)
+
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(pp.PanelAxes(label="A", size=(70, 50)),
+                   pp.PanelAxes(label="B", size=("flex", 50)))
+
+    with pytest.raises(AssertionError, match=r"regen_fixtures"):
+        _helpers.assert_png_matches(canvas, "missing-name")
+
+
+def test_assert_png_matches_missing_with_regen_writes(tmp_path, monkeypatch):
+    """Missing PNG with REGEN_ENV=1 → writes the file + passes."""
+    import publiplots as pp
+    from tests.composer.golden import _helpers
+
+    monkeypatch.setattr(_helpers, "PNG_DIR", tmp_path)
+    monkeypatch.setenv(_helpers.REGEN_ENV, "1")
+
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(pp.PanelAxes(label="A", size=(70, 50)),
+                   pp.PanelAxes(label="B", size=("flex", 50)))
+
+    _helpers.assert_png_matches(canvas, "regen-test")
+    assert (tmp_path / "regen-test.png").exists()

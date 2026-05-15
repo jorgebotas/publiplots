@@ -241,6 +241,67 @@ def assert_snapshot_matches(
     )
 
 
+def _png_path(name: str) -> Path:
+    return PNG_DIR / f"{name}.png"
+
+
+def assert_png_matches(
+    canvas: pp.Canvas, name: str, *, tol: float = DEFAULT_PNG_TOL,
+    dpi: int = 600,
+) -> None:
+    """Assert canvas-rendered PNG matches committed golden within ``tol``.
+
+    Uses ``matplotlib.testing.compare_images`` for a forgiving byte-level
+    image comparison (``tol=10`` catches gross regressions, not pixel
+    diffs).
+
+    Regen behaviour mirrors :func:`assert_snapshot_matches`: missing
+    fixture + ``PUBLIPLOTS_REGEN_GOLDEN=1`` → write + pass; otherwise
+    fails with the regen-CLI hint.
+    """
+    import tempfile
+    from matplotlib.testing.compare import compare_images
+
+    PNG_DIR.mkdir(parents=True, exist_ok=True)
+    golden_path = _png_path(name)
+
+    # Render the canvas to a temp file at the configured DPI. Don't call
+    # canvas.savefig directly into the golden path even on regen — go
+    # through a temp + write to keep the regen path symmetric.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        actual_path = Path(tmpdir) / f"{name}.png"
+        canvas.savefig(str(actual_path), dpi=dpi)
+
+        if not golden_path.exists():
+            if os.environ.get(REGEN_ENV) == "1":
+                # Idempotent: only write if bytes differ (always differ
+                # when missing, but the helper is reused by regen CLI
+                # which calls in a loop).
+                golden_path.write_bytes(actual_path.read_bytes())
+                return
+            raise AssertionError(
+                f"PNG golden missing for {name!r}. "
+                f"Run `python tools/composer/regen_fixtures.py --only {name}` "
+                f"to create it (or set PUBLIPLOTS_REGEN_GOLDEN=1 and re-run)."
+            )
+
+        # compare_images returns None on match, str message on mismatch.
+        result = compare_images(str(golden_path), str(actual_path), tol=tol)
+        if result is None:
+            return
+
+        if os.environ.get(REGEN_ENV) == "1":
+            golden_path.write_bytes(actual_path.read_bytes())
+            return
+
+        raise AssertionError(
+            f"PNG regression for {name!r} (tol={tol}): {result}\n"
+            f"If the change is intentional, run "
+            f"`python tools/composer/regen_fixtures.py --only {name}` and "
+            f"commit the updated PNG."
+        )
+
+
 # PR 5 territory — declared here to keep the import surface stable.
 def assert_pdf_matches(*args, **kwargs):  # noqa: D401
     """Stub — PR 5 will replace this with the pypdf-based comparator."""
