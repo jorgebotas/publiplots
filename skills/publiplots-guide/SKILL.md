@@ -32,6 +32,8 @@ By plot family:
 ### Composition
 - `pp.JointGrid(data, *, x, y, height=80, ratio=5, space=None)` — three-axes composition: large bivariate main panel + thin top and right marginals (shared axes, hidden corner). Methods `.plot_joint(fn, **kw)` / `.plot_marginals(fn, **kw)` / `.plot(joint_fn, marginal_fn, **kw)` forward to any compatible `pp.*` plot function via `ax=`. Chainable.
 - `pp.jointplot(data, *, x, y, kind='scatter', height=80, ratio=5, space=None, **kw)` — convenience wrapper. `kind` ∈ `{'scatter', 'hex', 'hist', 'kde', 'reg', 'resid'}`. Returns the constructed `JointGrid`. (`'hist'` since 0.11.3 — 2D histogram joint + 1D histogram marginals.)
+- `pp.Canvas(preset, *, width=None, abc=None, strict_vectors=False)` — multi-panel paper figure builder. Stage rows via `canvas.add_row(pp.PanelAxes(...), pp.PanelGrid(...), pp.PanelText(...), pp.PanelImage(...))`. Save via `canvas.savefig('fig.pdf' | 'fig.png')`.
+  - **Vector PDF (PR 5):** `canvas.savefig('fig.pdf')` produces a real vector PDF with embedded vector schematics. PanelImage('path.svg') + PanelImage('path.pdf') stay vector-preserved; PanelImage('path.png') takes a raster fallback. `Canvas(..., strict_vectors=True)` to fail loud on any vector load error.
 
 ### Layout
 - `pp.subplots(nrows, ncols, *, axes_size=(w_mm, h_mm), width_ratios=None, height_ratios=None, sharex, sharey, title_space, xlabel_space, ylabel_space, right, hspace, wspace, outer_pad, **fig_kw)` — the canonical factory. Returns `(fig, axes)` with `plt.subplots`-style squeezing.
