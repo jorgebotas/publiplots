@@ -183,7 +183,22 @@ def _format_snapshot_diff(
             lines.append(f"  row {r}: panel count {len(ep)} → {len(ap)}")
             continue
         for p, (epn, apn) in enumerate(zip(ep, ap)):
-            label = epn.get("label") or apn.get("label") or f"#{p}"
+            e_label = epn.get("label")
+            a_label = apn.get("label")
+            label = e_label if e_label is not None else (
+                a_label if a_label is not None else f"#{p}"
+            )
+            # Non-numeric drift (label change, panel kind change) — name
+            # the field so the diff message points at the cause.
+            if e_label != a_label:
+                lines.append(
+                    f"  row {r} panel #{p} label: {e_label!r} → {a_label!r}"
+                )
+            if epn.get("kind") != apn.get("kind"):
+                lines.append(
+                    f"  row {r} panel {label!r} kind: "
+                    f"{epn.get('kind')!r} → {apn.get('kind')!r}"
+                )
             for field in ("size_mm", "bbox_mm"):
                 ev = epn.get(field, [])
                 av = apn.get(field, [])
@@ -193,7 +208,17 @@ def _format_snapshot_diff(
                             f"  row {r} panel {label!r} {field}[{i}]: "
                             f"{e} → {a} (Δ={a - e:+.3f} mm)"
                         )
-    return "\n".join(lines) if lines else "  (snapshots equal but compared unequal — recheck rounding)"
+    if lines:
+        return "\n".join(lines)
+    # All structured comparisons agreed but the dicts compared unequal —
+    # this should not be reachable, but emit a structural dump as a
+    # safety net rather than an opaque "recheck rounding" message.
+    import pprint
+    return (
+        "  (no field-level drift identified; structural dump:)\n"
+        f"  expected: {pprint.pformat(expected, width=80, compact=True)}\n"
+        f"  actual:   {pprint.pformat(actual, width=80, compact=True)}"
+    )
 
 
 def assert_snapshot_matches(

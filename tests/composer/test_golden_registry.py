@@ -179,3 +179,84 @@ def test_assert_png_matches_missing_with_regen_writes(tmp_path, monkeypatch):
 
     _helpers.assert_png_matches(canvas, "regen-test")
     assert (tmp_path / "regen-test.png").exists()
+
+
+# ---------------------------------------------------------------------------
+# Code-quality fix: _format_snapshot_diff names non-numeric drift
+# ---------------------------------------------------------------------------
+
+
+def _make_snapshot(panels):
+    """Tiny snapshot factory for diff tests."""
+    return {
+        "schema_version": 1,
+        "preset": "cell-2col",
+        "figure_size_mm": [174.0, 80.0],
+        "rows": [{"panels": list(panels)}],
+    }
+
+
+def test_format_snapshot_diff_names_label_drift():
+    """A label change (None → 'A') is named in the diff message."""
+    from tests.composer.golden._helpers import _format_snapshot_diff
+    expected = _make_snapshot([
+        {"label": None, "kind": "axes",
+         "size_mm": [70.0, 50.0], "bbox_mm": [0.0, 0.0, 70.0, 50.0]},
+    ])
+    actual = _make_snapshot([
+        {"label": "A", "kind": "axes",
+         "size_mm": [70.0, 50.0], "bbox_mm": [0.0, 0.0, 70.0, 50.0]},
+    ])
+    msg = _format_snapshot_diff(expected, actual, tol_mm=0.01)
+    assert "label" in msg
+    assert "None" in msg and "'A'" in msg
+
+
+def test_format_snapshot_diff_names_kind_drift():
+    """A kind change (axes → axesgrid) is named in the diff message."""
+    from tests.composer.golden._helpers import _format_snapshot_diff
+    expected = _make_snapshot([
+        {"label": "A", "kind": "axes",
+         "size_mm": [70.0, 50.0], "bbox_mm": [0.0, 0.0, 70.0, 50.0]},
+    ])
+    actual = _make_snapshot([
+        {"label": "A", "kind": "axesgrid",
+         "size_mm": [70.0, 50.0], "bbox_mm": [0.0, 0.0, 70.0, 50.0]},
+    ])
+    msg = _format_snapshot_diff(expected, actual, tol_mm=0.01)
+    assert "kind" in msg
+    assert "axes" in msg and "axesgrid" in msg
+
+
+def test_format_snapshot_diff_no_opaque_fallback_when_drift_named():
+    """When kind/label change is named, the opaque fallback string is NOT in the message."""
+    from tests.composer.golden._helpers import _format_snapshot_diff
+    expected = _make_snapshot([
+        {"label": "A", "kind": "axes",
+         "size_mm": [70.0, 50.0], "bbox_mm": [0.0, 0.0, 70.0, 50.0]},
+    ])
+    actual = _make_snapshot([
+        {"label": "A", "kind": "axesgrid",
+         "size_mm": [70.0, 50.0], "bbox_mm": [0.0, 0.0, 70.0, 50.0]},
+    ])
+    msg = _format_snapshot_diff(expected, actual, tol_mm=0.01)
+    assert "no field-level drift identified" not in msg
+
+
+# ---------------------------------------------------------------------------
+# Code-quality fix: _round_geometry rejects non-positive tol_mm
+# ---------------------------------------------------------------------------
+
+
+def test_round_geometry_rejects_zero_tol():
+    """tol_mm=0 → ValueError (avoids division-by-zero on rounding)."""
+    from tests.composer.golden._helpers import _round_geometry
+    with pytest.raises(ValueError, match=r"tol_mm must be > 0"):
+        _round_geometry(1.0, tol_mm=0)
+
+
+def test_round_geometry_rejects_negative_tol():
+    """tol_mm<0 → ValueError."""
+    from tests.composer.golden._helpers import _round_geometry
+    with pytest.raises(ValueError, match=r"tol_mm must be > 0"):
+        _round_geometry(1.0, tol_mm=-0.01)

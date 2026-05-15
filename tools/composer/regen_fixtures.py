@@ -58,23 +58,6 @@ SNAPSHOT_DIR = _helpers.SNAPSHOT_DIR
 snapshot = _helpers.snapshot
 
 
-def _write_png(name: str, build_fn, dpi: int = 600) -> bool:
-    """Render the canvas to a temp PNG; copy to golden if changed.
-
-    Returns True if the golden was updated (or would be in --check mode).
-    """
-    canvas = build_fn()
-    PNG_DIR.mkdir(parents=True, exist_ok=True)
-    golden = PNG_DIR / f"{name}.png"
-    with tempfile.TemporaryDirectory() as tmpdir:
-        out = Path(tmpdir) / f"{name}.png"
-        canvas.savefig(str(out), dpi=dpi)
-        new_bytes = out.read_bytes()
-    if golden.exists() and golden.read_bytes() == new_bytes:
-        return False
-    return True  # caller decides whether to actually write
-
-
 def _regen_one(name: str, build_fn, *, check: bool) -> bool:
     """Regen JSON + PNG for one composition.
 
