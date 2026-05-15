@@ -144,6 +144,7 @@ class Canvas:
         # PR 1+2 names continue to work.
         self._panels_dict: Dict[str, Panel] = {}
         self._panels_list: List[Panel] = []
+        self._alignments: List = []  # List[_AlignmentRequest]; initialized empty
         self._finalized: bool = False
 
     # ------------------------------------------------------------------
@@ -251,6 +252,89 @@ class Canvas:
                 f"loc must be one of {sorted(VALID_LOCS)}, got {kwargs['loc']!r}"
             )
         self._label_style.update(kwargs)
+
+    # ------------------------------------------------------------------
+    # align — record an explicit alignment override
+    # ------------------------------------------------------------------
+    def align(
+        self,
+        panels,
+        *,
+        edge: str,
+        mode: str = "axes",
+        anchor=None,
+    ) -> None:
+        """Record an alignment request to apply at finalize time.
+
+        Parameters
+        ----------
+        panels : sequence of str
+            Panel labels to align. The labels must match panels staged
+            via add_row (verbatim str labels; abc-resolved auto-letters
+            are NOT yet known at align-time so use canvas[i] indexing
+            via the FIRST panel's verbatim label as the anchor if needed).
+        edge : str
+            One of ``'left'``, ``'right'``, ``'top'``, ``'bottom'``,
+            ``'center_x'``, ``'center_y'``, ``'baseline'``.
+        mode : str, default ``'axes'``
+            ``'axes'`` (axes-bbox edges) or ``'tight'`` (tightbbox edges).
+            PR 3 ships axes-bbox primarily; tight uses the same path
+            until PR 4.5 lands proper tightbbox measurement.
+        anchor : str, optional
+            If given, this panel's edge is the reference. Otherwise the
+            leftmost / rightmost / topmost / bottommost panel's edge wins
+            per edge type.
+
+        Raises
+        ------
+        RuntimeError
+            If the canvas was already finalized.
+        ValueError
+            If the edge or mode is unknown, or if anchor isn't in panels.
+        KeyError
+            If any panel label isn't found among staged rows.
+        """
+        from publiplots.composer.alignment import (
+            VALID_EDGES, VALID_MODES, _AlignmentRequest,
+        )
+        if self._finalized:
+            raise RuntimeError(
+                "Canvas already finalized; align() must be called before "
+                "any figure access (canvas.figure, canvas[...], canvas.savefig)"
+            )
+        if edge not in VALID_EDGES:
+            raise ValueError(
+                f"edge must be one of {sorted(VALID_EDGES)}, got {edge!r}"
+            )
+        if mode not in VALID_MODES:
+            raise ValueError(
+                f"mode must be one of {sorted(VALID_MODES)}, got {mode!r}"
+            )
+        # Verify the panels are known. Walk staged rows for str labels.
+        # (None / False labels aren't addressable by str; users wanting
+        # to align them should give them explicit str labels for now.)
+        known_labels = set()
+        for row in self._rows:
+            for p in row.panels:
+                if isinstance(p.label, str):
+                    known_labels.add(p.label)
+        for p in panels:
+            if p not in known_labels:
+                raise KeyError(
+                    f"panel {p!r} not found among staged rows; "
+                    f"known str-labeled panels: {sorted(known_labels)}"
+                )
+        if anchor is not None and anchor not in panels:
+            raise ValueError(
+                f"anchor must be one of the panels in the request; "
+                f"got anchor={anchor!r}, panels={list(panels)}"
+            )
+        self._alignments.append(_AlignmentRequest(
+            panels=tuple(panels),
+            edge=edge,
+            mode=mode,
+            anchor=anchor,
+        ))
 
     # ------------------------------------------------------------------
     # add_row — stages a row; figure creation is deferred to finalize
@@ -495,6 +579,58 @@ class Canvas:
             title_space=decorations["title_space"],
             xlabel_space=decorations["xlabel_space"],
         )
+
+        # Apply alignment requests (if any). Each shifts panel rects
+        # WITHIN their original slot bounds; raises ComposerAlignmentError
+        # if a shift would exit the slot.
+        if self._alignments:
+            from publiplots.composer.alignment import apply_alignments
+            from publiplots.composer._layout import CanvasGeometry
+
+            # Build dict[label, rect_mm] for label-keyed lookup, plus
+            # the inviolate slot dict. Both start identical (the slot
+            # IS the panel's natural rect from geometry).
+            panel_rects_mm = {}
+            for r_idx, (row, rects_mm) in enumerate(
+                zip(self._rows, geometry.row_axes_rects_mm)
+            ):
+                for c_idx, (panel_input, rect_mm) in enumerate(
+                    zip(row.panels, rects_mm)
+                ):
+                    if isinstance(panel_input.label, str):
+                        panel_rects_mm[panel_input.label] = rect_mm
+            slot_rects_mm = dict(panel_rects_mm)
+
+            updated_rects = apply_alignments(
+                requests=self._alignments,
+                panel_rects_mm=panel_rects_mm,
+                slot_rects_mm=slot_rects_mm,
+            )
+
+            # Re-thread updated rects back into geometry.row_axes_rects_mm
+            # by label match.
+            new_row_rects = []
+            for r_idx, (row, rects_mm) in enumerate(
+                zip(self._rows, geometry.row_axes_rects_mm)
+            ):
+                row_new = []
+                for c_idx, (panel_input, rect_mm) in enumerate(
+                    zip(row.panels, rects_mm)
+                ):
+                    if (
+                        isinstance(panel_input.label, str)
+                        and panel_input.label in updated_rects
+                    ):
+                        row_new.append(updated_rects[panel_input.label])
+                    else:
+                        row_new.append(rect_mm)
+                new_row_rects.append(row_new)
+            # CanvasGeometry is frozen; rebuild it with the updated rects.
+            geometry = CanvasGeometry(
+                canvas_width_mm=geometry.canvas_width_mm,
+                canvas_height_mm=geometry.canvas_height_mm,
+                row_axes_rects_mm=new_row_rects,
+            )
 
         # Create the matplotlib figure at the computed mm size.
         import matplotlib.pyplot as plt
