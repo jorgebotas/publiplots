@@ -192,18 +192,18 @@ src/publiplots/composer/
 
 ### Task 2 — Relax `PanelImage` path-required validation
 
-- [ ] Update `PanelImage.__post_init__` in `panels.py`:
+- [x] Update `PanelImage.__post_init__` in `panels.py`:
   - Change default: `path: Optional[Union[str, Path]] = None` (was `""`).
   - When `self.path is None`: skip extension/exists validation entirely; do NOT call `object.__setattr__` to normalize.
   - When `self.path` is provided: existing path validation (ext, exists, normalize to `Path`).
   - Document the new contract: `path=None` is the "unfilled" sentinel; must be paired with `canvas.embed_figure(label, fig)` before savefig.
-- [ ] Add `embedded_figure: Optional[Any] = None` field to `Panel` result dataclass (`Any` to avoid matplotlib import in `panels.py` even though matplotlib types appear elsewhere — keep panels.py minimal-import).
-- [ ] Change `Panel.image_path` type to `Optional[Path] = None` (was `Optional[Any] = None`); explicitly accept `None` as the "unfilled" sentinel.
-- [ ] **Failing tests first** in `test_panel_image.py`:
+- [x] Add `embedded_figure: Optional[Any] = None` field to `Panel` result dataclass (`Any` to avoid matplotlib import in `panels.py` even though matplotlib types appear elsewhere — keep panels.py minimal-import).
+- [x] Change `Panel.image_path` type to `Optional[Path] = None` (was `Optional[Any] = None`); explicitly accept `None` as the "unfilled" sentinel.
+- [x] **Failing tests first** in `test_panel_image.py`:
   - `test_panel_image_no_path_construction_legal` — `pp.PanelImage(label='A', size=(70,40))` succeeds; `record.path is None`.
   - `test_panel_image_path_validates_when_provided` — existing extension/exists validation still bites when path IS provided.
   - `test_panel_image_empty_string_path_still_rejected` — explicitly passing `path=""` raises (the deliberate `""` sentinel was the architect-found bug; reject it loudly so users don't develop reliance on the broken behavior).
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 3 — Add `embedded_figure` branch to `Panel` finalization
 

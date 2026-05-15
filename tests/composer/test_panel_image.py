@@ -138,6 +138,71 @@ def test_panel_image_size_validation_propagates(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# PR 6b: empty-path PanelImage construction (path=None) is legal
+# ---------------------------------------------------------------------------
+
+def test_panel_image_no_path_construction_legal():
+    """PR 6b: ``PanelImage(label='A', size=(70,40))`` is legal — path=None
+    is the unfilled-slot sentinel paired with ``canvas.embed_figure``."""
+    panel = PanelImage(label="A", size=(70, 40))
+    assert panel.path is None
+    assert panel.size == (70.0, 40.0)
+    assert panel.align == "center"
+    assert panel.clip == "fit"
+
+
+def test_panel_image_path_validates_when_provided(tmp_path):
+    """PR 6b: ext + exists validation still bites when path IS provided."""
+    p = tmp_path / "schematic.eps"
+    p.write_text("dummy")
+    with pytest.raises(ValueError, match=r"unsupported.*\.eps"):
+        PanelImage(label="A", path=p, size=(40.0, 30.0))
+
+
+def test_panel_image_empty_string_path_still_rejected():
+    """PR 6b: explicitly passing ``path=''`` is still rejected (the
+    pre-PR 6b sentinel ``Path('')`` resolved to ``PosixPath('.')`` which
+    is the architect-found bug). Force users onto ``path=None`` for
+    unfilled slots so the contract is explicit."""
+    with pytest.raises(ValueError, match=r"PanelImage.*path"):
+        PanelImage(label="A", path="", size=(40.0, 30.0))
+
+
+def test_panel_image_path_none_explicit_legal():
+    """``PanelImage(label='A', path=None, size=(70,40))`` is also legal —
+    explicit ``None`` is the canonical unfilled marker."""
+    panel = PanelImage(label="A", path=None, size=(70, 40))
+    assert panel.path is None
+
+
+def test_panel_image_no_path_with_align_and_clip():
+    """``align`` and ``clip`` validation still applies on unfilled slots."""
+    panel = PanelImage(label="A", size=(70, 40), align="top", clip="fill")
+    assert panel.align == "top"
+    assert panel.clip == "fill"
+
+
+def test_panel_image_no_path_invalid_align_raises():
+    """``align`` is validated regardless of path presence."""
+    with pytest.raises(ValueError, match=r"align.*invalid"):
+        PanelImage(label="A", size=(70, 40), align="middle")
+
+
+def test_panel_result_carries_embedded_figure_field():
+    """The Panel result dataclass exposes ``embedded_figure`` (None default)."""
+    from publiplots.composer.panels import Panel
+    p = Panel(
+        label="A",
+        kind="image",
+        ax=None,
+        size_mm=(70.0, 40.0),
+        bbox_mm=(0.0, 0.0, 70.0, 40.0),
+    )
+    assert p.embedded_figure is None
+    assert p.image_path is None
+
+
+# ---------------------------------------------------------------------------
 # _resources.load_schematic_as_pdf_bytes
 # ---------------------------------------------------------------------------
 
