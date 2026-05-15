@@ -238,3 +238,118 @@ class PanelText:
                     f"label_style must be a Mapping or None, "
                     f"got {type(self.label_style).__name__}"
                 )
+
+
+_VALID_SHARE = frozenset({True, False, "all", "row", "col", "none"})
+
+
+@dataclass(frozen=True)
+class PanelGrid:
+    """Input record for an axes-grid panel.
+
+    A sub-grid of axes laid out inside the panel's mm rect. The panel's
+    outer dimensions are computed from ``shape`` and ``axes_size`` plus
+    inter-cell spacing — there is no ``size`` kwarg.
+
+    Parameters
+    ----------
+    label : str, None, or False
+        Caption-addressable identifier. Same contract as :class:`PanelAxes`.
+    shape : tuple of (nrows, ncols)
+        Inner grid shape. Both must be positive integers.
+    axes_size : tuple of (width_mm, height_mm)
+        Per-cell axes mm dimensions. Both must be positive floats.
+        ``'flex'`` is NOT supported here (would require resolving inside
+        the panel's slot, which complicates the geometry; users can
+        compute the per-cell width from the available slot mm by hand
+        if they need it).
+    sharex, sharey : bool or {'all', 'row', 'col', 'none'}, default False
+        Axis-sharing semantics, matching :func:`matplotlib.pyplot.subplots`.
+    hspace, wspace : float, default 2.0 mm
+        Inter-cell spacing in millimeters.
+    label_style : Mapping or None, default None
+        Per-panel label_style override.
+
+    Notes
+    -----
+    Frozen dataclass — instances are immutable and hashable.
+
+    The panel's outer mm rect is exposed via :attr:`size_mm`:
+    ``(ncols*w + (ncols-1)*wspace, nrows*h + (nrows-1)*hspace)``.
+    """
+
+    label: Any
+    shape: Tuple[int, int]
+    axes_size: Tuple[float, float]
+    sharex: Any = False
+    sharey: Any = False
+    hspace: float = 2.0
+    wspace: float = 2.0
+    label_style: Optional[Mapping[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        _validate_panel_label(self.label)
+
+        # shape: 2-tuple of positive ints
+        try:
+            ns = len(self.shape)
+        except TypeError:
+            raise ValueError(
+                f"shape must be a 2-tuple of (nrows, ncols), got {self.shape!r}"
+            )
+        if ns != 2:
+            raise ValueError(
+                f"shape must be a 2-tuple of (nrows, ncols), got length {ns}"
+            )
+        nr, nc = self.shape
+        for name, v in (("nrows", nr), ("ncols", nc)):
+            if not isinstance(v, int) or isinstance(v, bool) or v <= 0:
+                raise ValueError(
+                    f"shape must be (positive int, positive int); "
+                    f"{name}={v!r} is not a positive int"
+                )
+
+        # axes_size: 2-tuple of positive numerics, NO flex
+        normalized_axes = _validate_panel_size(
+            self.axes_size, allow_flex_width=False
+        )
+        nw, nh = normalized_axes
+        # _validate_panel_size with allow_flex_width=False raises on
+        # 'flex' string; nw should always be float here.
+        if isinstance(nw, str):  # paranoia
+            raise ValueError(
+                f"axes_size width must be numeric (no 'flex' for grid), got {nw!r}"
+            )
+        object.__setattr__(self, "axes_size", (float(nw), nh))
+
+        # sharex/sharey
+        for name, v in (("sharex", self.sharex), ("sharey", self.sharey)):
+            if v not in _VALID_SHARE:
+                raise ValueError(
+                    f"{name} must be bool or one of 'all'/'row'/'col'/'none', "
+                    f"got {v!r}"
+                )
+
+        # hspace/wspace: non-negative numerics
+        for name, v in (("hspace", self.hspace), ("wspace", self.wspace)):
+            if not isinstance(v, (int, float)) or isinstance(v, bool) or v < 0:
+                raise ValueError(
+                    f"{name} must be a non-negative number, got {v!r}"
+                )
+
+        # label_style
+        if self.label_style is not None:
+            if not hasattr(self.label_style, "keys"):
+                raise TypeError(
+                    f"label_style must be a Mapping or None, "
+                    f"got {type(self.label_style).__name__}"
+                )
+
+    @property
+    def size_mm(self) -> Tuple[float, float]:
+        """Outer mm rect computed from shape + axes_size + spacing."""
+        nr, nc = self.shape
+        w, h = self.axes_size
+        outer_w = nc * w + max(nc - 1, 0) * self.wspace
+        outer_h = nr * h + max(nr - 1, 0) * self.hspace
+        return (outer_w, outer_h)
