@@ -1383,5 +1383,6 @@ class Canvas:
             cmyk=cmyk,
             tiff_compression=tiff_compression,
             external_raster=external_raster,
+            canvas=self,
             **kwargs,
         )

@@ -725,3 +725,123 @@ def test_check_decoration_overflow_message_contains_actionable_hints():
     assert "left" in msg
     assert "anchor='figure'" in msg
     assert "PR 6d" in msg
+
+
+# ---------------------------------------------------------------------------
+# PR 6c Task 4 — pdf compositing anchor='axes' branch
+# ---------------------------------------------------------------------------
+
+def _build_compact_side_fig():
+    """A pp.subplots-built side fig sized to fit within cell-2col Panel B's
+    decoration budget (left=15, right=4, top=7, bottom=10 mm). Use
+    no labels and tight axes so the post-scale decoration extents stay
+    < 0.5 mm even when the axes are scaled to a 70x50 mm slot."""
+    fig, ax = pp.subplots(axes_size=(40, 30))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    # Strip ticks/labels so decoration extents are negligible.
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    return fig
+
+
+def test_savefig_pdf_anchor_axes_writes_file(tmp_path):
+    """Smoke: anchor='axes' produces a valid PDF (full pipeline runs)."""
+    import matplotlib.pyplot as plt
+
+    fig = _build_compact_side_fig()
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig, anchor="axes")
+        out = tmp_path / "out.pdf"
+        canvas.savefig(out)
+    finally:
+        plt.close(fig)
+    assert out.exists()
+    assert out.read_bytes().startswith(b"%PDF-")
+
+
+def test_savefig_pdf_anchor_axes_overflow_raises(tmp_path):
+    """Side fig with absurdly oversized ylabel + thin slot → overflow
+    raise BEFORE write."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.exceptions import ComposerVectorError
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    ax.set_ylabel("y" * 100, fontsize=30)
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig, anchor="axes")
+        out = tmp_path / "out.pdf"
+        with pytest.raises(ComposerVectorError, match=r"overflow"):
+            canvas.savefig(out)
+    finally:
+        plt.close(fig)
+
+
+def test_savefig_pdf_anchor_axes_aligns_axes_data(tmp_path):
+    """Panel A (PanelAxes) and Panel B (embed_figure(anchor='axes'))
+    have matching axes-data y-extents on the canvas: Panel A's matplotlib
+    axes-position bbox should align with Panel B's slot bbox (because B's
+    slot rect IS the side figure's axes-data box under anchor='axes').
+
+    Verifies the axes-data alignment contract via canvas-level positions
+    (no rasterization needed; the contract is purely geometric).
+    """
+    import matplotlib.pyplot as plt
+
+    fig = _build_compact_side_fig()
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig, anchor="axes")
+        out = tmp_path / "out.pdf"
+        canvas.savefig(out)
+        # Panel A's bbox_mm IS the axes-data rect (per _layout.py).
+        a_bbox = canvas["A"].bbox_mm
+        b_bbox = canvas["B"].bbox_mm
+    finally:
+        plt.close(fig)
+    # Same row → same y_bottom + h.
+    assert a_bbox[1] == pytest.approx(b_bbox[1], abs=1e-6)
+    assert a_bbox[3] == pytest.approx(b_bbox[3], abs=1e-6)
+
+
+def test_savefig_pdf_anchor_axes_byte_deterministic(tmp_path):
+    """Two renders with anchor='axes' produce byte-identical PDFs."""
+    import matplotlib.pyplot as plt
+
+    def build():
+        fig = _build_compact_side_fig()
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig, anchor="axes")
+        return canvas, fig
+
+    canvas1, fig1 = build()
+    out1 = tmp_path / "a.pdf"
+    canvas1.savefig(out1)
+    plt.close(fig1)
+
+    canvas2, fig2 = build()
+    out2 = tmp_path / "b.pdf"
+    canvas2.savefig(out2)
+    plt.close(fig2)
+
+    assert out1.read_bytes() == out2.read_bytes()
