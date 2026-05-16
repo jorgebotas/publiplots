@@ -329,3 +329,115 @@ def test_render_figure_to_svg_bytes_pp_subplots_deterministic_100x():
             f"render_figure_to_svg_bytes is non-deterministic for "
             f"pp.subplots-built figures: render #{i} drifted from #0."
         )
+
+
+# ---------------------------------------------------------------------------
+# PR 6c Task 1 — Panel.embedded_figure_anchor + Canvas._panel_decoration_budget_mm
+# ---------------------------------------------------------------------------
+
+def test_panel_embedded_figure_anchor_default_is_figure():
+    """Panel result dataclass defaults ``embedded_figure_anchor='figure'``
+    so PR 6b's existing behavior is preserved when the new field is unset.
+    """
+    from publiplots.composer.panels import Panel
+    panel = Panel(
+        label="X", kind="image", ax=None,
+        size_mm=(70.0, 50.0), bbox_mm=(0.0, 0.0, 70.0, 50.0),
+    )
+    assert panel.embedded_figure_anchor == "figure"
+
+
+def test_panel_embedded_figure_anchor_axes_value():
+    """The Panel field accepts ``'axes'`` as a value (frozen dataclass)."""
+    from publiplots.composer.panels import Panel
+    panel = Panel(
+        label="X", kind="image", ax=None,
+        size_mm=(70.0, 50.0), bbox_mm=(0.0, 0.0, 70.0, 50.0),
+        embedded_figure_anchor="axes",
+    )
+    assert panel.embedded_figure_anchor == "axes"
+
+
+def test_panel_decoration_budget_mm_panel_a_in_cell_2col():
+    """For Panel A (left column, cell-2col), the budget on each side
+    matches the canvas's reservation around its bbox.
+
+    cell-2col: outer_pad=2, hpad=3, ylabel_space=10, right=2,
+    title_space=5, xlabel_space=8.
+    Panel A bbox=(12, 10, 70, 50); canvas=(171, 67); first row → vpad=0.
+      - left:   x_left=12 (canvas edge at 0) → 12 mm = outer_pad+ylabel_space.
+      - right:  panel B starts at x=97 (gap=15 between A's right edge 82
+                and B's left edge 97).
+      - top:    canvas top - panel top edge = 67 - 60 = 7 mm.
+      - bottom: panel bottom - canvas bottom = 10 - 0 = 10 mm.
+    """
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    panel_a = canvas["A"]
+    budget = canvas._panel_decoration_budget_mm(panel_a)
+    assert set(budget.keys()) == {"left", "right", "top", "bottom"}
+    assert budget["left"] == pytest.approx(12.0, abs=1e-6)
+    assert budget["right"] == pytest.approx(15.0, abs=1e-6)
+    assert budget["top"] == pytest.approx(7.0, abs=1e-6)
+    assert budget["bottom"] == pytest.approx(10.0, abs=1e-6)
+
+
+def test_panel_decoration_budget_mm_panel_b_in_cell_2col():
+    """Panel B (right column, cell-2col): budget mirrors A on left but
+    sees the canvas right edge on the right.
+      - left:   gap to A's right edge (15 mm).
+      - right:  canvas right edge (4 mm = right + outer_pad).
+      - top/bottom: same as A.
+    """
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    panel_b = canvas["B"]
+    budget = canvas._panel_decoration_budget_mm(panel_b)
+    assert budget["left"] == pytest.approx(15.0, abs=1e-6)
+    assert budget["right"] == pytest.approx(4.0, abs=1e-6)
+    assert budget["top"] == pytest.approx(7.0, abs=1e-6)
+    assert budget["bottom"] == pytest.approx(10.0, abs=1e-6)
+
+
+def test_panel_decoration_budget_mm_two_panel_row_meets_at_hpad():
+    """A's right budget + B's left budget == 2× the gap between them
+    (each panel sees the full geometric gap as its budget; PR 6c is
+    intentionally permissive — overlapping decorations would be
+    diagnosed at render time, not pre-empted by halving the budget)."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    a_budget = canvas._panel_decoration_budget_mm(canvas["A"])
+    b_budget = canvas._panel_decoration_budget_mm(canvas["B"])
+    # Both panels see the same 15 mm gap on the side facing each other.
+    assert a_budget["right"] == pytest.approx(b_budget["left"], abs=1e-6)
+
+
+def test_panel_decoration_budget_mm_panel_image_kind_returns_same_shape():
+    """PanelImage and PanelAxes get the same budget dict shape; for
+    matched bboxes the values match too (the helper is panel-kind-
+    agnostic — it only reads bbox_mm + canvas geometry)."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelImage(label="A", size=(70, 50)),
+        pp.PanelAxes(label="B", size=(70, 50)),
+    )
+    a_image_budget = canvas._panel_decoration_budget_mm(canvas["A"])
+
+    canvas2 = pp.Canvas("cell-2col")
+    canvas2.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelAxes(label="B", size=(70, 50)),
+    )
+    a_axes_budget = canvas2._panel_decoration_budget_mm(canvas2["A"])
+
+    # Same slot position → same budget regardless of panel kind.
+    assert a_image_budget == a_axes_budget

@@ -137,17 +137,17 @@ src/publiplots/composer/
 
 ### Task 1 — `Panel.embedded_figure_anchor` field + `Canvas._panel_decoration_budget_mm` accessor
 
-- [ ] Add `embedded_figure_anchor: str = 'figure'` to `Panel` result dataclass in `panels.py` (frozen dataclass; default preserves PR 6b behavior).
-- [ ] Add `Canvas._panel_decoration_budget_mm(self, panel) → Dict[str, float]` accessor in `canvas.py`. Returns `{'left', 'right', 'top', 'bottom'}` — mm available for decoration overflow on each side of `panel.bbox_mm` before colliding with adjacent panels or canvas edges. Read from the cached `CanvasGeometry` (computed during `_finalize_if_needed`).
+- [x] Add `embedded_figure_anchor: str = 'figure'` to `Panel` result dataclass in `panels.py` (frozen dataclass; default preserves PR 6b behavior).
+- [x] Add `Canvas._panel_decoration_budget_mm(self, panel) → Dict[str, float]` accessor in `canvas.py`. Returns `{'left', 'right', 'top', 'bottom'}` — mm available for decoration overflow on each side of `panel.bbox_mm` before colliding with adjacent panels or canvas edges. Read from the cached `CanvasGeometry` (computed during `_finalize_if_needed`).
   - `left` budget = (panel.bbox_mm.x_left) − (left-neighbor's right edge OR canvas left edge). For Panel A in cell-2col, the left budget is the canvas's `outer_pad_left` + `ylabel_space` reservation.
   - `right` budget = analogous on the right.
   - `top` budget = (canvas_height_mm − panel.y_bottom − panel.h_mm) reservation; or the gap between this panel's top edge and the row above.
   - `bottom` budget = analogous on the bottom.
-- [ ] **Failing tests first** in `test_embed_figure.py`:
+- [x] **Failing tests first** in `test_embed_figure.py`:
   - `test_panel_decoration_budget_mm_panel_axes_matches_canvas_margins` — for a PanelAxes in cell-2col, the budget on left equals the canvas's `outer_pad + ylabel_space` reservation.
   - `test_panel_decoration_budget_mm_two_panel_row` — for a 2-panel row, the right edge of Panel A's `right` budget meets the left edge of Panel B's `left` budget (with `hpad_mm` between).
   - `test_panel_decoration_budget_mm_panel_image_returns_same_as_axes` — PanelImage and PanelAxes get identical budget shapes for the same slot position.
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 2 — `Canvas.embed_figure` `anchor=` kwarg
 

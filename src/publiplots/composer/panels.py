@@ -194,6 +194,13 @@ class Panel:
     # matplotlib (panels.py is consumed by tests that only validate
     # input dataclasses without touching matplotlib).
     embedded_figure: Optional[Any] = None
+    # PR 6c: anchor mode for an embedded figure. ``'figure'`` (PR 6b
+    # default, kept for back-compat) scales the side figure's outer
+    # mediabox to fit the slot rect. ``'axes'`` anchors the side
+    # figure's axes-data box to the slot rect, letting decorations
+    # spill into the canvas's surrounding margin reservation. Set via
+    # ``Canvas.embed_figure(label, fig, anchor=...)``.
+    embedded_figure_anchor: str = "figure"
 
 
 @dataclass(frozen=True)
