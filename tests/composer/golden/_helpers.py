@@ -54,6 +54,10 @@ SNAPSHOT_DIR = GOLDEN_DIR / "mm_snapshots"
 PNG_DIR = GOLDEN_DIR / "png"
 PDF_DIR = GOLDEN_DIR / "pdf"
 SVG_DIR = GOLDEN_DIR / "svg"
+# PR 6c: PNG sidecars rasterized from the PDF goldens at 200 DPI for
+# the visual-regression check (catches anchor='axes' style breakage
+# that mediabox/structure modes miss).
+VISUAL_PNG_DIR = GOLDEN_DIR / "png_from_pdf"
 
 REGEN_ENV = "PUBLIPLOTS_REGEN_GOLDEN"
 SCHEMA_VERSION = 1
@@ -329,9 +333,17 @@ def assert_png_matches(
         )
 
 
+def _visual_png_path(name: str) -> Path:
+    """Return the canonical sidecar PNG path for a visual-regression
+    golden (rasterized from the PDF golden at 200 DPI). Used by
+    :func:`assert_pdf_matches` ``mode='visual'``."""
+    return VISUAL_PNG_DIR / f"{name}.png"
+
+
 def assert_pdf_matches(
     canvas: pp.Canvas, name: str, *, mode: str = "mediabox",
     tol_pt: float = 0.5, tol_image: float = 20,
+    tol_visual: float = 10,
 ) -> None:
     """Assert canvas-rendered PDF matches the committed golden.
 
@@ -347,6 +359,14 @@ def assert_pdf_matches(
     'render_compare'
         Rasterize both the produced PDF and the golden via Pillow at
         200 DPI; compare via ``compare_images`` with ``tol=tol_image``.
+    'visual' (PR 6c)
+        Rasterize the produced PDF via ``pdftocairo`` at 200 DPI and
+        compare against the committed sidecar PNG at
+        ``tests/composer/golden/png_from_pdf/<name>.png`` with
+        ``compare_images(tol=tol_visual)``. Skips via ``pytest.skip``
+        if no PDF rasterizer is available. Catches PR 6b-style visual
+        regressions where structural tests pass but the render is
+        broken.
 
     Regen behaviour mirrors :func:`assert_snapshot_matches` and
     :func:`assert_png_matches`.
@@ -440,9 +460,51 @@ def assert_pdf_matches(
                 f"Run `python tools/composer/regen_fixtures.py --only {name}`."
             )
 
+        if mode == "visual":
+            # Skip cleanly when poppler isn't installed (CI parity
+            # with PR 6a's render_compare).
+            import pytest as _pytest
+            if not _pdf_rasterizer_available():
+                _pytest.skip(
+                    "pdftocairo / pdf2image not available; "
+                    "mode='visual' skipped."
+                )
+            from matplotlib.testing.compare import compare_images
+            VISUAL_PNG_DIR.mkdir(parents=True, exist_ok=True)
+            visual_golden = _visual_png_path(name)
+            actual_png = Path(tmpdir) / f"{name}-actual.png"
+            _rasterize_pdf(actual, actual_png, dpi=200)
+            if not visual_golden.exists():
+                if os.environ.get(REGEN_ENV) == "1":
+                    visual_golden.write_bytes(actual_png.read_bytes())
+                    return
+                raise AssertionError(
+                    f"Visual-regression PNG missing for {name!r}. "
+                    f"Run `python tools/composer/regen_fixtures.py "
+                    f"--only {name} --rasterize-pdf-goldens` to create "
+                    f"it (or set PUBLIPLOTS_REGEN_GOLDEN=1 and re-run)."
+                )
+            result = compare_images(
+                str(visual_golden), str(actual_png), tol=tol_visual,
+            )
+            if result is None:
+                return
+            if os.environ.get(REGEN_ENV) == "1":
+                visual_golden.write_bytes(actual_png.read_bytes())
+                return
+            raise AssertionError(
+                f"PDF visual regression for {name!r} "
+                f"(tol_visual={tol_visual}): {result}\n"
+                f"If the change is intentional, run "
+                f"`python tools/composer/regen_fixtures.py "
+                f"--only {name} --rasterize-pdf-goldens` and commit "
+                f"the updated PNG."
+            )
+
         raise ValueError(
             f"assert_pdf_matches: unknown mode={mode!r}. "
-            f"Expected 'mediabox', 'structure', or 'render_compare'."
+            f"Expected 'mediabox', 'structure', 'render_compare', "
+            f"or 'visual'."
         )
 
 
