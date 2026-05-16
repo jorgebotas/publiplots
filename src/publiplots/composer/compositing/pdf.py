@@ -202,13 +202,36 @@ def _compose_panel_onto(
         # 4. Render side figure to deterministic PDF bytes (idempotent
         # settle inside).
         pdf_bytes = render_figure_to_pdf_bytes(embedded_figure)
-        # 5. Compute transform: scale = slot_pt / axes_bbox_pt;
-        # translate so that axes_bbox_pt's bottom-left maps to the
-        # slot's bottom-left in canvas pt.
-        slot_x_pt = bbox_mm[0] * MM2PT
-        slot_y_pt = bbox_mm[1] * MM2PT
-        slot_w_pt = bbox_mm[2] * MM2PT
-        slot_h_pt = bbox_mm[3] * MM2PT
+        # 5. Compute transform. The slot mm coords are based on the
+        # canvas's INTENDED dims (panel.bbox_mm was finalized before
+        # SubplotsAutoLayout settled the canvas figure). Matplotlib
+        # may have shrunk the canvas at savefig time; we read the
+        # actual post-settle page mediabox dims from target_page and
+        # rescale slot rect to fraction-space, then back to canvas pt
+        # using the post-settle mediabox. This keeps Panel B's slot
+        # in the same fraction-of-canvas space as Panel A's
+        # matplotlib-fraction position (axes-data alignment).
+        if canvas is not None and canvas._geometry is not None:
+            intended_canvas_w_mm = canvas._geometry.canvas_width_mm
+            intended_canvas_h_mm = canvas._geometry.canvas_height_mm
+        else:
+            # Best effort: assume mediabox matches intended.
+            mb = target_page.mediabox
+            intended_canvas_w_mm = float(mb.width) / MM2PT
+            intended_canvas_h_mm = float(mb.height) / MM2PT
+        # Slot in canvas-fraction (bottom-up matches PDF y).
+        slot_x_frac = bbox_mm[0] / intended_canvas_w_mm
+        slot_y_frac = bbox_mm[1] / intended_canvas_h_mm
+        slot_w_frac = bbox_mm[2] / intended_canvas_w_mm
+        slot_h_frac = bbox_mm[3] / intended_canvas_h_mm
+        # Slot in post-settle canvas pt.
+        mb = target_page.mediabox
+        canvas_w_pt = float(mb.width)
+        canvas_h_pt = float(mb.height)
+        slot_x_pt = slot_x_frac * canvas_w_pt
+        slot_y_pt = slot_y_frac * canvas_h_pt
+        slot_w_pt = slot_w_frac * canvas_w_pt
+        slot_h_pt = slot_h_frac * canvas_h_pt
         axes_left_pt, axes_bottom_pt, axes_w_pt, axes_h_pt = axes_bbox_pt
         if axes_w_pt <= 0 or axes_h_pt <= 0:
             # Degenerate side fig — treat like 'figure' anchor as a

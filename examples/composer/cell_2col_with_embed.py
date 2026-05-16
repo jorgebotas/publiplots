@@ -33,8 +33,11 @@ def main() -> None:
     canvas["A"].ax.set_ylabel("y")
 
     # Build the side figure independently — could come from any helper
-    # that returns a matplotlib Figure.
-    side_fig, side_ax = pp.subplots(axes_size=(40, 30))
+    # that returns a matplotlib Figure. Match the axes_size to Panel B's
+    # slot size (70 x 50 mm) so anchor='axes' applies a 1:1 transform —
+    # the side figure's xlabel/ylabel/title land exactly in the canvas's
+    # surrounding margin allocation.
+    side_fig, side_ax = pp.subplots(axes_size=(70, 50))
     x = np.linspace(0, 4 * np.pi, 200)
     side_ax.plot(x, np.sin(x), label=r"$\sin(x)$")
     side_ax.plot(x, np.cos(x), label=r"$\cos(x)$")
@@ -42,8 +45,10 @@ def main() -> None:
     side_ax.set_ylabel("y")
     side_ax.legend(loc="lower left")
 
-    # Wire the side figure into Panel B.
-    canvas.embed_figure("B", side_fig)
+    # Wire the side figure into Panel B with anchor='axes' so the side
+    # figure's axes-data box aligns vertically + horizontally with
+    # Panel A's matplotlib axes-data box (paper-figure axis alignment).
+    canvas.embed_figure("B", side_fig, anchor="axes")
 
     out_dir = Path(__file__).resolve().parents[2] / "docs" / "images" / "composer"
     out_dir.mkdir(parents=True, exist_ok=True)
