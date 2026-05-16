@@ -490,3 +490,238 @@ def test_embed_figure_anchor_invalid_raises(side_figure):
     )
     with pytest.raises(ValueError, match=r"anchor=.*invalid.*'figure'.*'axes'"):
         canvas.embed_figure("B", side_figure, anchor="invalid")
+
+
+# ---------------------------------------------------------------------------
+# PR 6c Task 3 — extract_side_axes_bbox + check_decoration_overflow helpers
+# ---------------------------------------------------------------------------
+
+def test_extract_side_axes_bbox_single_axes():
+    """Happy path: single primary axes; returned bbox is positive,
+    nested inside the figure's mediabox in pt."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+    )
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    try:
+        _settle_subplots_auto_layout(fig)
+        left_pt, bottom_pt, w_pt, h_pt = extract_side_axes_bbox(fig)
+    finally:
+        plt.close(fig)
+    fig_w_pt = 2.0 * 72.0
+    fig_h_pt = 1.5 * 72.0
+    assert 0 < left_pt < fig_w_pt
+    assert 0 < bottom_pt < fig_h_pt
+    assert 0 < w_pt < fig_w_pt
+    assert 0 < h_pt < fig_h_pt
+    # The axes-data rect cannot exceed the mediabox.
+    assert left_pt + w_pt <= fig_w_pt + 1e-6
+    assert bottom_pt + h_pt <= fig_h_pt + 1e-6
+
+
+def test_extract_side_axes_bbox_returns_full_mediabox_when_no_axes():
+    """Empty figure: degenerate fallback returns the full mediabox."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import extract_side_axes_bbox
+
+    fig = plt.figure(figsize=(2.0, 1.5))
+    try:
+        left_pt, bottom_pt, w_pt, h_pt = extract_side_axes_bbox(fig)
+    finally:
+        plt.close(fig)
+    assert left_pt == 0.0
+    assert bottom_pt == 0.0
+    assert w_pt == pytest.approx(2.0 * 72.0, abs=1e-6)
+    assert h_pt == pytest.approx(1.5 * 72.0, abs=1e-6)
+
+
+def test_extract_side_axes_bbox_multi_axes_uses_union_for_subplots_sharex():
+    """``plt.subplots(nrows=2, sharex=True)``: the returned bbox unions
+    BOTH rows. CRITICAL: this is the architect-flagged twin-vs-shared
+    case where ``get_shared_x_axes`` would have collapsed both rows
+    incorrectly. The position-rect dedup keeps disjoint shared-x rects
+    separate."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+    )
+
+    fig, axes = plt.subplots(nrows=2, sharex=True, figsize=(2.0, 1.5))
+    axes[0].plot([1, 2, 3], [4, 5, 6])
+    axes[1].plot([1, 2, 3], [3, 2, 1])
+    try:
+        _settle_subplots_auto_layout(fig)
+        left_pt, bottom_pt, w_pt, h_pt = extract_side_axes_bbox(fig)
+        # Single-axes baseline for comparison: just one of the two
+        # axes' bounds.
+        ax0_pos = axes[0].get_position()
+        ax1_pos = axes[1].get_position()
+    finally:
+        plt.close(fig)
+    fig_w_pt = 2.0 * 72.0
+    fig_h_pt = 1.5 * 72.0
+    expected_h_uu = (ax0_pos.y0 + ax0_pos.height) - ax1_pos.y0
+    expected_h_pt = expected_h_uu * fig_h_pt
+    # Union height should approximately equal the span from row-0-top
+    # down to row-1-bottom (i.e. union covers both rows, not just one).
+    assert h_pt == pytest.approx(expected_h_pt, abs=0.5)
+
+
+def test_extract_side_axes_bbox_skips_twin_axes():
+    """``ax.twinx()`` makes a NEW axes overlaying the primary axes (same
+    position rect). The position-rect dedup collapses them; bbox area
+    is NOT double-counted."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+    )
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    twin = ax.twinx()
+    twin.plot([1, 2, 3], [10, 20, 30])
+    try:
+        _settle_subplots_auto_layout(fig)
+        bbox_with_twin = extract_side_axes_bbox(fig)
+    finally:
+        plt.close(fig)
+
+    fig2, ax2 = plt.subplots(figsize=(2.0, 1.5))
+    ax2.plot([1, 2, 3], [4, 5, 6])
+    try:
+        _settle_subplots_auto_layout(fig2)
+        bbox_without_twin = extract_side_axes_bbox(fig2)
+    finally:
+        plt.close(fig2)
+    # Twin overlays the same position rect → bbox dimensions match
+    # the no-twin baseline (within float tolerance).
+    for w, wo in zip(bbox_with_twin, bbox_without_twin):
+        assert w == pytest.approx(wo, abs=0.5)
+
+
+def test_extract_side_axes_bbox_disjoint_subplots_keeps_all():
+    """``plt.subplots(nrows=2, ncols=2)``: 4 disjoint position rects
+    → union covers all 4. Width union ≈ 2 column widths + gap; height
+    union ≈ 2 row heights + gap."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+    )
+
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(3.0, 2.0))
+    for ax in axes.ravel():
+        ax.plot([1, 2, 3], [4, 5, 6])
+    try:
+        _settle_subplots_auto_layout(fig)
+        left_pt, bottom_pt, w_pt, h_pt = extract_side_axes_bbox(fig)
+    finally:
+        plt.close(fig)
+    fig_w_pt = 3.0 * 72.0
+    fig_h_pt = 2.0 * 72.0
+    # Union must cover most of the figure (disjoint 2x2 grid).
+    assert w_pt > fig_w_pt * 0.5
+    assert h_pt > fig_h_pt * 0.5
+
+
+def test_check_decoration_overflow_passes_when_within_canvas_reservation():
+    """Side fig with tiny decoration extents and roomy canvas budget:
+    no exception."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        check_decoration_overflow,
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+    )
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    try:
+        _settle_subplots_auto_layout(fig)
+        axes_bbox_pt = extract_side_axes_bbox(fig)
+        # Roomy budget: 100 mm on every side. No decoration would
+        # overflow.
+        check_decoration_overflow(
+            fig, axes_bbox_pt,
+            decoration_budget_mm={
+                "left": 100.0, "right": 100.0,
+                "top": 100.0, "bottom": 100.0,
+            },
+            panel_label="B",
+            slot_size_mm=(70.0, 50.0),
+        )
+    finally:
+        plt.close(fig)
+
+
+def test_check_decoration_overflow_raises_on_oversized_ylabel():
+    """Side fig with a deliberately large ylabel + zero left budget
+    raises ComposerVectorError naming the 'left' side."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        check_decoration_overflow,
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+    )
+    from publiplots.composer.exceptions import ComposerVectorError
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    ax.set_ylabel("y" * 50, fontsize=20)  # absurdly wide ylabel
+    try:
+        _settle_subplots_auto_layout(fig)
+        axes_bbox_pt = extract_side_axes_bbox(fig)
+        with pytest.raises(ComposerVectorError, match=r"'left'"):
+            check_decoration_overflow(
+                fig, axes_bbox_pt,
+                decoration_budget_mm={
+                    "left": 0.0, "right": 100.0,
+                    "top": 100.0, "bottom": 100.0,
+                },
+                panel_label="B",
+                slot_size_mm=(70.0, 50.0),
+            )
+    finally:
+        plt.close(fig)
+
+
+def test_check_decoration_overflow_message_contains_actionable_hints():
+    """The error message names the panel label, the side, mm overflow,
+    AND the actionable hint substrings (anchor='figure', PR 6d)."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        check_decoration_overflow,
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+    )
+    from publiplots.composer.exceptions import ComposerVectorError
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    ax.set_ylabel("y" * 50, fontsize=20)
+    try:
+        _settle_subplots_auto_layout(fig)
+        axes_bbox_pt = extract_side_axes_bbox(fig)
+        with pytest.raises(ComposerVectorError) as exc_info:
+            check_decoration_overflow(
+                fig, axes_bbox_pt,
+                decoration_budget_mm={
+                    "left": 0.0, "right": 100.0,
+                    "top": 100.0, "bottom": 100.0,
+                },
+                panel_label="B",
+                slot_size_mm=(70.0, 50.0),
+            )
+    finally:
+        plt.close(fig)
+    msg = str(exc_info.value)
+    assert "'B'" in msg
+    assert "left" in msg
+    assert "anchor='figure'" in msg
+    assert "PR 6d" in msg
