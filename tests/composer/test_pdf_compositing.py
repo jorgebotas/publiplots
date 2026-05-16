@@ -126,11 +126,15 @@ PDF_GOLDEN_NAMES = [
 # XObject wrapping). For SVG goldens, mediabox + render_compare are
 # the meaningful gates. The embed_figure golden also lacks XObjects
 # (matplotlib-PDF inlines content like cairosvg) — mediabox + render_compare.
+# PR 6c: 'visual' mode adds a rasterized-PNG golden gate (catches the
+# class of regression that PR 6b shipped where structure tests passed
+# but the rendered output was visually wrong).
 PDF_GOLDEN_MODE_PAIRS = [
     ("cell-2col-with-svg-schematic", "mediabox"),
     ("cell-2col-with-png-schematic", "mediabox"),
     ("cell-2col-with-png-schematic", "structure"),
     ("cell-2col-with-embed-figure", "mediabox"),
+    ("cell-2col-with-embed-figure", "visual"),
 ]
 
 
