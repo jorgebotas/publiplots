@@ -1074,7 +1074,7 @@ class Canvas:
     # ------------------------------------------------------------------
     # embed_figure — post-staging: attach a Figure into a PanelImage slot
     # ------------------------------------------------------------------
-    def embed_figure(self, label, figure) -> None:
+    def embed_figure(self, label, figure, *, anchor: str = "figure") -> None:
         """Attach a matplotlib :class:`~matplotlib.figure.Figure` into a
         previously-staged PanelImage slot.
 
@@ -1097,6 +1097,22 @@ class Canvas:
             ``embed_figure`` does NOT validate the type; the compositing
             pipeline calls ``figure.savefig`` and surfaces TypeErrors
             from non-Figures naturally.
+        anchor : {'figure', 'axes'}, default 'figure'
+            Anchor mode for the side figure (PR 6c).
+
+            - ``'figure'`` (default; preserves PR 6b behavior): scales
+              the side figure's outer mediabox to fit the slot rect via
+              the existing ``clip='fit'`` semantics. Decorations live
+              INSIDE the slot rect.
+            - ``'axes'``: anchors the side figure's axes-data box to
+              the slot rect. Decorations spill OUTSIDE the slot, into
+              the canvas's surrounding margin reservation. Useful when
+              you want Panel A's matplotlib axes-data box to align
+              vertically/horizontally with the embedded side figure's
+              axes-data box (paper-figure axes alignment). Raises
+              :class:`ComposerVectorError` at compose time if the side
+              figure's decorations exceed the canvas's surrounding
+              margin budget.
 
         Raises
         ------
@@ -1109,6 +1125,8 @@ class Canvas:
         TypeError
             If the resolved panel is not ``kind='image'``
             (``embed_figure`` only attaches to PanelImage slots).
+        ValueError
+            If ``anchor`` is not one of ``'figure'`` / ``'axes'``.
 
         Notes
         -----
@@ -1124,6 +1142,13 @@ class Canvas:
           on a path-bearing PanelImage is also legal — the embedded
           figure wins over the path.
         """
+        # Validate anchor up-front so users see the error at the
+        # mutation site, not at compose time.
+        if anchor not in ("figure", "axes"):
+            raise ValueError(
+                f"embed_figure: anchor={anchor!r} invalid. "
+                f"Expected 'figure' or 'axes'."
+            )
         # Empty canvas → preserve the same RuntimeError semantics that
         # _finalize_if_needed raises on an empty canvas. This is the
         # documented "embed_figure before any add_row" branch.
@@ -1152,6 +1177,7 @@ class Canvas:
             )
         # Mutate via object.__setattr__ — Panel is a frozen dataclass.
         object.__setattr__(panel, "embedded_figure", figure)
+        object.__setattr__(panel, "embedded_figure_anchor", anchor)
 
     # ------------------------------------------------------------------
     # PR 6c: per-panel decoration budget accessor

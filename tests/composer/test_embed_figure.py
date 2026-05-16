@@ -441,3 +441,52 @@ def test_panel_decoration_budget_mm_panel_image_kind_returns_same_shape():
 
     # Same slot position → same budget regardless of panel kind.
     assert a_image_budget == a_axes_budget
+
+
+# ---------------------------------------------------------------------------
+# PR 6c Task 2 — Canvas.embed_figure anchor= kwarg
+# ---------------------------------------------------------------------------
+
+def test_embed_figure_anchor_default_is_figure(side_figure):
+    """Calling embed_figure with no anchor= preserves PR 6b's behavior:
+    Panel.embedded_figure_anchor=='figure'."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    canvas.embed_figure("B", side_figure)
+    assert canvas["B"].embedded_figure_anchor == "figure"
+
+
+def test_embed_figure_anchor_explicit_figure(side_figure):
+    """Explicit anchor='figure' matches the default."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    canvas.embed_figure("B", side_figure, anchor="figure")
+    assert canvas["B"].embedded_figure_anchor == "figure"
+
+
+def test_embed_figure_anchor_axes_stored(side_figure):
+    """anchor='axes' stores correctly on the Panel record."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    canvas.embed_figure("B", side_figure, anchor="axes")
+    assert canvas["B"].embedded_figure_anchor == "axes"
+
+
+def test_embed_figure_anchor_invalid_raises(side_figure):
+    """anchor='invalid' raises ValueError naming the valid options."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.add_row(
+        pp.PanelAxes(label="A", size=(70, 50)),
+        pp.PanelImage(label="B", size=(70, 50)),
+    )
+    with pytest.raises(ValueError, match=r"anchor=.*invalid.*'figure'.*'axes'"):
+        canvas.embed_figure("B", side_figure, anchor="invalid")
