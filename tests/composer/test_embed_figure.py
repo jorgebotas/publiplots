@@ -845,3 +845,100 @@ def test_savefig_pdf_anchor_axes_byte_deterministic(tmp_path):
     plt.close(fig2)
 
     assert out1.read_bytes() == out2.read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# PR 6c Task 5 — svg compositing anchor='axes' branch
+# ---------------------------------------------------------------------------
+
+def test_savefig_svg_anchor_axes_writes_file(tmp_path):
+    """Smoke: anchor='axes' produces a valid SVG."""
+    import matplotlib.pyplot as plt
+
+    fig = _build_compact_side_fig()
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig, anchor="axes")
+        out = tmp_path / "out.svg"
+        canvas.savefig(out)
+    finally:
+        plt.close(fig)
+    assert out.exists()
+    text = out.read_text(encoding="utf-8")
+    assert "<svg" in text
+
+
+def test_savefig_svg_anchor_axes_overflow_raises(tmp_path):
+    """SVG path also raises on decoration overflow before write."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.exceptions import ComposerVectorError
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    ax.set_ylabel("y" * 100, fontsize=30)
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig, anchor="axes")
+        out = tmp_path / "out.svg"
+        with pytest.raises(ComposerVectorError, match=r"overflow"):
+            canvas.savefig(out)
+    finally:
+        plt.close(fig)
+
+
+def test_savefig_svg_anchor_axes_aligns_axes_data(tmp_path):
+    """SVG: anchor='axes' aligns Panel A's bbox y-extent with the slot
+    rect of Panel B (purely geometric assert)."""
+    import matplotlib.pyplot as plt
+
+    fig = _build_compact_side_fig()
+    try:
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig, anchor="axes")
+        out = tmp_path / "out.svg"
+        canvas.savefig(out)
+        a_bbox = canvas["A"].bbox_mm
+        b_bbox = canvas["B"].bbox_mm
+    finally:
+        plt.close(fig)
+    assert a_bbox[1] == pytest.approx(b_bbox[1], abs=1e-6)
+    assert a_bbox[3] == pytest.approx(b_bbox[3], abs=1e-6)
+
+
+def test_savefig_svg_anchor_axes_byte_deterministic(tmp_path):
+    """Two SVG renders with anchor='axes' produce byte-identical output."""
+    import matplotlib.pyplot as plt
+
+    def build():
+        fig = _build_compact_side_fig()
+        canvas = pp.Canvas("cell-2col")
+        canvas.add_row(
+            pp.PanelAxes(label="A", size=(70, 50)),
+            pp.PanelImage(label="B", size=(70, 50)),
+        )
+        canvas.embed_figure("B", fig, anchor="axes")
+        return canvas, fig
+
+    canvas1, fig1 = build()
+    out1 = tmp_path / "a.svg"
+    canvas1.savefig(out1)
+    plt.close(fig1)
+
+    canvas2, fig2 = build()
+    out2 = tmp_path / "b.svg"
+    canvas2.savefig(out2)
+    plt.close(fig2)
+
+    assert out1.read_bytes() == out2.read_bytes()

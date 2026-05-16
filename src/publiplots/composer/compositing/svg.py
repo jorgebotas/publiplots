@@ -59,6 +59,7 @@ def savefig_svg(
     strict_vectors: bool = False,
     metadata_date: Optional[str] = None,
     external_raster: bool = False,
+    canvas: Any = None,
     **savefig_kwargs: Any,
 ) -> None:
     """Vector-compose the canvas Figure to an SVG at ``path``.
@@ -150,6 +151,7 @@ def savefig_svg(
             etree=_lxml_etree,
             external_raster=external_raster,
             output_path=output_path,
+            canvas=canvas,
         )
 
     # Step 4: serialize + write.
@@ -173,6 +175,7 @@ def _compose_panel_into(
     etree: Any,
     external_raster: bool = False,
     output_path: Optional[Path] = None,
+    canvas: Any = None,
 ) -> None:
     """Stamp ``panel``'s schematic into ``canvas_root``.
 
@@ -214,6 +217,7 @@ def _compose_panel_into(
         label_str = sanitized or "unlabeled"
     path = panel.image_path
     embedded_figure = getattr(panel, "embedded_figure", None)
+    embed_anchor = getattr(panel, "embedded_figure_anchor", "figure")
     align = panel.image_align if panel.image_align is not None else "center"
     clip = panel.image_clip if panel.image_clip is not None else "fit"
     bbox_mm = panel.bbox_mm  # (x_mm, y_mm_bottom, w_mm, h_mm)
@@ -228,6 +232,121 @@ def _compose_panel_into(
     slot_x_mm, slot_y_bottom_mm, slot_w_mm, slot_h_mm = bbox_mm
     slot_y_top_mm = fig_h_mm - slot_y_bottom_mm - slot_h_mm
     slot_bbox_mm_topdown = (slot_x_mm, slot_y_top_mm, slot_w_mm, slot_h_mm)
+
+    # PR 6c: anchor='axes' branch — early dispatch with axes-data-box
+    # alignment. Strict ordering: settle → extract → check → render →
+    # apply. Mirrors compositing/pdf.py's branch.
+    if embedded_figure is not None and embed_anchor == "axes":
+        from publiplots.composer.compositing._embed import (
+            _settle_subplots_auto_layout,
+            check_decoration_overflow,
+            extract_side_axes_bbox,
+            render_figure_to_svg_bytes,
+        )
+        # 1. Settle.
+        _settle_subplots_auto_layout(embedded_figure)
+        # 2. Extract axes-data bbox in pt (BOTTOM-UP).
+        axes_bbox_pt = extract_side_axes_bbox(embedded_figure)
+        axes_left_pt, axes_bottom_pt, axes_w_pt, axes_h_pt = axes_bbox_pt
+        # 3. Check overflow vs canvas budget.
+        if canvas is not None:
+            decoration_budget_mm = canvas._panel_decoration_budget_mm(panel)
+            check_decoration_overflow(
+                embedded_figure, axes_bbox_pt,
+                decoration_budget_mm,
+                panel_label=panel.label,
+                slot_size_mm=(slot_w_mm, slot_h_mm),
+            )
+        # 4. Render side fig to deterministic SVG bytes; parse via lxml.
+        sch_bytes = render_figure_to_svg_bytes(embedded_figure)
+        sch_element = etree.fromstring(sch_bytes)
+        sch_vb_x, sch_vb_y, sch_vb_w, sch_vb_h, sch_mm_per_uu = (
+            _resolve_svg_units(sch_element)
+        )
+        # Side fig's full mediabox in mm.
+        sch_w_mm = sch_vb_w * sch_mm_per_uu
+        sch_h_mm = sch_vb_h * sch_mm_per_uu
+
+        # 5. Compute transform. Side fig's axes-data box (in pt) maps
+        # to the slot rect (in mm). pt → mm via 25.4/72.
+        from publiplots.composer.compositing._embed import _PT2MM as _PT2MM
+        if axes_w_pt <= 0 or axes_h_pt <= 0:
+            # Degenerate: fall back to figure-anchor semantics by
+            # computing mediabox transform.
+            sx, sy, tx_uu, ty_uu = compute_svg_transform(
+                slot_bbox_mm_topdown, (sch_w_mm, sch_h_mm),
+                canvas_mm_per_user_unit=mm_per_uu,
+                canvas_vb_origin=(vb_x, vb_y),
+                align=align, clip=clip,
+            )
+        else:
+            # Side fig's axes-data extents in mm.
+            axes_left_mm = axes_left_pt * _PT2MM
+            axes_w_mm = axes_w_pt * _PT2MM
+            axes_h_mm = axes_h_pt * _PT2MM
+            # PDF y is bottom-up; SVG side fig's mediabox is also (the
+            # render bytes carry matplotlib's bottom-up SVG which has
+            # been flipped during render). For SVG, convert side-fig
+            # axes-data y from BOTTOM-UP to TOP-DOWN within the side
+            # fig's own mediabox.
+            axes_bottom_mm = axes_bottom_pt * _PT2MM
+            axes_top_mm_from_side_top = sch_h_mm - axes_bottom_mm - axes_h_mm
+
+            # Scale: slot_w_mm / axes_w_mm (anisotropic).
+            scale_x = slot_w_mm / axes_w_mm
+            scale_y = slot_h_mm / axes_h_mm
+
+            # User-unit conversion: scale factors are dimensionless
+            # (mm/mm); translate is in canvas user units.
+            sx = scale_x
+            sy = scale_y
+            # After scale, the side fig's axes-data top-left in side-fig
+            # user units lands at (axes_left_mm * sx / sch_mm_per_uu,
+            # axes_top_mm_from_side_top * sy / sch_mm_per_uu) in CANVAS
+            # user units. Wait — the SCH element retains its own
+            # viewBox; the wrapper's scale + translate operate on
+            # CANVAS user units, but apply to the inner SCH coordinate
+            # system. We need to think in canvas user units (uu):
+            #
+            # The inner SCH content is in side-fig user units (sch_uu).
+            # After the wrapper transform, sch_uu maps to canvas_uu via
+            # scale = (sch_mm_per_uu / mm_per_uu) baseline; we
+            # additionally need to scale so that sch's axes-data box
+            # (axes_w_mm wide in side-fig mm) lands at slot_w_mm in
+            # canvas mm. Combined scale (sch_uu → canvas_uu):
+            #   sx = (slot_w_mm / axes_w_mm) * (sch_mm_per_uu / mm_per_uu)
+            sx = (slot_w_mm / axes_w_mm) * (sch_mm_per_uu / mm_per_uu)
+            sy = (slot_h_mm / axes_h_mm) * (sch_mm_per_uu / mm_per_uu)
+
+            # Translation: after the wrapper applies (translate, scale),
+            # the SCH element's content is sx * sch_uu away from origin.
+            # The SCH's axes-data top-left in SCH user units is
+            # (axes_left_mm / sch_mm_per_uu, axes_top_mm_from_side_top
+            # / sch_mm_per_uu). We need that point to land at the slot's
+            # top-left in canvas user units (slot_x_mm / mm_per_uu,
+            # slot_y_top_mm / mm_per_uu) PLUS the canvas viewBox origin
+            # offset (vb_x, vb_y).
+            slot_x_uu = slot_x_mm / mm_per_uu
+            slot_y_top_uu = slot_y_top_mm / mm_per_uu
+            sch_axes_left_uu = axes_left_mm / sch_mm_per_uu
+            sch_axes_top_uu = axes_top_mm_from_side_top / sch_mm_per_uu
+            # tx_uu + sx * sch_axes_left_uu = slot_x_uu + vb_x
+            tx_uu = slot_x_uu + vb_x - sx * sch_axes_left_uu
+            ty_uu = slot_y_top_uu + vb_y - sy * sch_axes_top_uu
+
+        # Build wrapper.
+        SVG_NS = "http://www.w3.org/2000/svg"
+        wrapper = etree.SubElement(canvas_root, f"{{{SVG_NS}}}g")
+        wrapper.set(
+            "id", f"publiplots-panel-image-{idx}-{label_str}",
+        )
+        wrapper.set(
+            "transform",
+            f"translate({tx_uu:.6f}, {ty_uu:.6f}) "
+            f"scale({sx:.6f}, {sy:.6f})",
+        )
+        wrapper.append(sch_element)
+        return
 
     if embedded_figure is not None:
         # PR 6b: render the Figure to deterministic SVG bytes, parse
