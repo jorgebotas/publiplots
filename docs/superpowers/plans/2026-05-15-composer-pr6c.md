@@ -151,29 +151,29 @@ src/publiplots/composer/
 
 ### Task 2 — `Canvas.embed_figure` `anchor=` kwarg
 
-- [ ] Add `anchor: str = 'figure'` keyword-only parameter to `embed_figure` signature.
-- [ ] Validate `anchor in {'figure', 'axes'}` else raise `ValueError`.
-- [ ] Store via `object.__setattr__(panel, 'embedded_figure_anchor', anchor)`.
-- [ ] **Failing tests first**:
+- [x] Add `anchor: str = 'figure'` keyword-only parameter to `embed_figure` signature.
+- [x] Validate `anchor in {'figure', 'axes'}` else raise `ValueError`.
+- [x] Store via `object.__setattr__(panel, 'embedded_figure_anchor', anchor)`.
+- [x] **Failing tests first**:
   - `test_embed_figure_anchor_default_is_figure` — `canvas.embed_figure('B', fig)` (no kwarg) → `panel.embedded_figure_anchor == 'figure'`.
   - `test_embed_figure_anchor_explicit_figure` — `anchor='figure'` works, matches default.
   - `test_embed_figure_anchor_axes_stored` — `anchor='axes'` stores correctly.
   - `test_embed_figure_anchor_invalid_raises` — `anchor='invalid'` → ValueError naming valid options.
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 3 — `extract_side_axes_bbox` + `check_decoration_overflow` helpers
 
-- [ ] Add `extract_side_axes_bbox(figure)` to `compositing/_embed.py`:
+- [x] Add `extract_side_axes_bbox(figure)` to `compositing/_embed.py`:
   - **Architect-corrected twin-axes dedup**: dedup `fig.axes` by position-rect equality, NOT by `get_shared_x_axes()` membership. Build `seen_rects: Set[Tuple] = set()`; for each `ax` in `fig.axes`, compute `rect_key = tuple(round(c, 6) for c in ax.get_position().bounds)`; skip if already in `seen_rects`, else add and include in the union. This correctly drops twins (overlay → identical bounds) and keeps `subplots(sharex=True)` (disjoint rects).
   - Compute union of de-duped `ax.get_position()` rects (figure-fraction).
   - Multiply by figure size in pt → `(left_pt, bottom_pt, w_pt, h_pt)` in side-figure-mediabox coords.
   - Returns `(0, 0, fig_w_pt, fig_h_pt)` if no axes.
-- [ ] Add `check_decoration_overflow(figure, slot_axes_data_bbox_mm, panel_label) → None`:
+- [x] Add `check_decoration_overflow(figure, slot_axes_data_bbox_mm, panel_label) → None`:
   - Compute side fig's decoration extents per side (left/right/top/bottom in mm).
   - Compare against the slot's decoration-region thickness (canvas reservation).
   - Raise `ComposerVectorError` if any side overflows by > 0.5 mm.
   - Error message names panel + side + decoration extent vs canvas reservation + actionable hint (anchor='figure' / shrink decoration / increase canvas margin / wait for PR 6d).
-- [ ] **Failing tests first** in `test_embed_figure.py`:
+- [x] **Failing tests first** in `test_embed_figure.py`:
   - `test_extract_side_axes_bbox_single_axes` — happy path, single primary axes.
   - `test_extract_side_axes_bbox_multi_axes_uses_union_for_subplots_sharex` — `pp.subplots(nrows=2, sharex=True)`: returns the union covering both rows. CRITICAL: this is the architect-flagged case where the WRONG twin-filter (via `get_shared_x_axes()`) would have collapsed both rows to one bbox.
   - `test_extract_side_axes_bbox_skips_twin_axes` — `ax.twinx()` produces overlay → de-duped to a single bbox (not double-counted).
@@ -181,11 +181,11 @@ src/publiplots/composer/
   - `test_check_decoration_overflow_passes_when_within_canvas_reservation` — happy path no raise.
   - `test_check_decoration_overflow_raises_on_oversized_ylabel` — deliberately wide ylabel → ComposerVectorError with `'left'` named in message.
   - `test_check_decoration_overflow_message_names_panel_and_side_and_hint` — error contains the actionable hint substrings (panel label, side, decoration mm vs reservation mm, both `anchor='figure'` and `PR 6d` substrings).
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 4 — `compositing/pdf.py` anchor='axes' branch
 
-- [ ] Update `_compose_panel_onto`. Strict ORDERING (architect-flagged):
+- [x] Update `_compose_panel_onto`. Strict ORDERING (architect-flagged):
   1. Read `panel.embedded_figure_anchor`.
   2. If `'figure'`: existing PR 6b path (unchanged).
   3. If `'axes'`:
@@ -196,56 +196,53 @@ src/publiplots/composer/
      e. Compute the transform such that `axes_bbox_pt` maps to `panel.bbox_mm × MM2PT` (panel.bbox_mm IS the axes-data rect per `_layout.py:30-38`).
      f. **Last:** call `render_figure_to_pdf_bytes(panel.embedded_figure)` which re-settles + renders. Idempotent settle is fine.
      g. Apply transform via `pypdf.Transformation()` and `merge_transformed_page` onto target page.
-- [ ] **Failing tests first** in `test_embed_figure.py`:
+- [x] **Failing tests first** in `test_embed_figure.py`:
   - `test_savefig_pdf_anchor_axes_aligns_axes_data` — render a Canvas with PanelAxes(A) + embed(B, anchor='axes'); rasterize via pdftocairo; verify A's axes-data y-extent matches B's axes-data y-extent within tolerance.
   - `test_savefig_pdf_anchor_axes_overflow_raises` — overflow case raises before write.
-- [ ] **Failing tests first** in `test_embed_figure.py`:
-  - `test_savefig_pdf_anchor_axes_aligns_axes_data` — render a Canvas with PanelAxes(A) + embed(B, anchor='axes'); rasterize via pdftocairo; verify A's axes-data y-extent matches B's axes-data y-extent within tolerance.
-  - `test_savefig_pdf_anchor_axes_overflow_raises` — overflow case raises before write.
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 5 — `compositing/svg.py` anchor='axes' branch
 
-- [ ] Symmetric to Task 4 but for SVG output. Convert pt→user-units via canvas's `mm_per_user_unit`.
-- [ ] **Failing tests first** in `test_embed_figure.py`:
+- [x] Symmetric to Task 4 but for SVG output. Convert pt→user-units via canvas's `mm_per_user_unit`.
+- [x] **Failing tests first** in `test_embed_figure.py`:
   - `test_savefig_svg_anchor_axes_aligns_axes_data` — analogous SVG test.
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 6 — Visual-regression test infrastructure
 
-- [ ] Add `mode='visual'` to `assert_pdf_matches` in `tests/composer/golden/_helpers.py`:
+- [x] Add `mode='visual'` to `assert_pdf_matches` in `tests/composer/golden/_helpers.py`:
   - Rasterize the produced PDF via `pdftocairo` to a temp PNG at 200 DPI.
   - Compare against `tests/composer/golden/png_from_pdf/<name>.png` with `compare_images(tol=10)`.
   - Skip via `pytest.skip("pdftocairo not available")` if `_pdf_rasterizer_available()` returns False (reuse PR 6a helper).
   - Regen-on-missing semantics mirror existing modes.
-- [ ] Add `_visual_png_path(name)` helper to mirror `_png_path` / `_pdf_path`.
-- [ ] Extend `tools/composer/regen_fixtures.py` with `--rasterize-pdf-goldens` flag and auto-emission on PDF regen:
+- [x] Add `_visual_png_path(name)` helper to mirror `_png_path` / `_pdf_path`.
+- [x] Extend `tools/composer/regen_fixtures.py` with `--rasterize-pdf-goldens` flag and auto-emission on PDF regen:
   - After writing each PDF golden, run `pdftocairo -png -r 200 -singlefile <pdf> golden/png_from_pdf/<name>` (skip if not available).
-- [ ] **Failing test first** in `test_pdf_compositing.py`:
+- [x] **Failing test first** in `test_pdf_compositing.py`:
   - `test_assert_pdf_matches_visual_mode_skips_when_no_pdftocairo` — patches `_pdf_rasterizer_available` to False; mode='visual' skips cleanly.
   - `test_assert_pdf_matches_visual_mode_compares_rasterized_pdf` — happy path with mocked golden PNG.
-- [ ] Implement.
+- [x] Implement.
 
 ### Task 7 — Regenerate the example + goldens
 
-- [ ] **First experiment** (architect-flagged C1): does `axes_size=(40, 30)` + `anchor='axes'` ALONE fix the visual issue? Test before bumping to `(50, 30)`. If yes, drop the axes_size change to keep the example showing realistic figure dimensions.
+- [x] **First experiment** (architect-flagged C1): does `axes_size=(40, 30)` + `anchor='axes'` ALONE fix the visual issue? Test before bumping to `(50, 30)`. If yes, drop the axes_size change to keep the example showing realistic figure dimensions.
   - Run `examples/composer/cell_2col_with_embed.py` with current `axes_size=(40,30)` but switch to `anchor='axes'`.
   - Rasterize + Read.
   - If visual is OK, KEEP `axes_size=(40, 30)`. If still bleeding, switch to `(50, 30)` to dodge the publiplots core layout bug.
-- [ ] Update `examples/composer/cell_2col_with_embed.py`:
+- [x] Update `examples/composer/cell_2col_with_embed.py`:
   - `canvas.embed_figure('B', side_fig, anchor='axes')` (was no kwarg).
-  - `axes_size` based on the experiment above.
-- [ ] Update `tests/composer/golden/_compositions.py` — `cell-2col-with-embed-figure` build_fn mirrors the example exactly (same axes_size + anchor).
-- [ ] Run `python tools/composer/regen_fixtures.py --only cell-2col-with-embed-figure --rasterize-pdf-goldens` to regenerate PDF + SVG + sidecar PNG.
-- [ ] **Manual rasterize + Read by Claude** (per [[feedback_visual_features_must_be_eyeballed]]):
+  - `axes_size` based on the experiment above (settled on `(70, 50)`).
+- [x] Update `tests/composer/golden/_compositions.py` — `cell-2col-with-embed-figure` build_fn mirrors the example exactly (same axes_size + anchor).
+- [x] Run `python tools/composer/regen_fixtures.py --only cell-2col-with-embed-figure --rasterize-pdf-goldens` to regenerate PDF + SVG + sidecar PNG.
+- [x] **Manual rasterize + Read by Claude** (per [[feedback_visual_features_must_be_eyeballed]]):
   - `pdftocairo -png -r 200 -singlefile tests/composer/golden/pdf/cell-2col-with-embed-figure.pdf /tmp/check_pdf` then `Read /tmp/check_pdf.png` to verify A and B axes-data align, no bleed, decorations land in canvas margin.
   - `cairosvg tests/composer/golden/svg/cell-2col-with-embed-figure.svg -o /tmp/check_svg.png --output-width 1200` then `Read`.
-- [ ] If visuals look wrong, STOP and diagnose before continuing.
+- [x] If visuals look wrong, STOP and diagnose before continuing.
 
 ### Task 8 — Add the parametrized visual-regression test for the new golden
 
-- [ ] Extend `test_pdf_compositing.py` parametrize: add `('cell-2col-with-embed-figure', 'visual')`.
-- [ ] Verify: `uv run pytest tests/composer/test_pdf_compositing.py -q` passes.
+- [x] Extend `test_pdf_compositing.py` parametrize: add `('cell-2col-with-embed-figure', 'visual')`.
+- [x] Verify: `uv run pytest tests/composer/test_pdf_compositing.py -q` passes.
 
 ### Task 9 — User visual sign-off pause
 
@@ -254,9 +251,9 @@ src/publiplots/composer/
 
 ### Task 10 — CHANGELOG + skill update + final test run
 
-- [ ] CHANGELOG `[Unreleased] / Fixed` entry referencing the visual-regression and the new memory rule.
-- [ ] `skills/publiplots-guide/SKILL.md` — extend the one-liner: "embed_figure(anchor='axes') aligns the side figure's axes-data box to the slot for paper-figure axes alignment".
-- [ ] **Final test run**: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q`. Target: 483 (was 478). 1 residplot pre-existing failure unchanged.
+- [x] CHANGELOG `[Unreleased] / Fixed` entry referencing the visual-regression and the new memory rule.
+- [x] `skills/publiplots-guide/SKILL.md` — extend the one-liner: "embed_figure(anchor='axes') aligns the side figure's axes-data box to the slot for paper-figure axes alignment".
+- [x] **Final test run**: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q`. **507 passed (was 478, +29 new).**
 
 ---
 
