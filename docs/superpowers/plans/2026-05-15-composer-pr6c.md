@@ -12,6 +12,12 @@
 4. **Example fix** — switch `examples/composer/cell_2col_with_embed.py` to use `axes_size=(50, 30)` (avoids `pp.subplots`'s xtick-clipping layout bug at axes_size=(40,30)) AND `canvas.embed_figure(..., anchor='axes')` for proper axes-data alignment.
 5. **Regenerate the golden PDF + SVG + sidecar PNG** via `tools/composer/regen_fixtures.py --only cell-2col-with-embed-figure`. Manually inspect the rasterized output before committing; both Claude (per [[feedback_visual_features_must_be_eyeballed]]) and the user double-check.
 
+6. **abc-label placement fix (mid-PR-6c addition, user-flagged on first sign-off):** the default `loc='ul'` in `abc_labels.py:169` currently maps to `(x_frac=0.0, y_frac=1.0, ha='left', va='top')`, which renders the abc-label glyph BELOW the top spine — visually INSIDE the axes-data box. Change the loc-table semantic so the four corners ('ul'/'ur'/'ll'/'lr') and edge centers ('uc'/'lc'/'cl'/'cr') render OUTSIDE the axes (text grows AWAY from the data into the canvas-reserved decoration margins): `'ul'` → `va='bottom'` so glyph grows UPWARD from the top spine into `title_space`; `'ll'` → `va='top'` so glyph grows DOWNWARD from the bottom spine into `xlabel_space`; etc. Affects ALL composer goldens (PR 1–5) — they all regenerate in PR 6c with the new abc-label placement.
+
+7. **Decoration overflow tolerance tightened to 80% of budget** (mid-PR-6c addition): `check_decoration_overflow` previously accepted up to `(budget + 0.5) mm` decoration; the kitchen-sink demo's 13.26 mm side-fig left decoration fit cell-2col's 15 mm budget but visually crowded Panel A. New rule: `decoration_mm ≤ 0.80 × budget_mm` per side. For cell-2col's 15 mm gap, this caps decoration at 12 mm — tight enough to maintain visual breathing room. The kitchen-sink example is updated to use simpler tick labels (single-character y-axis range, e.g., 0–9) so its decoration shrinks below 12 mm and renders cleanly.
+
+8. **Regenerate ALL composer goldens** — the abc-label change shifts every panel's label position from inside-axes to above-spine. PR 1–5's goldens (cell-2col-simple, cell-2col-multirow, nature-2col-abc, nature-2col-panel-grid, the SVG schematic + PNG schematic + PR 6b's embed-figure) all regenerate. Manual rasterize+Read by Claude on each before committing.
+
 **Architecture:** Pure addition. `Canvas.embed_figure` gains the `anchor` kwarg; `Panel` result dataclass gains `embedded_figure_anchor: str = 'figure'`. Compositing pipelines (`compositing/pdf.py:_compose_panel_onto`, `compositing/svg.py:_compose_panel_into`) check `panel.embedded_figure_anchor` and route through a new `_compute_axes_anchor_transform` helper when `'axes'`. The new helper extracts the side figure's axes-data bbox via `ax.get_position()` (figure-fraction coords) → multiply by side figure size in pt → subtract from the side figure mediabox to get padding-around-axes; map to slot bbox.
 
 ```
@@ -255,6 +261,46 @@ src/publiplots/composer/
 - [x] `skills/publiplots-guide/SKILL.md` — extend the one-liner: "embed_figure(anchor='axes') aligns the side figure's axes-data box to the slot for paper-figure axes alignment".
 - [x] **Final test run**: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q`. **507 passed (was 478, +29 new).**
 
+### Task 11 — abc-label loc-table outward-grow fix (mid-PR-6c addition)
+
+- [ ] Update `loc_table` in `src/publiplots/composer/abc_labels.py:168-178`. New convention: at each corner/edge anchor, the text glyph grows AWAY from the data into the canvas-reserved decoration margin:
+  - `'ul'` → `(x_frac=0.0, y_frac=1.0, ha='left',   va='bottom')`  # was `va='top'`
+  - `'ur'` → `(x_frac=1.0, y_frac=1.0, ha='right',  va='bottom')`  # was `va='top'`
+  - `'ll'` → `(x_frac=0.0, y_frac=0.0, ha='left',   va='top')`     # was `va='bottom'`
+  - `'lr'` → `(x_frac=1.0, y_frac=0.0, ha='right',  va='top')`     # was `va='bottom'`
+  - `'uc'` → `(x_frac=0.5, y_frac=1.0, ha='center', va='bottom')`  # was `va='top'`
+  - `'lc'` → `(x_frac=0.5, y_frac=0.0, ha='center', va='top')`     # was `va='bottom'`
+  - `'cl'` → `(x_frac=0.0, y_frac=0.5, ha='right',  va='center')`  # was `ha='left'`
+  - `'cr'` → `(x_frac=1.0, y_frac=0.5, ha='left',   va='center')`  # was `ha='right'`
+- [ ] **Failing tests first** — extend the existing abc-label tests to assert the new placements:
+  - `test_abc_label_ul_renders_above_top_spine` — render a Canvas with one panel + `abc='upper'`; via `figure.findobj` locate the abc text artist and assert `va='bottom'` AND its bbox top ≤ axes top + 0.1 (i.e., glyph is OUTSIDE the axes).
+  - Symmetric tests for `'ur'`, `'ll'`, `'lr'`.
+- [ ] Implement.
+- [ ] **Visual confirmation:** rasterize one of the regenerated PR 1-5 goldens (after Task 13 regen) and Read to verify the abc label sits ABOVE the top spine.
+
+### Task 12 — Tighten decoration overflow tolerance to 80% of budget
+
+- [ ] Update `check_decoration_overflow` in `src/publiplots/composer/compositing/_embed.py`. Replace the absolute 0.5 mm tolerance with a multiplicative 80% rule: `decoration_mm ≤ 0.80 × budget_mm` per side. If `decoration_mm > 0.80 × budget_mm`, raise. Update the error message to reflect the new threshold and explain the breathing-room rationale.
+- [ ] **Update existing tests** in `test_embed_figure.py`:
+  - `test_check_decoration_overflow_passes_when_within_canvas_reservation` — verify it still passes for decoration_mm = 0.5 × budget (well under the 80%).
+  - `test_check_decoration_overflow_raises_at_85_percent` — new test: decoration_mm at 0.85 × budget should now raise (was previously passing).
+- [ ] **Update the kitchen-sink example** in `examples/composer/cell_2col_with_embed.py`:
+  - Change side fig data so y-tick labels are single-character (e.g., `y = np.arange(10)` and corresponding x). Decorations shrink below 12 mm (0.80 × 15 mm budget).
+  - Keep `axes_size=(70, 50)` for 1:1 axes-data alignment.
+  - Verify by running the example, rasterize, Read.
+- [ ] **Update the golden composition** `_compositions.py:_build_cell_2col_with_embed_figure` to mirror the new example data.
+
+### Task 13 — Regenerate ALL composer goldens with the new abc-label placement
+
+- [ ] Run `python tools/composer/regen_fixtures.py` (no `--only` filter) to regenerate every entry in `COMPOSITIONS`. This regenerates: cell-2col-simple, cell-2col-multirow, nature-2col-abc, nature-2col-panel-grid, cell-2col-with-svg-schematic, cell-2col-with-png-schematic, cell-2col-with-embed-figure (PDF + SVG sidecar PNGs).
+- [ ] **For each regenerated golden, rasterize + Read by Claude:**
+  - `pdftocairo -png -r 200 -singlefile <pdf> /tmp/check_<name>` then `Read /tmp/check_<name>.png`.
+  - For SVG-only goldens: `cairosvg <svg> -o /tmp/check_<name>_svg.png --output-width 1200` then `Read`.
+  - Verify abc labels sit ABOVE/OUTSIDE the axes-data box (not inside).
+- [ ] If any visual regression appears beyond the abc-label fix, STOP and diagnose.
+- [ ] Final test run: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q` — all goldens should still pass their structure/mediabox/visual checks.
+- [ ] Commit the regenerated goldens.
+
 ---
 
 ## Architect blockers expected
@@ -289,5 +335,8 @@ These will be the architect's first questions. Pre-document positions:
 - Task 7: `fix(composer): regenerate cell-2col-with-embed-figure golden with anchor='axes'`
 - Task 8: `test(composer): visual-regression parametrize for embed-figure golden`
 - Task 10: `docs(composer): PR 6c CHANGELOG + skill one-liner`
+- Task 11: `fix(composer): abc-label loc-table renders OUTSIDE the axes (above top spine)`
+- Task 12: `fix(composer): tighten check_decoration_overflow tolerance to 80% of budget`
+- Task 13: `fix(composer): regenerate ALL composer goldens with new abc-label placement`
 
 All with the em-dash convention.
