@@ -74,6 +74,10 @@ def test_composer_figure_size_matches_pp_subplots_for_equivalent_layout():
 
     # Both layouts route through FigureLayout + SubplotsAutoLayout with
     # the same rcParams reservations, so width AND height match within
-    # decoration auto-measurement noise (~1 mm).
+    # decoration auto-measurement noise. PR 6c addendum: the abc-label
+    # now renders OUTSIDE the axes (above the top spine), so the canvas
+    # figure is ~2 mm taller than pp.subplots (which has no abc label).
+    # Width tolerance stays tight (~1 mm); height tolerance widens to
+    # ~3 mm to accommodate the label glyph height.
     assert abs(canv_w_in - sub_w_in) < 0.05
-    assert abs(canv_h_in - sub_h_in) < 0.05
+    assert abs(canv_h_in - sub_h_in) < 0.12

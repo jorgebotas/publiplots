@@ -280,8 +280,15 @@ def _regen_one(
         elif png_path.read_bytes() == new_bytes:
             png_diff = False
         else:
-            cmp = compare_images(str(png_path), str(out), tol=10)
-            png_diff = cmp is not None
+            from matplotlib.testing.exceptions import ImageComparisonFailure
+            try:
+                cmp = compare_images(str(png_path), str(out), tol=10)
+                png_diff = cmp is not None
+            except ImageComparisonFailure:
+                # Image sizes differ — treat as a diff so we overwrite.
+                # This happens when a layout change (e.g., abc-label
+                # placement) shifts the figure mediabox.
+                png_diff = True
 
     pdf_diff = False
     if _composition_has_pdf_golden(name):
