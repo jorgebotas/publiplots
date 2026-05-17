@@ -280,15 +280,15 @@ src/publiplots/composer/
 
 ### Task 12 — Tighten decoration overflow tolerance to 80% of budget
 
-- [ ] Update `check_decoration_overflow` in `src/publiplots/composer/compositing/_embed.py`. Replace the absolute 0.5 mm tolerance with a multiplicative 80% rule: `decoration_mm ≤ 0.80 × budget_mm` per side. If `decoration_mm > 0.80 × budget_mm`, raise. Update the error message to reflect the new threshold and explain the breathing-room rationale.
-- [ ] **Update existing tests** in `test_embed_figure.py`:
+- [x] Update `check_decoration_overflow` in `src/publiplots/composer/compositing/_embed.py`. Replace the absolute 0.5 mm tolerance with a multiplicative 80% rule: `decoration_mm ≤ 0.80 × budget_mm` per side. If `decoration_mm > 0.80 × budget_mm`, raise. Update the error message to reflect the new threshold and explain the breathing-room rationale.
+- [x] **Update existing tests** in `test_embed_figure.py`:
   - `test_check_decoration_overflow_passes_when_within_canvas_reservation` — verify it still passes for decoration_mm = 0.5 × budget (well under the 80%).
   - `test_check_decoration_overflow_raises_at_85_percent` — new test: decoration_mm at 0.85 × budget should now raise (was previously passing).
-- [ ] **Update the kitchen-sink example** in `examples/composer/cell_2col_with_embed.py`:
+- [x] **Update the kitchen-sink example** in `examples/composer/cell_2col_with_embed.py`:
   - Change side fig data so y-tick labels are single-character (e.g., `y = np.arange(10)` and corresponding x). Decorations shrink below 12 mm (0.80 × 15 mm budget).
   - Keep `axes_size=(70, 50)` for 1:1 axes-data alignment.
   - Verify by running the example, rasterize, Read.
-- [ ] **Update the golden composition** `_compositions.py:_build_cell_2col_with_embed_figure` to mirror the new example data.
+- [x] **Update the golden composition** `_compositions.py:_build_cell_2col_with_embed_figure` to mirror the new example data.
 
 ### Task 13 — Regenerate ALL composer goldens with the new abc-label placement
 

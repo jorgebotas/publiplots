@@ -36,13 +36,14 @@ def main() -> None:
     # that returns a matplotlib Figure. Match the axes_size to Panel B's
     # slot size (70 x 50 mm) so anchor='axes' applies a 1:1 transform —
     # the side figure's xlabel/ylabel/title land exactly in the canvas's
-    # surrounding margin allocation.
+    # surrounding margin allocation. Use single-character ticks (0..9)
+    # and suppress the xlabel/ylabel axis labels so the side fig's
+    # decoration extents stay under the PR 6c 80%-of-budget cap that
+    # check_decoration_overflow enforces.
     side_fig, side_ax = pp.subplots(axes_size=(70, 50))
-    x = np.linspace(0, 4 * np.pi, 200)
-    side_ax.plot(x, np.sin(x), label=r"$\sin(x)$")
-    side_ax.plot(x, np.cos(x), label=r"$\cos(x)$")
-    side_ax.set_xlabel("x")
-    side_ax.set_ylabel("y")
+    y = np.arange(10)
+    side_ax.plot(y, y, label="linear")
+    side_ax.plot(y, y[::-1], label="reverse")
     side_ax.legend(loc="lower left")
 
     # Wire the side figure into Panel B with anchor='axes' so the side

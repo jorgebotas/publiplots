@@ -727,6 +727,88 @@ def test_check_decoration_overflow_message_contains_actionable_hints():
     assert "PR 6d" in msg
 
 
+def test_check_decoration_overflow_raises_at_85_percent():
+    """PR 6c addendum (Task 12): the tolerance is now 80% of budget,
+    not (budget + 0.5 mm). A decoration extent at 85% of the canvas
+    budget MUST raise (under the old absolute-0.5mm rule, this passed)."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        check_decoration_overflow,
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+        _PT2MM,
+    )
+    from publiplots.composer.exceptions import ComposerVectorError
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    ax.set_ylabel("y" * 30, fontsize=14)  # produces a meaningful left decoration
+    try:
+        _settle_subplots_auto_layout(fig)
+        axes_bbox_pt = extract_side_axes_bbox(fig)
+        # Compute the actual scaled left-decoration in mm so we can size
+        # the budget to exactly 0.85 × decoration (i.e., decoration is
+        # 1/0.85 ≈ 1.176 × budget — well over the 0.80 cap).
+        slot_size_mm = (70.0, 50.0)
+        slot_w_pt = slot_size_mm[0] / _PT2MM
+        axes_left_pt, _, axes_w_pt, _ = axes_bbox_pt
+        scale_x = slot_w_pt / axes_w_pt
+        scaled_left_mm = axes_left_pt * scale_x * _PT2MM
+        # Budget is set so that decoration_mm = 0.85 × budget_mm.
+        # Equivalently budget_mm = decoration_mm / 0.85.
+        left_budget = scaled_left_mm / 0.85
+        with pytest.raises(ComposerVectorError, match=r"'left'"):
+            check_decoration_overflow(
+                fig, axes_bbox_pt,
+                decoration_budget_mm={
+                    "left": left_budget, "right": 100.0,
+                    "top": 100.0, "bottom": 100.0,
+                },
+                panel_label="B",
+                slot_size_mm=slot_size_mm,
+            )
+    finally:
+        plt.close(fig)
+
+
+def test_check_decoration_overflow_passes_at_50_percent():
+    """PR 6c addendum (Task 12): a decoration at 50% of budget is well
+    under the 80% cap — no raise."""
+    import matplotlib.pyplot as plt
+    from publiplots.composer.compositing._embed import (
+        check_decoration_overflow,
+        extract_side_axes_bbox,
+        _settle_subplots_auto_layout,
+        _PT2MM,
+    )
+
+    fig, ax = plt.subplots(figsize=(2.0, 1.5))
+    ax.plot([1, 2, 3], [4, 5, 6])
+    ax.set_ylabel("y" * 30, fontsize=14)
+    try:
+        _settle_subplots_auto_layout(fig)
+        axes_bbox_pt = extract_side_axes_bbox(fig)
+        slot_size_mm = (70.0, 50.0)
+        slot_w_pt = slot_size_mm[0] / _PT2MM
+        axes_left_pt, _, axes_w_pt, _ = axes_bbox_pt
+        scale_x = slot_w_pt / axes_w_pt
+        scaled_left_mm = axes_left_pt * scale_x * _PT2MM
+        # Budget = decoration / 0.50 → decoration is 50% of budget.
+        left_budget = scaled_left_mm / 0.50
+        # Should NOT raise.
+        check_decoration_overflow(
+            fig, axes_bbox_pt,
+            decoration_budget_mm={
+                "left": left_budget, "right": 100.0,
+                "top": 100.0, "bottom": 100.0,
+            },
+            panel_label="B",
+            slot_size_mm=slot_size_mm,
+        )
+    finally:
+        plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # PR 6c Task 4 — pdf compositing anchor='axes' branch
 # ---------------------------------------------------------------------------
@@ -734,11 +816,16 @@ def test_check_decoration_overflow_message_contains_actionable_hints():
 def _build_compact_side_fig():
     """A pp.subplots-built side fig sized to fit within cell-2col Panel B's
     decoration budget (left=15, right=4, top=7, bottom=10 mm). Use
-    no labels and tight axes so the post-scale decoration extents stay
-    < 0.5 mm even when the axes are scaled to a 70x50 mm slot."""
-    fig, ax = pp.subplots(axes_size=(40, 30))
+    explicit zero-margin reservations + stripped ticks/spines so the
+    post-scale decoration extents are zero — well under the
+    PR-6c-tightened 80%-of-budget cap."""
+    fig, ax = pp.subplots(
+        axes_size=(40, 30),
+        title_space=0, xlabel_space=0, ylabel_space=0, right=0,
+        outer_pad=0,
+    )
     ax.plot([1, 2, 3], [4, 5, 6])
-    # Strip ticks/labels so decoration extents are negligible.
+    # Strip ticks/labels so decoration extents are zero.
     ax.set_xticks([])
     ax.set_yticks([])
     for spine in ax.spines.values():

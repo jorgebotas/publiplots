@@ -197,11 +197,15 @@ def render_figure_to_svg_bytes(
 # ---------------------------------------------------------------------------
 
 # Decoration-overflow tolerance for ``check_decoration_overflow``.
-# 0.5 mm = ~6 pixels at 300 DPI. Independent justification (not tied to
-# PR 6a's tol_pt=0.5 — different units): visual-polish tolerance, not
-# byte-fidelity. Tighter than 0.5 mm risks false positives from float
-# rounding; looser admits visible decoration cropping.
-_DECORATION_OVERFLOW_TOL_MM: float = 0.5
+# PR 6c addendum (Task 12): the cap is now multiplicative — decorations
+# may consume up to 80% of the corresponding canvas margin budget per
+# side. The remaining 20% is breathing room: visually the side fig's
+# decoration must NOT touch the next panel's axes-data box. The
+# kitchen-sink 13.26 mm side-fig left decoration vs cell-2col's 15 mm
+# gap (88%) crowded Panel A even though it geometrically fit; 80% caps
+# that. Tighter than 80% risks false positives on otherwise reasonable
+# layouts; looser admits visible crowding.
+_DECORATION_OVERFLOW_BUDGET_FRACTION: float = 0.80
 
 
 def extract_side_axes_bbox(
@@ -317,11 +321,12 @@ def check_decoration_overflow(
     Raises
     ------
     ComposerVectorError
-        If any side overflows by more than
-        :data:`_DECORATION_OVERFLOW_TOL_MM` mm. Message names the
-        panel, side, mm overflow, and points at three remediation
-        paths (``anchor='figure'``, shrink decoration, increase
-        canvas margin) plus the PR 6d auto-expand hint.
+        If any side's decoration extent exceeds
+        ``_DECORATION_OVERFLOW_BUDGET_FRACTION`` (= 80%) of that
+        side's canvas margin reservation. Message names the panel,
+        side, mm overflow, and points at three remediation paths
+        (``anchor='figure'``, shrink decoration, increase canvas
+        margin) plus the PR 6d auto-expand hint.
     """
     from publiplots.composer.exceptions import ComposerVectorError
 
@@ -381,14 +386,21 @@ def check_decoration_overflow(
     ]
 
     for side, decoration_mm, budget_mm, hint_kind in sides:
-        overflow_mm = decoration_mm - budget_mm
-        if overflow_mm > _DECORATION_OVERFLOW_TOL_MM:
+        # PR 6c addendum (Task 12): cap decoration at 80% of budget so
+        # the side fig's xlabel/ylabel doesn't visually crowd the
+        # neighbouring panel's axes-data box.
+        allowed_mm = _DECORATION_OVERFLOW_BUDGET_FRACTION * budget_mm
+        if decoration_mm > allowed_mm:
             raise ComposerVectorError(
                 f"PanelImage {label_str!r} embed_figure(anchor='axes'): "
-                f"side figure decorations overflow canvas reservation "
-                f"by {overflow_mm:.2f} mm on the {side!r} side "
-                f"(decoration={decoration_mm:.2f} mm vs canvas reserved "
-                f"{budget_mm:.2f} mm). Either (a) shrink the side "
+                f"side figure decoration overflow on the {side!r} side — "
+                f"{decoration_mm:.2f} mm exceeds "
+                f"{int(_DECORATION_OVERFLOW_BUDGET_FRACTION * 100)}% of "
+                f"the canvas's {side} margin reservation "
+                f"({budget_mm:.2f} mm; allowed: {allowed_mm:.2f} mm). "
+                f"The remaining 20% is breathing room so the side fig's "
+                f"decoration doesn't visually crowd the neighbouring "
+                f"panel's axes-data box. Either (a) shrink the side "
                 f"figure's {hint_kind}, (b) use anchor='figure' to fit "
                 f"the entire side figure inside the slot rect, or "
                 f"(c) increase the canvas's {side} margin reservation. "

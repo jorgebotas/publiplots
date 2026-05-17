@@ -124,7 +124,12 @@ def _build_cell_2col_with_embed_figure() -> pp.Canvas:
     ``anchor='axes'`` (PR 6c) with ``axes_size=(70, 50)`` matching
     Panel B's slot dims so the side figure's axes-data box aligns
     1:1 with the slot rect (paper-figure axis alignment).
+
+    Side fig data uses single-character ticks (0..9) and no axis
+    labels so the side fig's decoration extents stay under the PR 6c
+    80%-of-budget overflow cap. Mirrors examples/composer/cell_2col_with_embed.py.
     """
+    import numpy as np
     canvas = pp.Canvas("cell-2col")
     canvas.add_row(
         pp.PanelAxes(label="A", size=(70, 50)),
@@ -133,7 +138,10 @@ def _build_cell_2col_with_embed_figure() -> pp.Canvas:
     # Build a deterministic side figure using pp.subplots (no rng,
     # no time, no env).
     fig, ax = pp.subplots(axes_size=(70, 50))
-    ax.plot([1, 2, 3], [4, 5, 6])
+    y = np.arange(10)
+    ax.plot(y, y, label="linear")
+    ax.plot(y, y[::-1], label="reverse")
+    ax.legend(loc="lower left")
     canvas.embed_figure("B", fig, anchor="axes")
     return canvas
 
