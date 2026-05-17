@@ -19,12 +19,20 @@ VALID_LOCS = frozenset({"ul", "ur", "ll", "lr", "uc", "lc", "cl", "cr"})
 
 # Default label_style — keys present on every Canvas; preset overrides
 # `size` (and may override `loc` in future).
+#
+# pad_mm = (0.0, 1.0): with PR 6c's outward-grow loc-table convention, the
+# y-component pushes the abc-label glyph 1 mm AWAY from the spine into the
+# canvas's reserved decoration margin (title_space for upper locs;
+# xlabel_space for lower; ylabel_space for side locs). Without this, the
+# glyph bottom touches the spine line — visually correct but tight. 1 mm
+# (~ 1/3 of the 9pt-bold glyph height) gives clear separation while
+# leaving room for any title/xlabel that follows.
 DEFAULT_LABEL_STYLE: Dict[str, Any] = {
     "weight": "bold",
     "size": 9,                # overridden by preset's label_size_pt
     "family": None,           # falls back to rcParams['font.family']
     "loc": "ul",
-    "pad_mm": (0.0, 0.0),
+    "pad_mm": (0.0, 1.0),
     "border": False,
     "bbox": False,
 }
@@ -181,8 +189,11 @@ def render_label(
     }
     x, y, ha, va = loc_table[loc]
 
-    # Apply pad_mm as inward shift in axes fraction. Bbox can be
-    # zero-sized before first draw, so guard against /0.
+    # Apply pad_mm as an OUTWARD shift in axes fraction (away from the
+    # data, into the canvas-reserved decoration margin). With PR 6c's
+    # outward-grow loc-table convention, ha/va anchor the text to the
+    # SPINE side; pad_mm pushes the glyph further into the margin.
+    # Bbox can be zero-sized before first draw, so guard against /0.
     pad_x_mm, pad_y_mm = style.get("pad_mm", (0.0, 0.0))
     bbox = ax.get_window_extent()
     fig = ax.figure

@@ -292,14 +292,14 @@ src/publiplots/composer/
 
 ### Task 13 — Regenerate ALL composer goldens with the new abc-label placement
 
-- [ ] Run `python tools/composer/regen_fixtures.py` (no `--only` filter) to regenerate every entry in `COMPOSITIONS`. This regenerates: cell-2col-simple, cell-2col-multirow, nature-2col-abc, nature-2col-panel-grid, cell-2col-with-svg-schematic, cell-2col-with-png-schematic, cell-2col-with-embed-figure (PDF + SVG sidecar PNGs).
-- [ ] **For each regenerated golden, rasterize + Read by Claude:**
+- [x] Run `python tools/composer/regen_fixtures.py` (no `--only` filter) to regenerate every entry in `COMPOSITIONS`. This regenerates: cell-2col-simple, cell-2col-multirow, nature-2col-abc, nature-2col-panel-grid, cell-2col-with-svg-schematic, cell-2col-with-png-schematic, cell-2col-with-embed-figure (PDF + SVG sidecar PNGs).
+- [x] **For each regenerated golden, rasterize + Read by Claude:**
   - `pdftocairo -png -r 200 -singlefile <pdf> /tmp/check_<name>` then `Read /tmp/check_<name>.png`.
   - For SVG-only goldens: `cairosvg <svg> -o /tmp/check_<name>_svg.png --output-width 1200` then `Read`.
   - Verify abc labels sit ABOVE/OUTSIDE the axes-data box (not inside).
-- [ ] If any visual regression appears beyond the abc-label fix, STOP and diagnose.
-- [ ] Final test run: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q` — all goldens should still pass their structure/mediabox/visual checks.
-- [ ] Commit the regenerated goldens.
+- [x] If any visual regression appears beyond the abc-label fix, STOP and diagnose.
+- [x] Final test run: `uv run pytest tests/composer tests/test_legend_grid_scope.py -q` — all goldens should still pass their structure/mediabox/visual checks.
+- [x] Commit the regenerated goldens.
 
 ---
 
