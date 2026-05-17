@@ -164,16 +164,20 @@ def render_label(
     if loc not in VALID_LOCS:
         raise ValueError(f"loc must be one of {sorted(VALID_LOCS)}, got {loc!r}")
 
-    # Map loc codes → (x_frac, y_frac, ha, va)
+    # Map loc codes → (x_frac, y_frac, ha, va).
+    # Outward-grow contract (PR 6c): at each anchor the text glyph grows
+    # AWAY from the data into the canvas-reserved decoration margin —
+    # 'ul' sits ON the top spine and grows UPWARD (va='bottom'), 'll'
+    # sits ON the bottom spine and grows DOWNWARD (va='top'), etc.
     loc_table = {
-        "ul": (0.0, 1.0, "left",   "top"),
-        "ur": (1.0, 1.0, "right",  "top"),
-        "ll": (0.0, 0.0, "left",   "bottom"),
-        "lr": (1.0, 0.0, "right",  "bottom"),
-        "uc": (0.5, 1.0, "center", "top"),
-        "lc": (0.5, 0.0, "center", "bottom"),
-        "cl": (0.0, 0.5, "left",   "center"),
-        "cr": (1.0, 0.5, "right",  "center"),
+        "ul": (0.0, 1.0, "left",   "bottom"),
+        "ur": (1.0, 1.0, "right",  "bottom"),
+        "ll": (0.0, 0.0, "left",   "top"),
+        "lr": (1.0, 0.0, "right",  "top"),
+        "uc": (0.5, 1.0, "center", "bottom"),
+        "lc": (0.5, 0.0, "center", "top"),
+        "cl": (0.0, 0.5, "right",  "center"),
+        "cr": (1.0, 0.5, "left",   "center"),
     }
     x, y, ha, va = loc_table[loc]
 

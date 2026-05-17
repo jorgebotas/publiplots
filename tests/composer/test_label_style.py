@@ -114,3 +114,44 @@ def test_abc_false_renders_no_text_for_none_panels():
     ax = canvas._panels_ordered[0].ax
     label_texts = [t.get_text() for t in ax.texts]
     assert all(t == "" or t is None for t in label_texts)
+
+
+# ---------------------------------------------------------------------------
+# loc-table outward-grow contract — abc text grows AWAY from data into the
+# canvas-reserved decoration margin (not INTO the axes-data box).
+#
+# For corner anchors ('ul'/'ur'/'ll'/'lr') the y_frac sits ON the spine and
+# the va flips so the glyph's vertical extent lies OUTSIDE the spine. For
+# edge centers ('uc'/'lc') va flips similarly. For 'cl'/'cr' the ha flips so
+# the glyph extends sideways outside the spine.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("loc,expected_ha,expected_va", [
+    ("ul", "left",   "bottom"),
+    ("ur", "right",  "bottom"),
+    ("ll", "left",   "top"),
+    ("lr", "right",  "top"),
+    ("uc", "center", "bottom"),
+    ("lc", "center", "top"),
+    ("cl", "right",  "center"),
+    ("cr", "left",   "center"),
+])
+def test_abc_label_loc_anchors_grow_outside_axes(loc, expected_ha, expected_va):
+    """Each loc anchor's text artist has the va/ha that grows the glyph
+    AWAY from the data box (outward-grow contract, PR 6c addendum)."""
+    canvas = pp.Canvas("cell-2col")
+    canvas.label_style(loc=loc)
+    canvas.add_row(pp.PanelAxes(label="A", size=(60.0, 40.0)))
+
+    ax = canvas["A"].ax
+    label_artists = [t for t in ax.texts if t.get_text() == "A"]
+    assert len(label_artists) == 1, (
+        f"expected exactly 1 'A' text artist for loc={loc!r}, got {len(label_artists)}"
+    )
+    artist = label_artists[0]
+    assert artist.get_ha() == expected_ha, (
+        f"loc={loc!r}: expected ha={expected_ha!r}, got {artist.get_ha()!r}"
+    )
+    assert artist.get_va() == expected_va, (
+        f"loc={loc!r}: expected va={expected_va!r}, got {artist.get_va()!r}"
+    )

@@ -263,7 +263,7 @@ src/publiplots/composer/
 
 ### Task 11 — abc-label loc-table outward-grow fix (mid-PR-6c addition)
 
-- [ ] Update `loc_table` in `src/publiplots/composer/abc_labels.py:168-178`. New convention: at each corner/edge anchor, the text glyph grows AWAY from the data into the canvas-reserved decoration margin:
+- [x] Update `loc_table` in `src/publiplots/composer/abc_labels.py:168-178`. New convention: at each corner/edge anchor, the text glyph grows AWAY from the data into the canvas-reserved decoration margin:
   - `'ul'` → `(x_frac=0.0, y_frac=1.0, ha='left',   va='bottom')`  # was `va='top'`
   - `'ur'` → `(x_frac=1.0, y_frac=1.0, ha='right',  va='bottom')`  # was `va='top'`
   - `'ll'` → `(x_frac=0.0, y_frac=0.0, ha='left',   va='top')`     # was `va='bottom'`
@@ -272,11 +272,11 @@ src/publiplots/composer/
   - `'lc'` → `(x_frac=0.5, y_frac=0.0, ha='center', va='top')`     # was `va='bottom'`
   - `'cl'` → `(x_frac=0.0, y_frac=0.5, ha='right',  va='center')`  # was `ha='left'`
   - `'cr'` → `(x_frac=1.0, y_frac=0.5, ha='left',   va='center')`  # was `ha='right'`
-- [ ] **Failing tests first** — extend the existing abc-label tests to assert the new placements:
+- [x] **Failing tests first** — extend the existing abc-label tests to assert the new placements:
   - `test_abc_label_ul_renders_above_top_spine` — render a Canvas with one panel + `abc='upper'`; via `figure.findobj` locate the abc text artist and assert `va='bottom'` AND its bbox top ≤ axes top + 0.1 (i.e., glyph is OUTSIDE the axes).
   - Symmetric tests for `'ur'`, `'ll'`, `'lr'`.
-- [ ] Implement.
-- [ ] **Visual confirmation:** rasterize one of the regenerated PR 1-5 goldens (after Task 13 regen) and Read to verify the abc label sits ABOVE the top spine.
+- [x] Implement.
+- [x] **Visual confirmation:** rasterize one of the regenerated PR 1-5 goldens (after Task 13 regen) and Read to verify the abc label sits ABOVE the top spine.
 
 ### Task 12 — Tighten decoration overflow tolerance to 80% of budget
 
