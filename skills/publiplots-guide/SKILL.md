@@ -39,7 +39,7 @@ By plot family:
 - **Per-position lock/auto** (since 0.11): tuples passed to `title_space` / `xlabel_space` / `ylabel_space` / `right` may contain `None` entries to opt that position into auto-measurement while locking the others. Example: `xlabel_space=(0.0, None)` locks row 0 to 0 mm and lets row 1 grow with decoration. Each `None` resolves to the rcParams default at construction; the reactor preserves the locked positions on later draws. Used internally by `pp.JointGrid` to keep joint↔marginal gaps symmetric without sacrificing auto-measurement of the joint panel's own labels.
 
 ### Legend
-- `pp.legend(axes=None, collect=None, *, side='right', anchor=None, figure=None, orientation='auto', align='auto', x_offset, y_offset, gap=2, column_spacing=5, vpad, max_width)` — unified legend factory. See the `legend-placement` skill.
+- `pp.legend(axes=None, collect=None, *, side='right', anchor=None, figure=None, rows=None, cols=None, span=None, ax=None, orientation='auto', align='auto', x_offset, y_offset, gap=2, column_spacing=5, vpad, max_width)` — unified legend factory. Since 0.12.0, `rows=`/`cols=`/`span=`/`ax=` are mutually-exclusive grid-scope shortcuts that resolve over the `pp.subplots` axes matrix to a row, column, or arbitrary axes subset. See the `legend-placement` skill.
 - `pp.MultiAxesLegendGroup` — underlying class, rarely needed directly.
 - `pp.LegendBuilder`, `pp.HandlerRectangle`, `pp.HandlerMarker`, `pp.HandlerLineMarker`, `pp.RectanglePatch`, `pp.MarkerPatch`, `pp.LineMarkerPatch`, `pp.get_legend_handler_map`, `pp.create_legend_handles` — low-level handle machinery.
 
