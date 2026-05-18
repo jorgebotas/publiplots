@@ -503,21 +503,18 @@ pp.show()
 # %%
 # Rounded bars + annotations
 # --------------------------
-# ``annotate=`` works on rounded bars exactly as it does on flat ones.
+# ``annotate=`` works on rounded bars exactly as it does on flat ones —
 # ``border_radius`` swaps each ``Rectangle`` artist for a rounded
-# patch, and the annotate subsystem walks both kinds.
-fig, axes = pp.subplots(1, 2, axes_size=(45, 40))
-pp.barplot(
-    data=rounded_df, x='x', y='y', ax=axes[0],
+# patch, and the annotate subsystem walks both kinds. Combines well
+# with ``hue=x`` + ``annotate={"color": "hue"}`` for a label per
+# saturated category color.
+ax = pp.barplot(
+    data=rounded_df, x='x', y='y', hue='x',
+    palette='flare', legend=False,
     border_radius=(1.5, 0),
-    annotate={"fmt": ".1f"},
-    title='annotate=value',
-)
-pp.barplot(
-    data=rounded_df, x='x', y='y', ax=axes[1],
-    border_radius=(1.5, 0),
-    annotate={"fmt": ".1f", "anchor": "inside", "rotation": 90},
-    title='annotate inside, rotated',
+    annotate={"fmt": ".1f", "anchor": "inside",
+              "rotation": 90, "color": "hue"},
+    title='rounded + annotate(color="hue")',
 )
 pp.show()
 
