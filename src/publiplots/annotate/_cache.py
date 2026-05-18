@@ -155,7 +155,11 @@ def _is_bar_rect(p) -> bool:
     causing annotate strategies to skip every negative bar. Here we only
     reject *degenerate* zero-size rects (e.g. truly empty groups).
     """
-    if not isinstance(p, Rectangle):
+    # Lazy import to avoid a cycle: utils.rounding pulls in publiplots
+    # internals at import time.
+    from publiplots.utils.rounding import _RoundedBarPatch
+
+    if not isinstance(p, (Rectangle, _RoundedBarPatch)):
         return False
     return p.get_width() != 0 and p.get_height() != 0
 
