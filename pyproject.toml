@@ -52,12 +52,6 @@ docs = [
 regression = [
     "statsmodels>=0.14.0",
 ]
-composer = [
-    "pypdf>=6.0",
-    "cairosvg>=2.7",
-    "lxml>=4.9",
-    "Pillow>=10.0",
-]
 
 [project.urls]
 Homepage = "https://github.com/jorgebotas/publiplots"
