@@ -99,17 +99,15 @@ def test_resolve_grid_scope_no_publiplots_axes_raises():
         _resolve_grid_scope(fig, rows=0, cols=None, span=None, ax=None)
 
 
-def test_resolve_grid_scope_canvas_figure_raises_with_pr7_hint():
-    """rows/cols on a Canvas figure → ValueError pointing at PR 7 / pp.subplots.
+def test_resolve_grid_scope_raw_plt_subplots_raises_with_hint():
+    """rows/cols on a raw plt.subplots figure (no `_publiplots_axes`) → ValueError.
 
-    Canvas integration is deferred to PR 7. Until then the resolver raises
-    the same way it does for a raw plt.subplots() figure (no
-    `_publiplots_axes` matrix attached).
+    The resolver requires the figure to carry a `_publiplots_axes` matrix
+    attached by `pp.subplots`. Plain matplotlib figures don't have one,
+    so the resolver must raise a clear error pointing the user at
+    `pp.subplots` (or the explicit `ax=` kwarg).
     """
-    canvas = pp.Canvas("cell-2col")
-    canvas.add_row(pp.PanelAxes(label="A", size=(70, 40)),
-                   pp.PanelAxes(label="B", size=(70, 40)))
-    fig = canvas.figure  # triggers lazy finalization
+    fig, _ = plt.subplots(2, 2)
     with pytest.raises(ValueError, match=r"pp\.subplots"):
         _resolve_grid_scope(fig, rows=0, cols=None, span=None, ax=None)
 
