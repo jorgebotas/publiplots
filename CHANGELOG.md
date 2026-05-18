@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`build_from_barplot_call`, `build_from_stacked_barplot_call`,
   `build_from_histplot_call`) now pin the fallback alpha to 1.0.
   (PR #172, fixes #171)
+- `pp.annotate(kind='bar_values' | 'bar_custom' | 'box_stats')` now
+  renders labels when `pp.rcParams['bar.border_radius']` (or
+  `box.border_radius`) is non-zero. `apply_border_radius` swaps
+  matplotlib's `Rectangle` / `PathPatch` artists for publiplots'
+  custom `_RoundedBarPatch` class, and the annotate subsystem's
+  isinstance gates in `_cache._is_bar_rect`, the
+  stacked-barplot patch walker, and the boxplot patch walker
+  previously rejected those rounded patches — silently emitting
+  zero labels. The gates are widened to admit `_RoundedBarPatch`
+  alongside the original types. (PR #175, fixes #173)
 
 ## [0.11.3] - 2026-05-13
 

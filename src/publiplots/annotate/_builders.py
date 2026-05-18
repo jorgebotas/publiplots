@@ -366,6 +366,9 @@ def build_from_stacked_barplot_call(
         ``source_frame.iloc[record.frame_row_index]`` resolves correctly
         regardless of the caller's index kind.
     """
+    # Lazy import to avoid a cycle through utils.rounding.
+    from publiplots.utils.rounding import _RoundedBarPatch
+
     orient: Literal["v", "h"] = "v" if categorical_axis == x else "h"
 
     agg = _aggregate_means(
@@ -377,7 +380,7 @@ def build_from_stacked_barplot_call(
     # Rectangle per aggregated row via ax.bar, including legitimate
     # zero-valued segments (e.g. a group mean that happens to be 0).
     # Pairing with agg is 1:1 in deterministic draw order.
-    rects = [p for p in ax.patches if isinstance(p, Rectangle)]
+    rects = [p for p in ax.patches if isinstance(p, (Rectangle, _RoundedBarPatch))]
 
     bars: List[BarRecord] = []
     for i, (rect, row) in enumerate(zip(rects, agg)):
@@ -705,7 +708,10 @@ def build_from_boxplot_call(
 
     ``source_frame`` is required keyword-only; see ``_build_box_stats_meta``.
     """
-    patches = [p for p in ax.patches if isinstance(p, PathPatch)]
+    # Lazy import to avoid a cycle through utils.rounding.
+    from publiplots.utils.rounding import _RoundedBarPatch
+
+    patches = [p for p in ax.patches if isinstance(p, (PathPatch, _RoundedBarPatch))]
     return _build_box_stats_meta(
         ax, data, x, y, hue, categorical_axis, palette, whis, patches,
         source_frame=source_frame,
