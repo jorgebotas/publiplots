@@ -74,6 +74,31 @@ ax = pp.barplot(
 pp.show()
 
 # %%
+# Hue-colored labels when ``hue == x``
+# ------------------------------------
+# A common idiom is ``hue=x`` to color each category from a palette
+# while keeping the categorical axis. ``annotate={"color": "hue"}``
+# resolves to the saturated palette color per bar — the bar's
+# default ``alpha=0.1`` outline fill does not leak into the label.
+tau_df = pd.DataFrame({
+    "tau": ["-1", "-0.5", "0", "0.5", "1"],
+    "value": [0.04, 0.05, 0.06, 0.05, 0.03],
+})
+tau_palette = {
+    "-1": "#440154", "-0.5": "#3b528b", "0": "#21918c",
+    "0.5": "#5ec962", "1": "#fde725",
+}
+
+ax = pp.barplot(
+    data=tau_df, x="tau", y="value", hue="tau",
+    order=list(tau_palette), palette=tau_palette, legend=False,
+    annotate={"fmt": "{:.1%}", "anchor": "inside",
+              "rotation": 90, "color": "hue"},
+    title='hue == x with annotate={"color": "hue"}',
+)
+pp.show()
+
+# %%
 # Horizontal orientation
 # ----------------------
 df_h = df.rename(columns={"category": "c", "value": "v"})

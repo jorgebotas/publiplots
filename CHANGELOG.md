@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mutually-exclusive addressing modes; existing call signatures
   unchanged. (PR #166)
 
+### Fixed
+
+- `pp.annotate(color="hue")` now renders opaque label text when the
+  bar fill is translucent (e.g. the default `alpha=0.1` outline
+  style). Previously, when palette lookup fell back to the bar's
+  facecolor — most notably when `hue == x` collapses `hue_value` to
+  `None` in seaborn — the bar's alpha leaked into the label color,
+  producing 10%-opacity text. The three bar-record builders
+  (`build_from_barplot_call`, `build_from_stacked_barplot_call`,
+  `build_from_histplot_call`) now pin the fallback alpha to 1.0.
+  (PR #172, fixes #171)
+
 ## [0.11.3] - 2026-05-13
 
 ### Added

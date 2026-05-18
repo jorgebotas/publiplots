@@ -284,7 +284,11 @@ def build_from_barplot_call(
             if key is not None and key in palette:
                 hue_color = to_rgba(palette[key])
         if hue_color is None:
-            hue_color = tuple(rect.get_facecolor())
+            # Strip face alpha (publiplots' default bar style is alpha=0.1
+            # outline) so labels referencing this color render opaquely
+            # rather than inheriting the bar's translucency.
+            r, g, b, _ = rect.get_facecolor()
+            hue_color = (r, g, b, 1.0)
         bars.append(BarRecord(
             patch=rect,
             value=float(row["mean"]),
@@ -406,7 +410,9 @@ def build_from_stacked_barplot_call(
             if key is not None and key in palette:
                 hue_color = to_rgba(palette[key])
         if hue_color is None:
-            hue_color = tuple(rect.get_facecolor())
+            # Strip face alpha — see note on the dodged-builder fallback.
+            r, g, b, _ = rect.get_facecolor()
+            hue_color = (r, g, b, 1.0)
         bars.append(BarRecord(
             patch=rect,
             value=float(value),
@@ -484,7 +490,9 @@ def build_from_histplot_call(
             if best_level is not None:
                 hue_color = to_rgba(palette[best_level])
         if hue_color is None:
-            hue_color = tuple(rect.get_facecolor())
+            # Strip face alpha — see note on the dodged-builder fallback.
+            r, g, b, _ = rect.get_facecolor()
+            hue_color = (r, g, b, 1.0)
         bars.append(BarRecord(
             patch=rect,
             value=float(value),
