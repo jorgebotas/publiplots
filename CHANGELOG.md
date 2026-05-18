@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Composer `embed_figure` axes-data alignment (PR 6c):
+  - `canvas.embed_figure(label, fig, *, anchor='figure')` gains an
+    `anchor=` keyword. `anchor='axes'` anchors the side figure's
+    axes-data box to the slot rect (paper-figure axis alignment) so
+    Panel A's matplotlib axes-data box aligns vertically and
+    horizontally with the embedded side figure's. Default
+    `anchor='figure'` preserves PR 6b semantics for back-compat.
+  - Raises `ComposerVectorError` with an actionable hint when the
+    side figure's decorations exceed the canvas's surrounding margin
+    reservation (decoration-overflow contract; PR 6d will relax this
+    into auto-margin-expansion).
+  - `assert_pdf_matches(canvas, name, mode='visual')` rasterizes the
+    canvas PDF at 200 DPI via `pdftocairo` and compares to a sidecar
+    PNG golden under `tests/composer/golden/png_from_pdf/`. Catches
+    visual regressions where structural tests pass but the render is
+    broken (the class of bug PR 6b shipped). `tools/composer/regen_fixtures.py`
+    auto-emits the sidecar PNG alongside every PDF golden regen and
+    accepts a new `--rasterize-pdf-goldens` flag for force-regen.
+  - The `cell-2col-with-embed-figure` golden was regenerated with
+    `axes_size=(70, 50)` matching Panel B's slot for a 1:1 axes-data
+    mapping. Regeneration follows the
+    [[feedback_visual_features_must_be_eyeballed]] memory rule (Claude
+    rasterizes + reads PNG before committing; user double-checks).
+
 ### Added
 
 - Composer kitchen-sink + raster polish (PR 6b):

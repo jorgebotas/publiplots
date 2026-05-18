@@ -56,6 +56,7 @@ def savefig_pdf(
     panels: Sequence[Any],
     strict_vectors: bool = False,
     metadata_creation_date: Optional[str] = None,
+    canvas: Any = None,
     **savefig_kwargs: Any,
 ) -> None:
     """Vector-compose the canvas Figure to a PDF at ``path``.
@@ -124,6 +125,7 @@ def savefig_pdf(
             panel=panel,
             strict_vectors=strict_vectors,
             pypdf=pypdf,
+            canvas=canvas,
         )
 
     # Step 5: deterministic metadata + write to disk.
@@ -144,6 +146,7 @@ def _compose_panel_onto(
     panel: Any,
     strict_vectors: bool,
     pypdf: Any,
+    canvas: Any = None,
 ) -> None:
     """Stamp ``panel``'s schematic onto ``target_page``.
 
@@ -156,13 +159,109 @@ def _compose_panel_onto(
     ``canvas.embed_figure``), the embedded figure wins over any path —
     the figure is rendered to deterministic PDF bytes and stamped just
     like a vector schematic.
+
+    PR 6c: when ``panel.embedded_figure_anchor == 'axes'``, the side
+    figure's axes-data box is mapped DIRECTLY to ``panel.bbox_mm`` and
+    decorations spill into the canvas's surrounding margin. Requires
+    ``canvas`` to be passed for the per-panel decoration-budget check.
     """
     label = getattr(panel, "label", None) or "<unlabeled>"
     path = panel.image_path
     embedded_figure = getattr(panel, "embedded_figure", None)
+    embed_anchor = getattr(panel, "embedded_figure_anchor", "figure")
     align = panel.image_align if panel.image_align is not None else "center"
     clip = panel.image_clip if panel.image_clip is not None else "fit"
     bbox_mm = panel.bbox_mm
+
+    # PR 6c: anchor='axes' branch dispatches early because the
+    # transform math is fundamentally different — we map the side
+    # fig's AXES-DATA bbox to the slot, not the mediabox. Strict
+    # ordering (architect): settle → extract → check → render → apply.
+    if embedded_figure is not None and embed_anchor == "axes":
+        from publiplots.composer.compositing._embed import (
+            _settle_subplots_auto_layout,
+            check_decoration_overflow,
+            extract_side_axes_bbox,
+            render_figure_to_pdf_bytes,
+        )
+        from publiplots.composer.compositing._geometry import MM2PT
+
+        # 1. Settle.
+        _settle_subplots_auto_layout(embedded_figure)
+        # 2. Extract axes-data bbox.
+        axes_bbox_pt = extract_side_axes_bbox(embedded_figure)
+        # 3. Check overflow vs canvas budget. canvas is required here.
+        if canvas is not None:
+            decoration_budget_mm = canvas._panel_decoration_budget_mm(panel)
+            check_decoration_overflow(
+                embedded_figure, axes_bbox_pt,
+                decoration_budget_mm,
+                panel_label=panel.label,
+                slot_size_mm=(bbox_mm[2], bbox_mm[3]),
+            )
+        # 4. Render side figure to deterministic PDF bytes (idempotent
+        # settle inside).
+        pdf_bytes = render_figure_to_pdf_bytes(embedded_figure)
+        # 5. Compute transform. The slot mm coords are based on the
+        # canvas's INTENDED dims (panel.bbox_mm was finalized before
+        # SubplotsAutoLayout settled the canvas figure). Matplotlib
+        # may have shrunk the canvas at savefig time; we read the
+        # actual post-settle page mediabox dims from target_page and
+        # rescale slot rect to fraction-space, then back to canvas pt
+        # using the post-settle mediabox. This keeps Panel B's slot
+        # in the same fraction-of-canvas space as Panel A's
+        # matplotlib-fraction position (axes-data alignment).
+        if canvas is not None and canvas._geometry is not None:
+            intended_canvas_w_mm = canvas._geometry.canvas_width_mm
+            intended_canvas_h_mm = canvas._geometry.canvas_height_mm
+        else:
+            # Best effort: assume mediabox matches intended.
+            mb = target_page.mediabox
+            intended_canvas_w_mm = float(mb.width) / MM2PT
+            intended_canvas_h_mm = float(mb.height) / MM2PT
+        # Slot in canvas-fraction (bottom-up matches PDF y).
+        slot_x_frac = bbox_mm[0] / intended_canvas_w_mm
+        slot_y_frac = bbox_mm[1] / intended_canvas_h_mm
+        slot_w_frac = bbox_mm[2] / intended_canvas_w_mm
+        slot_h_frac = bbox_mm[3] / intended_canvas_h_mm
+        # Slot in post-settle canvas pt.
+        mb = target_page.mediabox
+        canvas_w_pt = float(mb.width)
+        canvas_h_pt = float(mb.height)
+        slot_x_pt = slot_x_frac * canvas_w_pt
+        slot_y_pt = slot_y_frac * canvas_h_pt
+        slot_w_pt = slot_w_frac * canvas_w_pt
+        slot_h_pt = slot_h_frac * canvas_h_pt
+        axes_left_pt, axes_bottom_pt, axes_w_pt, axes_h_pt = axes_bbox_pt
+        if axes_w_pt <= 0 or axes_h_pt <= 0:
+            # Degenerate side fig — treat like 'figure' anchor as a
+            # safe fallback (no axes to align to). compute_pdf_transform
+            # is already imported at module scope.
+            schematic_reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+            schematic_page = schematic_reader.pages[0]
+            sch_mb = schematic_page.mediabox
+            sx, sy, tx, ty = compute_pdf_transform(
+                bbox_mm, (float(sch_mb.width), float(sch_mb.height)),
+                align=align, clip=clip,
+            )
+        else:
+            sx = slot_w_pt / axes_w_pt
+            sy = slot_h_pt / axes_h_pt
+            # After the scale, the side fig's axes-data bottom-left
+            # lands at (axes_left_pt * sx, axes_bottom_pt * sy). We
+            # want it at (slot_x_pt, slot_y_pt). So tx = slot_x_pt -
+            # axes_left_pt * sx, etc.
+            tx = slot_x_pt - axes_left_pt * sx
+            ty = slot_y_pt - axes_bottom_pt * sy
+            schematic_reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+            schematic_page = schematic_reader.pages[0]
+        transformation = (
+            pypdf.Transformation()
+            .scale(sx=sx, sy=sy)
+            .translate(tx=tx, ty=ty)
+        )
+        target_page.merge_transformed_page(schematic_page, transformation)
+        return
 
     if embedded_figure is not None:
         # PR 6b embedded-figure branch — render the Figure to a

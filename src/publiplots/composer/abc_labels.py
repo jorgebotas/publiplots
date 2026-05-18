@@ -19,12 +19,20 @@ VALID_LOCS = frozenset({"ul", "ur", "ll", "lr", "uc", "lc", "cl", "cr"})
 
 # Default label_style — keys present on every Canvas; preset overrides
 # `size` (and may override `loc` in future).
+#
+# pad_mm = (0.0, 1.0): with PR 6c's outward-grow loc-table convention, the
+# y-component pushes the abc-label glyph 1 mm AWAY from the spine into the
+# canvas's reserved decoration margin (title_space for upper locs;
+# xlabel_space for lower; ylabel_space for side locs). Without this, the
+# glyph bottom touches the spine line — visually correct but tight. 1 mm
+# (~ 1/3 of the 9pt-bold glyph height) gives clear separation while
+# leaving room for any title/xlabel that follows.
 DEFAULT_LABEL_STYLE: Dict[str, Any] = {
     "weight": "bold",
     "size": 9,                # overridden by preset's label_size_pt
     "family": None,           # falls back to rcParams['font.family']
     "loc": "ul",
-    "pad_mm": (0.0, 0.0),
+    "pad_mm": (0.0, 1.0),
     "border": False,
     "bbox": False,
 }
@@ -164,21 +172,28 @@ def render_label(
     if loc not in VALID_LOCS:
         raise ValueError(f"loc must be one of {sorted(VALID_LOCS)}, got {loc!r}")
 
-    # Map loc codes → (x_frac, y_frac, ha, va)
+    # Map loc codes → (x_frac, y_frac, ha, va).
+    # Outward-grow contract (PR 6c): at each anchor the text glyph grows
+    # AWAY from the data into the canvas-reserved decoration margin —
+    # 'ul' sits ON the top spine and grows UPWARD (va='bottom'), 'll'
+    # sits ON the bottom spine and grows DOWNWARD (va='top'), etc.
     loc_table = {
-        "ul": (0.0, 1.0, "left",   "top"),
-        "ur": (1.0, 1.0, "right",  "top"),
-        "ll": (0.0, 0.0, "left",   "bottom"),
-        "lr": (1.0, 0.0, "right",  "bottom"),
-        "uc": (0.5, 1.0, "center", "top"),
-        "lc": (0.5, 0.0, "center", "bottom"),
-        "cl": (0.0, 0.5, "left",   "center"),
-        "cr": (1.0, 0.5, "right",  "center"),
+        "ul": (0.0, 1.0, "left",   "bottom"),
+        "ur": (1.0, 1.0, "right",  "bottom"),
+        "ll": (0.0, 0.0, "left",   "top"),
+        "lr": (1.0, 0.0, "right",  "top"),
+        "uc": (0.5, 1.0, "center", "bottom"),
+        "lc": (0.5, 0.0, "center", "top"),
+        "cl": (0.0, 0.5, "right",  "center"),
+        "cr": (1.0, 0.5, "left",   "center"),
     }
     x, y, ha, va = loc_table[loc]
 
-    # Apply pad_mm as inward shift in axes fraction. Bbox can be
-    # zero-sized before first draw, so guard against /0.
+    # Apply pad_mm as an OUTWARD shift in axes fraction (away from the
+    # data, into the canvas-reserved decoration margin). With PR 6c's
+    # outward-grow loc-table convention, ha/va anchor the text to the
+    # SPINE side; pad_mm pushes the glyph further into the margin.
+    # Bbox can be zero-sized before first draw, so guard against /0.
     pad_x_mm, pad_y_mm = style.get("pad_mm", (0.0, 0.0))
     bbox = ax.get_window_extent()
     fig = ax.figure

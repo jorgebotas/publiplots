@@ -112,6 +112,7 @@ def dispatch_savefig(
     cmyk: bool = False,
     tiff_compression: str = _DEFAULT_TIFF_COMPRESSION,
     external_raster: bool = False,
+    canvas: Any = None,
     **kwargs: Any,
 ) -> None:
     """Dispatch ``canvas.savefig`` by file extension.
@@ -179,6 +180,8 @@ def dispatch_savefig(
                 "instead."
             )
         # PR 5: dispatch to compositing.pdf.savefig_pdf
+        # PR 6c: thread canvas for the embed_figure(anchor='axes')
+        # decoration-budget overflow check.
         from publiplots.composer.compositing.pdf import savefig_pdf
         savefig_pdf(
             figure,
@@ -186,6 +189,7 @@ def dispatch_savefig(
             panels=list(panels),
             strict_vectors=strict_vectors,
             metadata_creation_date=metadata_creation_date,
+            canvas=canvas,
             **kwargs,
         )
         return
@@ -198,6 +202,7 @@ def dispatch_savefig(
             )
         # PR 6a: dispatch to compositing.svg.savefig_svg
         # PR 6b: thread external_raster through.
+        # PR 6c: thread canvas for embed_figure(anchor='axes').
         from publiplots.composer.compositing.svg import savefig_svg
         savefig_svg(
             figure,
@@ -206,6 +211,7 @@ def dispatch_savefig(
             strict_vectors=strict_vectors,
             metadata_date=metadata_date,
             external_raster=external_raster,
+            canvas=canvas,
             **kwargs,
         )
         return

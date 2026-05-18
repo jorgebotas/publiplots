@@ -57,6 +57,7 @@ PNG_DIR = _helpers.PNG_DIR
 SNAPSHOT_DIR = _helpers.SNAPSHOT_DIR
 PDF_DIR = _helpers.PDF_DIR
 SVG_DIR = _helpers.SVG_DIR
+VISUAL_PNG_DIR = _helpers.VISUAL_PNG_DIR  # PR 6c sidecar PNG dir.
 snapshot = _helpers.snapshot
 
 
@@ -117,6 +118,37 @@ def _regen_one_pdf(name: str, build_fn, *, check: bool) -> bool:
     if not check and pdf_diff:
         pdf_path.write_bytes(new_bytes)
     return pdf_diff
+
+
+def _rasterize_pdf_golden(name: str) -> bool:
+    """PR 6c: rasterize ``PDF_DIR/<name>.pdf`` to
+    ``VISUAL_PNG_DIR/<name>.png`` at 200 DPI via pdftocairo.
+
+    Returns True iff the sidecar PNG was written/updated. Skips
+    silently (returns False) if pdftocairo is not on PATH.
+    """
+    import shutil
+    import subprocess
+    if shutil.which("pdftocairo") is None:
+        return False
+    pdf_path = PDF_DIR / f"{name}.pdf"
+    if not pdf_path.exists():
+        return False
+    VISUAL_PNG_DIR.mkdir(parents=True, exist_ok=True)
+    out_png = VISUAL_PNG_DIR / f"{name}.png"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        prefix = Path(tmpdir) / name  # pdftocairo appends .png
+        subprocess.run(
+            ["pdftocairo", "-png", "-singlefile", "-r", "200",
+             str(pdf_path), str(prefix)],
+            check=True,
+            capture_output=True,
+        )
+        new_bytes = (Path(tmpdir) / f"{name}.png").read_bytes()
+    if out_png.exists() and out_png.read_bytes() == new_bytes:
+        return False
+    out_png.write_bytes(new_bytes)
+    return True
 
 
 def _composition_has_pdf_golden(name: str) -> bool:
@@ -205,7 +237,9 @@ def _regen_one_svg(name: str, build_fn, *, check: bool) -> bool:
     return diff
 
 
-def _regen_one(name: str, build_fn, *, check: bool) -> bool:
+def _regen_one(
+    name: str, build_fn, *, check: bool, rasterize_pdf_goldens: bool = True,
+) -> bool:
     """Regen JSON + PNG (+ PDF for PR 5 goldens) for one composition.
 
     In check mode: returns True iff the live output DIFFERS from the
@@ -214,6 +248,11 @@ def _regen_one(name: str, build_fn, *, check: bool) -> bool:
     cache rebuilds + matplotlib timestamp metadata can shift PNG bytes
     without visible changes); PDF uses a structure-tuple signature
     (page count + mediabox + XObject count) to absorb pypdf patch noise.
+
+    PR 6c: when ``rasterize_pdf_goldens`` is True (default), every PDF
+    regen is followed by a pdftocairo rasterization of the freshly
+    written PDF golden into ``VISUAL_PNG_DIR/<name>.png``. The sidecar
+    PNG is the golden for ``assert_pdf_matches(mode='visual')``.
     """
     from matplotlib.testing.compare import compare_images
 
@@ -241,8 +280,15 @@ def _regen_one(name: str, build_fn, *, check: bool) -> bool:
         elif png_path.read_bytes() == new_bytes:
             png_diff = False
         else:
-            cmp = compare_images(str(png_path), str(out), tol=10)
-            png_diff = cmp is not None
+            from matplotlib.testing.exceptions import ImageComparisonFailure
+            try:
+                cmp = compare_images(str(png_path), str(out), tol=10)
+                png_diff = cmp is not None
+            except ImageComparisonFailure:
+                # Image sizes differ — treat as a diff so we overwrite.
+                # This happens when a layout change (e.g., abc-label
+                # placement) shifts the figure mediabox.
+                png_diff = True
 
     pdf_diff = False
     if _composition_has_pdf_golden(name):
@@ -260,6 +306,14 @@ def _regen_one(name: str, build_fn, *, check: bool) -> bool:
         snap_path.write_text(snap_text, encoding="utf-8")
     if png_diff:
         png_path.write_bytes(new_bytes)
+    # PR 6c: re-rasterize the sidecar PNG when the PDF golden was
+    # rewritten OR the sidecar is missing. Silent no-op when
+    # pdftocairo is not on PATH.
+    if (
+        rasterize_pdf_goldens
+        and _composition_has_pdf_golden(name)
+    ):
+        _rasterize_pdf_golden(name)
     return snap_diff or png_diff or pdf_diff or svg_diff
 
 
@@ -276,6 +330,18 @@ def main(argv: list[str] | None = None) -> int:
         "--check",
         action="store_true",
         help="Dry-run; exit 1 if any committed fixture differs from live output.",
+    )
+    parser.add_argument(
+        "--rasterize-pdf-goldens",
+        action="store_true",
+        help=(
+            "PR 6c: also rasterize PDF goldens to "
+            "tests/composer/golden/png_from_pdf/ at 200 DPI via "
+            "pdftocairo. The default behavior already does this when "
+            "regenerating PDF goldens; pass this flag to FORCE a "
+            "re-rasterization even when the PDF golden didn't "
+            "change. Silent no-op if pdftocairo is not on PATH."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -296,6 +362,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[{verb}] {name}")
         else:
             print(f"[{'WROTE' if diff else 'SKIP '}] {name}")
+        # --rasterize-pdf-goldens: force re-rasterize even when PDF
+        # didn't change (covers stale sidecar PNGs).
+        if (
+            args.rasterize_pdf_goldens
+            and not args.check
+            and _composition_has_pdf_golden(name)
+        ):
+            wrote_png = _rasterize_pdf_golden(name)
+            if wrote_png:
+                print(f"[WROTE] {name} (sidecar PNG)")
         any_diff = any_diff or diff
 
     if args.check and any_diff:

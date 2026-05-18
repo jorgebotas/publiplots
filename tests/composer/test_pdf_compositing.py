@@ -126,11 +126,15 @@ PDF_GOLDEN_NAMES = [
 # XObject wrapping). For SVG goldens, mediabox + render_compare are
 # the meaningful gates. The embed_figure golden also lacks XObjects
 # (matplotlib-PDF inlines content like cairosvg) — mediabox + render_compare.
+# PR 6c: 'visual' mode adds a rasterized-PNG golden gate (catches the
+# class of regression that PR 6b shipped where structure tests passed
+# but the rendered output was visually wrong).
 PDF_GOLDEN_MODE_PAIRS = [
     ("cell-2col-with-svg-schematic", "mediabox"),
     ("cell-2col-with-png-schematic", "mediabox"),
     ("cell-2col-with-png-schematic", "structure"),
     ("cell-2col-with-embed-figure", "mediabox"),
+    ("cell-2col-with-embed-figure", "visual"),
 ]
 
 
@@ -254,3 +258,57 @@ def test_savefig_pdf_embed_figure_byte_deterministic(tmp_path):
     assert md1.get("/CreationDate") == md2.get("/CreationDate")
     assert md1.get("/Producer") == md2.get("/Producer")
     assert out1.read_bytes() == out2.read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# PR 6c Task 6 — assert_pdf_matches mode='visual' + sidecar PNG
+# ---------------------------------------------------------------------------
+
+def test_assert_pdf_matches_visual_mode_skips_when_no_pdftocairo(
+    monkeypatch, tmp_path,
+):
+    """``mode='visual'`` skips cleanly when the PDF rasterizer is
+    unavailable (mirrors PR 6a's render_compare skip-pattern)."""
+    from tests.composer.golden import _helpers
+    monkeypatch.setattr(
+        _helpers, "_pdf_rasterizer_available", lambda: False,
+    )
+    # Use a composition with an existing PDF golden so we get past the
+    # PDF-golden-missing check and exercise the visual-mode dispatch.
+    build_fn = dict(COMPOSITIONS)["cell-2col-with-svg-schematic"]
+    canvas = build_fn()
+    with pytest.raises(pytest.skip.Exception):
+        _helpers.assert_pdf_matches(
+            canvas, "cell-2col-with-svg-schematic", mode="visual",
+        )
+
+
+@pytest.mark.skipif(
+    not __import__("tests.composer.golden._helpers", fromlist=["_pdf_rasterizer_available"])._pdf_rasterizer_available(),
+    reason="No PDF rasterizer available."
+)
+def test_assert_pdf_matches_visual_mode_writes_sidecar_with_regen(
+    monkeypatch, tmp_path,
+):
+    """``mode='visual'`` writes the missing sidecar PNG when
+    PUBLIPLOTS_REGEN_GOLDEN=1 is set (mirrors the existing regen
+    behavior of mediabox/structure modes)."""
+    from tests.composer.golden import _helpers
+
+    # Point VISUAL_PNG_DIR at a tmp dir so we don't trample the real
+    # golden during this regen-on-missing test.
+    fake_visual_dir = tmp_path / "png_from_pdf"
+    monkeypatch.setattr(_helpers, "VISUAL_PNG_DIR", fake_visual_dir)
+    monkeypatch.setattr(
+        _helpers, "_visual_png_path",
+        lambda name: fake_visual_dir / f"{name}.png",
+    )
+    monkeypatch.setenv("PUBLIPLOTS_REGEN_GOLDEN", "1")
+
+    build_fn = dict(COMPOSITIONS)["cell-2col-with-svg-schematic"]
+    canvas = build_fn()
+    _helpers.assert_pdf_matches(
+        canvas, "cell-2col-with-svg-schematic", mode="visual",
+    )
+    expected = fake_visual_dir / "cell-2col-with-svg-schematic.png"
+    assert expected.exists()

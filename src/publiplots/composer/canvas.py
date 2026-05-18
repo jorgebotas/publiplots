@@ -169,6 +169,10 @@ class Canvas:
         self._panels_list: List[Panel] = []
         self._alignments: List = []  # List[_AlignmentRequest]; initialized empty
         self._finalized: bool = False
+        # PR 6c: cached during _finalize_if_needed for the
+        # ``_panel_decoration_budget_mm`` accessor.
+        self._geometry = None  # CanvasGeometry | None
+        self._decorations: Optional[Dict[str, float]] = None
 
     # ------------------------------------------------------------------
     # Read-only attributes
@@ -659,6 +663,12 @@ class Canvas:
                 row_axes_rects_mm=new_row_rects,
             )
 
+        # PR 6c: cache geometry + decorations for the per-panel
+        # decoration-budget accessor (read by canvas.embed_figure
+        # anchor='axes' compositing path).
+        self._geometry = geometry
+        self._decorations = decorations
+
         # Create the matplotlib figure at the computed mm size.
         import matplotlib.pyplot as plt
         _MM2INCH = 1.0 / 25.4
@@ -1064,7 +1074,7 @@ class Canvas:
     # ------------------------------------------------------------------
     # embed_figure — post-staging: attach a Figure into a PanelImage slot
     # ------------------------------------------------------------------
-    def embed_figure(self, label, figure) -> None:
+    def embed_figure(self, label, figure, *, anchor: str = "figure") -> None:
         """Attach a matplotlib :class:`~matplotlib.figure.Figure` into a
         previously-staged PanelImage slot.
 
@@ -1087,6 +1097,22 @@ class Canvas:
             ``embed_figure`` does NOT validate the type; the compositing
             pipeline calls ``figure.savefig`` and surfaces TypeErrors
             from non-Figures naturally.
+        anchor : {'figure', 'axes'}, default 'figure'
+            Anchor mode for the side figure (PR 6c).
+
+            - ``'figure'`` (default; preserves PR 6b behavior): scales
+              the side figure's outer mediabox to fit the slot rect via
+              the existing ``clip='fit'`` semantics. Decorations live
+              INSIDE the slot rect.
+            - ``'axes'``: anchors the side figure's axes-data box to
+              the slot rect. Decorations spill OUTSIDE the slot, into
+              the canvas's surrounding margin reservation. Useful when
+              you want Panel A's matplotlib axes-data box to align
+              vertically/horizontally with the embedded side figure's
+              axes-data box (paper-figure axes alignment). Raises
+              :class:`ComposerVectorError` at compose time if the side
+              figure's decorations exceed the canvas's surrounding
+              margin budget.
 
         Raises
         ------
@@ -1099,6 +1125,8 @@ class Canvas:
         TypeError
             If the resolved panel is not ``kind='image'``
             (``embed_figure`` only attaches to PanelImage slots).
+        ValueError
+            If ``anchor`` is not one of ``'figure'`` / ``'axes'``.
 
         Notes
         -----
@@ -1114,6 +1142,13 @@ class Canvas:
           on a path-bearing PanelImage is also legal — the embedded
           figure wins over the path.
         """
+        # Validate anchor up-front so users see the error at the
+        # mutation site, not at compose time.
+        if anchor not in ("figure", "axes"):
+            raise ValueError(
+                f"embed_figure: anchor={anchor!r} invalid. "
+                f"Expected 'figure' or 'axes'."
+            )
         # Empty canvas → preserve the same RuntimeError semantics that
         # _finalize_if_needed raises on an empty canvas. This is the
         # documented "embed_figure before any add_row" branch.
@@ -1142,6 +1177,121 @@ class Canvas:
             )
         # Mutate via object.__setattr__ — Panel is a frozen dataclass.
         object.__setattr__(panel, "embedded_figure", figure)
+        object.__setattr__(panel, "embedded_figure_anchor", anchor)
+
+    # ------------------------------------------------------------------
+    # PR 6c: per-panel decoration budget accessor
+    # ------------------------------------------------------------------
+    def _panel_decoration_budget_mm(self, panel) -> Dict[str, float]:
+        """Return the mm decoration-overflow budget around ``panel.bbox_mm``.
+
+        For ``embed_figure(anchor='axes')``: the side figure's
+        axes-data box maps directly to ``panel.bbox_mm``; the side
+        figure's decorations (xlabel/ylabel/title/legend-outside) spill
+        OUTSIDE the slot, into the canvas's surrounding margin
+        allocation. This helper exposes how much room each side has
+        before colliding with adjacent panels or the canvas edge.
+        Used by :func:`compositing._embed.check_decoration_overflow`
+        to raise on overflow.
+
+        Parameters
+        ----------
+        panel
+            A finalized :class:`Panel` record from
+            :attr:`Canvas._panels_list` (must have ``bbox_mm`` set).
+            Panel kind is irrelevant — the budget is purely geometric.
+
+        Returns
+        -------
+        dict with keys ``'left'``, ``'right'``, ``'top'``, ``'bottom'``
+            mm of decoration room on each side of ``panel.bbox_mm``.
+            Each value is the geometric gap between this panel's edge
+            and the nearest adjacent-panel edge / canvas edge. The full
+            gap is reported — adjacent panels each see the same gap as
+            their budget; PR 6c's contract is "no panel may overflow
+            its share of the budget" rather than "panels share the gap
+            50/50". (Half-sharing would be too strict for asymmetric
+            decoration distributions like the kitchen-sink demo where
+            Panel A has no right-side decoration but Panel B has a
+            wide left ylabel.)
+
+        Notes
+        -----
+        - Reads from cached :class:`CanvasGeometry` populated by
+          ``_finalize_if_needed``. Triggers finalization if rows are
+          staged but not yet finalized.
+        - For first-row panels, ``top`` budget includes the row's
+          ``vpad`` (typically 0 for the first row; user-supplied for
+          later rows).
+        """
+        if not self._finalized and self._rows:
+            self._finalize_if_needed()
+        if self._geometry is None or self._decorations is None:
+            raise RuntimeError(
+                "Canvas geometry not available; call add_row() first."
+            )
+        # Locate the panel's row + col index from its bbox.
+        x_mm, y_mm, w_mm, h_mm = panel.bbox_mm
+        row_idx = None
+        col_idx = None
+        for r_idx, rects in enumerate(self._geometry.row_axes_rects_mm):
+            for c_idx, rect in enumerate(rects):
+                if all(
+                    abs(a - b) < 1e-6
+                    for a, b in zip(rect, panel.bbox_mm)
+                ):
+                    row_idx = r_idx
+                    col_idx = c_idx
+                    break
+            if row_idx is not None:
+                break
+        if row_idx is None:
+            raise RuntimeError(
+                f"_panel_decoration_budget_mm: panel bbox {panel.bbox_mm!r} "
+                f"not found in canvas geometry."
+            )
+
+        canvas_w = self._geometry.canvas_width_mm
+        canvas_h = self._geometry.canvas_height_mm
+
+        # Horizontal budget: gap to left/right neighbor or canvas edge.
+        row_rects = self._geometry.row_axes_rects_mm[row_idx]
+        if col_idx == 0:
+            left_budget = x_mm  # canvas left edge at 0
+        else:
+            left_neighbor = row_rects[col_idx - 1]
+            left_budget = x_mm - (left_neighbor[0] + left_neighbor[2])
+        if col_idx == len(row_rects) - 1:
+            right_budget = canvas_w - (x_mm + w_mm)
+        else:
+            right_neighbor = row_rects[col_idx + 1]
+            right_budget = right_neighbor[0] - (x_mm + w_mm)
+
+        # Vertical budget: gap to row above (or canvas top) and row
+        # below (or canvas bottom). Note: bbox_mm uses bottom-up y, so
+        # "above" means a larger y, "below" smaller.
+        panel_y_top = y_mm + h_mm
+        panel_y_bottom = y_mm
+        if row_idx == 0:
+            top_budget = canvas_h - panel_y_top
+        else:
+            # Row above this row: smaller row index, larger y.
+            row_above = self._geometry.row_axes_rects_mm[row_idx - 1]
+            row_above_y_bottom = min(r[1] for r in row_above)
+            top_budget = row_above_y_bottom - panel_y_top
+        if row_idx == len(self._geometry.row_axes_rects_mm) - 1:
+            bottom_budget = panel_y_bottom
+        else:
+            row_below = self._geometry.row_axes_rects_mm[row_idx + 1]
+            row_below_y_top = max(r[1] + r[3] for r in row_below)
+            bottom_budget = panel_y_bottom - row_below_y_top
+
+        return {
+            "left": float(left_budget),
+            "right": float(right_budget),
+            "top": float(top_budget),
+            "bottom": float(bottom_budget),
+        }
 
     # ------------------------------------------------------------------
     # savefig — raster only (vector lands in PR 5/PR 6)
@@ -1233,5 +1383,6 @@ class Canvas:
             cmyk=cmyk,
             tiff_compression=tiff_compression,
             external_raster=external_raster,
+            canvas=self,
             **kwargs,
         )
