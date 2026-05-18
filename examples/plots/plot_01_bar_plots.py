@@ -512,8 +512,7 @@ ax = pp.barplot(
     data=rounded_df, x='x', y='y', hue='x',
     palette='flare', legend=False,
     border_radius=(1.5, 0),
-    annotate={"fmt": ".1f", "anchor": "inside",
-              "rotation": 90, "color": "hue"},
+    annotate={"fmt": ".1f", "color": "hue"},
     title='rounded + annotate(color="hue")',
 )
 pp.show()
