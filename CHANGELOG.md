@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   center preserved, so 1-2 categories on a wide axes no longer
   render as oversized slabs. The cap composes with `border_radius`,
   with `pp.violinplot(side=...)` half-violins, and with horizontal
-  orientation. (PR #TBD)
+  orientation. (PR #177)
 
 ## [0.12.0] - 2026-05-18
 
