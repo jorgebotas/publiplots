@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `bar.max_width` / `box.max_width` / `violin.max_width` rcParams —
+  millimeter ceiling on the categorical-axis width of bars, boxes,
+  and violins. Default `None` (uncapped, seaborn's behavior). When
+  set, each artist is clamped on the categorical axis with its
+  center preserved, so 1-2 categories on a wide axes no longer
+  render as oversized slabs. The cap composes with `border_radius`,
+  with `pp.violinplot(side=...)` half-violins, and with horizontal
+  orientation. (PR #177)
+
 ## [0.12.0] - 2026-05-18
 
 ### Added

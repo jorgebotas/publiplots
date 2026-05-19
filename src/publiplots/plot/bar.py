@@ -23,6 +23,7 @@ from publiplots.utils.legend_entries import (
     resolve_legend_flags,
 )
 from publiplots.utils.plot_legend import render_entries
+from publiplots.utils.max_width import clamp_patch_widths_mm
 from publiplots.utils.rounding import apply_border_radius, normalize_border_radius
 from publiplots.utils.transparency import ArtistTracker
 from publiplots.annotate._builders import (
@@ -492,6 +493,14 @@ def barplot(
             color=color, edgecolor=edgecolor, linewidth=linewidth,
             errorbar=errorbar, gap=gap,
         )
+        # Cap bar width (mm) BEFORE rounding so the swap sees clamped extents.
+        _clamp_axis = "x" if categorical_axis == x else "y"
+        clamp_patch_widths_mm(
+            tracker.get_new_patches(),
+            resolve_param("bar.max_width", None),
+            ax,
+            axis=_clamp_axis,
+        )
         radius = normalize_border_radius(
             resolve_param("bar.border_radius", border_radius)
         )
@@ -594,6 +603,17 @@ def barplot(
         edgecolor=edgecolor,
         palette=palette,
         hatch_map=hatch_map,
+    )
+
+    # Cap bar width (mm) per rcParam BEFORE apply_border_radius so the
+    # rounding swap reads the clamped extents. Vertical bars (categorical_axis
+    # == x) are clamped on x; horizontal on y.
+    _clamp_axis = "x" if categorical_axis == x else "y"
+    clamp_patch_widths_mm(
+        tracker.get_new_patches(),
+        resolve_param("bar.max_width", None),
+        ax,
+        axis=_clamp_axis,
     )
 
     # Round bar corners per rcParam / kwarg (no-op on (0, 0)). Runs AFTER
