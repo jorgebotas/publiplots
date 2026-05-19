@@ -518,6 +518,37 @@ ax = pp.barplot(
 pp.show()
 
 # %%
+# Capping bar width with ``bar.max_width``
+# ----------------------------------------
+# When only 1-2 categories occupy a wide axes, seaborn's fractional
+# ``width=0.8`` produces visually awkward, oversized bars. Set the
+# ``bar.max_width`` rcParam (in millimeters) to cap the rendered width
+# while preserving each bar's center on its tick. ``None`` (the default)
+# leaves seaborn's behavior untouched.
+narrow_df = pd.DataFrame({
+    "Group": ["Control", "Treated"],
+    "Score": [42.0, 67.0],
+})
+
+fig, axes = pp.subplots(1, 2, axes_size=(60, 40))
+pp.barplot(
+    data=narrow_df, x="Group", y="Score",
+    palette={"Control": "#8E8EC1", "Treated": "#60a8a8"}, hue="Group",
+    legend=False, ax=axes[0], title="uncapped",
+)
+saved = pp.rcParams["bar.max_width"]
+try:
+    pp.rcParams["bar.max_width"] = 10  # mm
+    pp.barplot(
+        data=narrow_df, x="Group", y="Score",
+        palette={"Control": "#8E8EC1", "Treated": "#60a8a8"}, hue="Group",
+        legend=False, ax=axes[1], title='bar.max_width=10mm',
+    )
+finally:
+    pp.rcParams["bar.max_width"] = saved
+pp.show()
+
+# %%
 # Stacked Bars — ``multiple="stack"``
 # -----------------------------------
 # ``pp.barplot(multiple="stack")`` draws each hue level on top of the

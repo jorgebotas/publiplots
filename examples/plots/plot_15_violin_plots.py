@@ -244,3 +244,30 @@ ax = pp.violinplot(
 )
 pp.show()
 
+# %%
+# Capping violin width with ``violin.max_width``
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Set ``pp.rcParams["violin.max_width"]`` (in millimeters) to cap the
+# rendered violin width when only a few categories sit on a wide axes.
+# The violin is scaled toward each category's tick, preserving its
+# centerline; ``None`` (default) keeps seaborn's behavior.
+narrow_violin = pd.DataFrame({
+    "category": np.repeat(["Control", "Treated"], 200),
+    "value": np.concatenate([
+        np.random.normal(10, 2, 200),
+        np.random.normal(13, 2.5, 200),
+    ]),
+})
+
+fig, axes = pp.subplots(1, 2, axes_size=(60, 40))
+pp.violinplot(data=narrow_violin, x="category", y="value",
+              ax=axes[0], title="uncapped")
+saved = pp.rcParams["violin.max_width"]
+try:
+    pp.rcParams["violin.max_width"] = 10  # mm
+    pp.violinplot(data=narrow_violin, x="category", y="value",
+                  ax=axes[1], title='violin.max_width=10mm')
+finally:
+    pp.rcParams["violin.max_width"] = saved
+pp.show()
+

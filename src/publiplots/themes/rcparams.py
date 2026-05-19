@@ -169,6 +169,13 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     "bar.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.barplot
     "box.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.boxplot IQR boxes (auto-propagates to pp.raincloudplot)
 
+    # Categorical-mark width caps (mm). When set, bars / boxes / violins
+    # never render wider than this, even on a wide axes with few categories.
+    # None = uncapped (seaborn default behavior).
+    "bar.max_width": None,     # mm; None = uncapped (seaborn default)
+    "box.max_width": None,     # mm; None = uncapped
+    "violin.max_width": None,  # mm; None = uncapped
+
     # Subplots layout (mm) — baseline is publication-grade; notebook style
     # overrides these in themes/styles.py.
     "subplots.axes_size": (70.0, 50.0),  # default (width, height) of each axes in pp.subplots

@@ -197,3 +197,30 @@ pp.boxplot(data=box_data, x='category', y='value',
 pp.boxplot(data=box_data, x='category', y='value',
            ax=axes[2], border_radius=(1.5, 0), title='top only')
 pp.show()
+
+# %%
+# Capping box width with ``box.max_width``
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Set ``pp.rcParams["box.max_width"]`` (in millimeters) to cap the
+# rendered IQR-box width when only a few categories sit on a wide axes.
+# Centers stay aligned with their ticks; ``None`` (default) leaves
+# seaborn's fractional ``width=0.8`` untouched.
+narrow_box = pd.DataFrame({
+    "category": np.repeat(["Control", "Treated"], 50),
+    "value": np.concatenate([
+        np.random.normal(50, 10, 50),
+        np.random.normal(60, 12, 50),
+    ]),
+})
+
+fig, axes = pp.subplots(1, 2, axes_size=(60, 40))
+pp.boxplot(data=narrow_box, x="category", y="value",
+           ax=axes[0], title="uncapped")
+saved = pp.rcParams["box.max_width"]
+try:
+    pp.rcParams["box.max_width"] = 10  # mm
+    pp.boxplot(data=narrow_box, x="category", y="value",
+               ax=axes[1], title='box.max_width=10mm')
+finally:
+    pp.rcParams["box.max_width"] = saved
+pp.show()

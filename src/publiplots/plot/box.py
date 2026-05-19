@@ -17,6 +17,7 @@ import pandas as pd
 import numpy as np
 
 from publiplots.themes.colors import resolve_palette_map
+from publiplots.utils.max_width import clamp_patch_widths_mm
 from publiplots.utils.rounding import apply_border_radius, normalize_border_radius
 from publiplots.utils.transparency import ArtistTracker
 from publiplots.utils import is_categorical
@@ -294,6 +295,68 @@ def boxplot(
     # Set edge colors on box patches
     for patch in new_patches:
         patch.set_edgecolor(resolved_edgecolor if resolved_edgecolor else patch.get_facecolor())
+
+    # Cap box width (mm) BEFORE apply_border_radius so the rounding swap
+    # reads the clamped extents. categorical_axis is "x" (vertical boxes)
+    # or "y" (horizontal); pass directly to the helper.
+    _max_box_mm = resolve_param("box.max_width", None)
+    if _max_box_mm is not None and _max_box_mm > 0:
+        # Snapshot pre-clamp patch extents so we can scale the
+        # whisker / cap / median lines toward the (now-clamped) patch
+        # center on the categorical axis.
+        _pre_extents = []
+        for p in tracker.get_new_patches():
+            bbox = p.get_path().get_extents()
+            _pre_extents.append(bbox)
+        clamp_patch_widths_mm(
+            tracker.get_new_patches(),
+            _max_box_mm,
+            ax,
+            axis=categorical_axis,
+        )
+        _post_extents = [p.get_path().get_extents() for p in tracker.get_new_patches()]
+        # For each line that lives within an old patch's categorical-axis
+        # extent, scale the line toward the patch's center to match the
+        # new (clamped) extent. Whiskers (single x-point) are unaffected.
+        for line in tracker.get_new_lines():
+            if categorical_axis == "x":
+                xs = np.asarray(line.get_xdata(), dtype=float)
+            else:
+                xs = np.asarray(line.get_ydata(), dtype=float)
+            if len(xs) == 0:
+                continue
+            cmin, cmax = float(xs.min()), float(xs.max())
+            extent = cmax - cmin
+            for pre, post in zip(_pre_extents, _post_extents):
+                if categorical_axis == "x":
+                    pre_min, pre_max = pre.x0, pre.x1
+                    post_min, post_max = post.x0, post.x1
+                else:
+                    pre_min, pre_max = pre.y0, pre.y1
+                    post_min, post_max = post.y0, post.y1
+                pre_w = pre_max - pre_min
+                if pre_w <= 0:
+                    continue
+                # Line "belongs" to this patch if its center is inside the
+                # pre-clamp extent and its full span is within (slightly
+                # tolerant) the patch width.
+                lc = (cmin + cmax) / 2.0
+                if not (pre_min - 1e-9 <= lc <= pre_max + 1e-9):
+                    continue
+                if extent > pre_w + 1e-9:
+                    continue
+                # Compute scale by patch shrinkage; scale line toward patch center.
+                post_w = post_max - post_min
+                if post_w >= pre_w - 1e-12:
+                    break  # patch unchanged → no clamp needed
+                center = (post_min + post_max) / 2.0
+                scale = post_w / pre_w
+                new_xs = center + (xs - (pre_min + pre_max) / 2.0) * scale
+                if categorical_axis == "x":
+                    line.set_xdata(new_xs)
+                else:
+                    line.set_ydata(new_xs)
+                break
 
     # Round the IQR-box corners per rcParam / kwarg. No-op when (0, 0).
     # Runs AFTER the edgecolor loop so face/edge are copied onto the new

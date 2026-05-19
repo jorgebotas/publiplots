@@ -21,6 +21,7 @@ import numpy as np
 
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import is_categorical
+from publiplots.utils.max_width import clamp_patch_widths_mm
 from publiplots.utils.plot_legend import stash_hue_legend
 from publiplots.utils.transparency import ArtistTracker
 
@@ -298,6 +299,17 @@ def violinplot(
         # Determine orientation for side clipping
         is_vertical = is_categorical(data[x])
         _side_clip_violin(tracker, side, is_vertical, inner)
+
+    # Cap violin width (mm) per rcParam. Runs after side-clip so half-violins
+    # are scaled relative to their (clipped) center; runs before transparency
+    # so subsequent passes see the clamped vertices.
+    is_vertical = is_categorical(data[x])
+    clamp_patch_widths_mm(
+        tracker.get_new_collections(),
+        resolve_param("violin.max_width", None),
+        ax,
+        axis="x" if is_vertical else "y",
+    )
 
     # Apply transparency only to new violin collections
     tracker.apply_transparency(on="collections", face_alpha=alpha)
