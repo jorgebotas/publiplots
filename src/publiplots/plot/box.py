@@ -304,7 +304,12 @@ def boxplot(
     radius = normalize_border_radius(
         resolve_param("box.border_radius", border_radius)
     )
-    apply_border_radius(tracker.get_new_patches(), radius, ax)
+    apply_border_radius(
+        tracker.get_new_patches(),
+        radius,
+        ax,
+        orient="v" if categorical_axis == "x" else "h",
+    )
 
     # Apply transparency to box patch faces
     tracker.apply_transparency(on="patches", face_alpha=alpha)

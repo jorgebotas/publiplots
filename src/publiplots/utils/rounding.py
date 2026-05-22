@@ -3,7 +3,10 @@
 This module provides a plot-agnostic helper that swaps
 :class:`matplotlib.patches.Rectangle` patches (e.g. from
 ``seaborn.barplot``) for :class:`_RoundedBarPatch` instances with
-independent top / bottom corner radii.
+independent per-corner radii. The user-facing API is
+``(top_mm, bottom_mm)`` — interpreted as (free-end, base-end) and
+rotated by orientation so that horizontal bars round their end caps
+rather than their long edges.
 
 **Units**: radii are specified in millimeters and resolved to data
 coordinates **at draw time** using the parent axes' ``transData``,
@@ -72,7 +75,7 @@ def normalize_border_radius(
 
 
 class _RoundedBarPatch(Patch):
-    """Rectangle-shaped patch with independent top / bottom corner radii.
+    """Rectangle-shaped patch with independent per-corner radii.
 
     Radii are carried as **points**, not data units. Each call to
     :meth:`get_path` (triggered by the renderer every draw) converts
@@ -92,11 +95,18 @@ class _RoundedBarPatch(Patch):
     xy : tuple of float
         Lower-left corner ``(x, y)`` in data coords.
     width, height : float
-        Rectangle width and height in data coords.
-    top_pts, bottom_pts : float
-        Corner radii in points. Use
-        :func:`normalize_border_radius` + the ``_MM_TO_POINTS``
-        constant to convert from user-facing mm input.
+        Rectangle width and height in data coords (signed; matplotlib
+        stores negative values for negative-valued bars).
+    top_pts, bottom_pts : float, optional
+        Convenience pair: top corners (TL+TR) and bottom corners
+        (BL+BR) get the same radius respectively. Used by callers
+        that don't care about per-corner control. When
+        ``corner_pts`` is also given, ``corner_pts`` wins.
+    corner_pts : tuple of 4 floats, keyword-only, optional
+        Per-corner radii in points, in order
+        ``(top_left, top_right, bottom_right, bottom_left)``. Use
+        :func:`apply_border_radius` to translate user-facing
+        ``(top_mm, bottom_mm)`` + orientation into this 4-tuple.
     **kwargs
         Forwarded to :class:`matplotlib.patches.Patch` (e.g. facecolor,
         edgecolor, linewidth, hatch, alpha, zorder, transform,
@@ -108,16 +118,28 @@ class _RoundedBarPatch(Patch):
         xy: Tuple[float, float],
         width: float,
         height: float,
-        top_pts: float,
-        bottom_pts: float,
+        top_pts: float = 0.0,
+        bottom_pts: float = 0.0,
+        *,
+        corner_pts: Optional[Tuple[float, float, float, float]] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._rounded_xy = (float(xy[0]), float(xy[1]))
         self._rounded_width = float(width)
         self._rounded_height = float(height)
-        self._top_pts = float(top_pts)
-        self._bottom_pts = float(bottom_pts)
+        if corner_pts is not None:
+            tl, tr, br, bl = corner_pts
+            self._corner_pts = (
+                float(tl), float(tr), float(br), float(bl),
+            )
+        else:
+            t = float(top_pts)
+            b = float(bottom_pts)
+            self._corner_pts = (t, t, b, b)
+        # Kept for back-compat with code reading these attrs.
+        self._top_pts = self._corner_pts[0]
+        self._bottom_pts = self._corner_pts[3]
 
     # Bar-like getters for compatibility with code that walks
     # ax.patches and checks hasattr(p, "get_height") to filter bars
@@ -202,68 +224,87 @@ class _RoundedBarPatch(Patch):
         return (dpx, dpy)
 
     def get_path(self) -> Path:
-        """Build the rounded-rectangle path in data coords."""
+        """Build the rounded-rectangle path in data coords.
+
+        Corner radii are stored per-corner (TL, TR, BR, BL); each
+        corner's x- and y-radii in data coords are computed
+        independently and clamped to half of the (unsigned) side
+        length so curves never overshoot. Width/height are taken with
+        sign — for matplotlib bars built with negative values, this
+        means ``y1 < y0`` and the "top" corners (TL/TR) end up at the
+        visually-lower edge, which is exactly what we want: the
+        free-end of the bar.
+        """
         x0, y0 = self._rounded_xy
         w = self._rounded_width
         h = self._rounded_height
         x1, y1 = x0 + w, y0 + h
 
         dpx, dpy = self._data_per_point()
-        t_rx = self._top_pts * dpx
-        t_ry = self._top_pts * dpy
-        b_rx = self._bottom_pts * dpx
-        b_ry = self._bottom_pts * dpy
-
-        # Clamp to half the shorter side so curves never overshoot.
         half_w = abs(w) / 2.0
         half_h = abs(h) / 2.0
-        t_rx = min(max(t_rx, 0.0), half_w)
-        t_ry = min(max(t_ry, 0.0), half_h)
-        b_rx = min(max(b_rx, 0.0), half_w)
-        b_ry = min(max(b_ry, 0.0), half_h)
+
+        def _xy(pts: float) -> Tuple[float, float]:
+            rx = min(max(pts * dpx, 0.0), half_w)
+            ry = min(max(pts * dpy, 0.0), half_h)
+            return rx, ry
+
+        tl_rx, tl_ry = _xy(self._corner_pts[0])
+        tr_rx, tr_ry = _xy(self._corner_pts[1])
+        br_rx, br_ry = _xy(self._corner_pts[2])
+        bl_rx, bl_ry = _xy(self._corner_pts[3])
 
         # A corner is only drawn when BOTH x- and y-radii are positive.
-        draw_b = b_rx > 0 and b_ry > 0
-        draw_t = t_rx > 0 and t_ry > 0
+        draw_tl = tl_rx > 0 and tl_ry > 0
+        draw_tr = tr_rx > 0 and tr_ry > 0
+        draw_br = br_rx > 0 and br_ry > 0
+        draw_bl = bl_rx > 0 and bl_ry > 0
+
+        # Signed radii: when w<0 (negative horizontal bar) or h<0
+        # (negative vertical bar), the "right" of the bbox is
+        # numerically less than its "left" / etc., so we walk along
+        # the edge using signed deltas instead of plain subtraction.
+        sx = 1.0 if w >= 0 else -1.0
+        sy = 1.0 if h >= 0 else -1.0
 
         verts: list = []
         codes: list = []
 
         # Start on the left edge, just above the bottom-left corner.
-        start = (x0, y0 + b_ry) if draw_b else (x0, y0)
+        start = (x0, y0 + sy * bl_ry) if draw_bl else (x0, y0)
         verts.append(start)
         codes.append(Path.MOVETO)
 
         # Bottom-left corner.
-        if draw_b:
-            verts.extend([(x0, y0), (x0 + b_rx, y0)])
+        if draw_bl:
+            verts.extend([(x0, y0), (x0 + sx * bl_rx, y0)])
             codes.extend([Path.CURVE3, Path.CURVE3])
 
         # Bottom edge → bottom-right.
-        verts.append((x1 - b_rx if draw_b else x1, y0))
+        verts.append((x1 - sx * br_rx if draw_br else x1, y0))
         codes.append(Path.LINETO)
 
         # Bottom-right corner.
-        if draw_b:
-            verts.extend([(x1, y0), (x1, y0 + b_ry)])
+        if draw_br:
+            verts.extend([(x1, y0), (x1, y0 + sy * br_ry)])
             codes.extend([Path.CURVE3, Path.CURVE3])
 
         # Right edge → top-right.
-        verts.append((x1, y1 - t_ry if draw_t else y1))
+        verts.append((x1, y1 - sy * tr_ry if draw_tr else y1))
         codes.append(Path.LINETO)
 
         # Top-right corner.
-        if draw_t:
-            verts.extend([(x1, y1), (x1 - t_rx, y1)])
+        if draw_tr:
+            verts.extend([(x1, y1), (x1 - sx * tr_rx, y1)])
             codes.extend([Path.CURVE3, Path.CURVE3])
 
         # Top edge → top-left.
-        verts.append((x0 + t_rx if draw_t else x0, y1))
+        verts.append((x0 + sx * tl_rx if draw_tl else x0, y1))
         codes.append(Path.LINETO)
 
         # Top-left corner.
-        if draw_t:
-            verts.extend([(x0, y1), (x0, y1 - t_ry)])
+        if draw_tl:
+            verts.extend([(x0, y1), (x0, y1 - sy * tl_ry)])
             codes.extend([Path.CURVE3, Path.CURVE3])
 
         # Close back to start.
@@ -277,6 +318,7 @@ def apply_border_radius(
     patches: Sequence[Patch],
     radius_mm: Tuple[float, float],
     ax: Axes,
+    orient: str = "v",
 ) -> None:
     """Swap ``Rectangle`` / ``PathPatch`` bars for rounded-corner patches.
 
@@ -318,11 +360,21 @@ def apply_border_radius(
         ``sns.boxplot``. Rectangle and rectangular PathPatch inputs
         are handled; other types are skipped.
     radius_mm : tuple of float
-        ``(top_mm, bottom_mm)`` — corner radii in millimeters. Use
-        :func:`normalize_border_radius` to coerce user input to this
-        canonical form.
+        ``(top_mm, bottom_mm)`` in user-facing terms: ``top_mm`` is
+        the radius of the **free end** of the bar (visually at the
+        end opposite the baseline / zero line) and ``bottom_mm`` is
+        the radius of the **base end**. For vertical bars the free
+        end is the y-extreme (visually top for positive values,
+        bottom for negative); for horizontal bars it is the x-extreme
+        (right for positive, left for negative). Sign-awareness comes
+        for free from matplotlib's signed width/height storage.
     ax : Axes
         Axes to re-add the new patches to.
+    orient : {"v", "h"}, default "v"
+        Plot orientation. ``"v"`` rounds the y-extreme corners with
+        ``top_mm`` and the y-baseline corners with ``bottom_mm``;
+        ``"h"`` rotates the mapping 90° so ``top_mm`` lands on the
+        x-extreme corners and ``bottom_mm`` on the x-baseline corners.
 
     Returns
     -------
@@ -335,6 +387,17 @@ def apply_border_radius(
 
     top_pts = max(top_mm, 0.0) * _MM_TO_POINTS
     bottom_pts = max(bottom_mm, 0.0) * _MM_TO_POINTS
+
+    # Map (top_mm, bottom_mm) onto (TL, TR, BR, BL) per orientation.
+    # Sign-awareness then comes from the patch's signed width/height.
+    if orient == "v":
+        corner_pts = (top_pts, top_pts, bottom_pts, bottom_pts)
+    elif orient == "h":
+        corner_pts = (bottom_pts, top_pts, top_pts, bottom_pts)
+    else:
+        raise ValueError(
+            f"orient must be 'v' or 'h', got {orient!r}"
+        )
 
     # Iterate over a materialized copy — we mutate ax.patches via
     # rect.remove() + ax.add_patch() below.
@@ -369,8 +432,7 @@ def apply_border_radius(
             xy=(x, y),
             width=w,
             height=h,
-            top_pts=top_pts,
-            bottom_pts=bottom_pts,
+            corner_pts=corner_pts,
             facecolor=patch.get_facecolor(),
             edgecolor=patch.get_edgecolor(),
             linewidth=patch.get_linewidth(),
