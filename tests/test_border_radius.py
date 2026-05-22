@@ -294,6 +294,191 @@ def test_boxplot_horizontal_orient_radius():
 
 
 # ---------------------------------------------------------------------------
+# Orientation- and sign-aware corner placement
+# ---------------------------------------------------------------------------
+#
+# `border_radius=(top_mm, bottom_mm)` is interpreted as (free-end, base-end).
+# `_RoundedBarPatch._corner_pts` carries per-corner radii in points, ordered
+# (TL, TR, BR, BL). The mapping that `apply_border_radius` performs is:
+#   vertical:   (TL, TR, BR, BL) = (top, top, bottom, bottom)
+#   horizontal: (TL, TR, BR, BL) = (bottom, top, top, bottom)
+# Sign-awareness then comes for free from matplotlib's signed width/height
+# storage — the patch's bbox extents flip and the "TR" / "TL" labels
+# correspond to the visually-free vs visually-base corners regardless.
+
+# Index of each corner in `_corner_pts` for readability in assertions.
+_TL, _TR, _BR, _BL = 0, 1, 2, 3
+
+
+def _free_base_corners(orient: str, sign: float):
+    """Return (free_idx_pair, base_idx_pair) into _corner_pts.
+
+    The "free" pair is the two corners at the extreme end of the bar
+    (visually opposite the baseline); the "base" pair sits on the
+    baseline. Determined by orientation + sign of the bar value.
+    """
+    if orient == "v":
+        # Vertical positive: free = top edge (TL, TR); base = bottom (BL, BR).
+        # Vertical negative: matplotlib stores h<0 so y1 < y0; the patch's
+        # "TR/TL" corners (at y1) end up visually below — still the free
+        # end. Pair labels relative to _corner_pts don't change with sign.
+        return (_TL, _TR), (_BL, _BR)
+    else:  # "h"
+        # Horizontal: free = right edge of bbox (TR, BR); base = left (TL, BL).
+        return (_TR, _BR), (_TL, _BL)
+
+
+def _rounded(ax):
+    return [p for p in ax.patches if isinstance(p, _RoundedBarPatch)]
+
+
+def test_apply_border_radius_orient_v_default():
+    """orient='v' (default) maps (top, bottom) -> (TL=top, TR=top, BR=bot, BL=bot)."""
+    fig, ax = plt.subplots()
+    rect = Rectangle((0, 0), 1, 2)
+    ax.add_patch(rect)
+    apply_border_radius([rect], (1.5, 0.5), ax)  # default orient="v"
+    new = ax.patches[0]
+    assert isinstance(new, _RoundedBarPatch)
+    tl, tr, br, bl = new._corner_pts
+    assert tl == tr > 0  # top corners share top_mm
+    assert br == bl > 0  # bottom corners share bottom_mm
+    assert tl > br  # top_mm=1.5 > bottom_mm=0.5
+    plt.close(fig)
+
+
+def test_apply_border_radius_orient_h_rotates_90():
+    """orient='h' maps (top, bottom) -> (TL=bot, TR=top, BR=top, BL=bot)."""
+    fig, ax = plt.subplots()
+    rect = Rectangle((0, 0), 2, 1)
+    ax.add_patch(rect)
+    apply_border_radius([rect], (1.5, 0.5), ax, orient="h")
+    new = ax.patches[0]
+    assert isinstance(new, _RoundedBarPatch)
+    tl, tr, br, bl = new._corner_pts
+    # Right-edge corners (TR, BR) carry top_mm (the free-end radius).
+    assert tr == br > 0
+    # Left-edge corners (TL, BL) carry bottom_mm (the base-end radius).
+    assert tl == bl > 0
+    assert tr > tl  # top_mm=1.5 > bottom_mm=0.5
+    plt.close(fig)
+
+
+def test_apply_border_radius_invalid_orient_raises():
+    fig, ax = plt.subplots()
+    rect = Rectangle((0, 0), 1, 1)
+    ax.add_patch(rect)
+    with pytest.raises(ValueError, match="orient"):
+        apply_border_radius([rect], (1.0, 0.0), ax, orient="diagonal")
+    plt.close(fig)
+
+
+def test_barplot_horizontal_symmetric_radius():
+    """Horizontal pp.barplot with symmetric radius rounds all 4 corners."""
+    df = pd.DataFrame({"g": ["a", "b"], "v": [1.0, 2.0]})
+    fig, ax = plt.subplots()
+    # Categorical on y → horizontal bars.
+    pp.barplot(data=df, x="v", y="g", ax=ax, border_radius=1.5)
+    rounded = _rounded(ax)
+    assert len(rounded) == 2
+    for p in rounded:
+        assert all(c > 0 for c in p._corner_pts), (
+            f"symmetric radius should round all 4 corners, got "
+            f"{p._corner_pts}"
+        )
+    plt.close(fig)
+
+
+def test_barplot_horizontal_asymmetric_radius_rounds_free_end_only():
+    """border_radius=(1.5, 0) on horizontal positive bars → right corners only."""
+    df = pd.DataFrame({"g": ["a", "b"], "v": [1.0, 2.0]})
+    fig, ax = plt.subplots()
+    pp.barplot(data=df, x="v", y="g", ax=ax, border_radius=(1.5, 0))
+    rounded = _rounded(ax)
+    assert len(rounded) == 2
+    free, base = _free_base_corners("h", sign=1.0)
+    for p in rounded:
+        cps = p._corner_pts
+        for fi in free:
+            assert cps[fi] > 0, (
+                f"horizontal positive: free-end corner {fi} should be "
+                f"rounded, got {cps}"
+            )
+        for bi in base:
+            assert cps[bi] == 0, (
+                f"horizontal positive: base-end corner {bi} should be "
+                f"flat, got {cps}"
+            )
+    plt.close(fig)
+
+
+def test_barplot_horizontal_negative_values_round_free_end():
+    """Negative-valued horizontal bars: free end is the LEFT (x1 < x0).
+
+    The patch's "TR/BR" labels in _corner_pts always point to the
+    free-end (top_mm) per the orient='h' mapping. Sign awareness is
+    delivered by matplotlib's signed width — width<0 makes the bbox's
+    x1 numerically smaller than x0 and the rounding visually lands at
+    the lower-x edge.
+    """
+    df = pd.DataFrame({"g": ["a", "b"], "v": [-1.0, -2.0]})
+    fig, ax = plt.subplots()
+    pp.barplot(data=df, x="v", y="g", ax=ax, border_radius=(1.5, 0))
+    rounded = _rounded(ax)
+    assert len(rounded) == 2
+    free, base = _free_base_corners("h", sign=-1.0)
+    for p in rounded:
+        cps = p._corner_pts
+        # Width should be negative (bar extends from 0 to negative x).
+        assert p.get_width() < 0, (
+            f"expected negative-width bar; got width={p.get_width()}"
+        )
+        for fi in free:
+            assert cps[fi] > 0
+        for bi in base:
+            assert cps[bi] == 0
+    plt.close(fig)
+
+
+def test_barplot_vertical_negative_values_round_free_end():
+    """Negative vertical bars: free end is at the visual bottom (y1 < y0)."""
+    df = pd.DataFrame({"g": ["a", "b"], "v": [-1.0, -2.0]})
+    fig, ax = plt.subplots()
+    pp.barplot(data=df, x="g", y="v", ax=ax, border_radius=(1.5, 0))
+    rounded = _rounded(ax)
+    assert len(rounded) == 2
+    free, base = _free_base_corners("v", sign=-1.0)
+    for p in rounded:
+        cps = p._corner_pts
+        assert p.get_height() < 0, (
+            f"expected negative-height bar; got height={p.get_height()}"
+        )
+        # Free corners (TL, TR) carry top_mm = 1.5; base (BL, BR) flat.
+        for fi in free:
+            assert cps[fi] > 0
+        for bi in base:
+            assert cps[bi] == 0
+    plt.close(fig)
+
+
+def test_boxplot_horizontal_asymmetric_radius_rounds_right_end():
+    """Horizontal boxplot with (1.5, 0) rounds the right end only."""
+    df = pd.DataFrame({"g": ["a"] * 20, "v": list(range(20))})
+    fig, ax = plt.subplots()
+    pp.boxplot(data=df, x="v", y="g", ax=ax, border_radius=(1.5, 0))
+    fig.canvas.draw()
+    rounded = _rounded(ax)
+    assert len(rounded) == 1
+    free, base = _free_base_corners("h", sign=1.0)
+    cps = rounded[0]._corner_pts
+    for fi in free:
+        assert cps[fi] > 0, f"free-end corner {fi} flat: {cps}"
+    for bi in base:
+        assert cps[bi] == 0, f"base-end corner {bi} rounded: {cps}"
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
 # pp.raincloudplot — auto-propagation via the internal pp.boxplot call
 # ---------------------------------------------------------------------------
 
