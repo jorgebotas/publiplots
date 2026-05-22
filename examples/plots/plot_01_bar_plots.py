@@ -501,6 +501,33 @@ pp.barplot(
 pp.show()
 
 # %%
+# Rounded horizontal bars — orientation- and sign-aware
+# -----------------------------------------------------
+# ``border_radius=(top_mm, bottom_mm)`` is interpreted as
+# **(free-end, base-end)**: the "top" radius lands on the end opposite
+# the baseline / zero line. For a horizontal barplot (categorical on
+# ``y``, numeric on ``x``), that's the **right end** for positive
+# values and the **left end** for negative values. The baseline end
+# stays square. This means the same ``border_radius=(1.5, 0)`` recipe
+# produces visually consistent "rounded tip, flat base" bars whether
+# the layout is vertical or horizontal — and whether values are
+# positive or negative.
+signed_df = pd.DataFrame({
+    'x': ['A', 'B', 'C', 'D'],
+    'y': [1.5, -0.8, 2.1, -1.4],
+})
+fig, axes = pp.subplots(1, 2, axes_size=(45, 35))
+pp.barplot(
+    data=signed_df, x='x', y='y', ax=axes[0],
+    border_radius=(1.5, 0), title='vertical, mixed sign',
+)
+pp.barplot(
+    data=signed_df, x='y', y='x', ax=axes[1],
+    border_radius=(1.5, 0), title='horizontal, mixed sign',
+)
+pp.show()
+
+# %%
 # Rounded bars + annotations
 # --------------------------
 # ``annotate=`` works on rounded bars exactly as it does on flat ones —

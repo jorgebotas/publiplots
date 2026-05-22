@@ -495,7 +495,9 @@ def barplot(
         radius = normalize_border_radius(
             resolve_param("bar.border_radius", border_radius)
         )
-        apply_border_radius(tracker.get_new_patches(), radius, ax)
+        apply_border_radius(
+            tracker.get_new_patches(), radius, ax, orient=_split.orient,
+        )
         tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
         # Reuse the dodge path's four-case legend dispatcher — the legend
         # treatment is identical whether bars are dodged or stacked.
@@ -605,7 +607,9 @@ def barplot(
     radius = normalize_border_radius(
         resolve_param("bar.border_radius", border_radius)
     )
-    apply_border_radius(tracker.get_new_patches(), radius, ax)
+    apply_border_radius(
+        tracker.get_new_patches(), radius, ax, orient=_split.orient,
+    )
 
     # Apply differential transparency to face vs edge
     tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-05-19
+
+### Fixed
+
+- `pp.barplot(border_radius=...)` and `pp.boxplot(border_radius=...)`
+  now round the **free end** of horizontal bars and boxes (the
+  end opposite the baseline / zero line) instead of the long top
+  and bottom edges. Previously, `_RoundedBarPatch` always applied
+  `top_mm` to the bbox's y-extreme corners and `bottom_mm` to the
+  y-baseline corners — correct for vertical orientations (and
+  sign-aware via matplotlib's signed `height`), but visually wrong
+  for horizontal bars/boxes where the user expected end-cap
+  rounding. `apply_border_radius` now accepts `orient="v" | "h"`
+  and rotates the corner mapping 90° for horizontal plots, so
+  `border_radius=(top_mm, bottom_mm)` consistently means
+  (free-end, base-end) regardless of orientation or sign. The
+  signed-width path also correctly handles negative-valued
+  horizontal bars (free end = visually-left). `pp.raincloudplot`
+  inherits the fix via its internal `pp.boxplot` call. (Fixes
+  the case where `border_radius` on `seaborn.barplot(orient='h')`
+  bars rounded the long sides instead of the end caps.)
+
 ## [0.12.0] - 2026-05-18
 
 ### Added
