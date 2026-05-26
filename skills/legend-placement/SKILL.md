@@ -25,12 +25,16 @@ Subset of the grid (one row, one column) shares a legend?
 Whole figure shares a legend?
     -> pp.legend(side='right')     # (or 'bottom' / 'top' / 'left')
 
+Empty cell in the grid you want to fill with the shared legend?
+    -> pp.legend(anchor=empty_ax, inside=True)             # whole-figure collection
+    -> pp.legend(axes=[a,b,c], anchor=empty_ax, inside=True)  # explicit scope
+
 Two independent legends on the same figure?
     -> pp.legend(side='top',    collect=['treatment'])
        pp.legend(side='bottom', collect=['method'])
 ```
 
-## The four scope modes
+## The five scope modes
 
 | Intent | Call | Position semantics |
 |---|---|---|
@@ -38,6 +42,7 @@ Two independent legends on the same figure?
 | Per-axes external band | `pp.legend(anchor=ax)` | Overhang past `ax`'s edge; absorbs the cell's `right` / `xlabel_space` reservation. |
 | Row/column band | `pp.legend(axes[r], side='top')` / `pp.legend(axes[:, c], side='left')` | Pinned to that slice's bounding rect; scoped collection and eviction. |
 | Full-figure band | `pp.legend(side='right')` / `'bottom'` / `'top'` / `'left'` | Spans the whole grid on the chosen side via `_GridAnchor`. |
+| In-cell render | `pp.legend(anchor=empty_ax, inside=True)` | Renders inside `empty_ax`'s rectangle via matplotlib `loc=`. Auto-blanks the anchor; no reactor reservation; collection still walks the full figure (or the explicit `axes=`). |
 
 Default orientation + alignment:
 - `side='right'` / `'left'` → vertical, `align='start'` (top).
@@ -95,6 +100,32 @@ top_row = list(axes[0])
 pp.legend(axes=top_row, anchor=axes[0, -1], side="top", collect=["group"])
 ```
 
+**6. In-cell shared legend (fill an empty grid cell with the legend).**
+
+```python
+fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+for (r, c), panel in zip([(0, 0), (0, 1), (1, 0)], "ABC"):
+    pp.scatterplot(data=df[df.panel == panel], x="x", y="y",
+                   hue="group", palette=palette, ax=axes[r, c])
+# The bottom-right cell is empty — fill it with the shared legend.
+pp.legend(anchor=axes[1, 1], inside=True)
+```
+
+The anchor cell is auto-blanked (no frame, no ticks). Pass `clear_anchor=False` to keep its content (e.g. a logo or annotation already drawn there). Default placement is upper-left of the tile — the visual continuation of band-mode `side='right', align='start'`. Override with `side` + `align`:
+
+| `side`     | `align='start'`     | `align='center'`    | `align='end'`       |
+|------------|---------------------|---------------------|---------------------|
+| `left` *(default)* | `upper left` *(default)*  | `center left`       | `lower left`        |
+| `right`    | `upper right`       | `center right`      | `lower right`       |
+| `top`      | `upper left`        | `upper center`      | `upper right`       |
+| `bottom`   | `lower left`        | `lower center`      | `lower right`       |
+| `center`   | `center` *(align ignored)* | `center`     | `center`            |
+
+Common variations:
+- Empty cell on the **left** of the plots → `pp.legend(anchor=ax, inside=True, side='right', align='start')` (legend hugs inner-right edge, against the divide).
+- Centered tile look → `pp.legend(anchor=ax, inside=True, side='center')`.
+- Narrow collection scope → `pp.legend(axes=[a, b], anchor=empty, inside=True)` (collect from a, b only; render in `empty`).
+
 ## Ordering: before vs after plots
 
 **Both orderings work** for figure-level and row/column bands.
@@ -138,9 +169,16 @@ Edge cases:
 - `collect=[]` (empty list) → **skip auto-collection entirely**; use when adding handles manually via `group.add_legend(...)`.
 - Passing a bare string raises `TypeError` — always wrap in a list: `collect=['name']`.
 
-## The `inside=True` shortcut
+## Two `inside=True` flavors
 
-`legend_kws={'inside': True, 'loc': '...'}` on the plot call bypasses the reactor and group machinery entirely — matplotlib's corner-based placement, one legend per axes, no shared band. Combine with a figure-level `pp.legend(collect=[...])` to split legend kinds: collected names go in the figure band, everything else goes inside.
+Same word, two distinct mechanisms. Pick by where the legend should end up.
+
+| Form | Where the legend renders | When to use |
+|------|--------------------------|-------------|
+| `legend_kws={'inside': True, 'loc': '...'}` on a **plot call** | Inside the SAME axes the plot lives in (matplotlib corner placement). | Single-axes plots; quick in-frame legend that doesn't claim layout space. |
+| `pp.legend(anchor=ax, inside=True)` on a **legend factory call** | Inside a SEPARATE axes you point at via `anchor=`. Collection still walks the full figure (or `axes=`). | Asymmetric grids where one cell is reserved for the legend; auto-blanks the anchor cell so the cell reads as a clean tile. |
+
+Combine with a figure-level `pp.legend(collect=[...])` to split legend kinds: collected names go in the figure band, everything else can go inside via the plot-call form.
 
 ```python
 fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
