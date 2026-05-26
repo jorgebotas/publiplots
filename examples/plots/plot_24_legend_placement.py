@@ -493,7 +493,7 @@ pp.show()
 
 # %%
 # 15. In-cell shared legend — ``pp.legend(anchor=ax, inside=True)``
-# ----------------------------------------------------------------
+# -----------------------------------------------------------------------
 # When a grid has an empty cell (3 plots in a 2x2 layout, or any
 # asymmetric arrangement), publiplots can fill that cell with the
 # shared legend instead of overhanging the figure's edge. The
