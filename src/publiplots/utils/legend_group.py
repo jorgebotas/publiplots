@@ -30,6 +30,59 @@ from publiplots.utils.legend_entries import (
 )
 
 
+def _inside_loc_from_side_align(side: str, align: str) -> str:
+    """Map publiplots ``side`` + ``align`` to a matplotlib ``loc=`` string.
+
+    Used by :func:`legend` when ``inside=True`` — the legend is rendered
+    inside the anchor's rectangle via matplotlib's native corner-based
+    placement, so we need to translate the publiplots band-mode grammar
+    (``side`` + ``align``) to a matplotlib ``loc`` string.
+
+    Mapping (13 reachable positions):
+
+    ===========  ===================  =====================  ===================
+    side         align='start'        align='center'         align='end'
+    ===========  ===================  =====================  ===================
+    ``left``     ``upper left``       ``center left``        ``lower left``
+    ``right``    ``upper right``      ``center right``       ``lower right``
+    ``top``      ``upper left``       ``upper center``       ``upper right``
+    ``bottom``   ``lower left``       ``lower center``       ``lower right``
+    ``center``   ``center``           ``center``             ``center``
+    ===========  ===================  =====================  ===================
+
+    ``side='center'`` collapses every ``align`` to matplotlib's plain
+    ``'center'`` — the geometry can't differentiate.
+
+    Parameters
+    ----------
+    side : {'left', 'right', 'top', 'bottom', 'center'}
+    align : {'start', 'center', 'end'}
+
+    Returns
+    -------
+    str
+        A valid matplotlib ``Legend(loc=...)`` value.
+    """
+    if side == "center":
+        return "center"
+    table = {
+        "left":   {"start": "upper left",  "center": "center left",  "end": "lower left"},
+        "right":  {"start": "upper right", "center": "center right", "end": "lower right"},
+        "top":    {"start": "upper left",  "center": "upper center", "end": "upper right"},
+        "bottom": {"start": "lower left",  "center": "lower center", "end": "lower right"},
+    }
+    if side not in table:
+        raise ValueError(
+            f"side must be 'left' | 'right' | 'top' | 'bottom' | 'center', "
+            f"got {side!r}"
+        )
+    if align not in table[side]:
+        raise ValueError(
+            f"align must be 'start' | 'center' | 'end', got {align!r}"
+        )
+    return table[side][align]
+
+
 def _handle_repr(handle) -> str:
     """Cheap fingerprint of a matplotlib handle's key visual props.
 
@@ -548,10 +601,17 @@ class MultiAxesLegendGroup:
         column_spacing: float = 5,
         vpad: Optional[float] = None,
         max_width: Optional[float] = None,
+        inside: bool = False,
+        clear_anchor: bool = True,
     ):
-        if side not in ("right", "left", "bottom", "top"):
+        # side='center' is only valid in inside mode (where it maps to
+        # matplotlib loc='center'); band mode has no center edge to pin to.
+        valid_sides = ("right", "left", "bottom", "top")
+        if inside:
+            valid_sides = valid_sides + ("center",)
+        if side not in valid_sides:
             raise ValueError(
-                f"side must be 'right' | 'left' | 'bottom' | 'top', got {side!r}"
+                f"side must be one of {valid_sides!r}, got {side!r}"
             )
         if orientation not in ("auto", "vertical", "horizontal"):
             raise ValueError(
@@ -563,14 +623,36 @@ class MultiAxesLegendGroup:
                 f"align must be 'auto' | 'start' | 'center' | 'end', got {align!r}"
             )
         self._side = side
+        self._inside = bool(inside)
+        self._clear_anchor = bool(clear_anchor)
+        # side='center' only exists in inside mode and has no band-mode
+        # default for orientation/align/offset; default to vertical+center.
+        if side == "center":
+            default_orientation = "vertical"
+            default_align = "center"
+            default_x_offset = 0.0
+        else:
+            default_orientation = self._DEFAULT_ORIENTATION[side]
+            default_align = self._DEFAULT_ALIGN[side]
+            default_x_offset = self._DEFAULT_X_OFFSET_MM[side]
         self._orientation = (
-            self._DEFAULT_ORIENTATION[side] if orientation == "auto" else orientation
+            default_orientation if orientation == "auto" else orientation
         )
-        self._align = (
-            self._DEFAULT_ALIGN[side] if align == "auto" else align
-        )
+        self._align = default_align if align == "auto" else align
         if x_offset is None:
-            x_offset = self._DEFAULT_X_OFFSET_MM[side]
+            x_offset = default_x_offset
+        # In inside mode, side='center' silently coerces align to 'center'
+        # because matplotlib's loc='center' has no notion of start/end.
+        if self._inside and self._side == "center":
+            self._align = "center"
+        # Inside mode requires a real anchor axes — there's no rectangle
+        # to render into otherwise. Validated again at the factory layer
+        # for a friendlier error; this is the defense-in-depth check.
+        if self._inside and not isinstance(anchor, Axes):
+            raise ValueError(
+                "inside=True requires anchor=<Axes>; got anchor="
+                f"{anchor!r}"
+            )
 
         # Decide anchor kind. When the caller passes an explicit axes we
         # pin the band to that one axes (and its per-cell reservation
@@ -617,7 +699,10 @@ class MultiAxesLegendGroup:
         # single-axes scope — keeping the class default backward-
         # compatible while still activating _measure_one_group's
         # commit-3 guard for per-axes legends created via ``pp.legend(ax)``.
-        self._external_to_axis = True
+        # Inside mode never overhangs the anchor's edge: the legend lives
+        # entirely inside the anchor's rectangle, so the cell's per-side
+        # reservation must NOT grow.
+        self._external_to_axis = not self._inside
 
         # Construct a _ScopeAnchor mirror in every path. Commit 2 stores it
         # for reference only — current geometry still flows through
@@ -664,6 +749,13 @@ class MultiAxesLegendGroup:
             builder_anchor_ax = self._scope_anchor
         else:
             builder_anchor_ax = self.anchor
+        # In inside mode the LegendBuilder's side-dependent path (mm
+        # cursor, outward gap, edge anchor) is bypassed by the
+        # inside=True short-circuit, but the builder validates side=
+        # against the 4 cardinal values in __init__ — so for the
+        # only non-cardinal value we ever pass here (side='center'),
+        # substitute a safe placeholder that the inside path ignores.
+        builder_side = "right" if (self._inside and side == "center") else side
         self._builder = LegendBuilder(
             ax=builder_ax,
             anchor_ax=builder_anchor_ax,
@@ -674,7 +766,7 @@ class MultiAxesLegendGroup:
             vpad=vpad,
             max_width=max_width,
             external_to_axis=self._external_to_axis,
-            side=side,
+            side=builder_side,
             orientation=self._orientation,
         )
         # Register on the figure so plot functions can check claims.
@@ -943,6 +1035,14 @@ class MultiAxesLegendGroup:
             return
         self._materialized = True
 
+        # Inside mode: blank the anchor cell BEFORE rendering so the
+        # legend tile reads as a clean callout. Default-on; opt out via
+        # clear_anchor=False (e.g. the cell already holds intentional
+        # content like a logo or a colorbar that the legend should sit
+        # on top of).
+        if self._inside and self._clear_anchor:
+            self.anchor.set_axis_off()
+
         if self._collect is not None:
             # Stable sort by the user's collect order; ties (same name with
             # different kinds) stay in the order they were encountered.
@@ -1134,9 +1234,16 @@ class MultiAxesLegendGroup:
             mappable = entry.handles[0]
             self.add_colorbar(mappable=mappable, label=entry.name)
         else:
+            kwargs = {}
+            if self._inside:
+                kwargs["inside"] = True
+                kwargs["loc"] = _inside_loc_from_side_align(
+                    self._side, self._align,
+                )
             self.add_legend(
                 handles=list(entry.handles),
                 label=entry.name,
+                **kwargs,
             )
 
     def _default_target_ax(self) -> Axes:
@@ -1191,11 +1298,14 @@ class MultiAxesLegendGroup:
         return cbar
 
 
+_SIDE_SENTINEL = object()
+
+
 def legend(
     axes=None,
     collect: Optional[Sequence[str]] = None,
     *,
-    side: str = "right",
+    side=_SIDE_SENTINEL,
     anchor: Optional[Axes] = None,
     figure: Optional[Figure] = None,
     orientation: str = "auto",
@@ -1211,6 +1321,8 @@ def legend(
     cols: Optional[_RowColSpec] = None,
     span: Optional[str] = None,
     ax: Optional[Sequence[Axes]] = None,
+    inside: bool = False,
+    clear_anchor=_SIDE_SENTINEL,
 ) -> MultiAxesLegendGroup:
     """Create a publication-ready legend for one axes, a subset, or the full figure.
 
@@ -1280,6 +1392,44 @@ def legend(
     differ under ``pp.subplots`` where the distinction controls which
     reservation the layout reactor grows.
     """
+    # ------------------------------------------------------------------
+    # inside= validation + side default
+    # ------------------------------------------------------------------
+    # ``inside=True`` flips the render mode: the legend lives inside the
+    # anchor's rectangle (matplotlib loc=) instead of overhanging the
+    # anchor's edge as a band. Default ``side='left', align='start'``
+    # makes the legend tile a visual continuation of the band-mode
+    # ``side='right', align='start'`` recipe (legend hugs the inner-left
+    # edge of the legend tile, against the divide between plots and
+    # legend).
+    if inside:
+        if anchor is None:
+            raise ValueError(
+                "pp.legend: inside=True requires anchor=<Axes> (the cell "
+                "to render the legend into). Got anchor=None."
+            )
+        if not isinstance(anchor, Axes):
+            raise ValueError(
+                "pp.legend: inside=True requires anchor to be a single "
+                f"Axes; got {type(anchor).__name__}."
+            )
+        # Inside-mode default for side. Detect "user did not pass side="
+        # via the sentinel so an explicit ``side='right'`` still wins.
+        side = "left" if side is _SIDE_SENTINEL else side
+    else:
+        if clear_anchor is not _SIDE_SENTINEL:
+            raise ValueError(
+                "pp.legend: clear_anchor= is only meaningful with "
+                "inside=True."
+            )
+        # Out of inside mode: side= keeps its existing default of 'right'.
+        side = "right" if side is _SIDE_SENTINEL else side
+    # Resolve clear_anchor= to its canonical bool. Default True in
+    # inside mode; ignored otherwise (already validated above).
+    clear_anchor_resolved = (
+        True if clear_anchor is _SIDE_SENTINEL else bool(clear_anchor)
+    )
+
     # PR 4: if any of the new grid-scope kwargs are set, resolve them up-front
     # to a list-of-axes scope (or None for figure-level), then fall through to
     # the existing resolution logic by setting `axes`.
@@ -1399,6 +1549,8 @@ def legend(
         column_spacing=column_spacing,
         vpad=vpad,
         max_width=max_width,
+        inside=inside,
+        clear_anchor=clear_anchor_resolved,
     )
 
     # Flip external_to_axis for single-axes scope triggered via the new
