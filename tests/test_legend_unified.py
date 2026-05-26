@@ -187,3 +187,189 @@ def test_per_axes_legend_and_external_band_coexist(df):
         f"{len(overlap_warnings)} warnings"
     )
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# inside=True — render shared legend inside a dedicated empty cell
+# ---------------------------------------------------------------------------
+
+
+def _legend_artists(ax):
+    """Return Legend children attached to ``ax``."""
+    from matplotlib.legend import Legend
+    return [c for c in ax.get_children() if isinstance(c, Legend)]
+
+
+def test_inside_renders_in_anchor_axes(df):
+    """`pp.legend(anchor=ax, inside=True)` attaches one Legend to ax."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    for r, c in [(0, 0), (0, 1), (1, 0)]:
+        pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[r, c])
+    pp.legend(anchor=axes[1, 1], inside=True)
+    fig.canvas.draw()
+    legends = _legend_artists(axes[1, 1])
+    assert len(legends) == 1, (
+        f"expected exactly 1 Legend on the anchor cell; got {len(legends)}"
+    )
+    plt.close(fig)
+
+
+def test_inside_default_loc_is_upper_left(df):
+    """Defaults: side='left', align='start' → matplotlib loc='upper left'."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[0, 0])
+    pp.legend(anchor=axes[1, 1], inside=True)
+    fig.canvas.draw()
+    leg = _legend_artists(axes[1, 1])[0]
+    # matplotlib stores the resolved loc as an int code; 'upper left' = 2
+    assert leg._loc == 2, (
+        f"default inside loc should be 'upper left' (code 2); got {leg._loc}"
+    )
+    plt.close(fig)
+
+
+def test_inside_collects_from_full_figure_by_default(df):
+    """Without explicit `axes=`, inside mode collects across the full grid."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    for r, c in [(0, 0), (0, 1), (1, 0)]:
+        pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[r, c])
+    pp.legend(anchor=axes[1, 1], inside=True)
+    fig.canvas.draw()
+    leg = _legend_artists(axes[1, 1])[0]
+    labels = [t.get_text() for t in leg.get_texts()]
+    # 2 hue values 'a' and 'b' should both appear
+    assert set(labels) == {'a', 'b'}, (
+        f"expected union of hue values across plotted axes; got {labels}"
+    )
+    plt.close(fig)
+
+
+def test_inside_explicit_axes_scope_narrows_collection(df):
+    """`axes=[a, b]` + `anchor=c` narrows collection scope to [a, b] only."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    # Plot 'a','b' hue on axes[0,0] only; axes[0,1] gets a different hue 'c','d'.
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[0, 0])
+    df2 = df.copy()
+    df2['g'] = ['c'] * 10 + ['d'] * 10
+    pp.scatterplot(df2, x='x', y='y', hue='g', ax=axes[0, 1])
+    # Collect ONLY from axes[0,0] — c/d should not appear.
+    pp.legend(axes=[axes[0, 0]], anchor=axes[1, 1], inside=True)
+    fig.canvas.draw()
+    leg = _legend_artists(axes[1, 1])[0]
+    labels = [t.get_text() for t in leg.get_texts()]
+    assert set(labels) == {'a', 'b'}, (
+        f"explicit scope should restrict collection; got {labels}"
+    )
+    plt.close(fig)
+
+
+def test_inside_auto_blanks_anchor(df):
+    """Default `clear_anchor=True` turns the anchor's axes off."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[0, 0])
+    pp.legend(anchor=axes[1, 1], inside=True)
+    fig.canvas.draw()
+    assert axes[1, 1].axison is False
+    plt.close(fig)
+
+
+def test_inside_clear_anchor_false_preserves_frame(df):
+    """`clear_anchor=False` preserves the anchor's axis frame/ticks."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[0, 0])
+    pp.legend(anchor=axes[1, 1], inside=True, clear_anchor=False)
+    fig.canvas.draw()
+    assert axes[1, 1].axison is True
+    plt.close(fig)
+
+
+def test_inside_evicts_per_axis_legends(df):
+    """Per-axis legends from plotted cells are evicted; only the inside one
+    survives."""
+    from matplotlib.legend import Legend
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    for r, c in [(0, 0), (0, 1), (1, 0)]:
+        pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[r, c])  # default legend=True
+    pp.legend(anchor=axes[1, 1], inside=True)
+    fig.canvas.draw()
+    legends_in_fig = [
+        c for ax in axes.flat for c in ax.get_children()
+        if isinstance(c, Legend)
+    ]
+    assert len(legends_in_fig) == 1, (
+        f"inside-cell legend should evict per-axis legends; "
+        f"saw {len(legends_in_fig)} Legend artists across the figure"
+    )
+    assert legends_in_fig[0].axes is axes[1, 1]
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("side,align,expected_loc", [
+    ("left",   "start",  "upper left"),
+    ("left",   "center", "center left"),
+    ("left",   "end",    "lower left"),
+    ("right",  "start",  "upper right"),
+    ("right",  "center", "center right"),
+    ("right",  "end",    "lower right"),
+    ("top",    "start",  "upper left"),
+    ("top",    "center", "upper center"),
+    ("top",    "end",    "upper right"),
+    ("bottom", "start",  "lower left"),
+    ("bottom", "center", "lower center"),
+    ("bottom", "end",    "lower right"),
+    ("center", "center", "center"),
+])
+def test_inside_loc_mapping(side, align, expected_loc):
+    """Direct unit test of the (side, align) → loc helper."""
+    from publiplots.utils.legend_group import _inside_loc_from_side_align
+    assert _inside_loc_from_side_align(side, align) == expected_loc
+
+
+def test_inside_without_anchor_raises():
+    """`inside=True` requires `anchor=<Axes>`."""
+    fig, _ = plt.subplots()
+    with pytest.raises(ValueError, match="inside=True requires anchor"):
+        pp.legend(inside=True)
+    plt.close(fig)
+
+
+def test_inside_clear_anchor_only_with_inside(df):
+    """`clear_anchor=` is only meaningful when `inside=True`."""
+    fig, ax = plt.subplots()
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=ax, legend=False)
+    with pytest.raises(ValueError, match="clear_anchor= is only meaningful"):
+        pp.legend(anchor=ax, clear_anchor=False)
+    plt.close(fig)
+
+
+def test_inside_side_center_coerces_align(df):
+    """`side='center'` + `align='start'` → coerced to align='center' silently."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[0, 0])
+    group = pp.legend(
+        anchor=axes[1, 1], inside=True, side='center', align='start',
+    )
+    assert group._side == "center"
+    assert group._align == "center", (
+        f"side='center' must coerce align to 'center'; got {group._align}"
+    )
+    plt.close(fig)
+
+
+def test_inside_side_center_only_in_inside_mode():
+    """`side='center'` is invalid outside of inside mode."""
+    fig, ax = plt.subplots()
+    with pytest.raises(ValueError, match="side must be one of"):
+        pp.legend(anchor=ax, side='center')  # inside=False
+    plt.close(fig)
+
+
+def test_inside_does_not_grow_anchor_reservation(df):
+    """Inside mode must not register an external overhang on the anchor."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    pp.scatterplot(df, x='x', y='y', hue='g', ax=axes[0, 0])
+    group = pp.legend(anchor=axes[1, 1], inside=True)
+    fig.canvas.draw()
+    assert group._external_to_axis is False
+    assert group._builder._external_to_axis is False
+    plt.close(fig)
