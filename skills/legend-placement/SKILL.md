@@ -128,7 +128,7 @@ Common variations:
 
 ## Ordering: before vs after plots
 
-**Both orderings work** for figure-level and row/column bands.
+**Both orderings work** for figure-level bands, row/column bands, and in-cell mode (`inside=True`).
 
 - **Before** (preferred, marginally faster): the band is registered first; each plot call sees it and stashes entries instead of rendering its own per-axis legend.
 - **After** (seamless): the band walks every axes in scope on construction, evicts per-axis legend artists whose titles match entries it will claim, and renders the shared band. Inside legends for entries the band does NOT claim (e.g. via `collect=[...]`) survive the eviction.

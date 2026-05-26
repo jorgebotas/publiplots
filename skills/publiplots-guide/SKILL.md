@@ -107,11 +107,21 @@ pp.legend(axes[0], side="top")            # band above row 0 only
 pp.legend(axes[:, 0], side="left")        # band left of column 0 only
 ```
 
-**Inside legend.** Bypass the reactor for a pure in-axes legend.
+**Inside legend (single axes).** Bypass the reactor for a pure in-axes legend.
 
 ```python
 pp.scatterplot(data=df, x="x", y="y", hue="group",
                legend_kws={"inside": True, "loc": "upper right"}, ax=ax)
+```
+
+**In-cell shared legend (since 0.13.0).** Fill an empty grid cell with a shared legend instead of overhanging the figure's edge — the canonical 3-plots-in-a-2×2-grid layout.
+
+```python
+fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+for (r, c), panel in zip([(0, 0), (0, 1), (1, 0)], "ABC"):
+    pp.scatterplot(data=df[df.panel == panel], x="x", y="y",
+                   hue="group", palette=palette, ax=axes[r, c])
+pp.legend(anchor=axes[1, 1], inside=True)  # auto-blanks the cell
 ```
 
 **Bivariate + marginals.** `pp.jointplot` is the canonical one-call form; reach for the `pp.JointGrid` class when you need different plot types in joint vs marginal slots.
