@@ -490,3 +490,33 @@ for r, row in enumerate(axes):
             title=f"Panel {(r, c)}", ax=ax,
         )
 pp.show()
+
+# %%
+# 15. In-cell shared legend — ``pp.legend(anchor=ax, inside=True)``
+# -----------------------------------------------------------------------
+# When a grid has an empty cell (3 plots in a 2x2 layout, or any
+# asymmetric arrangement), publiplots can fill that cell with the
+# shared legend instead of overhanging the figure's edge. The
+# ``anchor=`` is the cell to render INTO; collection scope still
+# defaults to the full figure (or pass ``axes=[...]`` to narrow).
+# The anchor cell is auto-blanked (no frame, no ticks) so it reads
+# as a clean legend tile — opt out via ``clear_anchor=False`` if
+# the cell already holds intentional content.
+#
+# Default placement: ``side='left', align='start'`` → upper-left of
+# the tile. This is the visual continuation of the canonical
+# ``pp.legend(side='right', align='start')`` band recipe: the legend
+# hugs the inner-left edge of the legend tile, against the divide
+# between plots and legend. Override ``side`` / ``align`` for other
+# layouts (empty cell on the LEFT of plots → ``side='right'``;
+# centered tile → ``side='center'``).
+
+fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+for (r, c), panel in zip([(0, 0), (0, 1), (1, 0)], "ABC"):
+    pp.scatterplot(
+        data=_df[_df["panel"] == panel], x="x", y="y",
+        hue="group", palette="pastel",
+        title=f"Panel {panel}", ax=axes[r, c],
+    )
+pp.legend(anchor=axes[1, 1], inside=True)
+pp.show()

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-05-19
+
+### Added
+
+- `pp.legend(anchor=ax, inside=True)` — render a shared legend
+  **inside a dedicated grid cell** rather than overhanging the
+  figure's edge. Common use case: a 2x2 grid where 3 cells host
+  plots and the 4th is reserved for the legend; previously this
+  required either wasting the empty cell on a band overhang or
+  cluttering one of the plotted cells with a per-axes legend.
+  The new mode renders the collected legend inside the cell at
+  `anchor=ax`, auto-blanks the cell so it reads as a clean tile
+  (opt out with `clear_anchor=False`), and walks the existing
+  collection scope (`axes=` for explicit, full figure by default).
+  Default placement `side='left', align='start'` maps to matplotlib
+  `loc='upper left'` — visually a continuation of the band-mode
+  recipe `pp.legend(side='right', align='start')` for the
+  empty-cell-on-the-right case. The full `side` x `align` matrix
+  (13 reachable matplotlib `loc` strings, including the new
+  `side='center'` sentinel) lets callers tuck the legend into any
+  corner of the cell. See PR #179 and the `legend-placement` skill
+  for usage examples.
+
 ## [0.12.1] - 2026-05-19
 
 ### Fixed

@@ -39,7 +39,7 @@ By plot family:
 - **Per-position lock/auto** (since 0.11): tuples passed to `title_space` / `xlabel_space` / `ylabel_space` / `right` may contain `None` entries to opt that position into auto-measurement while locking the others. Example: `xlabel_space=(0.0, None)` locks row 0 to 0 mm and lets row 1 grow with decoration. Each `None` resolves to the rcParams default at construction; the reactor preserves the locked positions on later draws. Used internally by `pp.JointGrid` to keep joint↔marginal gaps symmetric without sacrificing auto-measurement of the joint panel's own labels.
 
 ### Legend
-- `pp.legend(axes=None, collect=None, *, side='right', anchor=None, figure=None, rows=None, cols=None, span=None, ax=None, orientation='auto', align='auto', x_offset, y_offset, gap=2, column_spacing=5, vpad, max_width)` — unified legend factory. Since 0.12.0, `rows=`/`cols=`/`span=`/`ax=` are mutually-exclusive grid-scope shortcuts that resolve over the `pp.subplots` axes matrix to a row, column, or arbitrary axes subset. See the `legend-placement` skill.
+- `pp.legend(axes=None, collect=None, *, side='right', anchor=None, figure=None, rows=None, cols=None, span=None, ax=None, orientation='auto', align='auto', x_offset, y_offset, gap=2, column_spacing=5, vpad, max_width, inside=False, clear_anchor=True)` — unified legend factory. Since 0.12.0, `rows=`/`cols=`/`span=`/`ax=` are mutually-exclusive grid-scope shortcuts that resolve over the `pp.subplots` axes matrix to a row, column, or arbitrary axes subset. Since 0.13.0, `inside=True` (with `anchor=ax`) renders the legend INSIDE the anchor cell's rectangle — fills an empty cell in an asymmetric grid; auto-blanks the anchor (opt out via `clear_anchor=False`); `side='left', align='start'` defaults map to matplotlib `loc='upper left'`. See the `legend-placement` skill.
 - `pp.MultiAxesLegendGroup` — underlying class, rarely needed directly.
 - `pp.LegendBuilder`, `pp.HandlerRectangle`, `pp.HandlerMarker`, `pp.HandlerLineMarker`, `pp.RectanglePatch`, `pp.MarkerPatch`, `pp.LineMarkerPatch`, `pp.get_legend_handler_map`, `pp.create_legend_handles` — low-level handle machinery.
 
@@ -107,11 +107,21 @@ pp.legend(axes[0], side="top")            # band above row 0 only
 pp.legend(axes[:, 0], side="left")        # band left of column 0 only
 ```
 
-**Inside legend.** Bypass the reactor for a pure in-axes legend.
+**Inside legend (single axes).** Bypass the reactor for a pure in-axes legend.
 
 ```python
 pp.scatterplot(data=df, x="x", y="y", hue="group",
                legend_kws={"inside": True, "loc": "upper right"}, ax=ax)
+```
+
+**In-cell shared legend (since 0.13.0).** Fill an empty grid cell with a shared legend instead of overhanging the figure's edge — the canonical 3-plots-in-a-2×2-grid layout.
+
+```python
+fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+for (r, c), panel in zip([(0, 0), (0, 1), (1, 0)], "ABC"):
+    pp.scatterplot(data=df[df.panel == panel], x="x", y="y",
+                   hue="group", palette=palette, ax=axes[r, c])
+pp.legend(anchor=axes[1, 1], inside=True)  # auto-blanks the cell
 ```
 
 **Bivariate + marginals.** `pp.jointplot` is the canonical one-call form; reach for the `pp.JointGrid` class when you need different plot types in joint vs marginal slots.
