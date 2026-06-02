@@ -1254,6 +1254,12 @@ class LegendBuilder:
             if self.ax.legend_ is not None and id(self.ax.legend_) not in prior_ids:
                 prior.append(self.ax.legend_)
             legend = self.ax.legend(handles=handles, **legend_kwargs)
+            # Exclude the inside-axes legend from layout/tightbbox math.
+            # Without this, SubplotsAutoLayout's tightbbox-based per-cell
+            # measurement picks up the legend's extent and grows the
+            # cell, displacing siblings in the same row/column. Matches
+            # matplotlib's own loc=... legend semantics. (Fixes #180.)
+            legend.set_in_layout(False)
             for p in prior:
                 if p is not legend:
                     self.ax.add_artist(p)

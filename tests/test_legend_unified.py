@@ -373,3 +373,109 @@ def test_inside_does_not_grow_anchor_reservation(df):
     assert group._external_to_axis is False
     assert group._builder._external_to_axis is False
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# GH #180 — inside=True must not shift sibling axes' positions
+# ---------------------------------------------------------------------------
+
+
+def _build_inside_repro_figure(legend_kwargs):
+    """1x2 grid; left has data, right is blanked; optionally an in-cell legend."""
+    import numpy as np
+    fig, axes = pp.subplots(1, 2, axes_size=(50, 35))
+    rng = np.random.default_rng(0)
+    inner = pd.DataFrame({"x": rng.normal(size=50), "y": rng.normal(size=50)})
+    pp.scatterplot(data=inner, x="x", y="y", ax=axes[0])
+    # Always blank the right cell so baseline & with-legend are comparable.
+    axes[1].set_axis_off()
+    if legend_kwargs is not None:
+        handles = pp.create_legend_handles(
+            labels=[f"item {i}" for i in range(8)],
+            colors=pp.color_palette("tab10", n_colors=8),
+            style="circle",
+        )
+        band = pp.legend(
+            anchor=axes[1], inside=True, collect=[], **legend_kwargs,
+        )
+        band.add_legend(handles=handles, label="My legend", ncol=2)
+    fig.canvas.draw()
+    return fig, axes
+
+
+def test_inside_manual_add_legend_does_not_shift_siblings():
+    """Adding `band.add_legend(...)` after `inside=True, collect=[]` must
+    leave the sibling axes' positions unchanged vs. the no-legend baseline.
+
+    Regression test for GH #180. Before the fix, the legend artist counted
+    in the layout reactor as an external overhang on `axes[1]`, growing
+    that cell's reservation and pushing `axes[0]` to the left.
+    """
+    fig_base, axes_base = _build_inside_repro_figure(None)
+    base_x1 = axes_base[0].get_position().x1
+    plt.close(fig_base)
+
+    for kw in [{}, {"side": "center"}, {"side": "right"}]:
+        fig, axes = _build_inside_repro_figure(kw)
+        x1 = axes[0].get_position().x1
+        assert abs(x1 - base_x1) < 1e-3, (
+            f"inside={kw!r}: sibling axes shifted {x1:.4f} vs baseline "
+            f"{base_x1:.4f} (delta {x1 - base_x1:+.4f})"
+        )
+        plt.close(fig)
+
+
+def test_inside_legend_artist_is_not_in_layout():
+    """The Legend artist created by inside-mode add_legend must have
+    set_in_layout(False) so it's excluded from tightbbox math."""
+    from matplotlib.legend import Legend
+    fig, axes = _build_inside_repro_figure({})
+    legends = [c for c in axes[1].get_children() if isinstance(c, Legend)]
+    assert len(legends) == 1
+    assert legends[0].get_in_layout() is False, (
+        "inside-mode Legend must have in_layout=False to avoid "
+        "displacing siblings"
+    )
+    plt.close(fig)
+
+
+def test_inside_collect_empty_still_blanks_anchor(df):
+    """clear_anchor=True must fire even when collect=[] short-circuits
+    auto-collection (regression for the third bug uncovered by #180)."""
+    fig, axes = pp.subplots(1, 2, axes_size=(50, 35))
+    pp.scatterplot(df, x="x", y="y", hue="g", ax=axes[0])
+    pp.legend(anchor=axes[1], inside=True, collect=[])
+    fig.canvas.draw()
+    assert axes[1].axison is False, (
+        "clear_anchor must blank the anchor at construction, not gate "
+        "the blank on _materialize finding entries"
+    )
+    plt.close(fig)
+
+
+def test_inside_manual_add_legend_routes_through_inside_path(df):
+    """Manual band.add_legend() on an inside-mode group must go through
+    the LegendBuilder inside=True branch (auto-injected) — not the band
+    path with reactor registration."""
+    fig, axes = pp.subplots(1, 2, axes_size=(50, 35))
+    pp.scatterplot(df, x="x", y="y", hue="g", ax=axes[0])
+    handles = pp.create_legend_handles(
+        labels=["a", "b"],
+        colors=pp.color_palette("tab10", n_colors=2),
+        style="circle",
+    )
+    band = pp.legend(anchor=axes[1], inside=True, collect=[])
+    band.add_legend(handles=handles, label="L")
+    fig.canvas.draw()
+    # No reactor registrations should have been created for this builder.
+    reactor = getattr(fig, "_publiplots_layout_reactor", None)
+    if reactor is not None:
+        builder_regs = [
+            r for r in reactor._registrations
+            if id(r.artist) in {id(a) for _, a in band._builder.elements}
+        ]
+        assert len(builder_regs) == 0, (
+            "inside-mode manual add_legend must not register with the "
+            f"layout reactor; got {len(builder_regs)} regs"
+        )
+    plt.close(fig)

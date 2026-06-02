@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-05-28
+
+### Fixed
+
+- `pp.legend(anchor=ax, inside=True)` no longer shifts the layout
+  of sibling axes (#180). Three connected regressions in the
+  inside-mode rollout: (a) `MultiAxesLegendGroup.add_legend(...)`
+  did not auto-inject `inside=True` + `loc=` for inside groups, so
+  manual handle-add calls (e.g. `band.add_legend(handles=...,
+  ncol=2)` after `collect=[]`) fell through to the band path with
+  reactor registration; (b) even when the inside path did fire,
+  the resulting matplotlib `Legend` artist counted in
+  `axes.tightbbox`, so `SubplotsAutoLayout`'s per-cell measurement
+  pass grew the anchor cell and pushed siblings inward; (c)
+  `clear_anchor=True` was gated behind a successful collection in
+  `_materialize`, so `collect=[]` skipped both the render AND the
+  blank, leaving the cell's frame intact. Fix: route auto-injection
+  through the public `add_legend`; call `legend.set_in_layout(False)`
+  in `LegendBuilder`'s inside branch (matches matplotlib's
+  `loc=...` semantics); move `set_axis_off()` to fire at group
+  construction so it's independent of the collection path.
+
 ## [0.13.0] - 2026-05-19
 
 ### Added

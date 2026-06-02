@@ -803,6 +803,14 @@ class MultiAxesLegendGroup:
         # inside legends for a different kind) stay untouched.
         self._evict_claimed_per_axis_legends()
 
+        # Inside mode: blank the anchor cell at construction so the cell
+        # reads as a clean tile regardless of whether _materialize ever
+        # finds entries (collect=[] short-circuits _materialize before
+        # the previous gating site, leaving the anchor's frame intact).
+        # Idempotent: set_axis_off() is safe to call multiple times.
+        if self._inside and self._clear_anchor:
+            self.anchor.set_axis_off()
+
         # Alignment runs on each draw via the reactor hook so it uses
         # the current (possibly still-settling) figure geometry.
         # Absolute positioning → idempotent as geometry converges.
@@ -1035,14 +1043,6 @@ class MultiAxesLegendGroup:
             return
         self._materialized = True
 
-        # Inside mode: blank the anchor cell BEFORE rendering so the
-        # legend tile reads as a clean callout. Default-on; opt out via
-        # clear_anchor=False (e.g. the cell already holds intentional
-        # content like a logo or a colorbar that the legend should sit
-        # on top of).
-        if self._inside and self._clear_anchor:
-            self.anchor.set_axis_off()
-
         if self._collect is not None:
             # Stable sort by the user's collect order; ties (same name with
             # different kinds) stay in the order they were encountered.
@@ -1234,16 +1234,9 @@ class MultiAxesLegendGroup:
             mappable = entry.handles[0]
             self.add_colorbar(mappable=mappable, label=entry.name)
         else:
-            kwargs = {}
-            if self._inside:
-                kwargs["inside"] = True
-                kwargs["loc"] = _inside_loc_from_side_align(
-                    self._side, self._align,
-                )
             self.add_legend(
                 handles=list(entry.handles),
                 label=entry.name,
-                **kwargs,
             )
 
     def _default_target_ax(self) -> Axes:
@@ -1270,8 +1263,20 @@ class MultiAxesLegendGroup:
         The artist is attached to ``ax`` (defaults to a sensible corner
         cell for figure-anchored groups, or the anchor for axes-anchored);
         position is always computed against the anchor's chosen edge.
+
+        For inside-mode groups (``inside=True`` on the factory), this
+        method auto-injects ``inside=True`` + ``loc=`` derived from the
+        group's ``side`` / ``align`` so that manual handle-add calls
+        (e.g. ``band.add_legend(..., ncol=2)`` after ``collect=[]``)
+        render through the same axes-relative path as the auto-collect
+        branch. Explicit user kwargs win.
         """
         target_ax = ax if ax is not None else self._default_target_ax()
+        if self._inside:
+            kwargs.setdefault("inside", True)
+            kwargs.setdefault(
+                "loc", _inside_loc_from_side_align(self._side, self._align),
+            )
         original_ax = self._builder.ax
         try:
             self._builder.ax = target_ax
