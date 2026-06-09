@@ -673,25 +673,80 @@ def test_per_axis_internal_side_places_on_correct_edge(side):
         assert lb.y1 <= axb.y0 + 2, (lb.y1, axb.y0)
 
 
-def test_per_axis_internal_top_clears_title():
-    """An adopted top legend sits above (clears) the axes title."""
+def test_per_axis_internal_top_title_is_outermost():
+    """Issue B: for side='top', stacking from the axes outward must be
+    AXES -> LEGEND -> TITLE (title OUTERMOST, above the legend), with no
+    overlaps. The legend sits between the axes top and the title.
+    """
     df = _scatter_df()
     fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
     pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax,
                    title="my title")
     g = pp.legend(ax, side="top")
-    fig.canvas.draw()
+    # Settle: the title lift converges over a couple of draws, so assert on
+    # the STEADY state, not the transient first-draw geometry.
+    for _ in range(3):
+        fig.canvas.draw()
     legend = g._builder.elements[0][1]
     lb = legend.get_window_extent()
+    axb = ax.get_window_extent()
     title_bb = ax.title.get_window_extent()
-    # Legend's bottom must be at/above the title's top (no overlap).
-    assert lb.y0 >= title_bb.y1 - 1.0, (
-        f"top legend y0={lb.y0:.1f} should clear title y1={title_bb.y1:.1f}"
+    # Legend sits above the axes top.
+    assert lb.y0 >= axb.y1 - 1.0, (
+        f"legend y0={lb.y0:.1f} should be above axes top y1={axb.y1:.1f}"
+    )
+    # Title sits ABOVE the legend (title outermost), no overlap at steady
+    # state (no negative tolerance — the gap must be genuinely positive).
+    assert title_bb.y0 >= lb.y1, (
+        f"title y0={title_bb.y0:.1f} should be above legend top "
+        f"y1={lb.y1:.1f} (title must be outermost)"
     )
 
 
+def test_per_axis_internal_top_no_gap_without_title():
+    """Issue B/C: without a title, a top legend sits ~2mm above the axes
+    top — no fixed 7mm empty padding."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    g = pp.legend(ax, side="top")
+    fig.canvas.draw()
+    legend = g._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    axb = ax.get_window_extent()
+    gap_mm = (lb.y0 - axb.y1) / fig.dpi * 25.4
+    assert -0.5 <= gap_mm <= 4.0, (
+        f"top legend gap above axes should be ~2mm, got {gap_mm:.2f}mm"
+    )
+
+
+def test_per_axis_top_title_lift_preserves_title_styling():
+    """Issue B regression: lifting the title above a side='top' legend must
+    NOT reset the title's font/color/weight. The lift uses the title offset
+    transform, not ax.set_title (which re-merges the default fontdict). Also
+    a user-set title pad LARGER than the band lift must be preserved, and
+    neither must drift across repeated draws."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    ax.set_title("styled", color="red", fontsize=20, fontweight="bold", pad=40)
+    g = pp.legend(ax, side="top")
+    pads = []
+    for _ in range(4):
+        fig.canvas.draw()
+        pads.append(ax.titleOffsetTrans._t[1] * 72.0)
+    # Styling survives every draw.
+    assert ax.title.get_color() in ("red", (1.0, 0.0, 0.0, 1.0))
+    assert ax.title.get_fontsize() == 20.0
+    assert ax.title.get_fontweight() == "bold"
+    # User pad (40pt) is honoured (>= 40) and converges (no drift).
+    assert all(p >= 40.0 - 0.5 for p in pads), f"user pad lost: {pads}"
+    assert abs(pads[-1] - pads[-2]) < 0.5, f"title pad drifts: {pads}"
+
+
 def test_per_axis_internal_left_clears_yticklabels():
-    """An adopted left legend sits left of (clears) the y-tick labels."""
+    """An adopted left legend sits left of (clears) the y-tick labels,
+    with no large fixed gap (Issue B: dynamic offset)."""
     df = _scatter_df()
     fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
     pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
@@ -705,9 +760,42 @@ def test_per_axis_internal_left_clears_yticklabels():
     ]
     if ytick_x0s:
         min_x0 = min(ytick_x0s)
+        # Clears the y-ticklabels (legend right edge at/left of them).
         assert lb.x1 <= min_x0 + 1.0, (
             f"left legend x1={lb.x1:.1f} should clear y-ticklabel x0={min_x0:.1f}"
         )
+        # ... but not by a large fixed gap (dynamic, ~2mm).
+        gap_mm = (min_x0 - lb.x1) / fig.dpi * 25.4
+        assert gap_mm <= 5.0, (
+            f"left legend gap to y-ticklabels should be small/dynamic, "
+            f"got {gap_mm:.2f}mm"
+        )
+
+
+def test_per_axis_top_title_space_reserves_legend_plus_title():
+    """Issue C: the reserved title_space for a per-axes top legend should
+    be ~ legend_height + gap + title_height — not extra vertical-stacking
+    padding."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax,
+                   title="my title")
+    g = pp.legend(ax, side="top")
+    fig.canvas.draw()
+    legend = g._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    axb = ax.get_window_extent()
+    title_bb = ax.title.get_window_extent()
+    # Total decoration above the axes top, in mm.
+    decoration_mm = (title_bb.y1 - axb.y1) / fig.dpi * 25.4
+    legend_h_mm = lb.height / fig.dpi * 25.4
+    title_h_mm = title_bb.height / fig.dpi * 25.4
+    # Expected: legend + ~2mm gap + title + a small slack for inter-gaps.
+    expected = legend_h_mm + title_h_mm + 2.0
+    assert decoration_mm <= expected + 5.0, (
+        f"reserved decoration {decoration_mm:.2f}mm exceeds "
+        f"legend+title+gap ~= {expected:.2f}mm (excess padding)"
+    )
 
 
 def test_per_axis_right_still_top_aligned():
@@ -826,6 +914,49 @@ def test_per_axis_external_band_side_reserves():
     assert layout2.legend_band_left < 0.5, (
         f"legend_band_left should stay zero; got {layout2.legend_band_left:.1f}"
     )
+
+
+def test_top_align_does_not_force_per_panel_canvas_draws():
+    """Issue A (perf): one fig.canvas.draw() on an N-panel grid of
+    side='top' per-axes legends must NOT trigger O(panels) nested full
+    canvas.draws via _measure_object_dimensions. The align pass should
+    measure without forcing a fresh figure redraw per element.
+
+    Structural (not wall-clock): count _measure_object_dimensions calls
+    that hit a real fig.canvas.draw() during a single user draw and
+    assert it stays small and constant w.r.t. panel count.
+    """
+    from publiplots.utils.legend import LegendBuilder
+
+    df = _scatter_df(n=40)
+
+    def count_draws_in_one_draw(n):
+        orig_draw = LegendBuilder._fig_canvas_draw_for_measure
+        calls = {"n": 0}
+
+        def counting(self):
+            calls["n"] += 1
+            return orig_draw(self)
+
+        LegendBuilder._fig_canvas_draw_for_measure = counting
+        try:
+            fig, axes = pp.subplots(n, n, axes_size=(30, 22))
+            for ax in np.atleast_2d(axes).flat:
+                pp.scatterplot(data=df, x="x", y="y", hue="g",
+                               palette="pastel", ax=ax, title="t")
+                pp.legend(ax, side="top")
+            calls["n"] = 0  # reset; count only the explicit draw below
+            fig.canvas.draw()
+            return calls["n"]
+        finally:
+            LegendBuilder._fig_canvas_draw_for_measure = orig_draw
+
+    n2 = count_draws_in_one_draw(2)  # 4 panels
+    n3 = count_draws_in_one_draw(3)  # 9 panels
+    # Must not scale with panel count and must be small (ideally 0).
+    assert n2 <= 1, f"2x2 forced {n2} nested canvas.draws in align measure"
+    assert n3 <= 1, f"3x3 forced {n3} nested canvas.draws in align measure"
+    assert n3 <= n2, f"draw count scales with panels: 2x2={n2}, 3x3={n3}"
 
 
 def test_multi_panel_no_duplicate_render_or_hooks():

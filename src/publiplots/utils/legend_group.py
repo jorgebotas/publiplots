@@ -640,16 +640,13 @@ class MultiAxesLegendGroup:
         )
         self._align = default_align if align == "auto" else align
         if x_offset is None:
+            # Use the normal 2mm outward gap for every side. The legend's
+            # clearance past the axes decorations (title for 'top',
+            # y-tick labels for 'left') is now handled DYNAMICALLY by the
+            # layout's decoration-offset measurement, not by a fixed gap
+            # baked in here (Issue B: the old fixed 7/8mm left empty
+            # padding with no title and sandwiched the title when present).
             x_offset = default_x_offset
-            # Internal-mode (axes-anchored) top/left legends reserve NO
-            # band (auto_layout short-circuits external_to_axis=False
-            # groups), so clearance from the axes title (top) and y-tick
-            # labels (left) must come from a larger outward offset.
-            # ``anchor is not None`` ⇒ axes-anchored; _GridAnchor /
-            # figure-anchored bands (anchor is None) keep the 2mm default
-            # so figure-band gap tests stay green.
-            if anchor is not None and side in ("top", "left"):
-                x_offset = 8 if side == "left" else 7
         # In inside mode, side='center' silently coerces align to 'center'
         # because matplotlib's loc='center' has no notion of start/end.
         if self._inside and self._side == "center":
@@ -1205,7 +1202,14 @@ class MultiAxesLegendGroup:
             # Measure each legend's along-edge extent.
             extents = []
             for reg in row_regs:
-                w, h = self._builder._measure_object_dimensions(reg.artist)
+                # force_draw=False: this runs as a post-refresh reactor
+                # callback, so matplotlib's renderer cache is already
+                # current. Forcing a fresh fig.canvas.draw() here would
+                # trigger O(panels) nested full redraws on every settle
+                # iteration (Issue A: side='top'/'bottom' 5x slowdown).
+                w, h = self._builder._measure_object_dimensions(
+                    reg.artist, force_draw=False
+                )
                 extents.append(w if orient == "horizontal" else h)
             total = sum(extents) + gap_mm * (len(row_regs) - 1)
             if total >= edge_length_mm:
@@ -1321,9 +1325,10 @@ class MultiAxesLegendGroup:
 
         Any kwarg left at its sentinel default ("auto" for
         orientation/align, ``None`` for x_offset) is filled from the
-        per-side default tables; ``x_offset`` applies the Change-3
-        internal-mode gate (axes-anchored top/left get a larger outward
-        gap to clear the title / y-tick labels). Returns concrete values.
+        per-side default tables. ``x_offset`` defaults to the normal 2mm
+        outward gap for every side; clearance past axes decorations
+        (title / y-tick labels) is handled dynamically by the layout's
+        decoration-offset measurement. Returns concrete values.
         """
         if side == "center":
             default_orientation = "vertical"
@@ -1338,12 +1343,10 @@ class MultiAxesLegendGroup:
         )
         resolved_align = default_align if align == "auto" else align
         if x_offset is None:
+            # Normal 2mm outward gap for every side; clearance past axes
+            # decorations is handled dynamically by the layout's
+            # decoration-offset measurement (Issue B).
             x_offset = default_x_offset
-            # Mirror __init__'s internal-mode gate: an axes-anchored
-            # (per-axes) top/left legend needs a larger outward offset
-            # because it reserves no band.
-            if self._anchor_kind == "axes" and side in ("top", "left"):
-                x_offset = 8 if side == "left" else 7
         return resolved_orientation, resolved_align, x_offset
 
     def _reconfigure_for_adopt(
