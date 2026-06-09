@@ -425,24 +425,25 @@ pp.show()
 # %%
 # 13. Internal vs external per-axes legend
 # ----------------------------------------
-# The positional and keyword forms of ``pp.legend`` now have subtly
-# different semantics when scoping to a single axes — an intentional
-# asymmetry that preserves pre-0.10 behaviour across the rename:
+# The positional and keyword forms of ``pp.legend`` have subtly
+# different layout semantics when scoping to a single axes:
 #
 # - ``pp.legend(ax)`` (**positional**) — *internal* per-axes legend.
-#   The legend is measured by ``ax.get_tightbbox()``, so it counts as
-#   part of the axes' own decoration and the figure grows to
-#   accommodate it just like a tick label or title would. Matches
-#   pre-0.10 ``pp.legend(ax)`` behaviour.
+#   The plot call (``pp.scatterplot`` etc.) already created a per-axes
+#   legend group on that axes; ``pp.legend(ax)`` **adopts** that
+#   existing group rather than building a second competing one. This
+#   makes it the single source of truth — no "scope overlaps with an
+#   existing group" warning, no double render, and any ``side=`` you
+#   pass is honoured. The legend is measured by ``ax.get_tightbbox()``,
+#   so it counts as part of the axes' own decoration and the figure
+#   grows to accommodate it just like a tick label or title would.
 #
 # - ``pp.legend(anchor=ax)`` (**kwarg**) — *external* band pinned to
 #   that axes' right edge. The band is measured as an overhang past
 #   the axes rectangle and absorbs the per-cell ``right`` reservation
-#   (see section 6). Matches pre-0.10 ``pp.legend_group(anchor=ax)``
-#   behaviour.
+#   (see section 6).
 #
-# A future minor release may consolidate these — for now the 1x2
-# figure below shows both modes side by side, one per panel.
+# The 1x2 figure below shows both modes side by side, one per panel.
 
 fig, axes = pp.subplots(1, 2, axes_size=(45, 35))
 # Left panel: internal legend pinned to axes[0].
@@ -519,4 +520,54 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0)], "ABC"):
         title=f"Panel {panel}", ax=axes[r, c],
     )
 pp.legend(anchor=axes[1, 1], inside=True)
+pp.show()
+
+# %%
+# 16. Per-axes ``side=`` on a single axes (all four sides)
+# --------------------------------------------------------
+# ``pp.legend(ax, side=...)`` adopts the per-axes legend group the plot
+# call already created on that axes and applies the side you ask for —
+# no second group, no "scope overlaps with an existing group" warning,
+# and the ``side=`` is honoured (previously the auto-created right-side
+# group could win). All four sides work in axes-anchored mode:
+#
+# - ``side='right'`` / ``'left'`` → vertical band beside the axes.
+#   An internal **left** legend clears the y-tick labels.
+# - ``side='top'`` / ``'bottom'`` → horizontal band above/below.
+#   An internal **top** legend clears the axes title.
+#
+# The outward offset defaults are larger for the top and left sides in
+# this axes-anchored mode, so the band clears the reclaimed decoration
+# cleanly. The 2x2 figure below shows one side per panel.
+
+fig, axes = pp.subplots(2, 2, axes_size=(45, 35))
+for (r, c), side in zip([(0, 0), (0, 1), (1, 0), (1, 1)],
+                        ["top", "bottom", "left", "right"]):
+    pp.scatterplot(
+        data=_df[_df["panel"] == "A"], x="x", y="y",
+        hue="group", palette="pastel",
+        title=f'side="{side}"', ax=axes[r, c],
+    )
+    pp.legend(axes[r, c], side=side)
+pp.show()
+
+# %%
+# 17. One-call placement via ``legend_kws``
+# -----------------------------------------
+# Placement keys passed in ``legend_kws`` are forwarded straight to the
+# per-axes legend group, so you can position the legend in a single
+# ``pp.scatterplot`` call — no separate ``pp.legend(ax)`` needed. The
+# forwarded placement keys are ``side``, ``orientation``, ``align``,
+# ``x_offset``, ``y_offset``, and ``gap``. Here ``side="left"`` lands
+# the legend on the axes' left edge in one call.
+#
+# (The ``inside=True`` path is independent and ignores these placement
+# keys — see section 2.)
+
+pp.scatterplot(
+    data=_df[_df["panel"] == "A"], x="x", y="y",
+    hue="group", palette="pastel",
+    legend_kws={"side": "left"},
+    title='legend_kws={"side": "left"}',
+)
 pp.show()

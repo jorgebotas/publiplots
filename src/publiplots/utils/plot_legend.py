@@ -394,6 +394,15 @@ _BUILDER_FORWARD_KEYS = frozenset({
     "labelspacing", "markerscale", "markerfirst",
 })
 
+# Placement-family keys that configure the per-axes MultiAxesLegendGroup
+# (not matplotlib's ax.legend()). Forwarded from ``legend_kws`` so a single
+# plot call can position its legend, e.g.
+# ``pp.scatterplot(..., legend_kws={"side": "left"})``. Ignored in
+# inside=True mode (placement is matplotlib loc-driven there).
+_GROUP_PLACEMENT_KEYS = frozenset({
+    "side", "orientation", "align", "x_offset", "y_offset", "gap",
+})
+
 
 def _builder_kwargs(legend_kws: Optional[Dict]) -> Dict:
     """Extract the subset of ``legend_kws`` meant for ``LegendBuilder``.
@@ -451,7 +460,15 @@ def render_entries(
         builder = LegendBuilder(ax, external_to_axis=False)
     else:
         from publiplots.utils.legend_group import _get_or_create_per_axes_group
-        group = _get_or_create_per_axes_group(ax)
+        # Split out placement-family keys so they configure the per-axes
+        # group (side / orientation / align / offsets / gap) rather than
+        # being forwarded to ax.legend(). The cached group must be built
+        # with the requested placement BEFORE the add_legend calls below.
+        placement_kwargs = {
+            k: v for k, v in (legend_kws or {}).items()
+            if k in _GROUP_PLACEMENT_KEYS
+        }
+        group = _get_or_create_per_axes_group(ax, **placement_kwargs)
         builder = group._builder
     for entry in to_render:
         if entry.kind == "hue" and is_continuous_hue(entry.handles):
