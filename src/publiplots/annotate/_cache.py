@@ -168,34 +168,50 @@ def _iter_error_segments(ax: Axes):
     """Yield (xs, ys) arrays for every candidate errorbar segment on `ax`.
 
     Matplotlib/seaborn render errorbars as either:
-      - Line2D artists in `ax.lines` (e.g., seaborn's pre-3.x bar errorbars), or
+      - Line2D artists in `ax.lines` (e.g., seaborn's bar/point errorbars), or
       - a LineCollection in `ax.collections` (matplotlib's `ax.bar(yerr=...)`
         since ~3.6 — segments packed as (2, 2) arrays).
+
+    When ``capsize > 0``, seaborn packs the whole errorbar (bottom cap +
+    vertical stem + top cap) into a SINGLE Line2D whose data is separated by
+    ``nan`` between sub-segments. We split each line on those ``nan`` breaks
+    and yield each finite contiguous run independently, so the vertical stem
+    run survives for the matcher. A run shorter than two points (or an
+    all-``nan`` line, as seaborn emits for single-sample groups) yields
+    nothing, leaving ``err_low/err_high`` as ``None``.
     """
     import math as _math
 
-    def _finite(values) -> bool:
-        for v in values:
-            try:
-                if _math.isnan(float(v)):
-                    return False
-            except (TypeError, ValueError):
-                return False
-        return True
+    def _isnan(v) -> bool:
+        try:
+            return _math.isnan(float(v))
+        except (TypeError, ValueError):
+            return True  # non-numeric → treat as a break, never emit
+
+    def _finite_runs(xs, ys):
+        """Split (xs, ys) into contiguous runs free of nan on either axis."""
+        run_xs: List[float] = []
+        run_ys: List[float] = []
+        for x, y in zip(xs, ys):
+            if _isnan(x) or _isnan(y):
+                if len(run_xs) >= 2:
+                    yield run_xs, run_ys
+                run_xs, run_ys = [], []
+            else:
+                run_xs.append(x)
+                run_ys.append(y)
+        if len(run_xs) >= 2:
+            yield run_xs, run_ys
 
     for ln in ax.lines:
-        xs, ys = ln.get_xdata(), ln.get_ydata()
-        if len(xs) >= 2 and _finite(xs) and _finite(ys):
-            yield xs, ys
+        yield from _finite_runs(ln.get_xdata(), ln.get_ydata())
     for col in ax.collections:
         if not isinstance(col, LineCollection):
             continue
         for seg in col.get_segments():
             if len(seg) < 2:
                 continue
-            xs, ys = seg[:, 0], seg[:, 1]
-            if _finite(xs) and _finite(ys):
-                yield xs, ys
+            yield from _finite_runs(seg[:, 0], seg[:, 1])
 
 
 def _match_errorbars(

@@ -95,6 +95,36 @@ def test_introspect_ignores_nan_errorbar_segments():
         assert bar.err_high is None
 
 
+def test_introspect_vertical_bars_with_capped_errorbars():
+    """With capsize>0, matplotlib draws each errorbar as ONE Line2D whose data
+    is nan-separated into [bottom cap | vertical stem | top cap]. The stem must
+    still be recovered as err_low/err_high — regression for labels overlapping
+    capped error bars."""
+    fig, ax = plt.subplots()
+    ax.bar([0, 1, 2], [1.0, 2.0, 3.0], yerr=[0.1, 0.2, 0.3], width=0.8, capsize=3)
+    meta = _introspect(ax)
+    assert len(meta.bars) == 3
+    for bar, exp_low, exp_high in zip(
+        meta.bars, [0.9, 1.8, 2.7], [1.1, 2.2, 3.3]
+    ):
+        assert bar.err_high == pytest.approx(exp_high, rel=1e-2)
+        assert bar.err_low == pytest.approx(exp_low, rel=1e-2)
+
+
+def test_introspect_horizontal_bars_with_capped_errorbars():
+    """Same as above for orient='h': caps run along y, stem along x."""
+    fig, ax = plt.subplots()
+    ax.barh([0, 1, 2], [1.0, 2.0, 3.0], xerr=[0.1, 0.2, 0.3], height=0.8, capsize=3)
+    meta = _introspect(ax)
+    assert meta.orient == "h"
+    assert len(meta.bars) == 3
+    for bar, exp_low, exp_high in zip(
+        meta.bars, [0.9, 1.8, 2.7], [1.1, 2.2, 3.3]
+    ):
+        assert bar.err_high == pytest.approx(exp_high, rel=1e-2)
+        assert bar.err_low == pytest.approx(exp_low, rel=1e-2)
+
+
 def test_bar_record_has_new_public_fields():
     rect = Rectangle((0, 0), 1, 1)
     rec = BarRecord(
