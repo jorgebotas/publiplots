@@ -129,6 +129,49 @@ def test_barplot_annotate_with_errorbars_anchors_past_cap():
         assert y >= bar.err_high
 
 
+def test_barplot_annotate_with_capped_errorbars_anchors_past_cap():
+    """capsize>0 path: the existing anchors_past_cap test uses the default
+    capsize=0 (a clean 2-point errorbar Line2D). With capsize>0 matplotlib
+    emits a single nan-separated Line2D; the cap extents must still be found
+    so labels clear the cap rather than overlapping it."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "group": pd.Categorical(np.repeat(["A", "B"], 20)),
+        "y": np.concatenate([
+            rng.normal(1.0, 0.5, 20),
+            rng.normal(2.0, 0.5, 20),
+        ]),
+    })
+    ax = pp.barplot(data=df, x="group", y="y", errorbar="se",
+                    capsize=3, annotate=True)
+    meta = ax._publiplots_bar_meta
+    for bar in meta.bars:
+        assert bar.err_high is not None
+        assert bar.err_high > bar.value
+    for bar, text in zip(meta.bars, ax.texts):
+        _, y = text.get_position()
+        assert y >= bar.err_high
+
+
+def test_pointplot_annotate_with_capped_errorbars_anchors_past_cap():
+    """Same capsize>0 regression for pointplot, which shares the errorbar
+    segment matcher."""
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame({
+        "group": pd.Categorical(np.repeat(["A", "B"], 20)),
+        "y": np.concatenate([
+            rng.normal(1.0, 0.5, 20),
+            rng.normal(2.0, 0.5, 20),
+        ]),
+    })
+    ax = pp.pointplot(data=df, x="group", y="y", errorbar="se",
+                      capsize=3, annotate=True)
+    meta = ax._publiplots_point_meta
+    for point in meta.points:
+        assert point.err_high is not None
+        assert point.err_high > point.value
+
+
 def test_barplot_annotate_hue_labels_pair_to_correct_bars():
     """Labels must match bar heights, not swap across dodge groups.
 
