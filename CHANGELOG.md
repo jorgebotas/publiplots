@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-06-10
+
+### Fixed
+
+- `pp.barplot`/`pp.pointplot` value labels (`annotate=True`/`pp.annotate`)
+  no longer overlap the error bar when `capsize > 0`. With a non-zero
+  capsize, seaborn packs the whole errorbar (bottom cap + vertical stem +
+  top cap) into a single `Line2D` whose data is `nan`-separated between
+  sub-segments; `_iter_error_segments` checked finiteness over the whole
+  array and discarded any line containing a `nan`, so `err_low/err_high`
+  came back `None` and labels anchored on the bar top instead of clearing
+  the cap. The default `capsize=0` (a clean 2-point `Line2D`) was
+  unaffected, which is why it slipped past the existing anchor test.
+  Errorbar lines are now split on `nan` into finite contiguous runs so
+  the vertical-stem run survives the matcher; all-`nan` lines
+  (single-sample groups) still yield nothing. Fixes both orientations and
+  is sign-aware (negative bars label below the bottom cap) (#184).
+
 ## [0.14.0] - 2026-06-09
 
 ### Added
