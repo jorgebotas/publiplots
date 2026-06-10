@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-09
+
+### Added
+
+- `legend_kws` on plot functions now forwards legend **placement** keys
+  (`side`, `orientation`, `align`, `x_offset`, `y_offset`, `gap`), so a
+  per-axes legend can be positioned in a single call —
+  e.g. `pp.scatterplot(..., legend_kws={"side": "left"})` (#182).
+- Per-axes legends (`pp.legend(ax, side=...)`) support all four sides
+  (`top`/`bottom`/`left`/`right`). For `side="top"` the axes title is
+  lifted above the legend band (stacking: axes → legend → title); for
+  `side="left"` the legend is offset past the y-tick labels
+  dynamically (#182).
+
+### Changed
+
+- `pp.legend(ax)` now **adopts** the per-axes legend group that the
+  plot call already created (cached on `ax._legend_group`) instead of
+  building a second competing group. The requested `side=` is honoured,
+  the spurious `scope overlaps with an existing group` warning on the
+  `pp.scatterplot(...); pp.legend(ax)` flow is gone, and the redundant
+  double-render/per-draw hook is removed (~7× → ~1.2× on multi-panel
+  figures). Repeated `pp.legend(ax)` calls re-adopt the same group (#182).
+- `__version__` is now resolved from the installed package metadata
+  (`importlib.metadata`) rather than hard-coded in `__init__.py`, so the
+  version lives in a single place (`pyproject.toml`) and can no longer
+  drift (#182).
+
+### Fixed
+
+- `side="top"`/`"bottom"` center-aligned legends no longer force a full
+  `fig.canvas.draw()` per element on every draw (the per-draw alignment
+  hook reuses the current renderer cache), eliminating an O(panels)
+  slowdown (#182).
+- The `side="top"` title lift uses the title offset transform instead of
+  `ax.set_title()`, so it no longer resets the title's color/fontsize/
+  weight, and a user-set title pad larger than the band lift is
+  preserved (#182).
+
 ## [0.13.1] - 2026-05-28
 
 ### Fixed
