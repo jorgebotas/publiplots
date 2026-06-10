@@ -1,11 +1,13 @@
 ---
 name: legend-placement
-description: Use when deciding where/how to place legends in publiplots — per-axes inside/outside, multi-axes row/column bands, figure-level bands. Covers pp.legend(ax) vs pp.legend(anchor=ax) asymmetry, axes= scope rules, and before/after-plot ordering.
+description: Use when deciding where/how to place legends in publiplots — per-axes inside/outside, multi-axes row/column bands, figure-level bands. Covers per-axes side= placement, legend_kws placement keys, pp.legend(ax) group adoption, pp.legend(ax) vs pp.legend(anchor=ax) semantics, axes= scope rules, and before/after-plot ordering.
 ---
 
 # Legend placement in publiplots
 
 `pp.legend` is the single public API for every legend configuration in publiplots 0.10+. The first positional argument is the **scope** (which axes contribute entries); `side=` picks the edge; `anchor=` is a rarely-needed geometric override.
+
+Since 0.14.0, `pp.legend(ax)` **adopts** the per-axes legend group the plot call already created (cached on `ax._legend_group`) rather than building a second competing group — so the `side=` you pass is honoured, no spurious "scope overlaps" warning fires, and there's no double-render. You can also position a per-axes legend without a separate `pp.legend(ax)` call by passing placement keys through `legend_kws` on the plot itself (see below).
 
 ## Decision tree
 
@@ -16,7 +18,11 @@ Single axes, legend sits inside the axes frame?
 
 Single axes, legend next to the axes?
     -> pp.legend(ax)               # INTERNAL — counted in ax.tightbbox
+    -> pp.legend(ax, side='top')   # any of top/right/bottom/left
     -> pp.legend(anchor=ax)        # EXTERNAL band pinned to ax's edge
+
+Single axes, position the legend in the plot call itself?
+    -> pp.scatterplot(..., legend_kws={'side': 'left'})   # forwards placement keys
 
 Subset of the grid (one row, one column) shares a legend?
     -> pp.legend(axes[0], side='top')         # row band
@@ -135,9 +141,29 @@ Common variations:
 
 For per-axes legends, call `pp.legend(ax)` **after** the plot — it auto-collects stashed entries. Before would force you to pass `collect=[]` and add handles manually.
 
-## The 0.10 asymmetry (important)
+## Per-axes placement: `side=` and `legend_kws` (since 0.14.0)
 
-`pp.legend(ax)` and `pp.legend(anchor=ax)` look similar; their layout semantics are opposite:
+A per-axes legend supports all four sides. Two equivalent ways to place it:
+
+```python
+fig, ax = pp.subplots(axes_size=(50, 35))
+pp.scatterplot(data=df, x="x", y="y", hue="group", ax=ax, title="t")
+pp.legend(ax, side="top")        # after the plot — adopts the cached group
+
+# …or position it in the plot call, no separate pp.legend(ax) needed:
+pp.scatterplot(..., ax=ax, legend_kws={"side": "top", "align": "center"})
+```
+
+`legend_kws` forwards the placement family — `side`, `orientation`, `align`, `x_offset`, `y_offset`, `gap` — to the per-axes group (alongside the matplotlib passthrough keys like `loc`, `ncol`). `legend_kws={'inside': True, ...}` is a different mechanism (see "Two `inside=True` flavors") and ignores these placement keys.
+
+Edge behaviour for per-axes legends:
+- `side='top'` lifts the axes **title above** the legend band (stacking, outward: axes → legend → title); the title's font/color/pad are preserved.
+- `side='left'` offsets the legend past the y-tick labels dynamically (no fixed gap).
+- `top`/`bottom` default to `orientation='horizontal'`, `align='center'`; `left`/`right` to `vertical`, `align='start'`.
+
+## Internal vs external per-axes legend (`pp.legend(ax)` vs `pp.legend(anchor=ax)`)
+
+The two forms have opposite layout semantics — still a real distinction:
 
 ```python
 fig, axes = pp.subplots(1, 2, axes_size=(45, 35))
@@ -145,9 +171,9 @@ pp.legend(axes[0])              # INTERNAL — counts in axes[0].tightbbox
 pp.legend(anchor=axes[1])       # EXTERNAL — overhangs past axes[1]'s right edge
 ```
 
-Why: the asymmetry preserves pre-0.10 semantics across the `pp.legend_group` → `pp.legend` rename. `pp.legend(ax)` matches old `pp.legend(ax)`; `pp.legend(anchor=ax)` matches old `pp.legend_group(anchor=ax)`.
+The internal form (`pp.legend(ax)`) adopts the plot-created group in place (since 0.14.0) — one group per axes, so it never warns or double-renders. The external form (`pp.legend(anchor=ax)`) preserves the pre-0.10 `pp.legend_group(anchor=ax)` band semantics.
 
-Migration: a plain `sed -i 's/pp\.legend_group(/pp.legend(/g'` over your code is sufficient — every kwarg carries over and semantics are preserved.
+Migration from the old name: a plain `sed -i 's/pp\.legend_group(/pp.legend(/g'` over your code is sufficient — every kwarg carries over and semantics are preserved.
 
 ## The `collect=` filter
 

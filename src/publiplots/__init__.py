@@ -14,7 +14,16 @@ publiplots applies its publication-grade rcParams on import. Use
 :func:`publiplots.reset_style` to revert to matplotlib defaults.
 """
 
-__version__ = "0.12.0"
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
+
+try:
+    # Single source of truth: the version declared in pyproject.toml,
+    # resolved from the installed package metadata at runtime. Avoids
+    # keeping the version in two places (it used to drift here).
+    __version__ = _pkg_version("publiplots")
+except PackageNotFoundError:  # raw checkout, package not installed
+    __version__ = "0.0.0+unknown"
+
 __author__ = "Jorge Botas"
 __license__ = "MIT"
 __copyright__ = "Copyright 2025, Jorge Botas"
