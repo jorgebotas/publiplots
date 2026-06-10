@@ -16,6 +16,8 @@ repositioned axes and re-anchors legends correctly.
 
 from typing import Dict, FrozenSet, Optional, Set, Tuple
 
+import matplotlib as mpl
+
 from publiplots.layout.figure_layout import FigureLayout
 
 
@@ -348,10 +350,30 @@ class SubplotsAutoLayout:
             return
 
         # Single-axes, in-frame groups (external_to_axis=False) are measured
-        # by ax.get_tightbbox() in _side_extent — no overhang write needed.
-        # This guard prevents double-counting against the per-cell reservation
-        # when commit 4 routes pp.legend(ax) through the same group machinery.
+        # by ax.get_tightbbox() in _side_extent — no overhang write needed
+        # for the legend itself. This guard prevents double-counting against
+        # the per-cell reservation when pp.legend(ax) routes through the same
+        # group machinery.
         if not getattr(group, "_external_to_axis", True):
+            # ... but a per-axes top legend must NOT sit between the axes
+            # and its title (Issue B). The required stacking is
+            # AXES -> LEGEND -> TITLE (title outermost). The legend renders
+            # ~2mm above the axes top; we lift the title's pad above the
+            # legend band so it clears it. The standard title_space
+            # auto-measurement (which sees the lifted title at its new
+            # position) then reserves room for both. _side_extent excludes
+            # the legend artist itself, so it never double-counts.
+            if group._anchor_kind == "axes":
+                if group._side == "top":
+                    self._lift_title_above_top_legend(group, dpi)
+                elif group._side == "left":
+                    # A per-axes left legend must clear the y-tick labels /
+                    # y-axis label dynamically (Issue B): step the band past
+                    # the already-measured ylabel_space for this column
+                    # rather than using a fixed 8mm offset.
+                    self._offset_left_legend_past_yticklabels(
+                        group, measured, axes_matrix
+                    )
             return
 
         side = group._side
@@ -418,6 +440,123 @@ class SubplotsAutoLayout:
         # so multiple overlapping groups don't shrink it).
         existing[idx] = max(existing[idx], overhang_mm + pure_decoration_mm)
         measured[cell_field] = tuple(existing)
+
+    def _lift_title_above_top_legend(self, group, dpi) -> None:
+        """Push the anchor axes' title pad above a per-axes top legend band.
+
+        Issue B: a per-axes ``side='top'`` legend renders ~``x_offset`` mm
+        above the axes top. matplotlib ignores it when auto-positioning the
+        title (the legend is ``set_in_layout(False)``), so by default the
+        title lands ~6pt above the axes — sandwiched *under* the legend.
+
+        We compute the title pad needed to clear the whole legend band
+        (outward gap + legend height + a small breathing gap) and apply it
+        via ``ax.title`` offset. The standard ``title_space`` auto-measure
+        then sees the title at its lifted position and reserves room for
+        the legend + title together — no manual reservation arithmetic and
+        no double-counting (``_side_extent`` excludes the legend artist).
+        Idempotent: re-running over convergence iterations recomputes from
+        the same band geometry, so the pad converges instead of drifting.
+        """
+        ax = group.anchor
+        title = getattr(ax, "title", None)
+        if title is None or not title.get_text():
+            return  # no title to lift
+
+        ax_bb = ax.get_window_extent()
+        # Tallest legend band element above the axes top, in pixels.
+        band_top_px = ax_bb.y1
+        for _, obj in group._builder.elements:
+            extent = self._artist_window_extent(obj)
+            if extent is None:
+                continue
+            band_top_px = max(band_top_px, extent.y1)
+        band_above_ax_px = band_top_px - ax_bb.y1
+        if band_above_ax_px <= 0:
+            return  # band hasn't rendered above the axes yet
+
+        # pad (points) = band height above axes + a small breathing gap.
+        # matplotlib's title pad positions the title baseline; the text's
+        # own descent adds visible space below it, so a tiny nominal gap
+        # keeps the legend->title gap near ~2mm rather than ballooning.
+        breathing_mm = 1.0
+        breathing_px = breathing_mm * dpi / 25.4
+        pad_px = band_above_ax_px + breathing_px
+        pad_pt = pad_px / dpi * 72.0
+        # Preserve the user's intended ("base") title pad: stash it once,
+        # BEFORE we ever lift, so re-running over convergence iterations
+        # doesn't read our own lifted pad as the baseline (idempotent — the
+        # applied pad converges instead of drifting). Default to
+        # rcParams['axes.titlepad'] when the user never set one.
+        base_pad = getattr(ax, "_pp_base_titlepad", None)
+        if base_pad is None:
+            cur = ax.titleOffsetTrans._t[1] * 72.0  # current pad in points
+            base_pad = cur if cur > 0 else float(
+                mpl.rcParams.get("axes.titlepad", 6.0)
+            )
+            ax._pp_base_titlepad = base_pad
+        # Only lift; honour a user-set pad larger than the band lift.
+        # Apply via the title offset transform so the title's own
+        # font/color/weight styling is NOT reset (ax.set_title would
+        # re-merge the default fontdict and clobber user styling).
+        ax._set_title_offset_trans(max(base_pad, pad_pt))
+
+    def _offset_left_legend_past_yticklabels(
+        self, group, measured, axes_matrix
+    ) -> None:
+        """Step a per-axes left legend just past the y-tick labels / y-axis
+        label, dynamically.
+
+        Issue B: with the old fixed 8mm offset removed, an internal left
+        legend would render only ``x_offset`` mm left of the axes spine,
+        colliding with the y-tick labels (which live left of the axes).
+
+        Unlike a figure-anchored band, an ``external_to_axis=False`` group
+        is NOT excluded from ``ax.get_tightbbox()``, so the standard
+        ``ylabel_space`` auto-measurement ALREADY widens the column to fit
+        the legend — we must not re-add the legend width (that double-counts
+        and drifts). All we need is to position the legend just past the
+        PURE y-decoration (ticklabels + ylabel) so it doesn't overlap them.
+        We measure that pure extent directly here (excluding our own legend)
+        and bake it as the band's outward decoration offset. Idempotent.
+        """
+        cell_field = "ylabel_space"
+        if cell_field in self._locked:
+            return
+        r, c = self._find_ax_indices(group.anchor, axes_matrix)
+        if c in self._locked_positions.get(cell_field, frozenset()):
+            return
+
+        ax = group.anchor
+        dpi = self._fig.dpi
+        ax_bb = ax.get_window_extent()
+
+        # Pure y-decoration extent left of the axes, EXCLUDING our legend
+        # (and any other externally-managed overlay). Mirrors _side_extent
+        # but computed locally so it's independent of whether the legend is
+        # in-layout.
+        legend_ids = {id(obj) for _, obj in group._builder.elements}
+        # Exclude our own legend from BOTH the tightbbox and the pinned
+        # union. The group is external_to_axis=False, so its legend is NOT
+        # in _externally_managed_artist_ids() and would otherwise be unioned
+        # back in by _union_pinned_artists — re-inflating the "pure" extent
+        # by the legend's own width and causing the offset to drift.
+        managed = self._externally_managed_artist_ids() | legend_ids
+        toggled = []
+        for child in ax.get_children():
+            if id(child) in legend_ids and child.get_in_layout():
+                child.set_in_layout(False)
+                toggled.append(child)
+        try:
+            tight = ax.get_tightbbox()
+        finally:
+            for child in toggled:
+                child.set_in_layout(True)
+        if tight is None:
+            return
+        tight = self._union_pinned_artists(ax, tight, managed)
+        pure_ylabel_mm = max(0.0, (ax_bb.x0 - tight.x0) / dpi * 25.4)
+        group._set_decoration_offset(pure_ylabel_mm)
 
     def _bake_decoration_offset(self, group, measured, axes_matrix) -> None:
         """Write the decoration offset onto the group's registrations

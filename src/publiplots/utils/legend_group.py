@@ -640,6 +640,12 @@ class MultiAxesLegendGroup:
         )
         self._align = default_align if align == "auto" else align
         if x_offset is None:
+            # Use the normal 2mm outward gap for every side. The legend's
+            # clearance past the axes decorations (title for 'top',
+            # y-tick labels for 'left') is now handled DYNAMICALLY by the
+            # layout's decoration-offset measurement, not by a fixed gap
+            # baked in here (Issue B: the old fixed 7/8mm left empty
+            # padding with no title and sandwiched the title when present).
             x_offset = default_x_offset
         # In inside mode, side='center' silently coerces align to 'center'
         # because matplotlib's loc='center' has no notion of start/end.
@@ -877,6 +883,11 @@ class MultiAxesLegendGroup:
 
     def _collect_overlap(self, other: "MultiAxesLegendGroup") -> bool:
         """True if ``self`` and ``other`` could claim the same entry name."""
+        # A collect=[] group is a render-nothing stash (the plot-created
+        # per-axes cache); it claims no entry names, so it can never
+        # compete with another group. Short-circuit before the None check.
+        if self._collect == [] or other._collect == []:
+            return False
         if self._collect is None or other._collect is None:
             return True
         return bool(set(self._collect) & set(other._collect))
@@ -1191,7 +1202,14 @@ class MultiAxesLegendGroup:
             # Measure each legend's along-edge extent.
             extents = []
             for reg in row_regs:
-                w, h = self._builder._measure_object_dimensions(reg.artist)
+                # force_draw=False: this runs as a post-refresh reactor
+                # callback, so matplotlib's renderer cache is already
+                # current. Forcing a fresh fig.canvas.draw() here would
+                # trigger O(panels) nested full redraws on every settle
+                # iteration (Issue A: side='top'/'bottom' 5x slowdown).
+                w, h = self._builder._measure_object_dimensions(
+                    reg.artist, force_draw=False
+                )
                 extents.append(w if orient == "horizontal" else h)
             total = sum(extents) + gap_mm * (len(row_regs) - 1)
             if total >= edge_length_mm:
@@ -1301,6 +1319,151 @@ class MultiAxesLegendGroup:
         finally:
             self._builder.ax = original_ax
         return cbar
+
+    def _resolve_side_defaults(self, side, orientation, align, x_offset):
+        """Resolve (orientation, align, x_offset) per-side, mirroring __init__.
+
+        Any kwarg left at its sentinel default ("auto" for
+        orientation/align, ``None`` for x_offset) is filled from the
+        per-side default tables. ``x_offset`` defaults to the normal 2mm
+        outward gap for every side; clearance past axes decorations
+        (title / y-tick labels) is handled dynamically by the layout's
+        decoration-offset measurement. Returns concrete values.
+        """
+        if side == "center":
+            default_orientation = "vertical"
+            default_align = "center"
+            default_x_offset = 0.0
+        else:
+            default_orientation = self._DEFAULT_ORIENTATION[side]
+            default_align = self._DEFAULT_ALIGN[side]
+            default_x_offset = self._DEFAULT_X_OFFSET_MM[side]
+        resolved_orientation = (
+            default_orientation if orientation == "auto" else orientation
+        )
+        resolved_align = default_align if align == "auto" else align
+        if x_offset is None:
+            # Normal 2mm outward gap for every side; clearance past axes
+            # decorations is handled dynamically by the layout's
+            # decoration-offset measurement (Issue B).
+            x_offset = default_x_offset
+        return resolved_orientation, resolved_align, x_offset
+
+    def _reconfigure_for_adopt(
+        self,
+        *,
+        collect,
+        side,
+        orientation,
+        align,
+        x_offset,
+        y_offset,
+        gap,
+        column_spacing,
+        vpad,
+        max_width,
+    ) -> None:
+        """Reconfigure this plot-created (``collect=[]``) per-axes group
+        in place for a ``pp.legend(ax)`` adoption.
+
+        Tears down the already-rendered artists (the cached group's
+        builder rendered the hue entry on the default RIGHT side), rebuilds
+        the LegendBuilder under the requested placement, flips ``collect``
+        so the stashed entries are re-collected, and re-materializes so a
+        single set of artists renders under the new side. Never appends a
+        second group to ``fig._publiplots_legend_groups`` — the cached
+        group is already registered.
+        """
+        # --- 1. Tear down the already-rendered artists --------------------
+        reactor = self._builder._reactor
+        old_artist_ids = set()
+        for kind, artist in self._builder.elements:
+            old_artist_ids.add(id(artist))
+            if kind == "colorbar":
+                # Colorbar: remove its dedicated axes from the figure.
+                cbar_ax = getattr(artist, "ax", None)
+                try:
+                    artist.remove()
+                except Exception:
+                    pass
+                if cbar_ax is not None:
+                    try:
+                        cbar_ax.remove()
+                    except Exception:
+                        pass
+            else:
+                # Legend artist or colorbar title Text.
+                parent_ax = getattr(artist, "axes", None)
+                try:
+                    artist.remove()
+                except Exception:
+                    pass
+                if parent_ax is not None and getattr(parent_ax, "legend_", None) is artist:
+                    parent_ax.legend_ = None
+        # Purge those artists' reactor registrations (match by id).
+        if old_artist_ids:
+            reactor._registrations = [
+                r for r in reactor._registrations
+                if id(r.artist) not in old_artist_ids
+            ]
+        self._builder.elements = []
+
+        # --- 2. Re-resolve placement + rebuild the builder ----------------
+        resolved_orientation, resolved_align, resolved_x_offset = (
+            self._resolve_side_defaults(side, orientation, align, x_offset)
+        )
+        self._side = side
+        self._orientation = resolved_orientation
+        self._align = resolved_align
+
+        # Mirror __init__'s builder_ax / builder_anchor_ax selection for the
+        # per-axes (single-axes, axes-anchored) case.
+        builder_ax = self.anchor if self._anchor_kind == "axes" \
+            else self._pick_builder_ax()
+        if (
+            self._anchor_kind == "axes"
+            and self._scope_axes is not None
+            and len(self._scope_axes) > 1
+        ):
+            builder_anchor_ax = self._scope_anchor
+        else:
+            builder_anchor_ax = self.anchor
+        builder_side = "right" if (self._inside and side == "center") else side
+        self._builder = LegendBuilder(
+            ax=builder_ax,
+            anchor_ax=builder_anchor_ax,
+            x_offset=resolved_x_offset,
+            y_offset=y_offset,
+            gap=gap,
+            column_spacing=column_spacing,
+            vpad=vpad,
+            max_width=max_width,
+            external_to_axis=False,  # per-axes in-frame semantics
+            side=builder_side,
+            orientation=self._orientation,
+        )
+        self._external_to_axis = False
+
+        # --- 3. Flip collect so stashed entries are re-collected ----------
+        if collect is not None:
+            if isinstance(collect, str) or not hasattr(collect, "__iter__"):
+                raise TypeError(
+                    "collect must be None or a list/tuple of names; "
+                    "got a bare string. Wrap in a list: collect=['name']"
+                )
+            collect = list(collect)
+        self._collect = collect
+
+        # --- 4. Reset materialization + re-render under the new side ------
+        self._materialized = False
+        self._materialize()
+
+        # --- 5. Manage the align hook (connect at most once) --------------
+        # The builder was rebuilt, so its reactor reference is current; the
+        # _align_connected flag tracks per-group connection state. Only
+        # connect when the final align is non-default ("start").
+        if self._align != "start" and not self._align_connected:
+            self._connect_align_hook()
 
 
 _SIDE_SENTINEL = object()
@@ -1525,6 +1688,45 @@ def legend(
         resolved_anchor = axes
         resolved_axes = [axes]
         axes_triggered_single_scope = True
+        # Adopt the plot-created cached per-axes group instead of building
+        # a second competing one. Every plot call funnels its legend
+        # output through ``ax._legend_group`` (a collect=[] group whose
+        # builder has already rendered the hue entry on the RIGHT). Reusing
+        # it makes pp.legend(ax, side=...) the single source of truth,
+        # eliminates the spurious "scope overlaps" warning, and removes the
+        # double render + redundant per-draw align hook. Inside mode never
+        # adopts (it short-circuits to a plain LegendBuilder and never
+        # creates a cached group).
+        cached = getattr(axes, "_legend_group", None)
+        # ``ax._legend_group`` is assigned ONLY by
+        # ``_get_or_create_per_axes_group``, so anything stored there is a
+        # per-axes cache safe to adopt. Gate on identity/kind, NOT on the
+        # mutable ``_collect`` value: the first adopt flips ``_collect`` from
+        # ``[]`` to the requested value (default ``None``), so keying on
+        # ``_collect == []`` would make a SECOND ``pp.legend(ax)`` call (e.g.
+        # to change ``side=``) fall through and build a duplicate competing
+        # group — re-introducing the overlap warning and per-draw overhead.
+        if (
+            not inside
+            and isinstance(cached, MultiAxesLegendGroup)
+            and cached is axes._legend_group
+            and cached._anchor_kind == "axes"
+            and cached._scope_axes is not None
+            and len(cached._scope_axes) == 1
+        ):
+            cached._reconfigure_for_adopt(
+                collect=collect,
+                side=side,
+                orientation=orientation,
+                align=align,
+                x_offset=x_offset,
+                y_offset=y_offset,
+                gap=gap,
+                column_spacing=column_spacing,
+                vpad=vpad,
+                max_width=max_width,
+            )
+            return cached
     elif isinstance(axes, Axes) and anchor is not None:
         # axes=ax, anchor=other_ax → explicit anchor override, single-axes scope.
         resolved_axes = [axes]
@@ -1577,7 +1779,7 @@ def legend(
     return group
 
 
-def _get_or_create_per_axes_group(ax: Axes) -> MultiAxesLegendGroup:
+def _get_or_create_per_axes_group(ax: Axes, **placement_kwargs) -> MultiAxesLegendGroup:
     """Return (or create) the single-axes legend group cached on ``ax``.
 
     Used by ``render_entries`` to funnel every plot function's legend
@@ -1596,12 +1798,22 @@ def _get_or_create_per_axes_group(ax: Axes) -> MultiAxesLegendGroup:
 
     Also preserves the ``ax._legend_builder`` alias so the existing
     ``_evict_claimed_per_axis_legends`` read path keeps working.
+
+    ``**placement_kwargs`` (``side`` / ``orientation`` / ``align`` /
+    ``x_offset`` / ``y_offset`` / ``gap``) are forwarded from
+    ``legend_kws`` so a plot call can position its own legend in one shot
+    (e.g. ``pp.scatterplot(..., legend_kws={"side": "left"})``). They take
+    effect only when the group is FIRST created — once cached, the
+    existing configuration is reused (a single plot call's repeated
+    render_entries passes share one group).
     """
     existing = getattr(ax, "_legend_group", None)
     if existing is not None:
         return existing
     # collect=[] — see docstring; render_entries owns the add_legend calls.
-    group = legend(ax, collect=[])
+    # The group is built with the requested placement BEFORE render_entries
+    # issues its add_legend/add_colorbar calls on group._builder.
+    group = legend(ax, collect=[], **placement_kwargs)
     ax._legend_group = group
     ax._legend_builder = group._builder  # back-compat alias
     return group

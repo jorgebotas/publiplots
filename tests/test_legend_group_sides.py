@@ -578,3 +578,411 @@ def test_legend_group_saves_to_pdf_without_renderer_error(tmp_path):
     assert (tmp_path / "ok.pdf").exists()
     assert (tmp_path / "ok.svg").exists()
     assert (tmp_path / "ok.png").exists()
+
+
+# --- per-axes adopt: pp.legend(ax) reuses the plot-created group ------------
+
+
+def _scatter_df(n=40, seed=0):
+    rng = np.random.default_rng(seed)
+    return pd.DataFrame({
+        "x": rng.normal(size=n),
+        "y": rng.normal(size=n),
+        "g": np.tile(list("AB"), n // 2),
+    })
+
+
+def test_per_axis_legend_adopts_cached_group():
+    """pp.legend(ax) after a plot adopts the cached per-axes group rather
+    than building a second competing one. Exactly one group on the figure,
+    and it IS the cached group on the axes."""
+    from matplotlib.legend import Legend
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    cached = ax._legend_group
+    g = pp.legend(ax, side="left")
+    fig.canvas.draw()
+    assert len(fig._publiplots_legend_groups) == 1
+    assert g is cached
+    assert g is ax._legend_group
+    # Exactly one Legend artist rendered (no double render).
+    n_legends = sum(1 for c in ax.get_children() if isinstance(c, Legend))
+    assert n_legends == 1, f"expected one Legend, got {n_legends}"
+
+
+def test_per_axis_legend_repeated_call_re_adopts():
+    """Calling pp.legend(ax) twice (e.g. to change side=) must re-adopt the
+    same cached group, not build a second competing one. Regression: the
+    adopt guard used to key on the mutable ``_collect == []`` which the
+    first adopt flips to None, so repeats fell through to construction —
+    duplicating groups, re-emitting the overlap warning, and stacking
+    align callbacks."""
+    import warnings as _w
+    from matplotlib.legend import Legend
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    cached = ax._legend_group
+    g1 = pp.legend(ax, side="top")
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        g2 = pp.legend(ax, side="left")
+        fig.canvas.draw()
+    overlap = [w for w in caught if "scope overlaps" in str(w.message)]
+    assert g1 is cached and g2 is cached
+    assert len(fig._publiplots_legend_groups) == 1
+    assert overlap == [], f"repeat adopt must not warn; got {len(overlap)}"
+    assert g2._side == "left"
+    n_legends = sum(1 for c in ax.get_children() if isinstance(c, Legend))
+    assert n_legends == 1, f"expected one Legend after re-adopt, got {n_legends}"
+
+
+def test_per_axis_legend_no_prior_plot_constructs_fresh():
+    """pp.legend(ax) on an axes that never plotted through publiplots
+    (no cached group) must still construct a fresh group."""
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    ax.plot([0, 1, 2], [0, 1, 0])
+    assert getattr(ax, "_legend_group", None) is None
+    g = pp.legend(ax, side="left")
+    g.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+    assert g is not None
+    assert g._side == "left"
+    assert len(fig._publiplots_legend_groups) == 1
+
+
+@pytest.mark.parametrize("side", ["right", "left", "top", "bottom"])
+def test_per_axis_internal_side_places_on_correct_edge(side):
+    """An adopted per-axes legend lands on the correct edge of the axes."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    g = pp.legend(ax, side=side)
+    fig.canvas.draw()
+    legend = g._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    axb = ax.get_window_extent()
+    if side == "right":
+        assert lb.x0 >= axb.x1 - 2, (lb.x0, axb.x1)
+    elif side == "left":
+        assert lb.x1 <= axb.x0 + 2, (lb.x1, axb.x0)
+    elif side == "top":
+        assert lb.y0 >= axb.y1 - 2, (lb.y0, axb.y1)
+    else:  # bottom
+        assert lb.y1 <= axb.y0 + 2, (lb.y1, axb.y0)
+
+
+def test_per_axis_internal_top_title_is_outermost():
+    """Issue B: for side='top', stacking from the axes outward must be
+    AXES -> LEGEND -> TITLE (title OUTERMOST, above the legend), with no
+    overlaps. The legend sits between the axes top and the title.
+    """
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax,
+                   title="my title")
+    g = pp.legend(ax, side="top")
+    # Settle: the title lift converges over a couple of draws, so assert on
+    # the STEADY state, not the transient first-draw geometry.
+    for _ in range(3):
+        fig.canvas.draw()
+    legend = g._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    axb = ax.get_window_extent()
+    title_bb = ax.title.get_window_extent()
+    # Legend sits above the axes top.
+    assert lb.y0 >= axb.y1 - 1.0, (
+        f"legend y0={lb.y0:.1f} should be above axes top y1={axb.y1:.1f}"
+    )
+    # Title sits ABOVE the legend (title outermost), no overlap at steady
+    # state (no negative tolerance — the gap must be genuinely positive).
+    assert title_bb.y0 >= lb.y1, (
+        f"title y0={title_bb.y0:.1f} should be above legend top "
+        f"y1={lb.y1:.1f} (title must be outermost)"
+    )
+
+
+def test_per_axis_internal_top_no_gap_without_title():
+    """Issue B/C: without a title, a top legend sits ~2mm above the axes
+    top — no fixed 7mm empty padding."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    g = pp.legend(ax, side="top")
+    fig.canvas.draw()
+    legend = g._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    axb = ax.get_window_extent()
+    gap_mm = (lb.y0 - axb.y1) / fig.dpi * 25.4
+    assert -0.5 <= gap_mm <= 4.0, (
+        f"top legend gap above axes should be ~2mm, got {gap_mm:.2f}mm"
+    )
+
+
+def test_per_axis_top_title_lift_preserves_title_styling():
+    """Issue B regression: lifting the title above a side='top' legend must
+    NOT reset the title's font/color/weight. The lift uses the title offset
+    transform, not ax.set_title (which re-merges the default fontdict). Also
+    a user-set title pad LARGER than the band lift must be preserved, and
+    neither must drift across repeated draws."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    ax.set_title("styled", color="red", fontsize=20, fontweight="bold", pad=40)
+    g = pp.legend(ax, side="top")
+    pads = []
+    for _ in range(4):
+        fig.canvas.draw()
+        pads.append(ax.titleOffsetTrans._t[1] * 72.0)
+    # Styling survives every draw.
+    assert ax.title.get_color() in ("red", (1.0, 0.0, 0.0, 1.0))
+    assert ax.title.get_fontsize() == 20.0
+    assert ax.title.get_fontweight() == "bold"
+    # User pad (40pt) is honoured (>= 40) and converges (no drift).
+    assert all(p >= 40.0 - 0.5 for p in pads), f"user pad lost: {pads}"
+    assert abs(pads[-1] - pads[-2]) < 0.5, f"title pad drifts: {pads}"
+
+
+def test_per_axis_internal_left_clears_yticklabels():
+    """An adopted left legend sits left of (clears) the y-tick labels,
+    with no large fixed gap (Issue B: dynamic offset)."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    g = pp.legend(ax, side="left")
+    fig.canvas.draw()
+    legend = g._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    ytick_x0s = [
+        t.get_window_extent().x0
+        for t in ax.get_yticklabels() if t.get_text()
+    ]
+    if ytick_x0s:
+        min_x0 = min(ytick_x0s)
+        # Clears the y-ticklabels (legend right edge at/left of them).
+        assert lb.x1 <= min_x0 + 1.0, (
+            f"left legend x1={lb.x1:.1f} should clear y-ticklabel x0={min_x0:.1f}"
+        )
+        # ... but not by a large fixed gap (dynamic, ~2mm).
+        gap_mm = (min_x0 - lb.x1) / fig.dpi * 25.4
+        assert gap_mm <= 5.0, (
+            f"left legend gap to y-ticklabels should be small/dynamic, "
+            f"got {gap_mm:.2f}mm"
+        )
+
+
+def test_per_axis_top_title_space_reserves_legend_plus_title():
+    """Issue C: the reserved title_space for a per-axes top legend should
+    be ~ legend_height + gap + title_height — not extra vertical-stacking
+    padding."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax,
+                   title="my title")
+    g = pp.legend(ax, side="top")
+    fig.canvas.draw()
+    legend = g._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    axb = ax.get_window_extent()
+    title_bb = ax.title.get_window_extent()
+    # Total decoration above the axes top, in mm.
+    decoration_mm = (title_bb.y1 - axb.y1) / fig.dpi * 25.4
+    legend_h_mm = lb.height / fig.dpi * 25.4
+    title_h_mm = title_bb.height / fig.dpi * 25.4
+    # Expected: legend + ~2mm gap + title + a small slack for inter-gaps.
+    expected = legend_h_mm + title_h_mm + 2.0
+    assert decoration_mm <= expected + 5.0, (
+        f"reserved decoration {decoration_mm:.2f}mm exceeds "
+        f"legend+title+gap ~= {expected:.2f}mm (excess padding)"
+    )
+
+
+def test_per_axis_right_still_top_aligned():
+    """Regression: an adopted internal right legend keeps its top within
+    ~1.5mm of the axes top (mirrors test_per_axis_outside_right_*)."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax,
+                   title="t")
+    g = pp.legend(ax, side="right")
+    fig.canvas.draw()
+    ax_top_px = ax.get_window_extent().y1
+    legend_top_px = g._builder.elements[0][1].get_window_extent().y1
+    delta_mm = (ax_top_px - legend_top_px) / fig.dpi * 25.4
+    assert abs(delta_mm) < 1.5, (
+        f"right legend top should be within ~1.5mm of axes top; "
+        f"got delta={delta_mm:.2f} mm"
+    )
+
+
+def test_no_overlap_warning_on_scatter_then_per_axis_legend():
+    """scatter then pp.legend(ax) emits zero 'scope overlaps' warnings."""
+    import warnings as _w
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        pp.legend(ax, side="left")
+        fig.canvas.draw()
+    overlap = [w for w in caught if "scope overlaps" in str(w.message)]
+    assert len(overlap) == 0, [str(w.message) for w in overlap]
+
+
+def test_overlap_warning_still_fires_for_two_figure_groups():
+    """Two figure-level collect=None groups on a grid genuinely compete →
+    one 'scope overlaps' warning. And two overlapping collect=['g'] groups
+    also warn."""
+    import warnings as _w
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    pp.legend(side="right")
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        pp.legend(side="left")
+    overlap = [w for w in caught if "scope overlaps" in str(w.message)]
+    assert len(overlap) == 1, [str(w.message) for w in caught]
+
+    # Two groups with the same explicit collect on the same scope.
+    fig2, axes2 = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes2).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    pp.legend(figure=fig2, side="right", collect=["g"])
+    with _w.catch_warnings(record=True) as caught2:
+        _w.simplefilter("always")
+        pp.legend(figure=fig2, side="left", collect=["g"])
+    overlap2 = [w for w in caught2 if "scope overlaps" in str(w.message)]
+    assert len(overlap2) == 1, [str(w.message) for w in caught2]
+
+
+def test_legend_kws_side_places_per_axis_legend():
+    """pp.scatterplot(..., legend_kws={'side': 'left'}) places the legend
+    on the left in a single group with no overlap warning."""
+    import warnings as _w
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel",
+                       ax=ax, legend_kws={"side": "left"})
+        fig.canvas.draw()
+    overlap = [w for w in caught if "scope overlaps" in str(w.message)]
+    assert len(overlap) == 0, [str(w.message) for w in overlap]
+    assert len(fig._publiplots_legend_groups) == 1
+    g = ax._legend_group
+    assert g._side == "left"
+    legend = g._builder.elements[0][1]
+    lb = legend.get_window_extent()
+    axb = ax.get_window_extent()
+    assert lb.x1 <= axb.x0 + 2, (lb.x1, axb.x0)
+
+
+def test_per_axis_external_band_side_reserves():
+    """pp.legend(anchor=axes[0,0], side=...) (external-band form) grows the
+    correct per-cell reservation while figure legend bands stay ~0."""
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+        ax.set_title("t")
+        ax.set_ylabel("yl")
+    group = pp.legend(anchor=axes[0, 0], side="top")
+    group.add_legend(handles=_sample_handles(), label="group")
+    fig.canvas.draw()
+    layout = fig._publiplots_layout
+    assert layout.title_space[0] > 10.0, (
+        f"title_space[0] should absorb the top band; "
+        f"got {layout.title_space[0]:.1f}"
+    )
+    assert layout.legend_band_top < 0.5, (
+        f"legend_band_top should stay zero; got {layout.legend_band_top:.1f}"
+    )
+
+    fig2, axes2 = pp.subplots(2, 2, axes_size=(35, 25))
+    for ax in np.atleast_2d(axes2).flat:
+        ax.plot([0, 1, 2], [0, 1, 0])
+        ax.set_ylabel("yl")
+    group2 = pp.legend(anchor=axes2[0, 0], side="left")
+    group2.add_legend(handles=_sample_handles(), label="group")
+    fig2.canvas.draw()
+    layout2 = fig2._publiplots_layout
+    assert layout2.ylabel_space[0] > 10.0, (
+        f"ylabel_space[0] should absorb the left band; "
+        f"got {layout2.ylabel_space[0]:.1f}"
+    )
+    assert layout2.legend_band_left < 0.5, (
+        f"legend_band_left should stay zero; got {layout2.legend_band_left:.1f}"
+    )
+
+
+def test_top_align_does_not_force_per_panel_canvas_draws():
+    """Issue A (perf): one fig.canvas.draw() on an N-panel grid of
+    side='top' per-axes legends must NOT trigger O(panels) nested full
+    canvas.draws via _measure_object_dimensions. The align pass should
+    measure without forcing a fresh figure redraw per element.
+
+    Structural (not wall-clock): count _measure_object_dimensions calls
+    that hit a real fig.canvas.draw() during a single user draw and
+    assert it stays small and constant w.r.t. panel count.
+    """
+    from publiplots.utils.legend import LegendBuilder
+
+    df = _scatter_df(n=40)
+
+    def count_draws_in_one_draw(n):
+        orig_draw = LegendBuilder._fig_canvas_draw_for_measure
+        calls = {"n": 0}
+
+        def counting(self):
+            calls["n"] += 1
+            return orig_draw(self)
+
+        LegendBuilder._fig_canvas_draw_for_measure = counting
+        try:
+            fig, axes = pp.subplots(n, n, axes_size=(30, 22))
+            for ax in np.atleast_2d(axes).flat:
+                pp.scatterplot(data=df, x="x", y="y", hue="g",
+                               palette="pastel", ax=ax, title="t")
+                pp.legend(ax, side="top")
+            calls["n"] = 0  # reset; count only the explicit draw below
+            fig.canvas.draw()
+            return calls["n"]
+        finally:
+            LegendBuilder._fig_canvas_draw_for_measure = orig_draw
+
+    n2 = count_draws_in_one_draw(2)  # 4 panels
+    n3 = count_draws_in_one_draw(3)  # 9 panels
+    # Must not scale with panel count and must be small (ideally 0).
+    assert n2 <= 1, f"2x2 forced {n2} nested canvas.draws in align measure"
+    assert n3 <= 1, f"3x3 forced {n3} nested canvas.draws in align measure"
+    assert n3 <= n2, f"draw count scales with panels: 2x2={n2}, 3x3={n3}"
+
+
+def test_multi_panel_no_duplicate_render_or_hooks():
+    """3x3 grid, plot each panel, pp.legend(ax) per panel. Exactly one
+    Legend artist per panel (no double render) and the reactor registers
+    at most one align callback per axes (no duplicate hook)."""
+    from matplotlib.legend import Legend
+    df = _scatter_df(n=60)
+    fig, axes = pp.subplots(3, 3, axes_size=(30, 22))
+    flat = list(np.atleast_2d(axes).flat)
+    for ax in flat:
+        pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    groups = [pp.legend(ax, side="top") for ax in flat]
+    fig.canvas.draw()
+    # One group per axes; no duplicate groups on the figure.
+    assert len(fig._publiplots_legend_groups) == 9
+    total_legends = sum(
+        1 for ax in flat
+        for c in ax.get_children() if isinstance(c, Legend)
+    )
+    assert total_legends == 9, f"expected 9 Legend artists, got {total_legends}"
+    # The reactor wraps _refresh_all once; each group contributes exactly
+    # one align callback (side='top' default align='center' connects).
+    reactor = groups[0]._builder._reactor
+    callbacks = getattr(reactor, "_align_callbacks", [])
+    assert len(callbacks) == len(set(id(c) for c in callbacks)), (
+        "duplicate align callbacks registered"
+    )
+    assert len(callbacks) <= 9, f"expected <=9 align callbacks, got {len(callbacks)}"

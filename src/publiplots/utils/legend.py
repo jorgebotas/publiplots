@@ -1009,7 +1009,20 @@ class LegendBuilder:
 
         return x_fig, y_fig
 
-    def _measure_object_dimensions(self, obj: Union[Legend, Colorbar, Any]) -> Tuple[float, float]:
+    def _fig_canvas_draw_for_measure(self) -> None:
+        """Force a full figure redraw so artist window extents become
+        current. Isolated into its own method so callers that are already
+        mid-draw (e.g. the alignment pass, where matplotlib's renderer
+        cache is already populated) can skip it — see
+        ``_measure_object_dimensions(force_draw=...)``.
+        """
+        self.fig.canvas.draw()
+
+    def _measure_object_dimensions(
+        self,
+        obj: Union[Legend, Colorbar, Any],
+        force_draw: bool = True,
+    ) -> Tuple[float, float]:
         """
         Measure actual dimensions of matplotlib object.
 
@@ -1017,13 +1030,22 @@ class LegendBuilder:
         ----------
         obj : Legend or Colorbar or Text
             Matplotlib object to measure
+        force_draw : bool, default True
+            When True, force a full ``fig.canvas.draw()`` first so the
+            artist's cached window extent is current. Callers that are
+            already inside a draw (e.g. the legend_group alignment pass,
+            which runs as a post-refresh reactor callback) pass
+            ``force_draw=False``: matplotlib's renderer cache is already
+            populated at that point, so ``get_window_extent()`` returns
+            sensible values without an O(panels) nested figure redraw.
 
         Returns
         -------
         width_mm, height_mm : float
             Object dimensions in millimeters
         """
-        self.fig.canvas.draw()
+        if force_draw:
+            self._fig_canvas_draw_for_measure()
 
         # Get bounding box. Call get_window_extent() without a renderer:
         # the draw() above populates matplotlib's cached renderer on the
