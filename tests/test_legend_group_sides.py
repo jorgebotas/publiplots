@@ -1073,6 +1073,14 @@ def test_legend_columnspacing_still_rcparam_controllable():
     )
 
 
+def test_legend_columnspacing_default_is_tightened():
+    """publiplots ships a tighter legend.columnspacing default (1.0) than
+    matplotlib's 2.0, so multi-entry horizontal bands stay compact at the
+    small default legend.fontsize. Importing publiplots must apply it."""
+    import matplotlib as mpl
+    assert mpl.rcParams["legend.columnspacing"] == 1.0
+
+
 def test_legend_reservation_tracks_handletextpad_rcparam():
     """The layout reservation must grow with the legend.handletextpad
     rcParam, proving the width ESTIMATE and the RENDER read the same
