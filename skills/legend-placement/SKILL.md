@@ -161,6 +161,22 @@ Edge behaviour for per-axes legends:
 - `side='left'` offsets the legend past the y-tick labels dynamically (no fixed gap).
 - `top`/`bottom` default to `orientation='horizontal'`, `align='center'`; `left`/`right` to `vertical`, `align='start'`.
 
+## Spacing between entries (rcParams, since 0.14.2)
+
+The gaps *within* a legend are matplotlib `Legend` kwargs — set them globally via `pp.rcParams` or per-call via `legend_kws`:
+
+- **`legend.columnspacing`** — distance between entries in a horizontal (`side='top'`/`'bottom'`) legend. publiplots defaults this to **`1.0`** (tighter than matplotlib's `2.0`, which reads loose at the small default `legend.fontsize=7`).
+- **`legend.handletextpad`** — gap between each swatch and its own label.
+- **`legend.borderpad`** — padding inside the legend frame.
+- **`legend.labelspacing`** — vertical gap between entries in a vertical (`left`/`right`) legend; publiplots clamps this to a no-overlap floor, so setting it below the floor has no effect.
+
+```python
+pp.rcParams["legend.columnspacing"] = 0.8        # global default
+pp.lineplot(..., legend_kws={"handletextpad": 0.4})   # per-call override
+```
+
+`x_offset`/`y_offset`/`gap` (the outward gap from the axes edge and inter-band spacing) are publiplots legend-group kwargs, passed via `legend_kws=` — they are NOT rcParams.
+
 ## Internal vs external per-axes legend (`pp.legend(ax)` vs `pp.legend(anchor=ax)`)
 
 The two forms have opposite layout semantics — still a real distinction:

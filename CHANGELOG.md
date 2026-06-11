@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-06-11
+
+### Added
+
+- `legend.handletextpad` and `legend.borderpad` matplotlib rcParams are
+  now honoured as defaults for publiplots legends (previously hard-coded
+  in `LegendBuilder.add_legend` and its size estimators, so the rcParams
+  had no effect). Set them globally via `pp.rcParams[...]`; an explicit
+  per-call `legend_kws={...}` still overrides. The width-estimation path
+  also reads `legend.handlelength` so the reserved layout space stays
+  consistent with what matplotlib draws. `legend.columnspacing` already
+  worked; `legend.labelspacing` is unchanged (it keeps its no-overlap
+  floor) (#186).
+
+### Changed
+
+- The default `legend.columnspacing` is now `1.0` (down from
+  matplotlib's `2.0`). At publiplots' small `legend.fontsize` the
+  font-size-relative `2.0` reads as loose, so multi-entry horizontal
+  (`side='top'`/`'bottom'`) legends drifted apart; `1.0` keeps them
+  compact. This changes default output for multi-entry horizontal
+  legends; override per-call or via `pp.rcParams['legend.columnspacing']`
+  (#186).
+
 ## [0.14.1] - 2026-06-10
 
 ### Fixed
