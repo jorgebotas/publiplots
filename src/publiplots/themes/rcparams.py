@@ -120,6 +120,12 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     "legend.fontsize": 7,
     "legend.frameon": False,
     "legend.edgecolor": "none",
+    # Tighter than matplotlib's 2.0: publiplots' small legend.fontsize (7)
+    # makes the font-size-relative columnspacing read as loose at 2.0, so
+    # entries in a horizontal (side='top'/'bottom') legend drift apart.
+    # 1.0 keeps multi-entry bands compact. Override per-call via
+    # ``legend_kws={'columnspacing': ...}`` or globally via pp.rcParams.
+    "legend.columnspacing": 1.0,
 
     # Save settings - high quality for publications
     "savefig.dpi": 600,
