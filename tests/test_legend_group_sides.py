@@ -986,3 +986,114 @@ def test_multi_panel_no_duplicate_render_or_hooks():
         "duplicate align callbacks registered"
     )
     assert len(callbacks) <= 9, f"expected <=9 align callbacks, got {len(callbacks)}"
+
+
+# --- legend spacing rcParam defaults -----------------------------------------
+
+
+def _rendered_legend_width_mm(handletextpad=None, borderpad=None):
+    """Build a horizontal side='top' 3-category legend and return its
+    rendered width in mm. Optional explicit kwargs override the rcParam."""
+    fig, axes = pp.subplots(1, 3, axes_size=(40, 30))
+    for ax in axes:
+        ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend(side="top")
+    kw = {}
+    if handletextpad is not None:
+        kw["handletextpad"] = handletextpad
+    if borderpad is not None:
+        kw["borderpad"] = borderpad
+    group.add_legend(handles=_sample_handles(), label="group", **kw)
+    fig.canvas.draw()
+    bb = group._builder.elements[0][1].get_window_extent()
+    return (bb.x1 - bb.x0) / fig.dpi * 25.4
+
+
+def test_legend_handletextpad_respects_rcparam():
+    """A smaller legend.handletextpad rcParam renders a narrower
+    horizontal legend (the render path must read the rcParam)."""
+    import matplotlib as mpl
+    with mpl.rc_context({"legend.handletextpad": 0.2}):
+        narrow = _rendered_legend_width_mm()
+    with mpl.rc_context({"legend.handletextpad": 2.0}):
+        wide = _rendered_legend_width_mm()
+    assert wide > narrow + 1.0, (
+        f"larger handletextpad should widen legend; "
+        f"narrow={narrow:.2f} mm wide={wide:.2f} mm"
+    )
+
+
+def test_legend_borderpad_respects_rcparam():
+    """legend.borderpad rcParam changes the rendered legend extent."""
+    import matplotlib as mpl
+    with mpl.rc_context({"legend.borderpad": 0.2}):
+        narrow = _rendered_legend_width_mm()
+    with mpl.rc_context({"legend.borderpad": 2.0}):
+        wide = _rendered_legend_width_mm()
+    assert wide > narrow + 1.0, (
+        f"larger borderpad should widen legend; "
+        f"narrow={narrow:.2f} mm wide={wide:.2f} mm"
+    )
+
+
+def test_legend_per_call_kwarg_overrides_rcparam():
+    """An explicit handletextpad passed to add_legend wins over the
+    rcParam default."""
+    import matplotlib as mpl
+    with mpl.rc_context({"legend.handletextpad": 0.2}):
+        rcparam_narrow = _rendered_legend_width_mm()
+        explicit_wide = _rendered_legend_width_mm(handletextpad=2.0)
+    assert explicit_wide > rcparam_narrow + 1.0, (
+        f"explicit handletextpad=2 should override rcParam 0.2; "
+        f"rcparam_narrow={rcparam_narrow:.2f} mm explicit_wide={explicit_wide:.2f} mm"
+    )
+
+
+def test_legend_columnspacing_still_rcparam_controllable():
+    """Regression guard: legend.columnspacing was never hard-coded and
+    must keep responding to the rcParam (multi-column horizontal legend)."""
+    import matplotlib as mpl
+
+    def _width(cs):
+        with mpl.rc_context({"legend.columnspacing": cs}):
+            fig, axes = pp.subplots(1, 3, axes_size=(40, 30))
+            for ax in axes:
+                ax.plot([0, 1, 2], [0, 1, 0])
+            group = pp.legend(side="top")
+            group.add_legend(handles=_sample_handles(), label="group")
+            fig.canvas.draw()
+            bb = group._builder.elements[0][1].get_window_extent()
+            return (bb.x1 - bb.x0) / fig.dpi * 25.4
+
+    narrow = _width(0.2)
+    wide = _width(4.0)
+    assert wide > narrow + 1.0, (
+        f"larger columnspacing should widen multi-column legend; "
+        f"narrow={narrow:.2f} mm wide={wide:.2f} mm"
+    )
+
+
+def test_legend_reservation_tracks_handletextpad_rcparam():
+    """The layout reservation must grow with the legend.handletextpad
+    rcParam, proving the width ESTIMATE and the RENDER read the same
+    rcParam (otherwise reserved != drawn). A vertical side='right'
+    legend reserves its outward extent (width) in ``legend_column``, so
+    that field tracks the handle/text padding that drives width."""
+    import matplotlib as mpl
+
+    def _reserved(htp):
+        with mpl.rc_context({"legend.handletextpad": htp}):
+            fig, axes = pp.subplots(1, 3, axes_size=(40, 30))
+            for ax in axes:
+                ax.plot([0, 1, 2], [0, 1, 0])
+            group = pp.legend(side="right")
+            group.add_legend(handles=_sample_handles(), label="group")
+            fig.canvas.draw()
+            return fig._publiplots_layout.legend_column
+
+    small = _reserved(0.2)
+    big = _reserved(3.0)
+    assert big > small + 0.5, (
+        f"reservation should grow with handletextpad rcParam; "
+        f"small={small:.2f} mm big={big:.2f} mm"
+    )

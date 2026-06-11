@@ -1095,7 +1095,7 @@ class LegendBuilder:
             'labelspacing',
             compute_min_labelspacing(handles, fontsize),
         )
-        borderpad = kwargs.get('borderpad', 0.4)
+        borderpad = resolve_param("legend.borderpad", kwargs.get('borderpad'))
 
         # Calculate rows
         n_items = len(handles)
@@ -1143,12 +1143,16 @@ class LegendBuilder:
         text_width = max_label_length * fontsize * 0.6 * self.PT2MM
 
         # Add space for handle
-        handlelength = kwargs.get('handlelength', 2)  # in font-size units
-        handletextpad = kwargs.get('handletextpad', 0.8)
+        handlelength = resolve_param(
+            "legend.handlelength", kwargs.get('handlelength')
+        )  # in font-size units
+        handletextpad = resolve_param(
+            "legend.handletextpad", kwargs.get('handletextpad')
+        )
         handle_width = (handlelength + handletextpad) * fontsize * self.PT2MM
 
         # Add padding
-        borderpad = kwargs.get('borderpad', 0.4)
+        borderpad = resolve_param("legend.borderpad", kwargs.get('borderpad'))
         padding = 2 * borderpad * fontsize * self.PT2MM
 
         return handle_width + text_width + padding
@@ -1255,8 +1259,8 @@ class LegendBuilder:
             default_labelspacing = compute_min_labelspacing(handles, fontsize)
             legend_kwargs = {
                 "frameon": frameon,
-                "borderpad": 0.4,
-                "handletextpad": 0.8,
+                "borderpad": resolve_param("legend.borderpad", None),
+                "handletextpad": resolve_param("legend.handletextpad", None),
                 "labelspacing": default_labelspacing,
                 "handler_map": kwargs.pop("handler_map", get_legend_handler_map()),
                 "alignment": "left",
@@ -1343,8 +1347,8 @@ class LegendBuilder:
             "bbox_transform": self.fig.transFigure,  # Use figure coords
             "frameon": frameon,
             "borderaxespad": 0,
-            "borderpad": 0.4,
-            "handletextpad": 0.8,
+            "borderpad": resolve_param("legend.borderpad", None),
+            "handletextpad": resolve_param("legend.handletextpad", None),
             "labelspacing": default_labelspacing,
             "handler_map": kwargs.pop("handler_map", get_legend_handler_map()),
             "alignment": "left",
