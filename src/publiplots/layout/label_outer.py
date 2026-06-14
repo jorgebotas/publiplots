@@ -12,9 +12,10 @@ locator-driven tick-label regeneration) plus ``set_visible(False)`` on the
 stable offset-text and axis-label artists.
 """
 
-from typing import Set, Tuple
+from typing import List, Set, Tuple
 
 import numpy as np
+from matplotlib.axes import Axes
 
 # Share-mode vocabulary (mirrors layout/subplots.py::_resolve_shared).
 _X_HIDE_MODES = frozenset({True, "all", "col"})
@@ -22,7 +23,7 @@ _Y_HIDE_MODES = frozenset({True, "all", "row"})
 _VALID_SHARE = frozenset({True, False, "all", "col", "row", "none"})
 
 
-def _as_matrix(axes):
+def _as_matrix(axes) -> List[List["Axes"]]:
     """Normalize ``axes`` to a list-of-lists grid (``mat[r][c]``).
 
     Preference order:
@@ -38,7 +39,7 @@ def _as_matrix(axes):
         fig = axes.get_figure()
         stored = getattr(fig, "_publiplots_axes", None)
         if stored is not None:
-            return stored
+            return [list(row) for row in stored]
         return [[axes]]
 
     arr = np.asarray(axes, dtype=object)
@@ -48,7 +49,7 @@ def _as_matrix(axes):
         fig = getattr(first, "get_figure", lambda: None)()
         stored = getattr(fig, "_publiplots_axes", None) if fig is not None else None
         if stored is not None:
-            return stored
+            return [list(row) for row in stored]
 
     if arr.ndim == 2:
         return [list(row) for row in arr]

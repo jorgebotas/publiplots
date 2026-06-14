@@ -78,6 +78,7 @@ def test_as_matrix_squeezed_1xN_uses_stored_grid():
     assert axes.ndim == 1  # squeezed
     mat = _as_matrix(axes)
     assert len(mat) == 1 and len(mat[0]) == 3
+    assert mat[0][2] is fig._publiplots_axes[0][2]
     plt.close(fig)
 
 
