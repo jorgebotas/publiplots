@@ -1062,3 +1062,15 @@ def test_figure_layout_row_heights_non_positive_raises():
             ylabel_space=(10.0,), right=(2.0,),
             hspace=0.0, wspace=0.0, outer_pad=0.0, legend_column=0.0,
         )
+
+
+def test_subplots_label_outer_invalid_raises():
+    with pytest.raises(ValueError, match="label_outer"):
+        pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer="bogus")
+
+
+def test_subplots_label_outer_accepts_true_false_all():
+    # Should not raise.
+    pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer=True)
+    pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer=False)
+    pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer="all")

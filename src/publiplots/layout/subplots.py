@@ -86,6 +86,7 @@ def subplots(
     hspace: Optional[float] = None,
     wspace: Optional[float] = None,
     outer_pad: Optional[float] = None,
+    label_outer: Union[bool, str] = True,
     **fig_kw,
 ):
     """
@@ -222,6 +223,10 @@ def subplots(
         raise ValueError(f"nrows must be >= 1, got {nrows}")
     if ncols < 1:
         raise ValueError(f"ncols must be >= 1, got {ncols}")
+    if label_outer not in (True, False, "all"):
+        raise ValueError(
+            f"label_outer must be True, False, or 'all', got {label_outer!r}"
+        )
 
     if axes_size is None:
         axes_size = resolve_param("subplots.axes_size", None)
