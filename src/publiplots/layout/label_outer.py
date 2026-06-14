@@ -22,6 +22,43 @@ _Y_HIDE_MODES = frozenset({True, "all", "row"})
 _VALID_SHARE = frozenset({True, False, "all", "col", "row", "none"})
 
 
+def _as_matrix(axes):
+    """Normalize ``axes`` to a list-of-lists grid (``mat[r][c]``).
+
+    Preference order:
+      1. If the axes belong to a publiplots figure, use the authoritative
+         unsqueezed matrix at ``figure._publiplots_axes``.
+      2. A 2D numpy array → its rows.
+      3. A 1D numpy array → a single row (shape ``1 x len``). Documented:
+         foreign callers wanting a column should pass a 2D / ``(n, 1)`` array.
+      4. A single Axes → ``[[ax]]``.
+    """
+    # Single Axes object (has plotting API, not array-like).
+    if hasattr(axes, "get_figure") and not isinstance(axes, np.ndarray):
+        fig = axes.get_figure()
+        stored = getattr(fig, "_publiplots_axes", None)
+        if stored is not None:
+            return stored
+        return [[axes]]
+
+    arr = np.asarray(axes, dtype=object)
+    # Recover the publiplots grid from any contained axes (handles squeeze).
+    if arr.size:
+        first = arr.flat[0]
+        fig = getattr(first, "get_figure", lambda: None)()
+        stored = getattr(fig, "_publiplots_axes", None) if fig is not None else None
+        if stored is not None:
+            return stored
+
+    if arr.ndim == 2:
+        return [list(row) for row in arr]
+    if arr.ndim == 1:
+        return [list(arr)]
+    if arr.ndim == 0:
+        return [[arr.item()]]
+    raise ValueError(f"axes array must be 0/1/2-dimensional, got ndim={arr.ndim}")
+
+
 def _resolve_outer_edges(
     nrows: int, ncols: int, sharex, sharey
 ) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:

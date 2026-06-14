@@ -58,3 +58,45 @@ def test_resolve_edges_invalid_share_raises():
         _resolve_outer_edges(2, 2, "bogus", True)
     with pytest.raises(ValueError, match="sharey"):
         _resolve_outer_edges(2, 2, True, "bogus")
+
+
+from publiplots.layout.label_outer import _as_matrix
+
+
+def test_as_matrix_prefers_publiplots_axes():
+    # pp.subplots stores the full unsqueezed grid at fig._publiplots_axes.
+    fig, axes = pp.subplots(2, 3, axes_size=(30, 20))
+    mat = _as_matrix(axes)
+    assert len(mat) == 2 and len(mat[0]) == 3
+    # Matches the stored matrix exactly.
+    assert mat[1][2] is fig._publiplots_axes[1][2]
+    plt.close(fig)
+
+
+def test_as_matrix_squeezed_1xN_uses_stored_grid():
+    fig, axes = pp.subplots(1, 3, axes_size=(30, 20))
+    assert axes.ndim == 1  # squeezed
+    mat = _as_matrix(axes)
+    assert len(mat) == 1 and len(mat[0]) == 3
+    plt.close(fig)
+
+
+def test_as_matrix_single_axes():
+    fig, ax = pp.subplots(1, 1, axes_size=(30, 20))
+    mat = _as_matrix(ax)
+    assert len(mat) == 1 and len(mat[0]) == 1 and mat[0][0] is ax
+    plt.close(fig)
+
+
+def test_as_matrix_foreign_2d():
+    fig, axes = plt.subplots(2, 2)  # plain matplotlib, no _publiplots_axes
+    mat = _as_matrix(axes)
+    assert len(mat) == 2 and len(mat[0]) == 2
+    plt.close(fig)
+
+
+def test_as_matrix_foreign_1d_is_single_row():
+    fig, axes = plt.subplots(1, 3)  # 1D array, foreign
+    mat = _as_matrix(axes)
+    assert len(mat) == 1 and len(mat[0]) == 3
+    plt.close(fig)
