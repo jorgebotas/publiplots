@@ -109,7 +109,7 @@ def _xlabels_visible(ax):
 
 
 def test_label_outer_hides_interior_x_and_y_2x2():
-    fig, axes = pp.subplots(2, 2, axes_size=(30, 20))  # label_outer="all" added in Task 5
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), label_outer="all")
     for r in range(2):
         for c in range(2):
             axes[r, c].set_xlabel("xlab")
@@ -132,7 +132,7 @@ def test_label_outer_hides_interior_x_and_y_2x2():
 def test_label_outer_persists_after_redraw():
     # Regression guard: locator regenerates tick labels each draw; the
     # tick_params toggle must survive.
-    fig, axes = pp.subplots(2, 2, axes_size=(30, 20))  # label_outer="all" added in Task 5
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), label_outer="all")
     pp.label_outer(axes, sharex=True, sharey=True)
     fig.canvas.draw()
     fig.canvas.draw()  # second draw regenerates ticks
@@ -141,7 +141,7 @@ def test_label_outer_persists_after_redraw():
 
 
 def test_label_outer_offset_text_hidden_interior():
-    fig, axes = pp.subplots(2, 2, axes_size=(30, 20))  # label_outer="all" added in Task 5
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), label_outer="all")
     pp.label_outer(axes, sharex=True, sharey=True)
     assert not axes[0, 0].xaxis.offsetText.get_visible()
     assert not axes[0, 1].yaxis.offsetText.get_visible()

@@ -376,6 +376,12 @@ def subplots(
     axes_matrix = _build_axes(fig, layout, sharex, sharey)
     fig._publiplots_axes = axes_matrix
 
+    # Outer-only labels for shared axes (seaborn parity). Applied eagerly;
+    # the draw-time auto-layout then collapses interior label reservations.
+    if label_outer is True:
+        from publiplots.layout.label_outer import label_outer as _apply_label_outer
+        _apply_label_outer(axes_matrix, sharex=sharex, sharey=sharey)
+
     # --- attach auto-layout hook (skipped internally if all sides locked) -
     # Only lock the auto-measurable sides; hspace/wspace/outer_pad are not
     # auto-measured regardless.

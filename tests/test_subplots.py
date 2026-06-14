@@ -1074,3 +1074,35 @@ def test_subplots_label_outer_accepts_true_false_all():
     pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer=True)
     pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer=False)
     pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer="all")
+
+
+def test_subplots_default_hides_interior_when_shared():
+    # label_outer defaults to True; sharex/sharey active -> interior hidden.
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), sharex=True, sharey=True)
+    fig.canvas.draw()
+    # Tick labels hidden on top-left x.
+    assert not any(t.get_visible() and t.get_text()
+                   for t in axes[0, 0].get_xticklabels())
+    # Bottom-left keeps x tick labels.
+    assert any(t.get_visible() and t.get_text()
+               for t in axes[1, 0].get_xticklabels())
+    plt.close(fig)
+
+
+def test_subplots_label_outer_false_draws_all():
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), sharex=True, sharey=True,
+                            label_outer=False)
+    fig.canvas.draw()
+    # Every axes keeps its x tick labels.
+    assert any(t.get_visible() and t.get_text()
+               for t in axes[0, 0].get_xticklabels())
+    plt.close(fig)
+
+
+def test_subplots_no_sharing_label_outer_true_is_noop():
+    # Nothing shared -> nothing hidden even though label_outer=True (default).
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20))
+    fig.canvas.draw()
+    assert any(t.get_visible() and t.get_text()
+               for t in axes[0, 0].get_xticklabels())
+    plt.close(fig)
