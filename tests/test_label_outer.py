@@ -157,3 +157,19 @@ def test_label_outer_on_foreign_axes():
     assert not axes[0, 0].xaxis.get_label().get_visible()
     assert axes[1, 0].xaxis.get_label().get_visible()
     plt.close(fig)
+
+
+def test_label_outer_foreign_1d_warns():
+    fig, axes = plt.subplots(3, 1)  # 1D column array, foreign
+    with pytest.warns(UserWarning, match="single ROW"):
+        pp.label_outer(axes, sharex=True, sharey=True)
+    plt.close(fig)
+
+
+def test_label_outer_pp_squeezed_1d_does_not_warn():
+    import warnings as _w
+    fig, axes = pp.subplots(1, 3, axes_size=(30, 20))  # squeezed 1D, but pp grid
+    with _w.catch_warnings():
+        _w.simplefilter("error")  # any warning becomes an error
+        pp.label_outer(axes, sharex=True, sharey=True)  # must NOT warn
+    plt.close(fig)

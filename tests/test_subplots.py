@@ -1076,6 +1076,31 @@ def test_subplots_label_outer_accepts_true_false_all():
     pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer="all")
 
 
+def test_subplots_label_outer_rejects_int_one():
+    # 1 == True in Python, but label_outer must be a real bool or "all".
+    with pytest.raises(ValueError, match="label_outer"):
+        pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer=1)
+
+
+def test_subplots_default_hides_interior_axis_label_and_offset():
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), sharex=True, sharey=True)
+    for r in range(2):
+        for c in range(2):
+            axes[r, c].set_xlabel("xlab")
+            axes[r, c].set_ylabel("ylab")
+    fig.canvas.draw()
+    # Auto path (label_outer default True) hides interior axis labels...
+    assert not axes[0, 0].xaxis.get_label().get_visible()
+    assert not axes[0, 1].yaxis.get_label().get_visible()
+    # ...and interior offset text...
+    assert not axes[0, 0].xaxis.offsetText.get_visible()
+    assert not axes[0, 1].yaxis.offsetText.get_visible()
+    # ...while outer edges keep them.
+    assert axes[1, 0].xaxis.get_label().get_visible()
+    assert axes[0, 0].yaxis.get_label().get_visible()
+    plt.close(fig)
+
+
 def test_subplots_default_hides_interior_when_shared():
     # label_outer defaults to True; sharex/sharey active -> interior hidden.
     fig, axes = pp.subplots(2, 2, axes_size=(30, 20), sharex=True, sharey=True)

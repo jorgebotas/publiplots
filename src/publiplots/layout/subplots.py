@@ -231,7 +231,7 @@ def subplots(
         raise ValueError(f"nrows must be >= 1, got {nrows}")
     if ncols < 1:
         raise ValueError(f"ncols must be >= 1, got {ncols}")
-    if label_outer not in (True, False, "all"):
+    if not (isinstance(label_outer, bool) or label_outer == "all"):
         raise ValueError(
             f"label_outer must be True, False, or 'all', got {label_outer!r}"
         )

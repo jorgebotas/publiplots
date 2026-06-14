@@ -12,6 +12,7 @@ locator-driven tick-label regeneration) plus ``set_visible(False)`` on the
 stable offset-text and axis-label artists.
 """
 
+import warnings
 from typing import List, Set, Tuple
 
 import numpy as np
@@ -58,6 +59,28 @@ def _as_matrix(axes) -> List[List["Axes"]]:
     if arr.ndim == 0:
         return [[arr.item()]]
     raise ValueError(f"axes array must be 0/1/2-dimensional, got ndim={arr.ndim}")
+
+
+def _warn_if_ambiguous_foreign_1d(axes) -> None:
+    """Warn when a bare 1D *foreign* axes array is passed: its row-vs-column
+    orientation is ambiguous and is assumed to be a single row.
+
+    publiplots grids are exempt — they recover the true matrix from
+    ``figure._publiplots_axes`` regardless of squeeze.
+    """
+    if not isinstance(axes, np.ndarray) or axes.ndim != 1 or axes.size <= 1:
+        return
+    first = axes.flat[0]
+    fig = getattr(first, "get_figure", lambda: None)()
+    if fig is not None and getattr(fig, "_publiplots_axes", None) is not None:
+        return  # publiplots grid — orientation recovered, no ambiguity
+    warnings.warn(
+        "label_outer received a 1D array of axes that is not from a "
+        "publiplots figure; treating it as a single ROW. If this is a "
+        "column, pass a 2D array of shape (n, 1) to disambiguate.",
+        UserWarning,
+        stacklevel=2,
+    )
 
 
 def _resolve_outer_edges(
@@ -115,6 +138,7 @@ def label_outer(axes, *, sharex=True, sharey=True) -> None:
     None
         Operates in place, matching ``ax.label_outer()``.
     """
+    _warn_if_ambiguous_foreign_1d(axes)
     mat = _as_matrix(axes)
     nrows = len(mat)
     ncols = len(mat[0]) if nrows else 0
