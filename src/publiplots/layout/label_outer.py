@@ -89,3 +89,45 @@ def _resolve_outer_edges(
             for c in range(1, ncols):  # every col except the left
                 hide_y.add((r, c))
     return hide_x, hide_y
+
+
+def label_outer(axes, *, sharex=True, sharey=True) -> None:
+    """Hide interior tick labels, offset text, and axis labels on a grid.
+
+    Leaves x labels only on the bottom row and y labels only on the left
+    column — the publiplots equivalent of :meth:`matplotlib.axes.Axes.label_outer`
+    for ``fig.add_axes``-built grids (which lack a ``SubplotSpec``).
+
+    Parameters
+    ----------
+    axes : ndarray of Axes or Axes
+        The grid to operate on. A publiplots grid is recovered from
+        ``figure._publiplots_axes`` regardless of squeeze; a 2D array is used
+        as-is; a 1D foreign array is treated as a single **row** (pass a 2D /
+        ``(n, 1)`` array for a column).
+    sharex : bool or {"all", "col", "row", "none"}, default True
+        Hide x labels on non-bottom axes when in ``{True, "all", "col"}``.
+    sharey : bool or {"all", "col", "row", "none"}, default True
+        Hide y labels on non-left axes when in ``{True, "all", "row"}``.
+
+    Returns
+    -------
+    None
+        Operates in place, matching ``ax.label_outer()``.
+    """
+    mat = _as_matrix(axes)
+    nrows = len(mat)
+    ncols = len(mat[0]) if nrows else 0
+    if nrows == 0 or ncols == 0:
+        return
+    hide_x, hide_y = _resolve_outer_edges(nrows, ncols, sharex, sharey)
+    for (r, c) in hide_x:
+        ax = mat[r][c]
+        ax.tick_params(axis="x", labelbottom=False)
+        ax.xaxis.offsetText.set_visible(False)
+        ax.xaxis.label.set_visible(False)
+    for (r, c) in hide_y:
+        ax = mat[r][c]
+        ax.tick_params(axis="y", labelleft=False)
+        ax.yaxis.offsetText.set_visible(False)
+        ax.yaxis.label.set_visible(False)

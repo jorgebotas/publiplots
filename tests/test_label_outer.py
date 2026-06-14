@@ -101,3 +101,59 @@ def test_as_matrix_foreign_1d_is_single_row():
     mat = _as_matrix(axes)
     assert len(mat) == 1 and len(mat[0]) == 3
     plt.close(fig)
+
+
+def _xlabels_visible(ax):
+    """True if x tick labels are currently drawn for ax (after a draw)."""
+    return any(t.get_visible() and t.get_text() for t in ax.get_xticklabels())
+
+
+def test_label_outer_hides_interior_x_and_y_2x2():
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20))  # label_outer="all" added in Task 5
+    for r in range(2):
+        for c in range(2):
+            axes[r, c].set_xlabel("xlab")
+            axes[r, c].set_ylabel("ylab")
+    pp.label_outer(axes, sharex=True, sharey=True)
+    fig.canvas.draw()
+
+    # Bottom row keeps xlabel; top row hidden.
+    assert axes[1, 0].xaxis.get_label().get_visible()
+    assert not axes[0, 0].xaxis.get_label().get_visible()
+    # Left col keeps ylabel; right col hidden.
+    assert axes[0, 0].yaxis.get_label().get_visible()
+    assert not axes[0, 1].yaxis.get_label().get_visible()
+    # Tick labels: top-left has no x tick labels, bottom-left does.
+    assert not _xlabels_visible(axes[0, 0])
+    assert _xlabels_visible(axes[1, 0])
+    plt.close(fig)
+
+
+def test_label_outer_persists_after_redraw():
+    # Regression guard: locator regenerates tick labels each draw; the
+    # tick_params toggle must survive.
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20))  # label_outer="all" added in Task 5
+    pp.label_outer(axes, sharex=True, sharey=True)
+    fig.canvas.draw()
+    fig.canvas.draw()  # second draw regenerates ticks
+    assert not _xlabels_visible(axes[0, 0])
+    plt.close(fig)
+
+
+def test_label_outer_offset_text_hidden_interior():
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20))  # label_outer="all" added in Task 5
+    pp.label_outer(axes, sharex=True, sharey=True)
+    assert not axes[0, 0].xaxis.offsetText.get_visible()
+    assert not axes[0, 1].yaxis.offsetText.get_visible()
+    # Outer edge keeps offset text visible.
+    assert axes[1, 0].xaxis.offsetText.get_visible()
+    plt.close(fig)
+
+
+def test_label_outer_on_foreign_axes():
+    fig, axes = plt.subplots(2, 2)
+    pp.label_outer(axes, sharex=True, sharey=True)
+    fig.canvas.draw()
+    assert not axes[0, 0].xaxis.get_label().get_visible()
+    assert axes[1, 0].xaxis.get_label().get_visible()
+    plt.close(fig)
