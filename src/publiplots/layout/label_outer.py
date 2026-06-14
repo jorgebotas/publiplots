@@ -39,18 +39,33 @@ def _as_matrix(axes) -> List[List["Axes"]]:
     if hasattr(axes, "get_figure") and not isinstance(axes, np.ndarray):
         fig = axes.get_figure()
         stored = getattr(fig, "_publiplots_axes", None)
-        if stored is not None:
+        # Recover the stored grid ONLY when it is exactly 1x1 holding this
+        # axes; a single axes drawn from a larger grid is a strict SUBSET and
+        # must NOT expand to relabel the whole grid.
+        if (
+            stored is not None
+            and len(stored) == 1
+            and len(stored[0]) == 1
+            and stored[0][0] is axes
+        ):
             return [list(row) for row in stored]
         return [[axes]]
 
     arr = np.asarray(axes, dtype=object)
-    # Recover the publiplots grid from any contained axes (handles squeeze).
+    # Recover the publiplots grid from any contained axes (handles squeeze) —
+    # but ONLY when the passed axes are the FULL grid (possibly squeezed). A
+    # strict subset (one row/column/cell of a larger pp grid) must fall through
+    # to literal-shape handling so it is not silently expanded.
     if arr.size:
         first = arr.flat[0]
         fig = getattr(first, "get_figure", lambda: None)()
         stored = getattr(fig, "_publiplots_axes", None) if fig is not None else None
         if stored is not None:
-            return [list(row) for row in stored]
+            stored_ids = {id(a) for row in stored for a in row}
+            passed_ids = {id(a) for a in arr.flat}
+            if passed_ids == stored_ids:
+                return [list(row) for row in stored]
+            # else: strict subset (or foreign axes mixed in) -> literal handling
 
     if arr.ndim == 2:
         return [list(row) for row in arr]
@@ -68,6 +83,10 @@ def _warn_if_ambiguous_foreign_1d(axes) -> None:
     publiplots grids are exempt — they recover the true matrix from
     ``figure._publiplots_axes`` regardless of squeeze.
     """
+    # Normalize foreign Python list/tuple columns to an array so they are
+    # subject to the same ambiguity check as ndarray inputs.
+    if isinstance(axes, (list, tuple)):
+        axes = np.asarray(axes, dtype=object)
     if not isinstance(axes, np.ndarray) or axes.ndim != 1 or axes.size <= 1:
         return
     first = axes.flat[0]
@@ -138,12 +157,27 @@ def label_outer(axes, *, sharex=True, sharey=True) -> None:
     None
         Operates in place, matching ``ax.label_outer()``.
     """
-    _warn_if_ambiguous_foreign_1d(axes)
     mat = _as_matrix(axes)
     nrows = len(mat)
     ncols = len(mat[0]) if nrows else 0
-    if nrows == 0 or ncols == 0:
-        return
+    # Validate every element is an Axes (has tick_params) before anything else,
+    # so malformed input (e.g. a ragged list-of-lists, which collapses to a 1D
+    # array of list objects) raises a clear error instead of a cryptic
+    # AttributeError later. Done BEFORE the ambiguity warning so malformed
+    # input fails fast with ONLY the TypeError (no spurious "single ROW" warn).
+    for row in mat:
+        for el in row:
+            if not hasattr(el, "tick_params"):
+                raise TypeError(
+                    f"label_outer expected a grid of matplotlib Axes, "
+                    f"got element {el!r}"
+                )
+    # Warn about ambiguous foreign-1D orientation only after validation passes
+    # (legitimate foreign-1D inputs don't raise, so the warning still fires).
+    _warn_if_ambiguous_foreign_1d(axes)
+    # Validate share modes even for an empty grid (_resolve_outer_edges raises
+    # on bogus modes); for empty grids it returns empty sets and the hide loops
+    # below are no-ops.
     hide_x, hide_y = _resolve_outer_edges(nrows, ncols, sharex, sharey)
     for (r, c) in hide_x:
         ax = mat[r][c]

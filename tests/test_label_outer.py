@@ -173,3 +173,76 @@ def test_label_outer_pp_squeezed_1d_does_not_warn():
         _w.simplefilter("error")  # any warning becomes an error
         pp.label_outer(axes, sharex=True, sharey=True)  # must NOT warn
     plt.close(fig)
+
+
+# --- Fix 1: subset-of-a-pp-grid must not expand to the full grid ---
+
+
+def test_as_matrix_subset_row_not_expanded():
+    fig, axes = pp.subplots(3, 4, axes_size=(20, 15))
+    mat = _as_matrix(axes[0, :])  # one row
+    assert len(mat) == 1 and len(mat[0]) == 4
+    assert mat[0][0] is axes[0, 0]
+    plt.close(fig)
+
+
+def test_as_matrix_subset_single_interior_axes_not_expanded():
+    fig, axes = pp.subplots(3, 4, axes_size=(20, 15))
+    mat = _as_matrix(axes[1, 2])
+    assert len(mat) == 1 and len(mat[0]) == 1 and mat[0][0] is axes[1, 2]
+    plt.close(fig)
+
+
+def test_as_matrix_subset_col_not_expanded():
+    fig, axes = pp.subplots(3, 4, axes_size=(20, 15))
+    mat = _as_matrix(axes[:, 1])  # one column -> 1D, treated as single ROW literally
+    # strict subset: literal 1D -> single row of 3
+    assert len(mat) == 1 and len(mat[0]) == 3
+    plt.close(fig)
+
+
+def test_as_matrix_full_squeezed_still_recovers():
+    # The squeeze-recovery case must STILL work (regression guard for Fix 1).
+    fig, axes = pp.subplots(1, 3, axes_size=(20, 15))  # squeezed 1D == full grid
+    mat = _as_matrix(axes)
+    assert len(mat) == 1 and len(mat[0]) == 3
+    assert mat[0][2] is fig._publiplots_axes[0][2]
+    plt.close(fig)
+
+    fig2, axes2 = pp.subplots(3, 1, axes_size=(20, 15))  # squeezed column == full grid
+    mat2 = _as_matrix(axes2)
+    assert len(mat2) == 3 and len(mat2[0]) == 1
+    plt.close(fig2)
+
+
+# --- Fix 2: foreign Python list column should warn ---
+
+
+def test_label_outer_foreign_1d_list_warns():
+    fig, axes = plt.subplots(3, 1)  # column
+    with pytest.warns(UserWarning, match="single ROW"):
+        pp.label_outer(list(axes), sharex=True, sharey=True)
+    plt.close(fig)
+
+
+# --- Fix 3: clear error on non-Axes / ragged grid elements ---
+
+
+def test_label_outer_ragged_raises_clear_error():
+    import warnings as _w
+    fig, axes = pp.subplots(2, 2, axes_size=(20, 15))
+    ragged = [[axes[0, 0], axes[0, 1]], [axes[1, 0]]]  # unequal rows
+    with _w.catch_warnings():
+        _w.simplefilter("error")  # any stray warning would become an error
+        with pytest.raises(TypeError, match="grid of matplotlib Axes"):
+            pp.label_outer(ragged, sharex=True, sharey=True)
+    plt.close(fig)
+
+
+# --- Fix 4: empty grid still validates share-mode ---
+
+
+def test_label_outer_empty_grid_still_validates_share():
+    import numpy as _np
+    with pytest.raises(ValueError, match="share"):
+        pp.label_outer(_np.array([], dtype=object), sharex="bogus")
