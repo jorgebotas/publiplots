@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-06-15
+
+### Added
+
+- Outer-only axis labels for shared-axes grids, matching seaborn's
+  `FacetGrid`. When `pp.subplots(...)` is called with `sharex` / `sharey`,
+  interior tick labels, offset text, and axis labels are now hidden by
+  default — leaving labels only on the bottom row (x) and left column (y)
+  — and the grid tightens as the freed label reservations collapse. A new
+  `label_outer` kwarg on `pp.subplots` (default `True`; pass `False` or
+  `"all"` to draw every label) controls this. The standalone
+  `pp.label_outer(axes, *, sharex=True, sharey=True)` helper mirrors
+  matplotlib's `ax.label_outer()` for re-applying outer-only labeling
+  after late `set_xlabel` / `set_ylabel` calls, and works on foreign
+  (`plt.subplots`) grids too. Because publiplots builds its grid with
+  `fig.add_axes` (no `SubplotSpec`), the standard `ax.label_outer()` is
+  unavailable; the outer edge is computed from publiplots' own axes
+  matrix instead. New gallery example
+  `examples/plots/plot_25_shared_axes_labels.py` (#188).
+
+### Fixed
+
+- `LegendBuilder.add_colorbar(cmap=...)` no longer raises `ImportError`
+  on matplotlib 3.9+. `matplotlib.cm.get_cmap` was removed in 3.9; the
+  call now routes through `matplotlib.pyplot.get_cmap` (accepts a name or
+  a `Colormap` instance). This also unblocked the documentation gallery
+  build on modern matplotlib (#189).
+
 ## [0.14.2] - 2026-06-11
 
 ### Added
