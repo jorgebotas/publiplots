@@ -86,6 +86,7 @@ def subplots(
     hspace: Optional[float] = None,
     wspace: Optional[float] = None,
     outer_pad: Optional[float] = None,
+    label_outer: Union[bool, str] = True,
     **fig_kw,
 ):
     """
@@ -158,6 +159,13 @@ def subplots(
         rejected (see :func:`reject_figsize`); matplotlib layout-engine
         kwargs (``layout``, ``constrained_layout``, ``tight_layout``)
         are ignored with a :class:`UserWarning`.
+    label_outer : bool or {"all"}, default True
+        When ``True`` and ``sharex`` / ``sharey`` is active, hide interior
+        tick labels, offset text, and axis labels — leaving labels only on the
+        bottom row (x) and left column (y), matching seaborn's ``FacetGrid``.
+        ``False`` or ``"all"`` draws every label (the pre-0.x behavior). With
+        no sharing, ``True`` is a no-op. See :func:`publiplots.label_outer` to
+        re-apply this after late ``set_xlabel`` / ``set_ylabel`` calls.
 
     Returns
     -------
@@ -214,6 +222,7 @@ def subplots(
 
     See Also
     --------
+    publiplots.label_outer : Hide interior labels on an existing shared grid.
     reject_figsize : Guard used by plot functions to reject ``figsize=``.
     publiplots.rcParams : Where the ``subplots.*`` defaults live.
     """
@@ -222,6 +231,10 @@ def subplots(
         raise ValueError(f"nrows must be >= 1, got {nrows}")
     if ncols < 1:
         raise ValueError(f"ncols must be >= 1, got {ncols}")
+    if not (isinstance(label_outer, bool) or label_outer == "all"):
+        raise ValueError(
+            f"label_outer must be True, False, or 'all', got {label_outer!r}"
+        )
 
     if axes_size is None:
         axes_size = resolve_param("subplots.axes_size", None)
@@ -370,6 +383,12 @@ def subplots(
     # --- create axes with sharing semantics -------------------------------
     axes_matrix = _build_axes(fig, layout, sharex, sharey)
     fig._publiplots_axes = axes_matrix
+
+    # Outer-only labels for shared axes (seaborn parity). Applied eagerly;
+    # the draw-time auto-layout then collapses interior label reservations.
+    if label_outer is True:
+        from publiplots.layout.label_outer import label_outer as _apply_label_outer
+        _apply_label_outer(axes_matrix, sharex=sharex, sharey=sharey)
 
     # --- attach auto-layout hook (skipped internally if all sides locked) -
     # Only lock the auto-measurable sides; hspace/wspace/outer_pad are not

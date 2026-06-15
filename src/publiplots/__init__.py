@@ -80,7 +80,7 @@ from publiplots.utils.legend_group import (
     MultiAxesLegendGroup,
     legend,
 )
-from publiplots.layout import subplots
+from publiplots.layout import subplots, label_outer
 from publiplots.layout.jointgrid import JointGrid, jointplot
 # Register custom fonts
 from publiplots.utils.fonts import _register_fonts
@@ -161,6 +161,7 @@ __all__ = [
     "MultiAxesLegendGroup",
     # Layout functions
     "subplots",
+    "label_outer",
     # Color/palette functions
     "color_palette",
     # Parameter system

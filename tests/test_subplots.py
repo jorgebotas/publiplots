@@ -1062,3 +1062,110 @@ def test_figure_layout_row_heights_non_positive_raises():
             ylabel_space=(10.0,), right=(2.0,),
             hspace=0.0, wspace=0.0, outer_pad=0.0, legend_column=0.0,
         )
+
+
+def test_subplots_label_outer_invalid_raises():
+    with pytest.raises(ValueError, match="label_outer"):
+        pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer="bogus")
+
+
+def test_subplots_label_outer_accepts_true_false_all():
+    # Should not raise.
+    pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer=True)
+    pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer=False)
+    pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer="all")
+
+
+def test_subplots_label_outer_rejects_int_one():
+    # 1 == True in Python, but label_outer must be a real bool or "all".
+    with pytest.raises(ValueError, match="label_outer"):
+        pp.subplots(2, 2, axes_size=(30, 20), sharex=True, label_outer=1)
+
+
+def test_subplots_default_hides_interior_axis_label_and_offset():
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), sharex=True, sharey=True)
+    for r in range(2):
+        for c in range(2):
+            axes[r, c].set_xlabel("xlab")
+            axes[r, c].set_ylabel("ylab")
+    fig.canvas.draw()
+    # Auto path (label_outer default True) hides interior axis labels...
+    assert not axes[0, 0].xaxis.get_label().get_visible()
+    assert not axes[0, 1].yaxis.get_label().get_visible()
+    # ...and interior offset text...
+    assert not axes[0, 0].xaxis.offsetText.get_visible()
+    assert not axes[0, 1].yaxis.offsetText.get_visible()
+    # ...while outer edges keep them.
+    assert axes[1, 0].xaxis.get_label().get_visible()
+    assert axes[0, 0].yaxis.get_label().get_visible()
+    plt.close(fig)
+
+
+def test_subplots_default_hides_interior_when_shared():
+    # label_outer defaults to True; sharex/sharey active -> interior hidden.
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), sharex=True, sharey=True)
+    fig.canvas.draw()
+    # Tick labels hidden on top-left x.
+    assert not any(t.get_visible() and t.get_text()
+                   for t in axes[0, 0].get_xticklabels())
+    # Bottom-left keeps x tick labels.
+    assert any(t.get_visible() and t.get_text()
+               for t in axes[1, 0].get_xticklabels())
+    plt.close(fig)
+
+
+def test_subplots_label_outer_false_draws_all():
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20), sharex=True, sharey=True,
+                            label_outer=False)
+    fig.canvas.draw()
+    # Every axes keeps its x tick labels.
+    assert any(t.get_visible() and t.get_text()
+               for t in axes[0, 0].get_xticklabels())
+    plt.close(fig)
+
+
+def test_subplots_no_sharing_label_outer_true_is_noop():
+    # Nothing shared -> nothing hidden even though label_outer=True (default).
+    fig, axes = pp.subplots(2, 2, axes_size=(30, 20))
+    fig.canvas.draw()
+    assert any(t.get_visible() and t.get_text()
+               for t in axes[0, 0].get_xticklabels())
+    plt.close(fig)
+
+
+def test_label_outer_collapses_interior_reservation_and_tightens():
+    # With sharey='row' + default label_outer, interior columns' ylabel_space
+    # collapses, so the figure is narrower than the label_outer='all' version.
+    fig_tight, axes_tight = pp.subplots(1, 3, axes_size=(30, 20), sharey="row")
+    for ax in np.atleast_1d(axes_tight):
+        ax.set_ylabel("a long y label")
+    fig_tight.canvas.draw()
+    fig_tight._publiplots_auto_layout.settle()
+    w_tight = fig_tight.get_size_inches()[0]
+
+    fig_all, axes_all = pp.subplots(1, 3, axes_size=(30, 20), sharey="row",
+                                    label_outer="all")
+    for ax in np.atleast_1d(axes_all):
+        ax.set_ylabel("a long y label")
+    fig_all.canvas.draw()
+    fig_all._publiplots_auto_layout.settle()
+    w_all = fig_all.get_size_inches()[0]
+
+    # Hiding interior y labels frees width.
+    assert w_tight < w_all - 0.01
+    plt.close(fig_tight)
+    plt.close(fig_all)
+
+
+def test_locked_reservation_not_shrunk_by_hidden_labels():
+    # Explicit ylabel_space lock wins even though interior labels are hidden.
+    fig, axes = pp.subplots(1, 3, axes_size=(30, 20), sharey="row",
+                            ylabel_space=10)
+    for ax in np.atleast_1d(axes):
+        ax.set_ylabel("y")
+    fig.canvas.draw()
+    fig._publiplots_auto_layout.settle()
+    layout = fig._publiplots_layout
+    # ylabel_space is per-column; all locked at 10 mm.
+    assert all(abs(v - 10.0) < 0.5 for v in layout.ylabel_space)
+    plt.close(fig)
