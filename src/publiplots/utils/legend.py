@@ -1481,12 +1481,16 @@ class LegendBuilder:
         ...     label="Log2 FC", ticks=[-2, 0, 2]
         ... )
         """
+        import matplotlib.pyplot as plt
         from matplotlib.colors import TwoSlopeNorm, Normalize
-        from matplotlib.cm import ScalarMappable as SM, get_cmap
+        from matplotlib.cm import ScalarMappable as SM
 
         # Create mappable if cmap provided (PyComplexHeatmap style)
         if mappable is None and cmap is not None:
-            cmap_obj = get_cmap(cmap)
+            # ``plt.get_cmap`` accepts a name or a Colormap instance and is
+            # the supported replacement for ``matplotlib.cm.get_cmap``, which
+            # was removed in matplotlib 3.9.
+            cmap_obj = plt.get_cmap(cmap)
             if center is not None:
                 norm = TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
             else:
