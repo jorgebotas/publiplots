@@ -241,6 +241,11 @@ def venn(
         - {percentage}: percentage of total elements
     color_labels : bool, default=True
         Whether to color the set labels with the same color as the petals.
+    orientation : str, default='horizontal'
+        Layout for a 2-way Venn diagram. ``'horizontal'`` places the two
+        circles side-by-side; ``'vertical'`` stacks them with the first set
+        on top and the second below. Only valid for 2 sets — passing
+        ``'vertical'`` with 3 or more sets raises ``ValueError``.
 
     Returns
     -------
@@ -262,6 +267,10 @@ def venn(
     >>> set1 = {1, 2, 3, 4, 5}
     >>> set2 = {4, 5, 6, 7, 8}
     >>> ax = pp.venn([set1, set2], labels=['Group A', 'Group B'])
+
+    Vertical 2-way Venn (circles stacked):
+
+    >>> ax = pp.venn([set1, set2], labels=['A', 'B'], orientation='vertical')
 
     3-way Venn with custom colors:
 
