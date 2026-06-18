@@ -52,6 +52,27 @@ pp.venn(
 pp.show()
 
 # %%
+# Vertical 2-Way Venn Diagram
+# ---------------------------
+# Stack the two circles vertically (first set on top) instead of
+# side-by-side. Vertical orientation is supported for 2-way diagrams only.
+
+set1 = set(range(1, 51))    # 1-50
+set2 = set(range(30, 81))   # 30-80
+
+# A tall, narrow axes suits the vertical stack. Compose pp.subplots and
+# pass ax=.
+fig, ax = pp.subplots(axes_size=(60, 100))
+pp.venn(
+    sets=[set1, set2],
+    labels=['Set A', 'Set B'],
+    colors=pp.color_palette('pastel', n_colors=2),
+    orientation='vertical',
+    ax=ax,
+)
+pp.show()
+
+# %%
 # 3-Way Venn Diagram
 # ------------------
 # Three-way Venn diagram showing all pairwise and triple overlaps.
