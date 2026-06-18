@@ -88,3 +88,36 @@ def test_get_geometry_3way_unaffected_by_default_orientation():
     circles, labels, set_labels = get_geometry(3)
     assert len(circles) == 3
     assert "111" in labels
+
+
+def test_venn_vertical_returns_axes_with_stacked_circles():
+    from matplotlib.patches import Ellipse
+    ax = pp.venn(sets=[{1, 2, 3}, {3, 4, 5}], orientation="vertical")
+    ellipses = [p for p in ax.patches if isinstance(p, Ellipse)]
+    assert len(ellipses) == 2
+    cy = [e.center[1] for e in ellipses]
+    cx = [e.center[0] for e in ellipses]
+    # Both on the vertical axis, first set above second
+    assert cx[0] == pytest.approx(0.0)
+    assert cx[1] == pytest.approx(0.0)
+    assert cy[0] > cy[1]
+
+
+def test_venn_vertical_with_three_sets_raises():
+    with pytest.raises(ValueError, match="2-way"):
+        pp.venn(sets=[{1}, {2}, {3}], orientation="vertical")
+
+
+def test_venn_invalid_orientation_raises():
+    with pytest.raises(ValueError, match="horizontal.*vertical|orientation"):
+        pp.venn(sets=[{1, 2}, {2, 3}], orientation="diagonal")
+
+
+def test_venn_horizontal_default_unchanged():
+    from matplotlib.patches import Ellipse
+    ax = pp.venn(sets=[{1, 2, 3}, {3, 4, 5}])
+    ellipses = [p for p in ax.patches if isinstance(p, Ellipse)]
+    cy = [e.center[1] for e in ellipses]
+    # Horizontal: both centers on the y == 0 axis
+    assert cy[0] == pytest.approx(0.0)
+    assert cy[1] == pytest.approx(0.0)

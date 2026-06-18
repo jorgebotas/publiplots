@@ -68,6 +68,7 @@ def _venn(
     alpha: float,
     ax: Optional[Axes],
     color_labels: bool = True,
+    orientation: str = "horizontal",
 ) -> Axes:
     """
     Draw a true Venn diagram with ellipses (2-5 sets).
@@ -82,7 +83,7 @@ def _venn(
         raise ValueError("Number of sets must be between 2 and 5. Consider using upset plot instead.")
 
     # Get dynamic geometry
-    circles, label_positions, set_label_positions = get_geometry(n_sets)
+    circles, label_positions, set_label_positions = get_geometry(n_sets, orientation=orientation)
 
     # Calculate coordinate ranges with padding
     x_range, y_range = get_coordinate_ranges(circles)
@@ -204,6 +205,7 @@ def venn(
     ax: Optional[Axes] = None,
     fmt: str = "{size}",
     color_labels: bool = True,
+    orientation: str = "horizontal",
 ) -> Axes:
     """
     Create a Venn diagram for 2-5 sets.
@@ -299,6 +301,16 @@ def venn(
     if n_sets < 2 or n_sets > 5:
         raise ValueError("Venn diagram supports 2 to 5 sets. Consider using upset plot instead.")
 
+    # Validate orientation
+    if orientation not in ("horizontal", "vertical"):
+        raise ValueError(
+            f"orientation must be 'horizontal' or 'vertical', got {orientation!r}"
+        )
+    if orientation == "vertical" and n_sets != 2:
+        raise ValueError(
+            "orientation='vertical' is only supported for 2-way Venn diagrams."
+        )
+
     # Validate that all inputs are sets
     for s in sets_list:
         if not isinstance(s, set):
@@ -327,6 +339,7 @@ def venn(
         alpha=alpha,
         ax=ax,
         color_labels=color_labels,
+        orientation=orientation,
     )
 
     return ax
