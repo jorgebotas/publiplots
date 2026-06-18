@@ -421,7 +421,10 @@ def compute_5way_geometry() -> Tuple[List[Circle], Dict[str, Tuple[float, float]
     return circles, label_positions, set_label_positions
 
 
-def get_geometry(n_sets: int) -> Tuple[List[Circle], Dict[str, Tuple[float, float]], List[Tuple[float, float]]]:
+def get_geometry(
+    n_sets: int,
+    orientation: str = "horizontal",
+) -> Tuple[List[Circle], Dict[str, Tuple[float, float]], List[Tuple[float, float]]]:
     """
     Get geometry for n-way Venn diagram.
 
@@ -429,6 +432,9 @@ def get_geometry(n_sets: int) -> Tuple[List[Circle], Dict[str, Tuple[float, floa
     ----------
     n_sets : int
         Number of sets (2-5)
+    orientation : str, default "horizontal"
+        Layout orientation. Only honored for ``n_sets == 2``; the 3/4/5-way
+        branches ignore this argument.
 
     Returns
     -------
@@ -445,7 +451,7 @@ def get_geometry(n_sets: int) -> Tuple[List[Circle], Dict[str, Tuple[float, floa
         If n_sets is not between 2 and 5
     """
     if n_sets == 2:
-        return compute_2way_geometry()
+        return compute_2way_geometry(orientation=orientation)
     elif n_sets == 3:
         return compute_3way_geometry()
     elif n_sets == 4:

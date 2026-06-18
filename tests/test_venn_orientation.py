@@ -73,3 +73,18 @@ def test_horizontal_default_unchanged():
     assert circles[0].x_offset < 0  # Set A on the left
     assert circles[1].x_offset > 0  # Set B on the right
     assert circles[0].y_offset == pytest.approx(0.0)
+
+
+def test_get_geometry_threads_orientation_for_2way():
+    direct = compute_2way_geometry(orientation="vertical")
+    via = get_geometry(2, orientation="vertical")
+    # Same circle centers
+    assert [c.y_offset for c in via[0]] == [c.y_offset for c in direct[0]]
+    assert via[1] == direct[1]
+
+
+def test_get_geometry_3way_unaffected_by_default_orientation():
+    # New signature must not change 3/4/5-way output for the default
+    circles, labels, set_labels = get_geometry(3)
+    assert len(circles) == 3
+    assert "111" in labels
