@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-06-18
+
+### Added
+
+- Vertical orientation for 2-way Venn diagrams. `pp.venn(...)` accepts a new
+  `orientation` argument (`"horizontal"`, the default, or `"vertical"`).
+  Vertical stacks the two circles with the first set on top, the intersection
+  in the middle, and the set-name labels at the outer ends. Computed as a 90°
+  rotation of the existing horizontal layout, so the two orientations stay in
+  lockstep. Supported for 2 sets only — `orientation="vertical"` with 3 or more
+  sets raises `ValueError`.
+
 ## [0.15.0] - 2026-06-15
 
 ### Added
