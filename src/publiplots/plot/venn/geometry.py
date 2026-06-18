@@ -9,7 +9,7 @@ https://github.com/yanlinlin82/ggvenn/blob/main/R/venn_geometry.R
 """
 
 import numpy as np
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Literal
 from dataclasses import dataclass
 
 
@@ -73,7 +73,7 @@ class Circle:
 
 def compute_2way_geometry(
     overlap_size: float = 0.5,
-    orientation: str = "horizontal",
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
 ) -> Tuple[List[Circle], Dict[str, Tuple[float, float]], List[Tuple[float, float]]]:
     """
     Compute geometry for 2-way Venn diagram.
@@ -423,7 +423,7 @@ def compute_5way_geometry() -> Tuple[List[Circle], Dict[str, Tuple[float, float]
 
 def get_geometry(
     n_sets: int,
-    orientation: str = "horizontal",
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
 ) -> Tuple[List[Circle], Dict[str, Tuple[float, float]], List[Tuple[float, float]]]:
     """
     Get geometry for n-way Venn diagram.

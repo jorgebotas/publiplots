@@ -11,7 +11,7 @@ Based on ggvenn by Yan Linlin: https://github.com/yanlinlin82/ggvenn
 """
 
 from matplotlib.axes import Axes
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 from publiplots.themes.rcparams import resolve_param
 import matplotlib.pyplot as plt
@@ -68,7 +68,7 @@ def _venn(
     alpha: float,
     ax: Optional[Axes],
     color_labels: bool = True,
-    orientation: str = "horizontal",
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
 ) -> Axes:
     """
     Draw a true Venn diagram with ellipses (2-5 sets).
@@ -205,7 +205,7 @@ def venn(
     ax: Optional[Axes] = None,
     fmt: str = "{size}",
     color_labels: bool = True,
-    orientation: str = "horizontal",
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
 ) -> Axes:
     """
     Create a Venn diagram for 2-5 sets.
