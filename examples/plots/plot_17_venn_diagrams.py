@@ -37,17 +37,13 @@ np.random.seed(777)
 set1 = set(np.random.randint(1, 100, 60))
 set2 = set(np.random.randint(40, 140, 60))
 
-# Create 2-way Venn with percentage format. Venn diagrams need a
-# roughly square axes area — compose with pp.subplots(axes_size=...)
-# and pass ax=.
-fig, ax = pp.subplots(axes_size=(80, 80))
+# Create 2-way Venn with percentage format.
 pp.venn(
     sets=[set1, set2],
     labels=['Dataset A', 'Dataset B'],
     colors=['#75B375', '#E6B375'],
     fmt='{percentage:.1f}%',
     alpha=0.3,
-    ax=ax,
 )
 pp.show()
 
@@ -60,15 +56,11 @@ pp.show()
 set1 = set(range(1, 51))    # 1-50
 set2 = set(range(30, 81))   # 30-80
 
-# A tall, narrow axes suits the vertical stack. Compose pp.subplots and
-# pass ax=.
-fig, ax = pp.subplots(axes_size=(60, 100))
 pp.venn(
     sets=[set1, set2],
     labels=['Set A', 'Set B'],
     colors=pp.color_palette('pastel', n_colors=2),
     orientation='vertical',
-    ax=ax,
 )
 pp.show()
 
