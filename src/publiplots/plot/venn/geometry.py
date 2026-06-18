@@ -9,7 +9,7 @@ https://github.com/yanlinlin82/ggvenn/blob/main/R/venn_geometry.R
 """
 
 import numpy as np
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Literal
 from dataclasses import dataclass
 
 
@@ -71,7 +71,10 @@ class Circle:
         return x, y
 
 
-def compute_2way_geometry(overlap_size: float = 0.5) -> Tuple[List[Circle], Dict[str, Tuple[float, float]], List[Tuple[float, float]]]:
+def compute_2way_geometry(
+    overlap_size: float = 0.5,
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
+) -> Tuple[List[Circle], Dict[str, Tuple[float, float]], List[Tuple[float, float]]]:
     """
     Compute geometry for 2-way Venn diagram.
 
@@ -112,6 +115,34 @@ def compute_2way_geometry(overlap_size: float = 0.5) -> Tuple[List[Circle], Dict
         (-x_dist, -a_radius - 0.3),   # Below left circle
         (x_dist, -b_radius - 0.3),    # Below right circle
     ]
+
+    if orientation == "vertical":
+        # Vertical = 90-deg clockwise rotation of the horizontal layout:
+        # (x, y) -> (y, -x). Set A (index 0) lands on top, Set B on the bottom.
+        circles = [
+            Circle(
+                x_offset=c.y_offset,
+                y_offset=-c.x_offset,
+                radius_a=c.radius_a,
+                radius_b=c.radius_b,
+                theta_offset=c.theta_offset,
+            )
+            for c in circles
+        ]
+        label_positions = {
+            key: (y, -x) for key, (x, y) in label_positions.items()
+        }
+        # Set-name labels are NOT rotated: place them at the outer ends so they
+        # don't collide with the overlap. Set A above the top circle, Set B
+        # below the bottom circle.
+        set_label_positions = [
+            (0.0, x_dist + a_radius + 0.3),    # Set A (top)
+            (0.0, -x_dist - b_radius - 0.3),   # Set B (bottom)
+        ]
+    elif orientation != "horizontal":
+        raise ValueError(
+            f"orientation must be 'horizontal' or 'vertical', got {orientation!r}"
+        )
 
     return circles, label_positions, set_label_positions
 
@@ -390,7 +421,10 @@ def compute_5way_geometry() -> Tuple[List[Circle], Dict[str, Tuple[float, float]
     return circles, label_positions, set_label_positions
 
 
-def get_geometry(n_sets: int) -> Tuple[List[Circle], Dict[str, Tuple[float, float]], List[Tuple[float, float]]]:
+def get_geometry(
+    n_sets: int,
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
+) -> Tuple[List[Circle], Dict[str, Tuple[float, float]], List[Tuple[float, float]]]:
     """
     Get geometry for n-way Venn diagram.
 
@@ -398,6 +432,9 @@ def get_geometry(n_sets: int) -> Tuple[List[Circle], Dict[str, Tuple[float, floa
     ----------
     n_sets : int
         Number of sets (2-5)
+    orientation : str, default "horizontal"
+        Layout orientation. Only honored for ``n_sets == 2``; the 3/4/5-way
+        branches ignore this argument.
 
     Returns
     -------
@@ -414,7 +451,7 @@ def get_geometry(n_sets: int) -> Tuple[List[Circle], Dict[str, Tuple[float, floa
         If n_sets is not between 2 and 5
     """
     if n_sets == 2:
-        return compute_2way_geometry()
+        return compute_2way_geometry(orientation=orientation)
     elif n_sets == 3:
         return compute_3way_geometry()
     elif n_sets == 4:

@@ -11,7 +11,7 @@ Based on ggvenn by Yan Linlin: https://github.com/yanlinlin82/ggvenn
 """
 
 from matplotlib.axes import Axes
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 from publiplots.themes.rcparams import resolve_param
 import matplotlib.pyplot as plt
@@ -68,6 +68,7 @@ def _venn(
     alpha: float,
     ax: Optional[Axes],
     color_labels: bool = True,
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
 ) -> Axes:
     """
     Draw a true Venn diagram with ellipses (2-5 sets).
@@ -82,7 +83,7 @@ def _venn(
         raise ValueError("Number of sets must be between 2 and 5. Consider using upset plot instead.")
 
     # Get dynamic geometry
-    circles, label_positions, set_label_positions = get_geometry(n_sets)
+    circles, label_positions, set_label_positions = get_geometry(n_sets, orientation=orientation)
 
     # Calculate coordinate ranges with padding
     x_range, y_range = get_coordinate_ranges(circles)
@@ -204,6 +205,7 @@ def venn(
     ax: Optional[Axes] = None,
     fmt: str = "{size}",
     color_labels: bool = True,
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
 ) -> Axes:
     """
     Create a Venn diagram for 2-5 sets.
@@ -239,6 +241,11 @@ def venn(
         - {percentage}: percentage of total elements
     color_labels : bool, default=True
         Whether to color the set labels with the same color as the petals.
+    orientation : str, default='horizontal'
+        Layout for a 2-way Venn diagram. ``'horizontal'`` places the two
+        circles side-by-side; ``'vertical'`` stacks them with the first set
+        on top and the second below. Only valid for 2 sets — passing
+        ``'vertical'`` with 3 or more sets raises ``ValueError``.
 
     Returns
     -------
@@ -260,6 +267,10 @@ def venn(
     >>> set1 = {1, 2, 3, 4, 5}
     >>> set2 = {4, 5, 6, 7, 8}
     >>> ax = pp.venn([set1, set2], labels=['Group A', 'Group B'])
+
+    Vertical 2-way Venn (circles stacked):
+
+    >>> ax = pp.venn([set1, set2], labels=['A', 'B'], orientation='vertical')
 
     3-way Venn with custom colors:
 
@@ -299,6 +310,16 @@ def venn(
     if n_sets < 2 or n_sets > 5:
         raise ValueError("Venn diagram supports 2 to 5 sets. Consider using upset plot instead.")
 
+    # Validate orientation
+    if orientation not in ("horizontal", "vertical"):
+        raise ValueError(
+            f"orientation must be 'horizontal' or 'vertical', got {orientation!r}"
+        )
+    if orientation == "vertical" and n_sets != 2:
+        raise ValueError(
+            "orientation='vertical' is only supported for 2-way Venn diagrams."
+        )
+
     # Validate that all inputs are sets
     for s in sets_list:
         if not isinstance(s, set):
@@ -327,6 +348,7 @@ def venn(
         alpha=alpha,
         ax=ax,
         color_labels=color_labels,
+        orientation=orientation,
     )
 
     return ax
