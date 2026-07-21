@@ -371,3 +371,92 @@ def test_barplot_annotate_bar_custom_inline():
     )
     labels = [t.get_text() for t in ax.texts]
     assert labels == ["n=12", "n=34", "n=56"]
+
+
+def _skewed_df():
+    """Right-skewed single group where median != mean (issue #194 repro)."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "g": ["a"] * 200,
+        "y": rng.exponential(1.0, 200),
+    })
+    df["g"] = pd.Categorical(df["g"])
+    return df
+
+
+def test_barplot_annotate_median_estimator_labels_the_median():
+    """estimator='median': the label must match the drawn (median) bar,
+    not a recomputed mean. Regression for issue #194."""
+    df = _skewed_df()
+    med, mean = float(df.y.median()), float(df.y.mean())
+    # Guard: the fixture must actually separate median from mean, else the
+    # test can't distinguish the bug.
+    assert abs(med - mean) > 0.1, "fixture must have median != mean"
+
+    ax = pp.barplot(df, x="g", y="y", estimator="median", errorbar=None,
+                    annotate={"fmt": ".3f"})
+    drawn = [p.get_height() for p in ax.patches if p.get_height() > 0][0]
+    label = [t.get_text() for t in ax.texts if t.get_text().strip()][0]
+
+    assert drawn == pytest.approx(med, abs=1e-6)
+    assert float(label) == pytest.approx(drawn, abs=5e-4)
+
+
+def test_barplot_annotate_median_estimator_with_hue_labels_the_median():
+    """estimator='median' on the hue dodge path also labels the median."""
+    rng = np.random.default_rng(1)
+    rows = []
+    for cond in ("ctrl", "trt"):
+        # Right-skewed so per-group median != mean.
+        scale = 1.0 if cond == "ctrl" else 2.0
+        for v in rng.exponential(scale, 200):
+            rows.append({"g": "a", "cond": cond, "y": float(v)})
+    df = pd.DataFrame(rows)
+    df["g"] = pd.Categorical(df["g"])
+    df["cond"] = pd.Categorical(df["cond"])
+
+    ax = pp.barplot(df, x="g", y="y", hue="cond", estimator="median",
+                    errorbar=None, annotate={"fmt": ".3f"})
+    rects = [p for p in ax.patches if p.get_height() > 0]
+    assert len(rects) == 2
+    assert len(ax.texts) == 2
+    for rect, text in zip(rects, ax.texts):
+        assert float(text.get_text()) == pytest.approx(rect.get_height(), abs=5e-4)
+
+
+def test_barplot_annotate_callable_estimator_labels_drawn_bar():
+    """A custom callable estimator (e.g. max) is honored by the label."""
+    df = _skewed_df()
+    ax = pp.barplot(df, x="g", y="y", estimator=np.max, errorbar=None,
+                    annotate={"fmt": ".3f"})
+    drawn = [p.get_height() for p in ax.patches if p.get_height() > 0][0]
+    label = [t.get_text() for t in ax.texts if t.get_text().strip()][0]
+    assert drawn == pytest.approx(float(df.y.max()), abs=1e-6)
+    assert float(label) == pytest.approx(drawn, abs=5e-4)
+
+
+def test_barplot_annotate_default_mean_estimator_still_correct():
+    """Default (mean) estimator: label still matches the drawn bar."""
+    df = _skewed_df()
+    ax = pp.barplot(df, x="g", y="y", errorbar=None, annotate={"fmt": ".3f"})
+    drawn = [p.get_height() for p in ax.patches if p.get_height() > 0][0]
+    label = [t.get_text() for t in ax.texts if t.get_text().strip()][0]
+    assert drawn == pytest.approx(float(df.y.mean()), abs=1e-6)
+    assert float(label) == pytest.approx(drawn, abs=5e-4)
+
+
+def test_barplot_annotate_median_estimator_horizontal_labels_the_median():
+    """Horizontal bars exercise the get_width() branch: the median label
+    must match the drawn bar width, not the mean. Regression for #194."""
+    df = _skewed_df()
+    med, mean = float(df.y.median()), float(df.y.mean())
+    assert abs(med - mean) > 0.1, "fixture must have median != mean"
+
+    # Categorical on y => horizontal bars, value on the width axis.
+    ax = pp.barplot(df, x="y", y="g", estimator="median", errorbar=None,
+                    annotate={"fmt": ".3f"})
+    drawn = [p.get_width() for p in ax.patches if p.get_width() > 0][0]
+    label = [t.get_text() for t in ax.texts if t.get_text().strip()][0]
+
+    assert drawn == pytest.approx(med, abs=1e-6)
+    assert float(label) == pytest.approx(drawn, abs=5e-4)

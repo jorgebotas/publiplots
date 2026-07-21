@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `pp.barplot(..., annotate=...)` now labels the value the bar is actually
+  drawn at for any `estimator`. Previously the annotation always showed the
+  group **mean**, even when `estimator="median"` (or a custom callable) drew
+  the bars at a different height, so the label and its bar silently disagreed.
+  Bar values now come from the drawn patch (`get_height()` / `get_width()`),
+  matching the reconstruct-from-patches path, so `bar_values` and
+  `bar_custom`'s default `value_source` stay consistent with the plot (#194).
+
 ## [0.15.1] - 2026-06-18
 
 ### Added
