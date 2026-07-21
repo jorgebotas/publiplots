@@ -225,6 +225,27 @@ def test_pointplot_annotate_custom_hue_order_bookkeeping_aligned():
         )
 
 
+def test_pointplot_annotate_custom_order_bookkeeping_aligned():
+    """A custom order= repositions categories; the meta's category key must
+    stay aligned to the drawn marker, not the data's categorical order."""
+    rng = np.random.default_rng(7)
+    rows = []
+    for cat, shift in (("A", 0), ("B", 5), ("C", 10)):  # very different medians
+        for v in rng.exponential(1 + shift, 150):
+            rows.append({"g": cat, "y": float(v)})
+    df = pd.DataFrame(rows)
+    df["g"] = pd.Categorical(df["g"], categories=["A", "B", "C"])
+
+    ax = pp.pointplot(df, x="g", y="y", order=["C", "B", "A"],
+                      estimator="median", errorbar=None, annotate={"fmt": ".2f"})
+    meta = ax._publiplots_point_meta
+    for p in meta.points:
+        true_med = float(df[df.g == p.category].y.median())
+        assert p.value == pytest.approx(true_med, abs=5e-4), (
+            f"category {p.category}: value {p.value} != its median {true_med}"
+        )
+
+
 def test_pointplot_annotate_missing_group_no_spurious_label():
     """A (category, hue) combo with no rows draws a NaN marker; it must get
     no label, and the remaining labels must stay aligned to their markers."""

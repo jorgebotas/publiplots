@@ -170,6 +170,7 @@ def build_from_pointplot_call(
     errorbar: Optional[str],
     *,
     source_frame,
+    order: Optional[List] = None,
     hue_order: Optional[List] = None,
 ) -> PointValueMeta:
     """Build a `PointValueMeta` paired with the pointplot's drawn markers.
@@ -190,17 +191,22 @@ def build_from_pointplot_call(
     pre-copy DataFrame so ``meta.source_frame is df`` holds and
     ``source_frame.iloc[record.frame_row_index]`` resolves correctly.
 
-    ``hue_order`` must be the same order ``pp.pointplot`` handed to seaborn
-    (i.e. the caller's explicit ``hue_order=`` if any, else data order), so
-    the marker series — returned in seaborn's draw order — pair with the
-    right hue key. When omitted it falls back to the data's categorical
-    order.
+    ``order`` / ``hue_order`` must be the same orders ``pp.pointplot`` handed
+    to seaborn (the caller's explicit ``order=`` / ``hue_order=`` if any, else
+    data order). Seaborn positions categories at integer offsets in ``order``
+    and draws hue series in ``hue_order``; the builder mirrors both so a
+    drawn point's rounded categorical coordinate and its series index map to
+    the right ``(category, hue_value)`` keys. When omitted each falls back to
+    the data's categorical order.
     """
     spec = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
     )
     orient = spec.orient
-    cat_categories = _categories_in_draw_order(data[categorical_axis])
+    cat_categories = (
+        list(order) if order is not None
+        else _categories_in_draw_order(data[categorical_axis])
+    )
     if spec.split_hue is not None:
         hue_levels = (
             list(hue_order) if hue_order is not None

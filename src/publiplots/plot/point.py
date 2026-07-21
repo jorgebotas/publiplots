@@ -379,6 +379,7 @@ def pointplot(
         palette=palette if isinstance(palette, dict) else None,
         errorbar=errorbar if isinstance(errorbar, str) else None,
         source_frame=_source_data,
+        order=order,
         hue_order=hue_order,
     )
     if annotate:
