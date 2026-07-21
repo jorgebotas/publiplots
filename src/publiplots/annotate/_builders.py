@@ -170,6 +170,7 @@ def build_from_pointplot_call(
     errorbar: Optional[str],
     *,
     source_frame,
+    hue_order: Optional[List] = None,
 ) -> PointValueMeta:
     """Build a `PointValueMeta` paired with the pointplot's drawn markers.
 
@@ -188,16 +189,25 @@ def build_from_pointplot_call(
     ``source_frame`` is a required keyword-only: must be the caller's
     pre-copy DataFrame so ``meta.source_frame is df`` holds and
     ``source_frame.iloc[record.frame_row_index]`` resolves correctly.
+
+    ``hue_order`` must be the same order ``pp.pointplot`` handed to seaborn
+    (i.e. the caller's explicit ``hue_order=`` if any, else data order), so
+    the marker series — returned in seaborn's draw order — pair with the
+    right hue key. When omitted it falls back to the data's categorical
+    order.
     """
     spec = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
     )
     orient = spec.orient
     cat_categories = _categories_in_draw_order(data[categorical_axis])
-    hue_order = (
-        _categories_in_draw_order(data[spec.split_hue])
-        if spec.split_hue is not None else [None]
-    )
+    if spec.split_hue is not None:
+        hue_levels = (
+            list(hue_order) if hue_order is not None
+            else _categories_in_draw_order(data[spec.split_hue])
+        )
+    else:
+        hue_levels = [None]
 
     marker_series = _iter_point_marker_series(ax)
 
@@ -206,7 +216,7 @@ def build_from_pointplot_call(
     # (unexpected artist layout) we still pair as far as the shorter list.
     points_xy: List[Tuple[float, float]] = []
     aggregated: List[Dict] = []
-    for h_val, line in zip(hue_order, marker_series):
+    for h_val, line in zip(hue_levels, marker_series):
         xdata = np.asarray(line.get_xdata(), dtype=float)
         ydata = np.asarray(line.get_ydata(), dtype=float)
         for xpt, ypt in zip(xdata, ydata):

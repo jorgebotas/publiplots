@@ -195,6 +195,36 @@ def test_pointplot_annotate_default_mean_still_correct():
     )
 
 
+def test_pointplot_annotate_custom_hue_order_bookkeeping_aligned():
+    """A custom hue_order changes seaborn's draw order; the meta's hue_value
+    and hue_color must stay aligned to the drawn marker, not the data's
+    categorical order."""
+    rng = np.random.default_rng(6)
+    rows = []
+    for cat in ("A", "B"):
+        for cond, shift in (("lo", 0), ("hi", 10)):  # very different medians
+            for v in rng.exponential(1 + shift, 150):
+                rows.append({"g": cat, "cond": cond, "y": float(v)})
+    df = pd.DataFrame(rows)
+    df["g"] = pd.Categorical(df["g"])
+    df["cond"] = pd.Categorical(df["cond"], categories=["lo", "hi"])
+
+    # Draw order reversed relative to the categorical order.
+    ax = pp.pointplot(df, x="g", y="y", hue="cond", hue_order=["hi", "lo"],
+                      estimator="median", errorbar=None, dodge=True,
+                      annotate={"fmt": ".2f"})
+    meta = ax._publiplots_point_meta
+    for p in meta.points:
+        true_med = float(
+            df[(df.g == p.category) & (df.cond == p.hue_value)].y.median()
+        )
+        # The point's own value (from the marker) must equal the median of
+        # the group its bookkeeping claims it belongs to.
+        assert p.value == pytest.approx(true_med, abs=5e-4), (
+            f"{p.category}/{p.hue_value}: value {p.value} != median {true_med}"
+        )
+
+
 def test_pointplot_annotate_missing_group_no_spurious_label():
     """A (category, hue) combo with no rows draws a NaN marker; it must get
     no label, and the remaining labels must stay aligned to their markers."""
