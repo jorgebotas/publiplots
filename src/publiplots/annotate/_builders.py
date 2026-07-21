@@ -187,6 +187,15 @@ def build_from_pointplot_call(
     placeholder for an empty ``(category, hue)`` combination) yields no
     record.
 
+    The rounding assumes each marker sits within 0.5 of its category
+    center, which holds for every sane ``dodge`` (seaborn keeps the total
+    dodge spread ≲ 0.8). A degenerate ``dodge=1.0`` pushes markers onto the
+    half-integer boundary where the category *bookkeeping* may bind to the
+    wrong neighbor — the label text and pixel position stay correct (both
+    come straight from the marker), only ``record.category`` /
+    ``frame_row_index`` can misattribute, and only for a plot whose markers
+    already overlap adjacent categories.
+
     ``source_frame`` is a required keyword-only: must be the caller's
     pre-copy DataFrame so ``meta.source_frame is df`` holds and
     ``source_frame.iloc[record.frame_row_index]`` resolves correctly.
@@ -217,12 +226,20 @@ def build_from_pointplot_call(
 
     marker_series = _iter_point_marker_series(ax)
 
-    # Walk the drawn marker series in hue draw order. `_iter_point_marker_series`
-    # returns one series per hue level in that order; when the counts disagree
-    # (unexpected artist layout) we still pair as far as the shorter list.
+    # Walk every drawn marker series in draw order. When hue genuinely splits,
+    # seaborn draws one series per hue level in `hue_levels` order, so the
+    # series index selects the hue key. When it doesn't split (no hue, or
+    # ``hue == categorical_axis`` where seaborn still emits one NaN-padded
+    # series per category), there is no hue dodge: every series' points carry
+    # ``h_val = None`` and the category comes entirely from each point's
+    # rounded coordinate.
     points_xy: List[Tuple[float, float]] = []
     aggregated: List[Dict] = []
-    for h_val, line in zip(hue_levels, marker_series):
+    for series_idx, line in enumerate(marker_series):
+        if spec.split_hue is not None:
+            h_val = hue_levels[series_idx] if series_idx < len(hue_levels) else None
+        else:
+            h_val = None
         xdata = np.asarray(line.get_xdata(), dtype=float)
         ydata = np.asarray(line.get_ydata(), dtype=float)
         for xpt, ypt in zip(xdata, ydata):

@@ -246,6 +246,29 @@ def test_pointplot_annotate_custom_order_bookkeeping_aligned():
         )
 
 
+def test_pointplot_annotate_hue_equals_cat_axis_one_label_per_category():
+    """hue == categorical axis: seaborn draws one NaN-padded marker series
+    per category. Every category must still get exactly one correct label."""
+    rng = np.random.default_rng(8)
+    rows = []
+    for cat, shift in (("A", 0), ("B", 3), ("C", 7)):
+        for v in rng.exponential(1 + shift, 150):
+            rows.append({"g": cat, "y": float(v)})
+    df = pd.DataFrame(rows)
+    df["g"] = pd.Categorical(df["g"], categories=["A", "B", "C"])
+    meds = {c: float(df[df.g == c].y.median()) for c in ("A", "B", "C")}
+
+    ax = pp.pointplot(df, x="g", y="y", hue="g", estimator="median",
+                      errorbar=None, annotate={"fmt": ".3f"})
+    assert len(ax.texts) == 3
+    meta = ax._publiplots_point_meta
+    for p in meta.points:
+        assert p.value == pytest.approx(meds[p.category], abs=5e-4)
+    assert sorted(float(t.get_text()) for t in ax.texts) == pytest.approx(
+        sorted(meds.values()), abs=5e-4
+    )
+
+
 def test_pointplot_annotate_missing_group_no_spurious_label():
     """A (category, hue) combo with no rows draws a NaN marker; it must get
     no label, and the remaining labels must stay aligned to their markers."""
