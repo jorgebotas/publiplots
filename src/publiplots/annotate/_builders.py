@@ -136,6 +136,29 @@ def _match_point_errorbars(
     return results
 
 
+def _iter_point_marker_series(ax: Axes) -> List:
+    """Yield seaborn's original per-hue marker series in draw order.
+
+    ``pp.pointplot`` runs ``apply_double_layer_markers`` after
+    ``sns.pointplot``: it sets each seaborn marker line's ``markersize`` to
+    0 (keeping the connecting line) and appends two visible marker-only
+    copies on top. The originals — exactly one ``Line2D`` per hue level, in
+    seaborn's draw order — are therefore the marker-bearing lines with
+    ``markersize == 0``. Reading them (rather than the copies) gives one
+    series per hue level with no de-duplication guesswork, and reading them
+    (rather than recomputing an aggregate) makes the annotation track
+    whatever ``estimator`` seaborn drew at — see issue #194.
+    """
+    series = []
+    for line in ax.lines:
+        if line.get_marker() in (None, "None", ""):
+            continue
+        if line.get_markersize() != 0:
+            continue  # a double-layer copy, not the seaborn original
+        series.append(line)
+    return series
+
+
 def build_from_pointplot_call(
     ax: Axes,
     data,
@@ -148,7 +171,19 @@ def build_from_pointplot_call(
     *,
     source_frame,
 ) -> PointValueMeta:
-    """Build a `PointValueMeta` paired with the pointplot's marker positions.
+    """Build a `PointValueMeta` paired with the pointplot's drawn markers.
+
+    Point positions AND values are read from the drawn marker artists, not
+    recomputed from the raw data, so both the label text and its anchor
+    track seaborn's ``estimator`` (mean, median, or any callable) and any
+    ``dodge`` offset exactly — see issue #194. Seaborn merges each hue
+    level's points into one ``Line2D``; we recover the per-hue originals
+    via `_iter_point_marker_series` and map each drawn point back to its
+    category by rounding the categorical-axis coordinate to the nearest
+    integer position (robust to dodge offsets and to categories seaborn
+    omits when they carry no rows). A point drawn at a NaN value (seaborn's
+    placeholder for an empty ``(category, hue)`` combination) yields no
+    record.
 
     ``source_frame`` is a required keyword-only: must be the caller's
     pre-copy DataFrame so ``meta.source_frame is df`` holds and
@@ -159,35 +194,53 @@ def build_from_pointplot_call(
     )
     orient = spec.orient
     cat_categories = _categories_in_draw_order(data[categorical_axis])
-    cat_to_pos = {cat: i for i, cat in enumerate(cat_categories)}
-    value_col = y if categorical_axis == x else x
+    hue_order = (
+        _categories_in_draw_order(data[spec.split_hue])
+        if spec.split_hue is not None else [None]
+    )
 
+    marker_series = _iter_point_marker_series(ax)
+
+    # Walk the drawn marker series in hue draw order. `_iter_point_marker_series`
+    # returns one series per hue level in that order; when the counts disagree
+    # (unexpected artist layout) we still pair as far as the shorter list.
     points_xy: List[Tuple[float, float]] = []
     aggregated: List[Dict] = []
-    for cat, h_val, _ht_val in spec.iter_draw_order(data):
-        mask = data[categorical_axis] == cat
-        if spec.split_hue is not None:
-            mask = mask & (data[spec.split_hue] == h_val)
-        vals = data.loc[mask, value_col].to_numpy()
-        if len(vals) == 0:
-            continue
-        pos = cat_to_pos[cat]
-        mean = float(np.mean(vals))
-        points_xy.append((pos, mean) if orient == "v" else (mean, pos))
-        matching_labels = data.index[mask]
-        frame_row_index: Optional[int] = None
-        if source_frame is not None and len(matching_labels):
-            try:
-                frame_row_index = int(
-                    source_frame.index.get_loc(matching_labels[0])
-                )
-            except (KeyError, TypeError):
-                frame_row_index = None
-        aggregated.append({
-            "category": cat,
-            "hue_value": h_val,
-            "frame_row_index": frame_row_index,
-        })
+    for h_val, line in zip(hue_order, marker_series):
+        xdata = np.asarray(line.get_xdata(), dtype=float)
+        ydata = np.asarray(line.get_ydata(), dtype=float)
+        for xpt, ypt in zip(xdata, ydata):
+            # Categorical coordinate identifies the category (dodge shifts it
+            # off the integer center by < 0.5); the other coordinate is the
+            # drawn estimate.
+            cat_coord = xpt if orient == "v" else ypt
+            value = ypt if orient == "v" else xpt
+            if np.isnan(value):
+                continue  # empty (category, hue) combo — seaborn's NaN slot
+            cat_idx = int(round(cat_coord))
+            if not (0 <= cat_idx < len(cat_categories)):
+                continue
+            cat = cat_categories[cat_idx]
+            points_xy.append((float(xpt), float(ypt)))
+
+            # Source-row bookkeeping: first raw row matching this group.
+            mask = data[categorical_axis] == cat
+            if spec.split_hue is not None:
+                mask = mask & (data[spec.split_hue] == h_val)
+            matching_labels = data.index[mask]
+            frame_row_index: Optional[int] = None
+            if source_frame is not None and len(matching_labels):
+                try:
+                    frame_row_index = int(
+                        source_frame.index.get_loc(matching_labels[0])
+                    )
+                except (KeyError, TypeError):
+                    frame_row_index = None
+            aggregated.append({
+                "category": cat,
+                "hue_value": h_val,
+                "frame_row_index": frame_row_index,
+            })
 
     # Tolerance on the categorical axis: 0.5 is conservative (integer positions)
     tol = 0.5
