@@ -34,7 +34,7 @@ from publiplots.annotate._cache import (
 from publiplots.annotate._splits import BarSplitSpec, _categories_in_draw_order
 
 
-def _aggregate_means(
+def _aggregate_group_keys(
     data,
     x: str,
     y: str,
@@ -43,11 +43,14 @@ def _aggregate_means(
     hatch: Optional[str] = None,
     source_frame=None,
 ) -> List[Dict]:
-    """Group by (categorical_axis [, hue [, hatch]]) and return means.
+    """Group by (categorical_axis [, hue [, hatch]]) and return group keys.
 
     Each row carries its draw-order category/hue/hatch keys and the
     frame row index of the first matching source row, so downstream
-    label lookups can align by group without re-deriving the spec.
+    label lookups can align by group without re-deriving the spec. The
+    aggregated *value* (bar height) is deliberately NOT computed here —
+    seaborn draws bars at whatever ``estimator`` was requested, so the
+    labeled value is read from the drawn patch instead (see issue #194).
 
     ``frame_row_index`` is a *position* (integer offset) into
     ``source_frame``, not a pandas label, so ``source_frame.iloc[idx]``
@@ -55,7 +58,6 @@ def _aggregate_means(
     index, sliced, MultiIndex, ...). When ``source_frame`` is omitted
     the field is ``None``.
     """
-    value_col = y if categorical_axis == x else x
     spec = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
     )
@@ -70,7 +72,6 @@ def _aggregate_means(
         mask = parts[0]
         for p in parts[1:]:
             mask = mask & p
-        vals = data.loc[mask, value_col].to_numpy()
         # Position within source_frame of the first row matching this group.
         # We resolve against source_frame (not the prepared `data`) because the
         # meta's `source_frame` is the pre-copy caller frame; `iloc` on the
@@ -86,7 +87,6 @@ def _aggregate_means(
                 # Prepared data diverged from source_frame's index (rare).
                 frame_row_index = None
         row: Dict = {
-            "mean": float(np.mean(vals)) if len(vals) else float("nan"),
             "category": cat,
             "hue_value": h_val,
             "hatch_value": ht_val,
@@ -248,10 +248,14 @@ def build_from_barplot_call(
 ) -> BarValueMeta:
     """Build a `BarValueMeta` paired with the barplot's Rectangles.
 
-    Means come from a groupby of the raw data; errorbar extents are pulled
-    from the drawn errorbar artists via `_match_errorbars`, so they match
-    seaborn exactly for every errorbar spec (`"ci"`, `"pi"`, tuples,
-    callables, `None`). Records are paired with Rectangles in draw order,
+    Bar values are read from the drawn patches (`get_height()` /
+    `get_width()`), so labels match seaborn's `estimator` (mean, median,
+    or any callable) exactly — see issue #194. Group bookkeeping
+    (category / hue / hatch / source-row index) comes from a groupby of
+    the raw data. Errorbar extents are pulled from the drawn errorbar
+    artists via `_match_errorbars`, so they match seaborn exactly for
+    every errorbar spec (`"ci"`, `"pi"`, tuples, callables, `None`).
+    Records are paired with Rectangles in draw order,
     which under hue + hatch double-split is hue-outer / hatch-middle /
     cat-inner. Hue colors come from the resolved palette map.
 
@@ -266,9 +270,16 @@ def build_from_barplot_call(
     """
     orient = "v" if categorical_axis == x else "h"
 
-    agg = _aggregate_means(data, x=x, y=y, hue=hue, hatch=hatch,
-                           categorical_axis=categorical_axis,
-                           source_frame=source_frame)
+    # `_aggregate_group_keys` supplies group bookkeeping (category / hue_value /
+    # hatch_value / frame_row_index) in seaborn's draw order. The bar *value*
+    # is NOT taken from this aggregation — seaborn draws bars at whatever
+    # `estimator` was requested (mean by default, but also median or a custom
+    # callable), so the labeled value must come from the drawn patch itself
+    # (`rect.get_height()` / `get_width()`), matching the reconstruct-from-
+    # patches path in `_cache._introspect`. See issue #194.
+    agg = _aggregate_group_keys(data, x=x, y=y, hue=hue, hatch=hatch,
+                                categorical_axis=categorical_axis,
+                                source_frame=source_frame)
     # `_is_bar_rect` treats signed extents as valid so negative-valued bars
     # (matplotlib emits them as rects with negative height/width) are kept.
     rects = [p for p in ax.patches if _is_bar_rect(p)]
@@ -289,9 +300,10 @@ def build_from_barplot_call(
             # rather than inheriting the bar's translucency.
             r, g, b, _ = rect.get_facecolor()
             hue_color = (r, g, b, 1.0)
+        value = rect.get_height() if orient == "v" else rect.get_width()
         bars.append(BarRecord(
             patch=rect,
-            value=float(row["mean"]),
+            value=float(value),
             err_low=err_low,
             err_high=err_high,
             hue_color=hue_color,
@@ -371,7 +383,7 @@ def build_from_stacked_barplot_call(
 
     orient: Literal["v", "h"] = "v" if categorical_axis == x else "h"
 
-    agg = _aggregate_means(
+    agg = _aggregate_group_keys(
         data, x=x, y=y, hue=hue, hatch=hatch,
         categorical_axis=categorical_axis,
         source_frame=source_frame,
