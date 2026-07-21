@@ -298,3 +298,126 @@ def test_pointplot_annotate_missing_group_no_spurious_label():
         val = float(t.get_text())
         assert any(abs(tx - mx) < 1e-3 and abs(val - my) < 5e-4
                    for mx, my in finite)
+
+
+# ---------------------------------------------------------------------------
+# Draw-order alignment: numeric/bool hue and numeric category axes are drawn
+# in SORTED order by seaborn (not first-occurrence). The builder must mirror
+# that so category / hue_value / hue_color / frame_row_index bind to the
+# right group. Regressions found by the review team.
+# ---------------------------------------------------------------------------
+
+def test_pointplot_annotate_numeric_hue_bookkeeping():
+    """Numeric hue levels appear unsorted in the data but seaborn draws them
+    sorted; the meta must attribute each drawn value to the right hue."""
+    # hue values first appear as 3, 1 — seaborn sorts to [1, 3].
+    df = pd.DataFrame({
+        "g": pd.Categorical(list("aabb")),
+        "h": [3, 1, 3, 1],
+        "v": [10.0, 1.0, 30.0, 3.0],
+    })
+    truth = {("a", 3): 10.0, ("a", 1): 1.0, ("b", 3): 30.0, ("b", 1): 3.0}
+    ax = pp.pointplot(df, x="g", y="v", hue="h", dodge=True, errorbar=None,
+                      annotate={"fmt": ".1f"})
+    meta = ax._publiplots_point_meta
+    assert len(meta.points) == 4
+    for p in meta.points:
+        assert p.value == pytest.approx(truth[(p.category, p.hue_value)], abs=1e-6)
+
+
+def test_pointplot_annotate_numeric_category_axis_bookkeeping():
+    """A numeric categorical axis is drawn in sorted order; category keys
+    must bind to the right position."""
+    df = pd.DataFrame({
+        "g": [3, 1, 3, 1, 2, 2],
+        "v": [30.0, 10.0, 33.0, 11.0, 20.0, 22.0],
+    })
+    ax = pp.pointplot(df, x="g", y="v", estimator="median", errorbar=None,
+                      annotate={"fmt": ".2f"})
+    meta = ax._publiplots_point_meta
+    for p in meta.points:
+        med = float(df[df.g == p.category].v.median())
+        assert p.value == pytest.approx(med, abs=1e-6)
+
+
+def test_pointplot_annotate_numeric_hue_color_matches_marker():
+    """hue_color must follow seaborn's sorted hue order, so the label color
+    matches the drawn marker (not a first-occurrence-swapped palette)."""
+    from matplotlib.colors import to_rgba
+    df = pd.DataFrame({
+        "g": pd.Categorical(list("aabb")),
+        "h": [3, 1, 3, 1],
+        "v": [10.0, 1.0, 30.0, 3.0],
+    })
+    pal = {1: "#1b9e77", 3: "#d95f02"}
+    ax = pp.pointplot(df, x="g", y="v", hue="h", dodge=True, errorbar=None,
+                      palette=pal, annotate={"fmt": ".1f"})
+    for p in ax._publiplots_point_meta.points:
+        assert p.hue_color == pytest.approx(to_rgba(pal[p.hue_value]))
+
+
+def test_pointplot_annotate_large_dodge_no_misbinding():
+    """dodge=1.0 puts markers on the category half-integer boundary; positional
+    pairing (not coordinate rounding) must still bind every point correctly."""
+    df = pd.DataFrame({
+        "g": pd.Categorical(list("aabbcc")),
+        "c": pd.Categorical(list("xyxyxy")),
+        "v": [1.0, 5.0, 2.0, 6.0, 3.0, 7.0],
+    })
+    truth = {("a", "x"): 1.0, ("a", "y"): 5.0, ("b", "x"): 2.0,
+             ("b", "y"): 6.0, ("c", "x"): 3.0, ("c", "y"): 7.0}
+    ax = pp.pointplot(df, x="g", y="v", hue="c", dodge=1.0, errorbar=None,
+                      annotate={"fmt": ".1f"})
+    meta = ax._publiplots_point_meta
+    assert len(meta.points) == 6
+    for p in meta.points:
+        assert p.value == pytest.approx(truth[(p.category, p.hue_value)], abs=1e-6)
+
+
+def test_pointplot_annotate_markersize_zero_no_duplicate_labels():
+    """markersize=0 makes the double-layer copies size-0 too; the builder must
+    still recover one series per group (via the zorder guard), not triplicate."""
+    rows = [{"g": c, "v": float(v)} for c in "abc" for v in (1.0, 2.0, 3.0)]
+    df = pd.DataFrame(rows)
+    df["g"] = pd.Categorical(df["g"])
+    ax = pp.pointplot(df, x="g", y="v", markersize=0, errorbar=None,
+                      annotate={"fmt": ".1f"})
+    assert len(ax._publiplots_point_meta.points) == 3
+    assert len(ax.texts) == 3
+
+
+def test_pointplot_annotate_median_horizontal_hue_dodge():
+    """Horizontal + hue + dodge + median: exercises the value-on-x branch with
+    both fix axes at once. Labels match the drawn marker x."""
+    rng = np.random.default_rng(11)
+    rows = []
+    for cat in ("A", "B", "C"):
+        for cond in ("ctrl", "trt"):
+            base = {"A": 1, "B": 3, "C": 5}[cat] + (0 if cond == "ctrl" else 2)
+            for v in rng.exponential(base, 150):
+                rows.append({"g": cat, "cond": cond, "y": float(v)})
+    df = pd.DataFrame(rows)
+    df["g"] = pd.Categorical(df["g"])
+    df["cond"] = pd.Categorical(df["cond"])
+
+    ax = pp.pointplot(df, x="y", y="g", hue="cond", estimator="median",
+                      errorbar=None, dodge=True, annotate={"fmt": ".3f"})
+    meta = ax._publiplots_point_meta
+    assert len(meta.points) == 6
+    for p in meta.points:
+        med = float(df[(df.g == p.category) & (df.cond == p.hue_value)].y.median())
+        assert p.value == pytest.approx(med, abs=5e-4)
+
+
+def test_pointplot_annotate_two_call_form_median():
+    """pp.annotate(ax, kind='point_values') after a median pointplot (no inline
+    annotate=) must also label the drawn median."""
+    df = _skewed_groups(np.random.default_rng(12))
+    meds = sorted(float(df[df.g == c].y.median()) for c in ("A", "B", "C"))
+    ax = pp.pointplot(df, x="g", y="y", estimator="median", errorbar=None)
+    assert len(ax.texts) == 0  # nothing drawn yet
+    pp.annotate(ax, kind="point_values", fmt=".3f")
+    assert len(ax.texts) == 3
+    assert sorted(float(t.get_text()) for t in ax.texts) == pytest.approx(
+        meds, abs=5e-4
+    )

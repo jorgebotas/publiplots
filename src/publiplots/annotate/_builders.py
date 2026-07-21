@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Dict, List, Literal, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 from matplotlib.patches import Rectangle
@@ -136,18 +137,50 @@ def _match_point_errorbars(
     return results
 
 
+# Double-layer marker copies are pinned at these zorders by
+# ``apply_double_layer_markers``; seaborn's original marker line keeps
+# matplotlib's default (2). We use ``zorder < _DOUBLE_LAYER_ZORDER`` to tell
+# them apart, which stays correct even when the user sets ``markersize=0``
+# (then the copies are also size-0 and the size test alone would over-match).
+_DOUBLE_LAYER_ZORDER = 99
+
+
+def _categorical_order(series, order: Optional[List] = None) -> List:
+    """Level order seaborn uses for a categorical/hue vector.
+
+    Mirrors ``seaborn._base.categorical_order`` without importing a seaborn
+    private: an explicit ``order`` wins; else a pandas Categorical's declared
+    categories; else the unique values, **sorted for numeric/bool dtypes**
+    (seaborn sorts numerics) and in first-occurrence order otherwise. Nulls
+    are dropped. This must match seaborn's draw order because the pointplot
+    builder pairs drawn marker series to these levels by position.
+    """
+    if order is not None:
+        return list(order)
+    if hasattr(series, "cat"):
+        return list(series.cat.categories)
+    values = pd.Series(series)
+    uniques = values.dropna().unique()
+    if pd.api.types.is_numeric_dtype(values):
+        uniques = np.sort(uniques)
+    return list(uniques)
+
+
 def _iter_point_marker_series(ax: Axes) -> List:
     """Yield seaborn's original per-hue marker series in draw order.
 
     ``pp.pointplot`` runs ``apply_double_layer_markers`` after
     ``sns.pointplot``: it sets each seaborn marker line's ``markersize`` to
     0 (keeping the connecting line) and appends two visible marker-only
-    copies on top. The originals — exactly one ``Line2D`` per hue level, in
-    seaborn's draw order — are therefore the marker-bearing lines with
-    ``markersize == 0``. Reading them (rather than the copies) gives one
-    series per hue level with no de-duplication guesswork, and reading them
-    (rather than recomputing an aggregate) makes the annotation track
-    whatever ``estimator`` seaborn drew at — see issue #194.
+    copies on top at zorder 99/100. The originals — exactly one ``Line2D``
+    per hue level, in seaborn's draw order — are therefore the marker-bearing
+    lines with ``markersize == 0`` **and** a zorder below the double-layer
+    copies. (The zorder test matters when the caller passes ``markersize=0``:
+    then the copies are size-0 too, and matching on size alone would return
+    each series three times.) Reading these originals — rather than the
+    copies, and rather than recomputing an aggregate — makes the annotation
+    track whatever ``estimator`` seaborn drew at, with no de-duplication
+    guesswork; see issue #194.
     """
     series = []
     for line in ax.lines:
@@ -155,6 +188,8 @@ def _iter_point_marker_series(ax: Axes) -> List:
             continue
         if line.get_markersize() != 0:
             continue  # a double-layer copy, not the seaborn original
+        if line.get_zorder() >= _DOUBLE_LAYER_ZORDER:
+            continue  # a size-0 double-layer copy (user passed markersize=0)
         series.append(line)
     return series
 
@@ -180,21 +215,9 @@ def build_from_pointplot_call(
     track seaborn's ``estimator`` (mean, median, or any callable) and any
     ``dodge`` offset exactly — see issue #194. Seaborn merges each hue
     level's points into one ``Line2D``; we recover the per-hue originals
-    via `_iter_point_marker_series` and map each drawn point back to its
-    category by rounding the categorical-axis coordinate to the nearest
-    integer position (robust to dodge offsets and to categories seaborn
-    omits when they carry no rows). A point drawn at a NaN value (seaborn's
-    placeholder for an empty ``(category, hue)`` combination) yields no
-    record.
-
-    The rounding assumes each marker sits within 0.5 of its category
-    center, which holds for every sane ``dodge`` (seaborn keeps the total
-    dodge spread ≲ 0.8). A degenerate ``dodge=1.0`` pushes markers onto the
-    half-integer boundary where the category *bookkeeping* may bind to the
-    wrong neighbor — the label text and pixel position stay correct (both
-    come straight from the marker), only ``record.category`` /
-    ``frame_row_index`` can misattribute, and only for a plot whose markers
-    already overlap adjacent categories.
+    via `_iter_point_marker_series` and pair them to groups by position
+    (see below). A point drawn at a NaN value (seaborn's placeholder for an
+    empty ``(category, hue)`` combination) yields no record.
 
     ``source_frame`` is a required keyword-only: must be the caller's
     pre-copy DataFrame so ``meta.source_frame is df`` holds and
@@ -202,37 +225,31 @@ def build_from_pointplot_call(
 
     ``order`` / ``hue_order`` must be the same orders ``pp.pointplot`` handed
     to seaborn (the caller's explicit ``order=`` / ``hue_order=`` if any, else
-    data order). Seaborn positions categories at integer offsets in ``order``
-    and draws hue series in ``hue_order``; the builder mirrors both so a
-    drawn point's rounded categorical coordinate and its series index map to
-    the right ``(category, hue_value)`` keys. When omitted each falls back to
-    the data's categorical order.
+    data order). Seaborn draws one marker series per hue level in ``hue_order``
+    and, within each series, one point per category in ``order`` (NaN-padded
+    for empty combos). The builder pairs by **position**: series index → hue
+    level, point index → category. This is exact regardless of ``dodge``
+    (seaborn keeps the full per-category grid in every series) and needs no
+    coordinate rounding. Ordering is resolved with `_categorical_order`, which
+    matches seaborn — including sorting numeric/bool levels — so a numeric
+    ``hue`` or categorical axis is not misattributed.
     """
     spec = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
     )
     orient = spec.orient
-    cat_categories = (
-        list(order) if order is not None
-        else _categories_in_draw_order(data[categorical_axis])
-    )
+    cat_categories = _categorical_order(data[categorical_axis], order)
     if spec.split_hue is not None:
-        hue_levels = (
-            list(hue_order) if hue_order is not None
-            else _categories_in_draw_order(data[spec.split_hue])
-        )
+        hue_levels = _categorical_order(data[spec.split_hue], hue_order)
     else:
         hue_levels = [None]
 
     marker_series = _iter_point_marker_series(ax)
 
-    # Walk every drawn marker series in draw order. When hue genuinely splits,
-    # seaborn draws one series per hue level in `hue_levels` order, so the
-    # series index selects the hue key. When it doesn't split (no hue, or
-    # ``hue == categorical_axis`` where seaborn still emits one NaN-padded
-    # series per category), there is no hue dodge: every series' points carry
-    # ``h_val = None`` and the category comes entirely from each point's
-    # rounded coordinate.
+    # Pair each drawn marker series to a hue level by position, and each point
+    # within a series to a category by position. When hue does not split (no
+    # hue, or ``hue == categorical_axis`` where seaborn still emits one
+    # NaN-padded series per category), every point carries ``h_val = None``.
     points_xy: List[Tuple[float, float]] = []
     aggregated: List[Dict] = []
     for series_idx, line in enumerate(marker_series):
@@ -242,17 +259,12 @@ def build_from_pointplot_call(
             h_val = None
         xdata = np.asarray(line.get_xdata(), dtype=float)
         ydata = np.asarray(line.get_ydata(), dtype=float)
-        for xpt, ypt in zip(xdata, ydata):
-            # Categorical coordinate identifies the category (dodge shifts it
-            # off the integer center by < 0.5); the other coordinate is the
-            # drawn estimate.
-            cat_coord = xpt if orient == "v" else ypt
+        for cat_idx, (xpt, ypt) in enumerate(zip(xdata, ydata)):
             value = ypt if orient == "v" else xpt
             if np.isnan(value):
                 continue  # empty (category, hue) combo — seaborn's NaN slot
-            cat_idx = int(round(cat_coord))
-            if not (0 <= cat_idx < len(cat_categories)):
-                continue
+            if cat_idx >= len(cat_categories):
+                continue  # more drawn points than known categories (defensive)
             cat = cat_categories[cat_idx]
             points_xy.append((float(xpt), float(ypt)))
 
