@@ -443,3 +443,20 @@ def test_barplot_annotate_default_mean_estimator_still_correct():
     label = [t.get_text() for t in ax.texts if t.get_text().strip()][0]
     assert drawn == pytest.approx(float(df.y.mean()), abs=1e-6)
     assert float(label) == pytest.approx(drawn, abs=5e-4)
+
+
+def test_barplot_annotate_median_estimator_horizontal_labels_the_median():
+    """Horizontal bars exercise the get_width() branch: the median label
+    must match the drawn bar width, not the mean. Regression for #194."""
+    df = _skewed_df()
+    med, mean = float(df.y.median()), float(df.y.mean())
+    assert abs(med - mean) > 0.1, "fixture must have median != mean"
+
+    # Categorical on y => horizontal bars, value on the width axis.
+    ax = pp.barplot(df, x="y", y="g", estimator="median", errorbar=None,
+                    annotate={"fmt": ".3f"})
+    drawn = [p.get_width() for p in ax.patches if p.get_width() > 0][0]
+    label = [t.get_text() for t in ax.texts if t.get_text().strip()][0]
+
+    assert drawn == pytest.approx(med, abs=1e-6)
+    assert float(label) == pytest.approx(drawn, abs=5e-4)
