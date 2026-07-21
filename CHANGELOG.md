@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `pp.pointplot(..., annotate=...)` now labels each point at the value it is
+  actually drawn at for any `estimator`, and places the label on the drawn
+  marker under `dodge=`. Previously both the label text and its anchor were
+  recomputed from the group **mean** at the integer category position, so a
+  non-mean `estimator` (median or a custom callable) mislabeled every point,
+  and dodged markers had their labels float off-center. Positions and values
+  now come from the drawn marker artists, mirroring the `pp.barplot` fix in
+  0.15.2 (#194).
+
 ## [0.15.2] - 2026-07-21
 
 ### Fixed

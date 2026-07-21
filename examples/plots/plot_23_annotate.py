@@ -157,6 +157,58 @@ for ax, anchor in zip(axes, ("top", "bottom", "left", "right", "center")):
 pp.show()
 
 # %%
+# Non-mean estimators: labels follow the drawn marker
+# ---------------------------------------------------
+# ``pp.barplot`` / ``pp.pointplot`` honor seaborn's ``estimator=`` (mean by
+# default, but also ``"median"`` or any callable). The annotation reads the
+# value straight off the *drawn* artist, so the label always matches the bar
+# height / marker the eye sees — even for a right-skewed group where the
+# median and mean differ noticeably.
+skew_rows = []
+for grp, scale in zip(("A", "B", "C"), (1.0, 2.0, 3.0)):
+    for v in rng.exponential(scale, 300):
+        skew_rows.append({"group": grp, "y": float(v)})
+skew_df = pd.DataFrame(skew_rows)
+skew_df["group"] = skew_df["group"].astype("category")
+
+fig, axes = pp.subplots(1, 2, axes_size=(55, 45))
+pp.barplot(
+    data=skew_df, x="group", y="y", ax=axes[0],
+    estimator="mean", errorbar=None, annotate={"fmt": ".2f"},
+    title="estimator='mean'",
+)
+pp.barplot(
+    data=skew_df, x="group", y="y", ax=axes[1],
+    estimator="median", errorbar=None, annotate={"fmt": ".2f"},
+    title="estimator='median' (labels the median)",
+)
+pp.show()
+
+# %%
+# Same for pointplot, including ``dodge``
+# ---------------------------------------
+# Under ``dodge=True`` the label sits on the dodged marker (not the integer
+# category center), and it reports the drawn estimate — here the per-group
+# median of a skewed distribution.
+dodge_rows = []
+for grp in ("A", "B", "C"):
+    for cond in ("ctrl", "trt"):
+        scale = {"A": 1.0, "B": 2.0, "C": 3.0}[grp] + (0 if cond == "ctrl" else 1.5)
+        for v in rng.exponential(scale, 200):
+            dodge_rows.append({"group": grp, "cond": cond, "y": float(v)})
+dodge_df = pd.DataFrame(dodge_rows)
+dodge_df["group"] = dodge_df["group"].astype("category")
+dodge_df["cond"] = dodge_df["cond"].astype("category")
+
+ax = pp.pointplot(
+    data=dodge_df, x="group", y="y", hue="cond",
+    estimator="median", errorbar=("ci", 95), dodge=True,
+    annotate={"fmt": ".2f"},
+    title="pointplot estimator='median' + dodge=True",
+)
+pp.show()
+
+# %%
 # Boxplot: stats labels
 # ---------------------
 # pp.boxplot(..., annotate=True) labels the median by default. Pass a
