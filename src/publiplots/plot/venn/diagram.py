@@ -132,7 +132,8 @@ def _venn(
         x, y = set_label_positions[i]
         ha, va = set_label_alignments[i]
         color = colors[i] if color_labels else None
-        draw_text(ax, x, y, label, fontsize=plt.rcParams['font.size'] * 1.2, color=color, ha=ha, va=va)
+        # Flat 7pt type: set labels are the same size as everything else.
+        draw_text(ax, x, y, label, fontsize=plt.rcParams['font.size'], color=color, ha=ha, va=va)
 
     return ax
 
