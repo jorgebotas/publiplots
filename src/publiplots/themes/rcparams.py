@@ -20,9 +20,13 @@ publiplots-specific keys (not in matplotlib) include:
 
 - ``edgecolor`` — global edge color for patches and marker outlines
   (``None`` = each plot's default).
-- ``edgewidth`` — global width for every stroke that outlines a shape
-  (patch borders, whiskers, marker edges); ``0.75``. Strokes that *are*
-  the data read matplotlib's ``lines.linewidth`` instead.
+- ``edgewidth`` — global width for the strokes publiplots draws to
+  *outline* a shape (patch borders, whiskers, marker edges, violin and
+  filled-density outlines); ``0.75``. Strokes that *are* the data read
+  matplotlib's ``lines.linewidth`` instead. One exception: the
+  confidence-band edges of ``lineplot`` / ``regplot`` / ``residplot``
+  are drawn by seaborn as fill-between collections and follow
+  ``patch.linewidth``, which is pinned to the same ``0.75``.
 - ``alpha`` — default fill transparency for bars (``0.1``).
 - ``palette`` — default qualitative palette name (``"pastel"``).
 - ``hatch_mode`` — global hatch density (``1`` – ``4``). Prefer

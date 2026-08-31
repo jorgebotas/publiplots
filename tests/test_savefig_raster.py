@@ -157,10 +157,18 @@ def test_saved_pixel_dimensions_match_the_settled_figure_size(df, tmp_path):
     pp.savefig(str(path))
 
     width_in, height_in = settled
-    expected = (round(height_in * dpi), round(width_in * dpi))  # imread: (h, w)
-    assert plt.imread(str(path)).shape[:2] == expected, (
-        "saved raster dimensions disagree with the settled figure size -- "
-        "the layout resized the figure mid-render"
+    exact = (height_in * dpi, width_in * dpi)  # imread: (h, w)
+    actual = plt.imread(str(path)).shape[:2]
+    # Agg allocates ``_RendererAgg(int(width), int(height), dpi)`` -- it
+    # truncates, it does not round -- so the exact product is never an
+    # integer and a strict equality against ``round()`` is a coin flip on
+    # the fractional part. Verified here: the per-axes builder in this
+    # file settles at height x 600 = 1026.5604, writes 1026, and
+    # ``round()`` says 1027. A +/-1 tolerance loses no discriminating
+    # power: the bug this guards against was off by 6 px (1129 vs 1135).
+    assert all(abs(a - e) <= 1 for a, e in zip(actual, exact)), (
+        f"saved raster dimensions {actual} disagree with the settled figure "
+        f"size {exact} -- the layout resized the figure mid-render"
     )
 
     # The figure itself must also still be the size settle() converged on.

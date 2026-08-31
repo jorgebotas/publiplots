@@ -173,7 +173,18 @@ def kdeplot(
         ``matplotlib.rcParams["image.cmap"]`` — same convention as
         :func:`pp.hexbinplot`. Only applies in 2D mode without ``hue``.
     linewidth : float, optional
-        Stroke width for curves / contour lines. Falls back to rcParams.
+        Stroke width for whichever stroke this call actually draws: the
+        1D density curve, the outline of the 1D filled density, or the
+        2D contour lines. When None (the default) the two kinds of
+        stroke resolve from different rcParams: the density curve and
+        the contour lines are *data*, so they take
+        ``lines.linewidth`` (1.0), while the filled density's outline
+        is an *outline of a shape*, so it takes
+        ``pp.rcParams["edgewidth"]`` (0.75) — matching
+        :func:`pp.histplot` and :func:`pp.violinplot`. A curve and a
+        fill outline are never drawn together in 1D (seaborn emits
+        ``Line2D`` for ``fill=False`` and a filled collection
+        otherwise), so an explicit ``linewidth`` is unambiguous.
     edgecolor : str, optional
         Override for curve / contour edge color. Falls back to rcParams.
     ax : Axes, optional
@@ -217,6 +228,18 @@ def kdeplot(
     from publiplots.layout.subplots import reject_figsize, subplots as _pp_subplots
     reject_figsize(kwargs)
 
+    # Two kinds of stroke, two knobs. The 1D density curve and the 2D
+    # contour lines are data, so they default from lines.linewidth. The
+    # outline of a *filled* density is an outline of a shape, so it
+    # defaults from edgewidth -- the same classification histplot
+    # (element="step", fill=True) and violinplot already use for their
+    # KDE-shaped outlines. An explicit `linewidth` still reaches
+    # whichever of the two this call actually draws; in 1D they are
+    # mutually exclusive (seaborn emits a Line2D for fill=False and a
+    # filled collection otherwise), so there is no ambiguity.
+    fill_linewidth = (
+        linewidth if linewidth is not None else resolve_param("edgewidth")
+    )
     linewidth = resolve_param("lines.linewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
@@ -336,12 +359,17 @@ def kdeplot(
             color=color,
             edgecolor=edgecolor,
             linewidth=linewidth,
+            fill_linewidth=fill_linewidth,
             alpha=alpha,
         )
     else:
         # 2D contour sets need linewidth applied post-hoc (seaborn's
         # contour path rejects the kwarg upstream). Face/edge colors are
         # driven by the QuadContourSet's cmap so we leave those alone.
+        # Contour lines are isolines of the density -- data, not the
+        # outline of a shape -- so they stay on lines.linewidth. (In the
+        # filled 2D case matplotlib leaves the band edgecolor empty, so
+        # no stroke is drawn from this width at all.)
         for collection in tracker.get_new_collections():
             try:
                 collection.set_linewidth(linewidth)
@@ -377,6 +405,7 @@ def kdeplot(
         new_collections=tracker.get_new_collections(),
         alpha=alpha,
         linewidth=linewidth,
+        fill_linewidth=fill_linewidth,
         edgecolor=edgecolor,
         color=color,
         legend=legend,
@@ -436,6 +465,7 @@ def _paint_1d(
     color: Optional[str],
     edgecolor: Optional[str],
     linewidth: float,
+    fill_linewidth: float,
     alpha: float,
 ) -> None:
     """Apply publiplots' transparent-fill / opaque-edge split to 1D KDE.
@@ -445,6 +475,11 @@ def _paint_1d(
     ``FillBetweenPolyCollection`` / ``PolyCollection`` objects. Both are
     recolored from the resolved palette (when hue is present) and the
     publiplots alpha-on-face / 1.0-on-edge split is applied.
+
+    The two stroke widths are separate: a ``Line2D`` curve is data
+    (``linewidth``, from ``lines.linewidth``) while a filled region's
+    opaque edge outlines a shape (``fill_linewidth``, from
+    ``edgewidth``).
     """
     # Line2D outlines — always opaque, full palette color.
     for line in new_lines:
@@ -461,6 +496,10 @@ def _paint_1d(
     for collection in new_collections:
         if not isinstance(collection, PolyCollection):
             continue
+        # Width first: it is independent of whether we can resolve a
+        # face colour, and seaborn drew the polygon with the curve's
+        # width, which is not what an outline should use.
+        collection.set_linewidth(fill_linewidth)
         if palette:
             level = _match_collection_to_level(collection, palette)
             face_color = palette.get(level, color) if level is not None else color
@@ -471,7 +510,6 @@ def _paint_1d(
         edge = edgecolor if edgecolor is not None else face_color
         collection.set_facecolor(to_rgba(face_color, alpha=alpha))
         collection.set_edgecolor(to_rgba(edge, alpha=1.0))
-        collection.set_linewidth(linewidth)
 
 
 def _find_quadcontour(new_collections: List):
@@ -515,6 +553,7 @@ def _legend(
     new_collections: List,
     alpha: float,
     linewidth: float,
+    fill_linewidth: float,
     edgecolor: Optional[str],
     color: Optional[str],
     legend: Union[bool, Dict] = True,
@@ -596,12 +635,14 @@ def _legend(
                 linewidth=linewidth,
             )
         elif effective_fill:
+            # A rectangle swatch stands in for the drawn filled region,
+            # so its stroke is the fill outline's width, not the curve's.
             handles = create_legend_handles(
                 labels=labels,
                 colors=colors,
                 edgecolors=edgecolors,
                 alpha=alpha,
-                linewidth=linewidth,
+                linewidth=fill_linewidth,
                 style="rectangle",
             )
         else:

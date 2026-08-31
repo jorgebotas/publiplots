@@ -202,10 +202,17 @@ Configure global plotting parameters using ``pp.rcParams``:
    # Per-call ``edgecolor=`` arguments override the rcParam.
    pp.rcParams['edgecolor'] = 'black'
 
-   # Set the global width (points) for every stroke that outlines a shape:
-   # patch borders, box whiskers, violin outlines, marker edges. Pairs with
-   # ``edgecolor``. Strokes that *are* the data (lineplot series, kde curves,
-   # regression fits) read matplotlib's ``lines.linewidth`` instead.
+   # Set the global width (points) for the strokes publiplots draws to
+   # *outline* a shape: patch borders, box whiskers, violin and
+   # filled-density outlines, marker edges. Pairs with ``edgecolor``.
+   # Strokes that *are* the data (lineplot series, kde curves, contour
+   # isolines, regression fits) read matplotlib's ``lines.linewidth``
+   # instead.
+   #
+   # One exception: the confidence-band edges of lineplot, regplot and
+   # residplot are drawn by seaborn as fill-between collections, so they
+   # follow matplotlib's ``patch.linewidth`` (which publiplots pins to the
+   # same 0.75). Raise ``patch.linewidth`` too if you need them to follow.
    pp.rcParams['edgewidth'] = 0.75
 
    # Set figure size

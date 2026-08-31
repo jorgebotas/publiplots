@@ -47,7 +47,9 @@ def test_outline_strokes_are_075(key):
 
 
 def test_edgewidth_is_075():
-    """The publiplots global for every stroke that outlines a shape."""
+    """The publiplots global for the strokes publiplots draws to outline
+    a shape. (Seaborn-drawn confidence-band edges are the documented
+    exception: they follow patch.linewidth, pinned to the same 0.75.)"""
     assert pp.rcParams["edgewidth"] == 0.75
 
 
