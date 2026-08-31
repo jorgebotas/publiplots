@@ -500,7 +500,7 @@ def _draw_dot_heatmap(
     if square:
         ax.set_aspect("equal")
 
-    # Minor ticks at cell boundaries (positions -0.5, 0.5, 1.5, ...) give
+    # Minor ticks at the INTERIOR cell boundaries (0.5, 1.5, ... n-1.5) give
     # a grid between rows/columns without clashing with the major tick
     # labels at integer positions. Style spines to match — the border and
     # the inner grid should read as one continuous outline of the cell
@@ -509,11 +509,19 @@ def _draw_dot_heatmap(
     # ax.grid() inherits grid.alpha from rcParams on its own. A spine does
     # not, so the alpha is pre-composited into the spine colour to keep the
     # border and the grid the same tone.
+    #
+    # The outer boundaries (-0.5 and n-0.5) are deliberately excluded: the
+    # axis limits sit exactly there, so a gridline drawn at those positions
+    # lands on top of the spine and the two alphas compound into a border
+    # ~1.4x the weight of the inner lattice. The spines alone draw the
+    # border, at the same colour and width, so the outline stays one tone.
+    # (No gap results — the perpendicular gridlines span the full axes and
+    # so still meet the border.)
     grid_color = resolve_param("grid.color")
     grid_alpha = resolve_param("grid.alpha")
     grid_linewidth = resolve_param("grid.linewidth")
-    ax.set_xticks(np.arange(n_cols + 1) - 0.5, minor=True)
-    ax.set_yticks(np.arange(n_rows + 1) - 0.5, minor=True)
+    ax.set_xticks(np.arange(1, n_cols) - 0.5, minor=True)
+    ax.set_yticks(np.arange(1, n_rows) - 0.5, minor=True)
     ax.grid(
         which="minor",
         color=grid_color,

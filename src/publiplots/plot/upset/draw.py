@@ -75,7 +75,7 @@ def draw_intersection_bars(
     ax.grid(
         axis="y",
         color=resolve_param("grid.color"),
-        linestyle="--",
+        linestyle=resolve_param("grid.linestyle"),
         linewidth=resolve_param("grid.linewidth"),
     )
     ax.set_axisbelow(True)
@@ -151,7 +151,7 @@ def draw_set_size_bars(
     ax.grid(
         axis="x",
         color=resolve_param("grid.color"),
-        linestyle="--",
+        linestyle=resolve_param("grid.linestyle"),
         linewidth=resolve_param("grid.linewidth"),
     )
     ax.set_axisbelow(True)
