@@ -61,6 +61,25 @@ def test_add_grid_is_never_opaque():
 
 # ---- dot heatmap: separators AND spines ------------------------------------
 
+def _dot_heatmap(n_rows, n_cols, **kwargs):
+    """Build a dot heatmap of a given shape.
+
+    The chrome under test lives in _draw_dot_heatmap, reached only when
+    ``size=`` is passed; a plain pp.heatmap() does not go there.
+    """
+    rows = [
+        (f"r{r}", f"c{c}", float(r * n_cols + c), 5.0)
+        for r in range(n_rows)
+        for c in range(n_cols)
+    ]
+    long_df = pd.DataFrame(rows, columns=["row", "col", "value", "size"])
+    ax = pp.heatmap(
+        data=long_df, x="col", y="row", value="value", size="size", **kwargs
+    )
+    ax.get_figure().canvas.draw()
+    return ax
+
+
 @pytest.fixture
 def dot_heatmap_ax():
     """The hardcoded separators live in _draw_dot_heatmap, which is only
@@ -120,6 +139,64 @@ def test_dot_heatmap_border_is_one_tone_with_the_inner_grid(dot_heatmap_ax):
     ]
     assert not (edges & {round(t, 6) for t in ticks}), (
         "a minor gridline sits on the axes limit, doubling the border ink"
+    )
+
+
+@pytest.mark.parametrize("n_rows,n_cols", [(1, 1), (1, 4), (4, 1), (2, 2), (3, 5)])
+def test_dot_heatmap_grid_is_adjacent_and_complete(n_rows, n_cols):
+    """Tone alone is not enough -- pin ADJACENCY and COMPLETENESS too.
+
+    Tone equality says the border and the lattice are the same colour; it
+    says nothing about whether they touch, or whether every separator is
+    present. Two failures slip past a tone-only check:
+
+    - a margin change pulling the limits off the outer cell boundaries would
+      open a white gutter between the outer cells and the border;
+    - a wrong tick range (say ``np.arange(2, n) - 0.5``) would drop a
+      separator while every surviving one still matched in tone.
+    """
+    ax = _dot_heatmap(n_rows, n_cols)
+
+    # ADJACENCY: the limits sit exactly on the outer cell boundaries, so the
+    # spines ARE the outer cell edges -- no gutter, no overlap.
+    assert ax.get_xlim() == pytest.approx((-0.5, n_cols - 0.5))
+    assert ax.get_ylim() == pytest.approx((n_rows - 0.5, -0.5)), (
+        "y must stay inverted with the first row at the top"
+    )
+
+    # COMPLETENESS: exactly one separator per interior boundary.
+    assert len(ax.xaxis.get_minorticklocs()) == n_cols - 1
+    assert len(ax.yaxis.get_minorticklocs()) == n_rows - 1
+    assert list(ax.xaxis.get_minorticklocs()) == pytest.approx(
+        list(np.arange(1, n_cols) - 0.5)
+    )
+    assert list(ax.yaxis.get_minorticklocs()) == pytest.approx(
+        list(np.arange(1, n_rows) - 0.5)
+    )
+
+    # The border is always drawn, even when there are no interior separators.
+    for spine in ax.spines.values():
+        assert spine.get_visible()
+        assert to_rgba(spine.get_edgecolor())[3] == pytest.approx(
+            plt.rcParams["grid.alpha"]
+        )
+
+
+@pytest.mark.parametrize("n_rows,n_cols", [(1, 4), (4, 1), (1, 1), (3, 3), (3, 5)])
+def test_dot_heatmap_square_gives_square_cells(n_rows, n_cols):
+    """square=True must produce square RENDERED cells at any shape.
+
+    A degenerate axis (single row or column) has zero data extent, so a
+    margin expressed as a fraction of that extent collapses and matplotlib
+    falls back to +/-0.1 -- which silently made 1xN cells 5x wider than tall
+    under set_aspect("equal"). The limits are set explicitly to prevent that.
+    """
+    ax = _dot_heatmap(n_rows, n_cols, square=True)
+    box = ax.get_window_extent()
+    cell_aspect = (box.width / n_cols) / (box.height / n_rows)
+    assert cell_aspect == pytest.approx(1.0, abs=0.01), (
+        f"{n_rows}x{n_cols} square=True gives cell aspect {cell_aspect:.4f}; "
+        f"box {box.width:.1f}x{box.height:.1f}"
     )
 
 
