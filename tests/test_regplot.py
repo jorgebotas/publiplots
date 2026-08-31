@@ -231,11 +231,15 @@ def test_continuous_hue_warns_and_falls_back(numeric_hue_df):
 def test_rcparams_defaults_flow_through(simple_df):
     """linewidth, alpha, edgecolor must resolve from rcParams when the
     caller leaves them as None.
+
+    The value asserted here is the scatter *marker edge* width, which is
+    an outline, so it resolves from ``edgewidth`` -- not from
+    ``lines.linewidth``, which drives the regression line.
     """
-    saved_lw = pp.rcParams["lines.linewidth"]
+    saved_lw = pp.rcParams["edgewidth"]
     saved_alpha = pp.rcParams["alpha"]
     try:
-        pp.rcParams["lines.linewidth"] = 1.25
+        pp.rcParams["edgewidth"] = 1.25
         pp.rcParams["alpha"] = 0.4
         ax = regplot(data=simple_df, x="x", y="y")
         pcs = [c for c in ax.collections if isinstance(c, PathCollection)]
@@ -248,7 +252,7 @@ def test_rcparams_defaults_flow_through(simple_df):
         assert fa.size > 0
         assert np.allclose(fa[..., -1], 0.4)
     finally:
-        pp.rcParams["lines.linewidth"] = saved_lw
+        pp.rcParams["edgewidth"] = saved_lw
         pp.rcParams["alpha"] = saved_alpha
 
 

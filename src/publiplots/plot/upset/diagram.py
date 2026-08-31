@@ -105,7 +105,9 @@ def upsetplot(
         Width of edges around bars.
 
     matrix_linewidth : float, optional
-        Width of lines connecting dots in the matrix.
+        Overrides both membership-matrix strokes at once. When None, the
+        dot outlines fall back to ``pp.rcParams["edgewidth"]`` and the
+        connector between them to ``pp.rcParams["lines.linewidth"]``.
 
     alpha : float, optional
         Transparency level for bars (0=transparent, 1=opaque).
@@ -218,8 +220,14 @@ def upsetplot(
     """
     # Read defaults from rcParams if not provided
     color = resolve_param("color", color)
-    bar_linewidth = resolve_param("lines.linewidth", bar_linewidth)
-    matrix_linewidth = resolve_param("lines.linewidth") * 1.2 if matrix_linewidth is None else matrix_linewidth
+    # Bar edges are outlines.
+    bar_linewidth = resolve_param("edgewidth", bar_linewidth)
+    # `matrix_linewidth` is deliberately left unresolved here. The
+    # membership matrix draws two different strokes -- dot outlines
+    # (edgewidth) and the connector between them (lines.linewidth) --
+    # and draw_matrix splits them. Resolving to a single value here would
+    # collapse both back onto one knob. An explicit caller value still
+    # overrides both, as before.
     alpha = resolve_param("alpha", alpha)
 
     # Handle elementsize and dotsize relationship using proper circle geometry

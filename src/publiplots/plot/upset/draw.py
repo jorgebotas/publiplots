@@ -175,7 +175,9 @@ def draw_matrix(
     dotsize : float
         Size of dots in the matrix
     linewidth : float
-        Width of connecting lines
+        Overrides both matrix strokes at once. When None, the dot
+        outlines fall back to ``pp.rcParams["edgewidth"]`` and the
+        connector between them to ``pp.rcParams["lines.linewidth"]``.
     active_color : str, optional
         Color for active set membership. If None, use DEFAULT_COLOR.
     inactive_color : str, optional
@@ -183,8 +185,10 @@ def draw_matrix(
     """
     import numpy as np
 
-    # Read defaults from rcParams if not provided
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    # Read defaults from rcParams if not provided.
+    # Dot outlines are edges; the vertical connector between them is data.
+    dot_edgewidth = resolve_param("edgewidth", linewidth)
+    connector_linewidth = resolve_param("lines.linewidth", linewidth)
     active_color = resolve_param("color", active_color)
     alpha = resolve_param("alpha", alpha)
 
@@ -228,7 +232,7 @@ def draw_matrix(
             x_coords,
             y_coords,
             color=active_color,
-            linewidth=linewidth,
+            linewidth=connector_linewidth,
             solid_capstyle="round",
             zorder=1,
         )
@@ -242,7 +246,7 @@ def draw_matrix(
                 color=to_rgba(active_color, alpha=alpha),
                 marker="o",
                 edgecolors=active_color,
-                linewidths=linewidth,
+                linewidths=dot_edgewidth,
                 zorder=4,
             )
 
