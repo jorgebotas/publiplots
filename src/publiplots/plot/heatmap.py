@@ -9,7 +9,7 @@ dot/bubble heatmaps, and publication-ready styling.
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, to_rgba
 from matplotlib.cm import ScalarMappable
 import numpy as np
 import pandas as pd
@@ -505,15 +505,25 @@ def _draw_dot_heatmap(
     # labels at integer positions. Style spines to match — the border and
     # the inner grid should read as one continuous outline of the cell
     # matrix, not two tones.
-    grid_color = "#b0b0b0"
-    grid_linewidth = 0.5
+    #
+    # ax.grid() inherits grid.alpha from rcParams on its own. A spine does
+    # not, so the alpha is pre-composited into the spine colour to keep the
+    # border and the grid the same tone.
+    grid_color = resolve_param("grid.color")
+    grid_alpha = resolve_param("grid.alpha")
+    grid_linewidth = resolve_param("grid.linewidth")
     ax.set_xticks(np.arange(n_cols + 1) - 0.5, minor=True)
     ax.set_yticks(np.arange(n_rows + 1) - 0.5, minor=True)
-    ax.grid(which="minor", color=grid_color, linestyle="-", linewidth=grid_linewidth)
+    ax.grid(
+        which="minor",
+        color=grid_color,
+        linestyle="-",
+        linewidth=grid_linewidth,
+    )
     ax.tick_params(which="minor", bottom=False, left=False)
 
     for spine in ax.spines.values():
-        spine.set_edgecolor(grid_color)
+        spine.set_edgecolor(to_rgba(grid_color, grid_alpha))
         spine.set_linewidth(grid_linewidth)
 
     return ax

@@ -18,7 +18,6 @@ from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 from matplotlib.ticker import MaxNLocator
 
-GRID_LINEWIDTH = 1
 BARWIDTH = 0.5
 
 
@@ -73,7 +72,12 @@ def draw_intersection_bars(
     ax.spines["bottom"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)
-    ax.grid(axis="y", alpha=0.3, linestyle="--", linewidth=GRID_LINEWIDTH)
+    ax.grid(
+        axis="y",
+        color=resolve_param("grid.color"),
+        linestyle="--",
+        linewidth=resolve_param("grid.linewidth"),
+    )
     ax.set_axisbelow(True)
     ax.yaxis.set_major_locator(MaxNLocator(integer=True, nbins="auto"))
 
@@ -144,7 +148,12 @@ def draw_set_size_bars(
     ax.spines["left"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)
-    ax.grid(axis="x", alpha=0.3, linestyle="--", linewidth=GRID_LINEWIDTH)
+    ax.grid(
+        axis="x",
+        color=resolve_param("grid.color"),
+        linestyle="--",
+        linewidth=resolve_param("grid.linewidth"),
+    )
     ax.set_axisbelow(True)
     ax.invert_xaxis()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True, nbins="auto"))
@@ -260,12 +269,15 @@ def draw_matrix(
     ax.spines["top"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
 
-    # Add horizontal grid lines between sets
+    # Add horizontal grid lines between sets.
+    # axhline is not a gridline, so it inherits nothing from grid.alpha --
+    # pass it explicitly or these render as solid black rules.
     for i in range(n_sets - 1):
         ax.axhline(
             i + 0.5,
-            color="#e0e0e0",
-            linewidth=GRID_LINEWIDTH,
+            color=resolve_param("grid.color"),
+            alpha=resolve_param("grid.alpha"),
+            linewidth=resolve_param("grid.linewidth"),
             linestyle="-",
             zorder=0
         )
