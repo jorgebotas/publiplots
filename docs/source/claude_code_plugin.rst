@@ -54,8 +54,10 @@ public API surface:
 * **Millimeter-based layout.** Axes are sized in mm via
   ``axes_size=(w_mm, h_mm)``; the figure grows to fit decorations. ``figsize``
   is rejected with a ``TypeError``.
-* **rcParams auto-apply on import.** Arial, 8pt labels, 0.75pt strokes,
-  ``fonttype=42``, ``savefig.dpi=600``, transparent background.
+* **rcParams auto-apply on import.** Arial, flat 7pt type, 0.75pt outlines
+  (``pp.rcParams['edgewidth']``), 1.0pt data lines
+  (``lines.linewidth``), black spines and gridlines, ``fonttype=42``,
+  ``savefig.dpi=600``, transparent background.
 * **Palette system.** ``palette='pastel'`` for named palettes, or a dict to
   pin hue levels to colors when panels see different subsets.
 * **Legend stashing.** Plot calls stash entries; ``pp.legend(...)`` collects

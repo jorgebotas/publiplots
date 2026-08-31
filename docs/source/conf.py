@@ -112,7 +112,7 @@ import publiplots  # This will register the custom fonts
 def _reset_publiplots(gallery_conf, fname):
     """Re-apply publiplots' rcParams after sphinx-gallery's default
     `plt.rcdefaults()` between examples, so every gallery figure
-    renders with Arial, 0.75pt strokes, subplots.axes_size, etc.
+    renders with Arial, flat 7pt type, subplots.axes_size, etc.
     Without this, publiplots' styling is only active for the first
     example and then silently reverts to matplotlib's defaults."""
     from publiplots.themes.rcparams import init_rcparams
