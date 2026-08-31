@@ -45,6 +45,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`pp.savefig()` no longer writes a blank raster file.** Any figure with a
+  bottom or top legend band could be saved as a fully transparent PNG, with no
+  error and no warning. `matplotlib`'s `print_figure` raises `figure.dpi` to the
+  save dpi before rendering, and text metrics are not dpi-invariant, so the
+  layout reactor re-measured a sub-millimetre difference *inside* the output
+  render and resized the figure — invalidating the Agg renderer that had just
+  been drawn into, so the bytes written out had never been drawn to. The layout
+  is now settled and then frozen for the duration of the render, hooked at
+  `canvas.print_figure` so every raster output path is covered.
+  `savefig.bbox` is unchanged, and `bbox_inches='tight'` still works when
+  explicitly requested.
+  **Scope, stated plainly:** the fragility predates this branch — 0.15.3 was
+  blank at some dpis (100 and 250 among them) and happened to be safe at the
+  default 600. This branch's geometry changes moved the failure onto the
+  default, so `pp.savefig("fig.png")` with a bottom legend wrote an empty file
+  until this fix. Raster output is now correct at every dpi tested (72–1200),
+  which 0.15.3 was not. **Vector output was never affected** — PDF and SVG have
+  no raster buffer to invalidate, so anyone producing PDFs was never at risk.
+  Raster output previously had no test coverage at all; it does now.
+- **Jupyter inline display no longer comes up blank for bottom/top-band
+  figures.** IPython renders through `canvas.print_figure` rather than
+  `fig.savefig`, so it never reached the layout settling that `pp.savefig`
+  performed, and the first draw grew the legend band and blanked the buffer at
+  every dpi. Moving the hook to `print_figure` closes this too. This one is a
+  straight pre-existing bug: it was broken in 0.15.3 and is unrelated to this
+  branch's changes.
 - **Legend swatches now inherit the stroke width actually drawn.**
   `scatterplot`, `stripplot` and `swarmplot` stashed only `linewidth`, but a
   marker swatch's outline is drawn from `markeredgewidth` — so every marker
