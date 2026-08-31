@@ -95,7 +95,7 @@ def boxplot(
         Size of outlier markers.
     linewidth : float, optional
         Width of box edges. When None, resolved from
-        ``publiplots.rcParams["lines.linewidth"]``.
+        ``publiplots.rcParams["edgewidth"]``.
     alpha : float, optional
         Transparency of box fill (0-1). When None, resolved from
         ``publiplots.rcParams["alpha"]``.
@@ -163,7 +163,7 @@ def boxplot(
     reject_figsize(kwargs)
 
     # Read defaults from rcParams if not provided
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)
@@ -270,7 +270,7 @@ def boxplot(
     # Resolve markeredgewidth for outliers
     flierprops = kwargs.get("flierprops", {})
     markeredgewidth = flierprops.get("markeredgewidth", None)
-    markeredgewidth = resolve_param("lines.markeredgewidth", markeredgewidth)
+    markeredgewidth = resolve_param("edgewidth", markeredgewidth)
 
     # Recolor lines based on position and edgecolor
     for line in new_lines:

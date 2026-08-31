@@ -91,7 +91,7 @@ def stripplot(
         globally via ``publiplots.rcParams["edgecolor"]``.
     linewidth : float, optional
         Width of marker edges. When None, resolved from
-        ``publiplots.rcParams["lines.linewidth"]``.
+        ``publiplots.rcParams["edgewidth"]``.
     hue_norm : tuple or Normalize, optional
         Normalization for continuous hue variable.
     alpha : float, optional
@@ -141,7 +141,7 @@ def stripplot(
     reject_figsize(kwargs)
 
     # Read defaults from rcParams if not provided
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)
@@ -253,7 +253,7 @@ def _legend(
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
 
     kwargs = kwargs or {}
     handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="circle")

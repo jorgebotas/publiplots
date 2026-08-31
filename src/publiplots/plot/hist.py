@@ -260,7 +260,7 @@ def histplot(
         )
     is_2d = x is not None and y is not None
 
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     color = resolve_param("color", color)
     # 2D heatmap cells are solid density patches (mirrors hexbinplot):
     # alpha defaults to a literal 1.0 and edgecolor to "none". 1D paths

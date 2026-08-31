@@ -185,10 +185,10 @@ def test_rcparams_defaults_flow_through(hex_df):
     default of 1.0 (hex cells are solid density patches, not marker
     overlays, so the rcParams['alpha']=0.1 scatter-tuned default is
     intentionally bypassed)."""
-    saved_lw = pp.rcParams["lines.linewidth"]
+    saved_lw = pp.rcParams["edgewidth"]
     saved_edge = pp.rcParams["edgecolor"]
     try:
-        pp.rcParams["lines.linewidth"] = 1.5
+        pp.rcParams["edgewidth"] = 1.5
         pp.rcParams["edgecolor"] = None  # default: no visible edges
         ax = pp.hexbinplot(data=hex_df, x="x", y="y")
         coll = ax.collections[0]
@@ -211,7 +211,7 @@ def test_rcparams_defaults_flow_through(hex_df):
             # Otherwise edges must be fully transparent.
             assert np.all(edges_arr[..., -1] == 0)
     finally:
-        pp.rcParams["lines.linewidth"] = saved_lw
+        pp.rcParams["edgewidth"] = saved_lw
         pp.rcParams["edgecolor"] = saved_edge
 
 

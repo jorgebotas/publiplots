@@ -53,7 +53,7 @@ def draw_intersection_bars(
     """
     # Read defaults from rcParams if not provided
     color = resolve_param("color", color)
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
 
     ax.bar(
@@ -122,7 +122,7 @@ def draw_set_size_bars(
     """
     # Read defaults from rcParams if not provided
     color = resolve_param("color", color)
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
 
     sizes = [set_sizes[name] for name in set_names]

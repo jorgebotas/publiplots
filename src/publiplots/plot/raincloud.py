@@ -132,7 +132,7 @@ def raincloudplot(
         ``publiplots.rcParams["edgecolor"]``.
     linewidth : float, optional
         Width of edges. When None, resolved from
-        ``publiplots.rcParams["lines.linewidth"]``.
+        ``publiplots.rcParams["edgewidth"]``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
@@ -181,7 +181,7 @@ def raincloudplot(
     publiplots.swarmplot : The beeswarm "rain" component (``rain="swarm"``).
     """
     # Read defaults from rcParams if not provided.
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     cloud_alpha = resolve_param("alpha", cloud_alpha)
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)
