@@ -125,8 +125,8 @@ import publiplots as pp
 import publiplots as pp
 import pandas as pd
 
-# Apply publication style globally
-pp.set_publication_style()
+# The publication style is applied on import — there is nothing to call.
+# Use pp.reset_style() if you ever need matplotlib's defaults back.
 
 # Create a scatter plot
 ax = pp.scatterplot(

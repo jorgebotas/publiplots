@@ -57,6 +57,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`pp.histplot`'s `line_kws` documentation was wrong.** It claimed the dict
   reached "step/poly/KDE line artists"; seaborn routes it to the KDE curve
   only. The step/poly hull is styled from `linewidth=` and `edgecolor=`.
+- **Documentation corrections.** The README quick start called
+  `pp.set_publication_style()`, which has never existed — the publication
+  rcParams are applied on import, and `pp.reset_style()` is the escape hatch.
+  The quickstart guide's Global Settings block told users to set
+  `figure.figsize`, the one matplotlib rcParam publiplots deliberately does not
+  manage; it is replaced by a Figure Size section covering
+  `pp.subplots(axes_size=(w_mm, h_mm))` and the 40 x 40 mm default.
+- **`examples/examples.ipynb` regenerated from `examples/plots/`.** The
+  committed notebook, which the README links to, was a stale artifact: it
+  passed `figsize=` to `pp.raincloudplot` and `pp.venn` (a `TypeError` since
+  0.6.0), called `plt.subplots` directly, and covered only part of the
+  example gallery. It now tracks all 25 example scripts and runs end to end.
+- **`pp.set_axis_labels` no longer discards the per-role font rcParams.** It
+  forwarded `fontsize` and `fontweight` to `set_xlabel` / `set_ylabel` /
+  `set_title` unconditionally, and passing `None` is not the same as omitting
+  the kwarg: matplotlib's `set_fontsize(None)` / `set_fontweight(None)` reset
+  the text to the *generic* `font.size` / `font.weight`, throwing away the
+  `axes.labelsize` / `axes.labelweight` / `axes.titlesize` /
+  `axes.titleweight` already applied at creation. With
+  `axes.titlesize=13, axes.titleweight='bold'` a title came out 7pt normal.
+  Each kwarg is now omitted when the caller does not supply one, so labels and
+  titles keep their own rcParams; an explicitly passed value still wins.
+  `fontweight`'s default changes from `'normal'` to `None` — under the flat
+  7pt type of 0.16.0, weight is the remaining hierarchy signal, and the old
+  default silently closed it off.
 
 ## [0.16.0] - 2026-08-31
 

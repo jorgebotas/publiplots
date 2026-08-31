@@ -244,18 +244,98 @@ def test_kdeplot_curve_and_contours_ignore_edgewidth(df):
         pp.rcParams["lines.linewidth"] = saved_lw
 
 
+def _stem_widths(ax):
+    """Widths of the two-point Line2D artists, i.e. the error-bar stems.
+
+    ``regplot(x_estimator=...)`` draws one vertical stem per bin, each a
+    Line2D with exactly two points, alongside the many-point fit line.
+    ``_line_widths`` (min_points=3) deliberately excludes these, so this
+    is its complement.
+    """
+    return [
+        float(l.get_linewidth())
+        for l in ax.lines
+        if len(np.asarray(l.get_xdata())) == 2
+    ]
+
+
+def test_regplot_x_estimator_stem_and_fit_line_use_different_knobs(df):
+    """The binned mode draws error-bar stems AND a fit line.
+
+    A stem outlines nothing that carries data on its own — it is the
+    error bracket around an estimate — so it is classified as an outline
+    and reads ``edgewidth``. The regression line IS the data and reads
+    ``lines.linewidth``. The two knobs are set to inverted values so a
+    stem reading the wrong one cannot pass coincidentally.
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.regplot(data=df, x="x", y="y", ax=ax, x_estimator=np.mean, x_bins=5)
+
+        stems = _stem_widths(ax)
+        assert len(stems) == 5, f"expected one stem per bin, got {len(stems)}"
+        assert all(w == pytest.approx(2.5) for w in stems), (
+            f"error-bar stems {stems} should follow edgewidth"
+        )
+
+        lines = _line_widths(ax)
+        assert lines, "expected a fit line"
+        assert all(w == pytest.approx(0.5) for w in lines), (
+            f"fit line {lines} should follow lines.linewidth"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+def test_regplot_x_estimator_stem_follows_linewidth_not_line_kws(df):
+    """Per-call overrides reach the stem the same way they reach any
+    other outline: ``linewidth=`` moves it, ``line_kws=`` does not.
+
+    ``line_kws`` targets the regression line alone; before the stroke
+    split it leaked into the stem too.
+    """
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.regplot(data=df, x="x", y="y", ax=ax, x_estimator=np.mean, x_bins=5)
+    assert all(
+        w == pytest.approx(pp.rcParams["edgewidth"]) for w in _stem_widths(ax)
+    ), "stems should default to edgewidth"
+
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.regplot(
+        data=df, x="x", y="y", ax=ax, x_estimator=np.mean, x_bins=5, linewidth=2.5
+    )
+    assert all(w == pytest.approx(2.5) for w in _stem_widths(ax)), (
+        "linewidth= is the per-call outline override and should move the stems"
+    )
+
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.regplot(
+        data=df,
+        x="x",
+        y="y",
+        ax=ax,
+        x_estimator=np.mean,
+        x_bins=5,
+        line_kws={"linewidth": 3.0},
+    )
+    assert all(
+        w == pytest.approx(pp.rcParams["edgewidth"]) for w in _stem_widths(ax)
+    ), "line_kws targets the fit line only and must not leak into the stems"
+    assert all(w == pytest.approx(3.0) for w in _line_widths(ax)), (
+        "line_kws should reach the fit line"
+    )
+
+
 # ---------------------------------------------------------------------------
 # histplot(kde=True): the step/poly outline and the KDE curve (#205)
 # ---------------------------------------------------------------------------
 
 _HIST_BINS = 12
-"""Explicit bin count, chosen far from the KDE's 200-point gridsize.
-
-It lets these tests tell the outline from the curve by point count.
-``publiplots`` itself must NOT rely on that: with ``bins=200`` and
-``element='poly'`` the two are indistinguishable by point count *and* by
-drawstyle, which is why ``hist._KDE_GID`` tags the curve at creation.
-"""
 
 
 def _hist_outline_and_curve_widths(ax):
