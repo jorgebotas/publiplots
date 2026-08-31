@@ -62,7 +62,7 @@ class MarkerPatch(Patch):
     """
     def __init__(self, marker='o', **kwargs):
         markersize = kwargs.pop("markersize", resolve_param("lines.markersize"))
-        markeredgewidth = kwargs.pop("markeredgewidth", resolve_param("lines.markeredgewidth"))
+        markeredgewidth = kwargs.pop("markeredgewidth", resolve_param("edgewidth"))
         self.marker = marker
         self.markersize = markersize
         self.markeredgewidth = markeredgewidth
@@ -87,7 +87,7 @@ class MarkerPatch(Patch):
 
     def set_markeredgewidth(self, markeredgewidth: float):
         if markeredgewidth is None or markeredgewidth == 0:
-            markeredgewidth = resolve_param("lines.markeredgewidth")
+            markeredgewidth = resolve_param("edgewidth")
         self.markeredgewidth = markeredgewidth
 
 
@@ -120,7 +120,7 @@ class LineMarkerPatch(Patch):
     """
     def __init__(self, marker='o', linestyle=None, **kwargs):
         markersize = kwargs.pop("markersize", resolve_param("lines.markersize"))
-        markeredgewidth = kwargs.pop("markeredgewidth", resolve_param("lines.markeredgewidth"))
+        markeredgewidth = kwargs.pop("markeredgewidth", resolve_param("edgewidth"))
         self.marker = marker
         self.markersize = markersize
         self.markeredgewidth = markeredgewidth
@@ -147,7 +147,7 @@ class LineMarkerPatch(Patch):
 
     def set_markeredgewidth(self, markeredgewidth: float):
         if markeredgewidth is None or markeredgewidth == 0:
-            markeredgewidth = resolve_param("lines.markeredgewidth")
+            markeredgewidth = resolve_param("edgewidth")
         self.markeredgewidth = markeredgewidth
 
     def get_linestyle(self) -> str:
@@ -231,9 +231,9 @@ class HandlerRectangle(HandlerPatch):
             (color, alpha, linewidth, edgecolor, hatch_pattern)
         """
         # Defaults
-        color = "gray"
+        color = resolve_param("color")
         alpha = resolve_param("alpha", None)
-        linewidth = resolve_param("lines.linewidth", None)
+        linewidth = resolve_param("edgewidth", None)
         edgecolor = None
         hatch_pattern = None
 
@@ -334,11 +334,11 @@ class HandlerMarker(HandlerBase):
 
         # Defaults
         marker = 'o'
-        color = "gray"
+        color = resolve_param("color")
         size = resolve_param("lines.markersize")
         alpha = resolve_param("alpha")
-        linewidth = resolve_param("lines.linewidth")
-        markeredgewidth = resolve_param("lines.markeredgewidth")
+        linewidth = resolve_param("edgewidth")
+        markeredgewidth = resolve_param("edgewidth")
         edgecolor = None
 
         # Extract from MarkerPatch (created by create_legend_handles)
@@ -356,7 +356,7 @@ class HandlerMarker(HandlerBase):
             marker = orig_handle.get_marker() or 'o'
             color = orig_handle.get_color() or orig_handle.get_markerfacecolor()
             size = orig_handle.get_markersize() or size
-            markeredgewidth = orig_handle.get_mairkeredgewidth() or linewidth
+            markeredgewidth = orig_handle.get_markeredgewidth() or linewidth
             # Line2D doesn't store alpha separately - use default
             # edgecolor will default to face color below
 
@@ -464,11 +464,15 @@ class HandlerLineMarker(HandlerBase):
 
         # Defaults
         marker = 'o'
-        color = "gray"
+        color = resolve_param("color")
         size = resolve_param("lines.markersize")
         alpha = resolve_param("alpha")
+        # The line half of a line+marker swatch is a DATA line, so it falls
+        # back to lines.linewidth -- not edgewidth. Only markeredgewidth
+        # below is an outline. Getting this wrong renders a pointplot legend
+        # line thinner than the line actually plotted.
         linewidth = resolve_param("lines.linewidth")
-        markeredgewidth = resolve_param("lines.markeredgewidth")
+        markeredgewidth = resolve_param("edgewidth")
         edgecolor = None
         linestyle = None
 
@@ -531,6 +535,8 @@ class HandlerLine(HandlerBase):
         linestyle = orig_handle.get_linestyle() if hasattr(orig_handle, "get_linestyle") else "-"
         linestyle = _normalize_dash_linestyle(linestyle)
         if not linewidth:
+            # A line swatch represents a data line, so it falls back to
+            # lines.linewidth -- NOT edgewidth like the outline swatches do.
             linewidth = resolve_param("lines.linewidth")
 
         # Legend line is always fully opaque for readability, matching
@@ -631,8 +637,8 @@ def create_legend_handles(
     """
     # Read defaults from rcParams if not provided
     alpha = resolve_param("alpha", alpha)
-    linewidth = resolve_param("lines.linewidth", linewidth)
-    markeredgewidth = resolve_param("lines.markeredgewidth", markeredgewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
+    markeredgewidth = resolve_param("edgewidth", markeredgewidth)
 
     if colors is None:
         default_color = resolve_param("color", None)

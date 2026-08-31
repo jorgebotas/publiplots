@@ -115,23 +115,9 @@ def test_marker_edges_follow_edgewidth(df, edgewidth_probe, fn_name):
 
 # ---- The regression: legend swatch must match the drawn stroke -------------
 
-# The three marker families are xfail until Task 4: they stash only
-# `linewidth`, but HandlerMarker draws a marker swatch's outline from
-# `markeredgewidth`, so the swatch silently reports the rcParams default.
-# strict=True means Task 4 MUST remove these marks -- once the fix lands,
-# an unexpected pass fails the suite. That keeps every commit green while
-# still recording the known gap in the test file rather than in prose.
-_MARKER_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason="fixed in Task 4: scatter/strip/swarm do not stash markeredgewidth",
-)
-
-
 @pytest.mark.parametrize("fn_name", [
     "barplot", "boxplot", "violinplot", "histplot",
-    pytest.param("scatterplot", marks=_MARKER_XFAIL),
-    pytest.param("stripplot", marks=_MARKER_XFAIL),
-    pytest.param("swarmplot", marks=_MARKER_XFAIL),
+    "scatterplot", "stripplot", "swarmplot",
 ])
 def test_legend_swatch_matches_drawn_stroke(df, edgewidth_probe, fn_name):
     """A legend swatch drawn at a different width than the mark it labels
