@@ -57,6 +57,18 @@ So the curves are tagged at creation instead: seaborn copies ``line_kws``
 and forwards it only to the KDE ``ax.plot`` call, and ``gid`` is an
 ordinary ``Artist`` property, so it arrives on precisely the KDE lines.
 The tag is removed again once painting is done.
+
+**Upstream dependency.** This holds only while ``line_kws`` reaches the
+KDE curve and nothing else. Verified byte-for-byte in seaborn 0.12.0 (the
+floor of ``pyproject.toml``'s ``seaborn>=0.12.0``) and 0.13.2: in both,
+``plot_univariate_histogram`` copies ``line_kws``, sets only ``color`` on
+it, and passes it to a single ``ax.plot``; the step/poly hull is drawn
+from ``_artist_kws(plot_kws, ...)``, a different dict. A future seaborn
+that also forwarded ``line_kws`` to the hull would mis-tag it and swap
+the two strokes -- a wrong picture rather than an error, so
+``test_histplot_kde_tag_counts_one_curve_per_hue_level`` pins the
+invariant (N tagged lines out of 2N under ``element="step"``,
+``fill=False``, N hue levels) and turns that into a test failure.
 """
 
 
@@ -179,6 +191,9 @@ def histplot(
         ``line_kws={"linewidth": ...}`` to set the curve's width
         independently of the outline's ``linewidth=``. The step/poly
         outline is styled from ``linewidth=`` / ``edgecolor=`` instead.
+        Since there is no curve to style when ``kde=False``, the whole
+        dict is silently ignored in that case — it never falls back onto
+        the outline.
     hue_order : list, optional
         Order of the hue levels; determines palette assignment and
         legend order.
@@ -520,15 +535,21 @@ def histplot(
             )
 
         if kde:
-            _paint_kde(
-                new_lines=kde_lines,
-                palette=palette_map,
-                color=color,
-            )
-            # The tag is scaffolding, not output: restore whatever gid the
-            # caller asked for (usually none) so SVG ids are unaffected.
-            for line in kde_lines:
-                line.set_gid(user_line_gid)
+            try:
+                _paint_kde(
+                    new_lines=kde_lines,
+                    palette=palette_map,
+                    color=color,
+                )
+            finally:
+                # The tag is scaffolding, not output: restore whatever gid
+                # the caller asked for (usually none) so SVG ids are
+                # unaffected. In a ``finally`` because ``gid`` is public
+                # artist state and matplotlib writes it straight into SVG
+                # as ``id="..."`` -- a caller who catches a paint error and
+                # saves the figure anyway must not find the sentinel there.
+                for line in kde_lines:
+                    line.set_gid(user_line_gid)
 
         _legend(
             ax=ax,

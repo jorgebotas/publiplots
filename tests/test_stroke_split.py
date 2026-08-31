@@ -477,6 +477,56 @@ def test_histplot_thin_outline_is_not_floored_by_the_kde_curve(df, element):
         pp.rcParams["lines.linewidth"] = saved_lw
 
 
+@pytest.mark.parametrize("n_levels", [1, 2, 3])
+def test_histplot_kde_tag_counts_one_curve_per_hue_level(n_levels):
+    """Exactly one of the two strokes per hue level is a KDE curve.
+
+    ``element='step', fill=False`` puts 2N ``Line2D`` artists on the axes
+    for N hue levels -- one hull and one curve each -- and the tag must
+    claim precisely N of them. This is the upstream-dependency guard: the
+    tag rides on seaborn forwarding ``line_kws`` to the KDE ``ax.plot``
+    and nowhere else. A seaborn that also forwarded it to the hull would
+    tag all 2N, paint every stroke as a curve, and silently swap the two
+    widths -- a wrong picture, not an error. Counting by width (the knobs
+    are inverted, so the two are unambiguous) turns that into a failure.
+    """
+    rng = np.random.default_rng(3)
+    levels = ["one", "two", "three"][:n_levels]
+    data = pd.DataFrame({
+        "x": rng.normal(size=90 * n_levels),
+        "g": np.repeat(levels, 90),
+    })
+
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.histplot(
+            data=data, x="x", hue="g", ax=ax, kde=True, element="step",
+            fill=False, bins=_HIST_BINS,
+        )
+
+        widths = [float(line.get_linewidth()) for line in ax.lines]
+        assert len(widths) == 2 * n_levels, (
+            f"expected {2 * n_levels} Line2Ds, got {len(widths)}"
+        )
+        curves = [w for w in widths if w == pytest.approx(0.5)]
+        hulls = [w for w in widths if w == pytest.approx(2.5)]
+        assert len(curves) == n_levels, (
+            f"expected {n_levels} tagged KDE curves, got {len(curves)} "
+            f"from widths {widths} -- has seaborn's line_kws routing changed?"
+        )
+        assert len(hulls) == n_levels, (
+            f"expected {n_levels} untagged hulls, got {len(hulls)} "
+            f"from widths {widths}"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
 def test_histplot_kde_tag_does_not_survive_onto_the_artists(df):
     """The KDE discriminator is internal scaffolding, not rendered output.
 
@@ -498,3 +548,35 @@ def test_histplot_kde_tag_does_not_survive_onto_the_artists(df):
     gids = [line.get_gid() for line in ax2.lines]
     assert gids.count("mine") == 2, f"caller gid not preserved: {gids}"
     assert gids.count(None) == 2, f"outline gid should stay unset: {gids}"
+
+
+@pytest.mark.parametrize("user_gid", [None, "mine"])
+def test_histplot_kde_tag_is_stripped_even_if_painting_raises(
+    df, user_gid, monkeypatch,
+):
+    """The tag must not survive a failure inside the paint step.
+
+    ``gid`` is public artist state and matplotlib writes it straight into
+    SVG as ``id="..."``, so a caller who catches the error and saves the
+    figure anyway would otherwise find the internal sentinel in their
+    output. The restore therefore lives in a ``finally``.
+    """
+    import publiplots.plot.hist as hist_mod
+
+    def _boom(**kwargs):
+        raise RuntimeError("simulated paint failure")
+
+    monkeypatch.setattr(hist_mod, "_paint_kde", _boom)
+
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    line_kws = {"gid": user_gid} if user_gid is not None else {}
+    with pytest.raises(RuntimeError, match="simulated paint failure"):
+        pp.histplot(
+            data=df, x="x", hue="g", ax=ax, kde=True, element="step",
+            fill=False, bins=_HIST_BINS, line_kws=line_kws,
+        )
+
+    gids = [line.get_gid() for line in ax.lines]
+    assert hist_mod._KDE_GID not in gids, f"sentinel survived: {gids}"
+    if user_gid is not None:
+        assert gids.count(user_gid) == 2, f"caller gid not restored: {gids}"

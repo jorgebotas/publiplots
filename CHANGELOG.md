@@ -27,6 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once painted. A caller-supplied `line_kws={'gid': ...}` is preserved.
   The v0.16.0 "known limitation" notes in the `histplot` docstring and in
   `skills/publiplots-guide/SKILL.md` are removed.
+  **The default look changes for one call shape.** With
+  `element='step'|'poly'`, `fill=False`, `kde=True` and *no* explicit
+  `linewidth=`, the hull is drawn at 0.75 where 0.16.0 drew it at 1.0
+  (measured against `c46a5ed`): it used to be swept into the curve's
+  `lines.linewidth` floor, and it no longer is. 0.15.3 had the same defect at a
+  different number — its floor was `max(linewidth + 0.5, 1.5)`.
+  That is the intended classification — the hull outlines a shape, so it reads
+  `edgewidth` — but it is a visible change to an existing
+  default-argument plot, not only to calls that pass a width. Pass
+  `linewidth=1.0` to keep the old appearance. Every other combination of
+  `element` / `fill` / `kde` is pixel-identical: `fill=True` already drew its
+  hull as a collection at 0.75, and `kde=False` never reached the floor.
 - **`pp.histplot(line_kws={'linewidth': ...})` is now honoured exactly**, thinner
   than `lines.linewidth` as well as thicker. It was previously floored at
   `lines.linewidth`, so `line_kws={'linewidth': 0.4}` silently drew a 1.0 curve
@@ -38,7 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unreachable — without `line_kws` seaborn draws the curve with `ax.plot`, whose
   default is `plt.rcParams['lines.linewidth']`, the very storage
   `pp.rcParams['lines.linewidth']` writes to, so the floor's comparison could
-  never fire. Default curve widths are therefore unchanged at every setting.
+  never fire. Default curve widths are therefore unchanged at every setting, and
+  this bullet changes no default look at all — the hull movement noted above
+  belongs to the scope fix, which stops routing the hull through that floor in
+  the first place.
 - **`pp.histplot`'s `line_kws` documentation was wrong.** It claimed the dict
   reached "step/poly/KDE line artists"; seaborn routes it to the KDE curve
   only. The step/poly hull is styled from `linewidth=` and `edgecolor=`.
