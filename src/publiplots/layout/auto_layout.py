@@ -84,27 +84,55 @@ class SubplotsAutoLayout:
         else:
             self._cid = fig.canvas.mpl_connect("draw_event", self._on_draw)
 
-        # Wrap savefig so that by the time it renders, the figure has
-        # been resized to fit its current decorations. draw_event fires
-        # AFTER the renderer has written to its buffer, so resizing
-        # during draw_event is too late — the saved file captures the
-        # pre-resize buffer. Running a settlement draw BEFORE savefig's
-        # internal draw ensures the renderer is allocated at the final
-        # size from the start.
-        self._install_savefig_wrapper()
+        # Wrap the render-to-file entry point so that by the time it
+        # renders, the figure has been resized to fit its current
+        # decorations -- and so that no resize can happen *during* that
+        # render. See _install_render_wrapper.
+        self._install_render_wrapper()
 
-    def _install_savefig_wrapper(self) -> None:
+    def _install_render_wrapper(self) -> None:
+        """Settle before a render-to-file, and freeze the reactor during it.
+
+        draw_event fires AFTER the renderer has written its buffer, so a
+        resize from ``_on_draw`` during the output render is worse than
+        merely late. Agg keys its renderer cache on
+        ``figure.bbox.size``; a mid-draw ``set_size_inches`` invalidates
+        the renderer that was just drawn into, so the bytes handed to the
+        file writer come from a freshly allocated, never-drawn (i.e.
+        fully transparent) buffer. The result is a blank image.
+
+        ``settle()`` is meant to make that resize unnecessary, but it
+        cannot make it impossible: measurements are taken from text
+        metrics, which are not dpi-invariant, so a layout that has
+        converged at ``figure.dpi`` can still measure >
+        ``_UPDATE_THRESHOLD_MM`` differently at ``savefig``'s dpi and
+        trigger exactly that mid-render resize. Freezing the reactor for
+        the duration of the render closes the hole for good: whatever
+        happens, the buffer the writer reads is the buffer that was
+        drawn. The frozen render is preceded by ``settle()``, so the
+        layout it captures is the converged one.
+
+        The hook is ``canvas.print_figure`` rather than ``fig.savefig``
+        because every render-to-file path funnels through it
+        (``fig.savefig``, ``plt.savefig``, IPython's inline display).
+        """
         fig = self._fig
-        if getattr(fig, "_publiplots_savefig_wrapped", False):
+        if getattr(fig, "_publiplots_render_wrapped", False):
             return
-        original_savefig = fig.savefig
+        canvas = fig.canvas
+        original_print_figure = canvas.print_figure
 
-        def _wrapped_savefig(*args, **kwargs):
+        def _wrapped_print_figure(*args, **kwargs):
             self.settle()
-            return original_savefig(*args, **kwargs)
+            was_updating = self._updating
+            self._updating = True
+            try:
+                return original_print_figure(*args, **kwargs)
+            finally:
+                self._updating = was_updating
 
-        fig.savefig = _wrapped_savefig
-        fig._publiplots_savefig_wrapped = True
+        canvas.print_figure = _wrapped_print_figure
+        fig._publiplots_render_wrapped = True
 
     def settle(self) -> None:
         """Drive the layout to convergence without leaving stale state.
