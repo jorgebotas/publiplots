@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Documentation corrections.** The README quick start called
+  `pp.set_publication_style()`, which has never existed — the publication
+  rcParams are applied on import, and `pp.reset_style()` is the escape hatch.
+  The quickstart guide's Global Settings block told users to set
+  `figure.figsize`, the one matplotlib rcParam publiplots deliberately does not
+  manage; it is replaced by a Figure Size section covering
+  `pp.subplots(axes_size=(w_mm, h_mm))` and the 40 x 40 mm default.
+- **`examples/examples.ipynb` regenerated from `examples/plots/`.** The
+  committed notebook, which the README links to, was a stale artifact: it
+  passed `figsize=` to `pp.raincloudplot` and `pp.venn` (a `TypeError` since
+  0.6.0), called `plt.subplots` directly, and covered only part of the
+  example gallery. It now tracks all 25 example scripts and runs end to end.
+
 ## [0.16.0] - 2026-08-31
 
 ### Added
