@@ -457,49 +457,62 @@ class SubplotsAutoLayout:
         no double-counting (``_side_extent`` excludes the legend artist).
 
         Convergent by construction: the pad is derived only from geometry
-        that does NOT move between convergence iterations — the band's own
-        height (relative, so independent of where the band currently sits)
-        plus the band's *configured* outward gap (the value the reactor will
-        place it at). Re-running therefore recomputes the same pad. Measuring
-        the band's absolute top against ``ax.y1`` instead would bake in a
-        mid-convergence position: on the first draw the band has not been
-        repositioned by the reactor yet, so it can read several mm high and
-        leave that much stale padding behind (the lift only ever grows the
-        pad, so nothing later takes it back out).
+        that does NOT move between convergence iterations. Each element
+        contributes ``outward_mm + (its top - its own placement reference)``
+        — a *relative* rise, so it is independent of where the band
+        currently sits — and ``outward_mm`` is read straight off the
+        element's reactor registration, i.e. the distance the reactor
+        *will* place it at. Re-running therefore recomputes the same pad.
+
+        Measuring the band's absolute top against ``ax.y1`` instead would
+        bake in a mid-convergence position: on the first draw the band has
+        not been repositioned by the reactor yet, so it can read several mm
+        high and leave that much stale padding behind (the lift only ever
+        grows the pad, so nothing later takes it back out). Spanning the
+        band's own ``min(y0) → max(y1)`` instead is wrong for a different
+        reason: an element may extend *below* its placement reference (a
+        per-axes top colorbar's label is a ``va='top'`` Text pinned at the
+        reference, so it hangs downward), and the span would then count
+        that overhang a second time on top of ``outward_mm``.
         """
         ax = group.anchor
         title = getattr(ax, "title", None)
         if title is None or not title.get_text():
             return  # no title to lift
 
-        # Band extent measured relative to the band itself (stable), not
-        # relative to ax.y1 (still settling on the first draw).
-        band_top_px = None
-        band_bottom_px = None
+        # Reactor registration per element: it carries the outward distance
+        # (mm from the axes' top edge) the element is placed at, which is
+        # stable, unlike the element's current pixel position.
+        regs = {
+            id(reg.artist): reg
+            for reg in group._builder._reactor._registrations
+        }
+        band_above_mm = 0.0
         for _, obj in group._builder.elements:
+            # Tight bbox for the TOP: it includes decorations that sit past
+            # the artist's rectangle (colorbar tick labels / titles).
             extent = self._artist_window_extent(obj)
-            if extent is None:
+            reg = regs.get(id(obj))
+            if extent is None or reg is None:
                 continue
-            band_top_px = (
-                extent.y1 if band_top_px is None
-                else max(band_top_px, extent.y1)
+            # Placement reference for the BOTTOM. For side='top' the reactor
+            # anchors a colorbar by its strip rectangle's bottom edge
+            # (layout_reactor: ``bottom_y = new_y``), which get_tightbbox
+            # undershoots by the tick labels below the strip; Legend/Text
+            # have no separate rectangle, so their own extent is the
+            # reference (Legend is anchored by its bottom too).
+            base = extent
+            obj_ax = getattr(obj, "ax", None)
+            if obj_ax is not None and hasattr(obj_ax, "get_window_extent"):
+                base = obj_ax.get_window_extent()
+            rise_mm = (extent.y1 - base.y0) / dpi * 25.4
+            outward_mm = (
+                reg.mm_x_from_right + reg.mm_outward_decoration_offset
             )
-            band_bottom_px = (
-                extent.y0 if band_bottom_px is None
-                else min(band_bottom_px, extent.y0)
-            )
-        if band_top_px is None:
-            return  # nothing measurable in the band yet
-        band_height_px = band_top_px - band_bottom_px
-        if band_height_px <= 0:
+            band_above_mm = max(band_above_mm, outward_mm + rise_mm)
+        if band_above_mm <= 0:
             return  # band hasn't rendered yet
-
-        # Outward gap the reactor places the band at: the builder's
-        # ``x_offset`` (mm). Per-axes in-frame top groups never get a
-        # decoration offset baked in (only the external/left paths call
-        # ``_set_decoration_offset``), so x_offset is the whole gap.
-        gap_mm = float(getattr(group._builder._layout, "x_offset", 2.0))
-        band_above_ax_px = band_height_px + gap_mm * dpi / 25.4
+        band_above_ax_px = band_above_mm * dpi / 25.4
 
         # pad (points) = band height above axes + a small breathing gap.
         # matplotlib's title pad positions the title baseline; the text's

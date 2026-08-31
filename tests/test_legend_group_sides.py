@@ -1107,36 +1107,71 @@ def test_legend_reservation_tracks_handletextpad_rcparam():
     )
 
 
-def test_top_legend_title_pad_matches_final_legend_position():
-    """The title pad must be computed from where the legend ENDS UP, not
-    where it sat mid-convergence.
+def _top_band_above_axes_mm(fig, ax, group):
+    """True mm the band's tallest point rises above ``ax.y1``.
 
-    Regression: _lift_title_above_top_legend measured the band's *absolute*
-    top relative to the axes top. On the first draw the band still sat
-    14.51mm above the axes while it finally rendered at 9.46mm -- baking
-    ~5mm of stale padding into every titled per-axes top legend.
+    Reads each element the same way the implementation does --
+    ``SubplotsAutoLayout._artist_window_extent``, i.e. the *tight* bbox, which
+    for a colorbar is ``cbar.ax.get_tightbbox()`` (tick labels included) and
+    not ``cbar.get_window_extent()``. Measuring differently here is what let
+    a colorbar defect hide behind a legend-only assertion.
+    """
+    sizer = fig._publiplots_auto_layout
+    extents = [
+        sizer._artist_window_extent(obj) for _, obj in group._builder.elements
+    ]
+    tops = [e.y1 for e in extents if e is not None]
+    return (max(tops) - ax.get_window_extent().y1) / fig.dpi * 25.4
+
+
+def _title_pad_mm(ax):
+    # titleOffsetTrans._t[1] is the title pad in INCHES (matplotlib stores
+    # pad/72 there), so *25.4 converts straight to mm. Cross-check: the
+    # original buggy run applied 43.98pt == 15.51mm for a 14.51mm band + 1mm.
+    return ax.titleOffsetTrans._t[1] * 25.4
+
+
+@pytest.mark.parametrize("hue_kind", ["categorical", "colorbar"])
+def test_top_legend_title_pad_matches_final_legend_position(hue_kind):
+    """The title pad must be computed from where the band ENDS UP, not from
+    a mid-convergence position -- on the first draw AND at steady state.
+
+    Regression 1 (categorical): _lift_title_above_top_legend measured the
+    band's *absolute* top relative to the axes top. On the first draw the
+    band still sat 14.51mm above the axes while it finally rendered at
+    9.46mm -- baking ~5mm of stale padding into every titled per-axes top
+    legend.
+
+    Regression 2 (colorbar): measuring the band's own min(y0)->max(y1) span
+    and adding the outward gap double-counts any element that extends BELOW
+    its placement reference. A per-axes top colorbar's label is a
+    ``va='top'`` Text pinned at that reference, so it hangs ~2.4mm downward
+    and the span charged it twice -- +2.37mm of spurious pad in saved
+    output, which ``settle()`` (wired into savefig) makes permanent.
     """
     df = _scatter_df()
+    if hue_kind == "colorbar":
+        df = df.assign(c=np.linspace(0.0, 1.0, len(df)))
+    hue = "c" if hue_kind == "colorbar" else "g"
+    kwargs = {} if hue_kind == "colorbar" else {"palette": "pastel"}
+
     fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
-    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax,
-                   title="my title")
+    pp.scatterplot(data=df, x="x", y="y", hue=hue, ax=ax, title="my title",
+                   **kwargs)
     g = pp.legend(ax, side="top")
-    fig.canvas.draw()
 
-    axb = ax.get_window_extent()
-    band_top_px = max(
-        el.get_window_extent().y1 for _, el in g._builder.elements
-    )
-    band_mm = (band_top_px - axb.y1) / fig.dpi * 25.4
-    # titleOffsetTrans._t[1] is the title pad in INCHES (matplotlib stores
-    # pad/72 there), so *25.4 converts straight to mm. (Cross-check: the
-    # buggy run applied 43.98pt == 15.51mm for a 14.51mm band + 1mm gap.)
-    pad_mm = ax.titleOffsetTrans._t[1] * 25.4
-
-    # The pad clears the band it actually has to clear, plus the ~1mm
-    # breathing gap the implementation adds -- not 5mm more.
-    assert pad_mm == pytest.approx(band_mm + 1.0, abs=1.5), (
-        f"title pad {pad_mm:.2f}mm should track the final band height "
-        f"{band_mm:.2f}mm + ~1mm breathing, not a stale pre-convergence "
-        f"measurement"
-    )
+    # Draw 0 must already be right (the suite -- and every consumer that
+    # draws once -- never gets a second pass), and so must steady state
+    # (settle() loops draws for savefig, so draw 1+ is what gets saved).
+    for draw in range(3):
+        fig.canvas.draw()
+        band_mm = _top_band_above_axes_mm(fig, ax, g)
+        pad_mm = _title_pad_mm(ax)
+        # The pad clears the band it actually has to clear, plus the ~1mm
+        # breathing gap the implementation adds -- nothing more. The
+        # measured residual is 0.000mm, so this is a tight bound.
+        assert pad_mm == pytest.approx(band_mm + 1.0, abs=0.5), (
+            f"[{hue_kind}, draw {draw}] title pad {pad_mm:.3f}mm should "
+            f"track the band's true rise above the axes {band_mm:.3f}mm "
+            f"+ ~1mm breathing"
+        )
