@@ -173,7 +173,28 @@ def histplot(
     alpha : float, optional
         Transparency for the face fill (0-1). Falls back to rcParams.
     linewidth : float, optional
-        Width of bar edges / step / poly / KDE line. Falls back to rcParams.
+        Outline width — the bar edges under ``element="bars"``, or the
+        step / poly lines otherwise. Falls back to
+        ``pp.rcParams["edgewidth"]``.
+
+        Under the default ``element="bars"`` it does **not** set the KDE
+        overlay's width: the KDE curve is data, not an outline, so it
+        defaults from ``pp.rcParams["lines.linewidth"]``. Widen it with
+        ``line_kws={"linewidth": ...}``; values below
+        ``lines.linewidth`` are floored back up to it.
+
+        **Known limitation — ``element="step"`` or ``"poly"`` combined
+        with ``kde=True``.** The outline and the KDE curve are not
+        separated there. Both are ``Line2D`` artists in ``ax.lines``, so
+        both are painted with ``linewidth`` and then floored at
+        ``lines.linewidth``. In that combination:
+        ``linewidth`` *does* reach the curve (``linewidth=2.0`` gives a
+        2.0 curve), ``line_kws={"linewidth": ...}`` is overwritten and has
+        no effect, and a ``linewidth`` below ``lines.linewidth`` is raised
+        to it for the outline as well (``linewidth=0.4`` draws both
+        strokes at 1.0, where ``kde=False`` draws the outline at 0.4).
+        Use ``element="bars"``, or ``kde=False``, to control the two
+        strokes independently.
     log_scale : bool, number, or pair, optional
         If True, apply a log scale on the value axis. A number sets the
         base. A 2-tuple sets (x_log, y_log) independently — forwarded
@@ -260,7 +281,7 @@ def histplot(
         )
     is_2d = x is not None and y is not None
 
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     color = resolve_param("color", color)
     # 2D heatmap cells are solid density patches (mirrors hexbinplot):
     # alpha defaults to a literal 1.0 and edgecolor to "none". 1D paths
@@ -680,14 +701,19 @@ def _paint_kde(
     linewidth: float,
     alpha: float,
 ) -> None:
-    """Style KDE overlay lines with a slightly bolder stroke.
+    """Style KDE overlay lines with the data-line stroke.
+
+    The histogram bars are outlines (edgewidth); the KDE curve laid over
+    them is data, so it takes lines.linewidth. Previously this invented a
+    width as max(linewidth + 0.5, 1.5), which drifted whenever the bar
+    edge width changed.
 
     KDE lines live in ``ax.lines`` alongside any step/poly lines; we
     identify them by re-matching against the palette. When ``fill=True``
     on step/poly there are no competing lines, so any ``Line2D`` seaborn
     emitted is a KDE curve.
     """
-    bold_lw = max(linewidth + 0.5, 1.5)
+    bold_lw = resolve_param("lines.linewidth")
     for line in new_lines:
         if palette:
             level = _match_line_to_level(line, palette)

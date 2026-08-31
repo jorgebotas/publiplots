@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`pp.rcParams['edgewidth']` (0.75) — one knob for the strokes publiplots
+  draws to *outline* a shape.** Bar and histogram borders, box whiskers and
+  medians, violin outlines, marker edges, hex-cell edges, dendrogram links,
+  venn circles, `errorbarplot` stems and upset bars all resolve their width
+  from it. It pairs with the existing `edgecolor` global, so edge colour and
+  edge width are now set the same way.
+  One exception: the confidence-band edges of `lineplot`, `regplot` and
+  `residplot` are drawn by seaborn as fill-between collections and follow
+  matplotlib's `patch.linewidth`, which publiplots keeps pinned to the same
+  0.75 — so the default appearance matches, but raising `edgewidth` alone
+  does not move them.
+
+### Changed
+
+- **`lines.linewidth` (1.0) now means only what matplotlib means by it** — a
+  stroke that *is* the data: `lineplot` series, `kdeplot` curves,
+  `regplot`/`residplot` fit and lowess lines, `pointplot` connectors, the
+  upset membership-matrix connector, and `pp.add_reference_line`. Everything
+  that outlines a shape reads `edgewidth` instead.
+  **Migration:** code that set `lines.linewidth` in order to change *border*
+  widths must now set `pp.rcParams['edgewidth']`.
+- **Publication defaults polished.** Every font size is 7pt (was 7–11pt);
+  titles are now distinguished by position alone, not by size.
+  Spines and gridlines are black, with `grid.alpha` (0.15) carrying the
+  dimming instead of a gray `grid.color` compounding with it — the rendered
+  gray is effectively unchanged (0.850 vs 0.840), but there is one knob per
+  job. `patch.linewidth`, `lines.markeredgewidth` and `grid.linewidth` are
+  0.75, matching `axes.linewidth`. The default panel is 40×40 mm (was
+  70×50 mm), so `pp.subplots(...)` without `axes_size=` yields a smaller
+  square panel.
+- **`regplot(linewidth=)` and `residplot(linewidth=)` set the scatter marker
+  edge only.** Previously `regplot`'s also thickened the fit line. Use
+  `line_kws={'linewidth': ...}` for the line.
+- **`kdeplot(fill=True)`'s fill outline now defaults from `edgewidth`** (0.75)
+  instead of `lines.linewidth` (1.0), so it matches the borders of every
+  other filled shape — `histplot(element='step', fill=True)`, `violinplot`,
+  `barplot`. Also covers the implicit fills under `multiple='stack'`/`'fill'`,
+  the `hue` variants, and `jointplot(kind='kde', fill=True)`. The 1D density
+  curve and the 2D contour isolines are data and stay on `lines.linewidth`.
+  A per-call `kdeplot(linewidth=)` still reaches whichever of the two the
+  call actually draws — only the defaults split.
+- **Two derived stroke widths are gone.** `histplot`'s KDE overlay was
+  `max(bar_edge_linewidth + 0.5, 1.5)`, so it drifted whenever the bar edge
+  width changed; under the default `element="bars"` it now reads
+  `lines.linewidth` (1.0) like any other curve. The upset membership-matrix
+  connector was `lines.linewidth * 1.2` and is now `lines.linewidth` (1.0)
+  unmultiplied.
+  Note that `element="step"` and `element="poly"` combined with `kde=True`
+  still do **not** separate the outline from the curve — both are `Line2D`
+  artists, so both take `linewidth` and are then floored at `lines.linewidth`.
+  That scope is unchanged from 0.15.3 (the old expression had it too); only the
+  resulting number moved. Use `element="bars"` to set the two independently.
+
+### Fixed
+
+- **`pp.savefig()` no longer writes a blank raster file.** Any figure with a
+  bottom or top legend band could be saved as a fully transparent PNG, with no
+  error and no warning. `matplotlib`'s `print_figure` raises `figure.dpi` to the
+  save dpi before rendering, and text metrics are not dpi-invariant, so the
+  layout reactor re-measured a sub-millimetre difference *inside* the output
+  render and resized the figure — invalidating the Agg renderer that had just
+  been drawn into, so the bytes written out had never been drawn to. The layout
+  is now settled and then frozen for the duration of the render, hooked at
+  `canvas.print_figure` so every raster output path is covered.
+  `savefig.bbox` is unchanged, and `bbox_inches='tight'` still works when
+  explicitly requested.
+  **Scope, stated plainly:** the fragility predates this branch — 0.15.3 was
+  blank at some dpis (100 and 250 among them) and happened to be safe at the
+  default 600. This branch's geometry changes moved the failure onto the
+  default, so `pp.savefig("fig.png")` with a bottom legend wrote an empty file
+  until this fix. Raster output is now correct at every dpi tested (72–1200),
+  which 0.15.3 was not. **Vector output was never affected** — PDF and SVG have
+  no raster buffer to invalidate, so anyone producing PDFs was never at risk.
+  Raster output previously had no test coverage at all; it does now.
+- **Jupyter inline display no longer comes up blank for bottom/top-band
+  figures.** IPython renders through `canvas.print_figure` rather than
+  `fig.savefig`, so it never reached the layout settling that `pp.savefig`
+  performed, and the first draw grew the legend band and blanked the buffer at
+  every dpi. Moving the hook to `print_figure` closes this too. This one is a
+  straight pre-existing bug: it was broken in 0.15.3 and is unrelated to this
+  branch's changes.
+- **Legend swatches now inherit the stroke width actually drawn.**
+  `scatterplot`, `stripplot` and `swarmplot` stashed only `linewidth`, but a
+  marker swatch's outline is drawn from `markeredgewidth` — so every marker
+  swatch silently fell back to rcParams and reported a stroke the figure never
+  drew. Visible whenever `linewidth=` was passed explicitly: the drawn marker
+  edge changed and the swatch did not. Rectangle swatches were already
+  correct, and the line half of a line+marker swatch correctly stays on
+  `lines.linewidth`.
+- **`pp.adjust_spines` and `pp.add_grid` ignored their rcParams.**
+  `adjust_spines` hardcoded a 1.5pt spine over a 0.75pt `axes.linewidth` and
+  overrode `axes.edgecolor`; `add_grid` hardcoded all four of its `grid.*`
+  values. Both resolve from rcParams now, with explicitly passed arguments
+  still winning. `pp.add_reference_line`'s width was likewise a hardcoded
+  1.5 pt and now defaults from `lines.linewidth` (1.0); its `color="red"`,
+  `alpha=0.7` and `linestyle="--"` remain deliberate literals.
+- **Per-axes `side='top'` legends no longer over-pad the axes title.** The
+  title lift computed its pad from the legend band's still-settling absolute
+  position while convergence was mid-flight, baking roughly 5 mm of stale
+  padding into every top-side legend that also had a title. The pad now
+  derives from the band's own height plus the configured outward gap, both
+  stable on the first draw.
+- `pp.heatmap`'s dot mode hardcoded its cell-separator colour and width, and
+  `pp.upsetplot` hardcoded a grid width, a separator colour, and an
+  `alpha=0.3` that overrode `grid.alpha`. Both read the `grid.*` rcParams now.
+  Spines and `axhline` rules composite `grid.alpha` explicitly, since — unlike
+  `ax.grid()` — they do not inherit it.
+- A latent `AttributeError` (`get_mairkeredgewidth`) on raw `Line2D` legend
+  handles, plus three `"gray"` colour fallbacks in the legend handlers that
+  ignored rcParams.
+- `pp.venn` set labels were drawn at `font.size * 1.2`, above the flat 7pt type.
+
 ## [0.15.3] - 2026-07-21
 
 ### Fixed

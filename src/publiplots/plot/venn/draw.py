@@ -10,6 +10,8 @@ from matplotlib.colors import to_rgba
 from matplotlib.axes import Axes
 from typing import Tuple, Optional, Union
 
+from publiplots.themes.rcparams import resolve_param
+
 def draw_ellipse(
         ax: Axes,
         x: float,
@@ -62,7 +64,11 @@ def draw_ellipse(
             height=h,
             angle=a,
             facecolor=to_rgba(color, alpha=alpha),
-            edgecolor=color
+            edgecolor=color,
+            # The circle outline is a stroke that outlines a shape, so it
+            # follows ``edgewidth`` rather than matplotlib's
+            # ``patch.linewidth``.
+            linewidth=resolve_param("edgewidth"),
         )
     )
 

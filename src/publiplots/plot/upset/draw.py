@@ -18,7 +18,6 @@ from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 from matplotlib.ticker import MaxNLocator
 
-GRID_LINEWIDTH = 1
 BARWIDTH = 0.5
 
 
@@ -53,7 +52,7 @@ def draw_intersection_bars(
     """
     # Read defaults from rcParams if not provided
     color = resolve_param("color", color)
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
 
     ax.bar(
@@ -73,7 +72,12 @@ def draw_intersection_bars(
     ax.spines["bottom"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)
-    ax.grid(axis="y", alpha=0.3, linestyle="--", linewidth=GRID_LINEWIDTH)
+    ax.grid(
+        axis="y",
+        color=resolve_param("grid.color"),
+        linestyle=resolve_param("grid.linestyle"),
+        linewidth=resolve_param("grid.linewidth"),
+    )
     ax.set_axisbelow(True)
     ax.yaxis.set_major_locator(MaxNLocator(integer=True, nbins="auto"))
 
@@ -122,7 +126,7 @@ def draw_set_size_bars(
     """
     # Read defaults from rcParams if not provided
     color = resolve_param("color", color)
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
 
     sizes = [set_sizes[name] for name in set_names]
@@ -144,7 +148,12 @@ def draw_set_size_bars(
     ax.spines["left"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)
-    ax.grid(axis="x", alpha=0.3, linestyle="--", linewidth=GRID_LINEWIDTH)
+    ax.grid(
+        axis="x",
+        color=resolve_param("grid.color"),
+        linestyle=resolve_param("grid.linestyle"),
+        linewidth=resolve_param("grid.linewidth"),
+    )
     ax.set_axisbelow(True)
     ax.invert_xaxis()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True, nbins="auto"))
@@ -175,7 +184,9 @@ def draw_matrix(
     dotsize : float
         Size of dots in the matrix
     linewidth : float
-        Width of connecting lines
+        Overrides both matrix strokes at once. When None, the dot
+        outlines fall back to ``pp.rcParams["edgewidth"]`` and the
+        connector between them to ``pp.rcParams["lines.linewidth"]``.
     active_color : str, optional
         Color for active set membership. If None, use DEFAULT_COLOR.
     inactive_color : str, optional
@@ -183,8 +194,10 @@ def draw_matrix(
     """
     import numpy as np
 
-    # Read defaults from rcParams if not provided
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    # Read defaults from rcParams if not provided.
+    # Dot outlines are edges; the vertical connector between them is data.
+    dot_edgewidth = resolve_param("edgewidth", linewidth)
+    connector_linewidth = resolve_param("lines.linewidth", linewidth)
     active_color = resolve_param("color", active_color)
     alpha = resolve_param("alpha", alpha)
 
@@ -228,7 +241,7 @@ def draw_matrix(
             x_coords,
             y_coords,
             color=active_color,
-            linewidth=linewidth,
+            linewidth=connector_linewidth,
             solid_capstyle="round",
             zorder=1,
         )
@@ -242,7 +255,7 @@ def draw_matrix(
                 color=to_rgba(active_color, alpha=alpha),
                 marker="o",
                 edgecolors=active_color,
-                linewidths=linewidth,
+                linewidths=dot_edgewidth,
                 zorder=4,
             )
 
@@ -256,12 +269,15 @@ def draw_matrix(
     ax.spines["top"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
 
-    # Add horizontal grid lines between sets
+    # Add horizontal grid lines between sets.
+    # axhline is not a gridline, so it inherits nothing from grid.alpha --
+    # pass it explicitly or these render as solid black rules.
     for i in range(n_sets - 1):
         ax.axhline(
             i + 0.5,
-            color="#e0e0e0",
-            linewidth=GRID_LINEWIDTH,
+            color=resolve_param("grid.color"),
+            alpha=resolve_param("grid.alpha"),
+            linewidth=resolve_param("grid.linewidth"),
             linestyle="-",
             zorder=0
         )

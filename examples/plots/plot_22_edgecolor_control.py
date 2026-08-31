@@ -178,7 +178,7 @@ group.add_legend(
         labels=['Control', 'Low Dose', 'High Dose'],
         colors=list(pp.color_palette('pastel', 3)),
         alpha=pp.rcParams['alpha'],
-        linewidth=pp.rcParams['lines.linewidth'],
+        linewidth=pp.rcParams['edgewidth'],
         edgecolors='black',
     ),
     label='condition',

@@ -111,7 +111,7 @@ def violinplot(
         Gap between violins when using hue.
     linewidth : float, optional
         Width of violin edges. When None, resolved from
-        ``publiplots.rcParams["lines.linewidth"]``.
+        ``publiplots.rcParams["edgewidth"]``.
     linecolor : str, default="auto"
         Deprecated. Use ``edgecolor`` instead. Kept for backward
         compatibility; when ``edgecolor`` is also set, ``edgecolor`` wins.
@@ -189,7 +189,7 @@ def violinplot(
     reject_figsize(kwargs)
 
     # Read defaults from rcParams if not provided
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)

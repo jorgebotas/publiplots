@@ -40,6 +40,9 @@ dev = [
     "black>=23.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    # Optional at runtime (see the `regression` extra), but required to run
+    # the full test suite: the residplot lowess paths raise without it.
+    "statsmodels>=0.14.0",
 ]
 docs = [
     "sphinx>=7.0.0",

@@ -75,7 +75,7 @@ def hexbinplot(
     gridsize : int or (int, int), default 30
         Number of hexagons along x (and y, if a tuple is passed). The
         matplotlib default of 100 is too fine for publiplots' mm-sized
-        axes; 30 is legible at the 70×50 mm baseline.
+        axes; 30 is legible at the 40×40 mm baseline.
     bins : {None, 'log', int, sequence}, optional
         Passed through to :meth:`matplotlib.axes.Axes.hexbin`. The
         special string ``'log'`` log-normalizes the color scale, which is
@@ -99,7 +99,7 @@ def hexbinplot(
         are not drawn (hexbin's default — stroking every cell rarely
         reads well at publication sizes).
     linewidth : float, optional
-        Edge width. Falls back to ``pp.rcParams["lines.linewidth"]``.
+        Edge width. Falls back to ``pp.rcParams["edgewidth"]``.
     alpha : float, default 1.0
         Face transparency for the hex cells. Unlike marker-based plots,
         hexbin cells are solid density patches — the publiplots
@@ -156,7 +156,7 @@ def hexbinplot(
     from publiplots.layout.subplots import reject_figsize
     reject_figsize(kwargs)
 
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     edgecolor = resolve_param("edgecolor", edgecolor)
     cmap = resolve_continuous_cmap(cmap)
     hex_edgecolor = edgecolor if edgecolor is not None else "none"

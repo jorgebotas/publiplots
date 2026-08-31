@@ -62,7 +62,7 @@ class MarkerPatch(Patch):
     """
     def __init__(self, marker='o', **kwargs):
         markersize = kwargs.pop("markersize", resolve_param("lines.markersize"))
-        markeredgewidth = kwargs.pop("markeredgewidth", resolve_param("lines.markeredgewidth"))
+        markeredgewidth = kwargs.pop("markeredgewidth", resolve_param("edgewidth"))
         self.marker = marker
         self.markersize = markersize
         self.markeredgewidth = markeredgewidth
@@ -87,7 +87,7 @@ class MarkerPatch(Patch):
 
     def set_markeredgewidth(self, markeredgewidth: float):
         if markeredgewidth is None or markeredgewidth == 0:
-            markeredgewidth = resolve_param("lines.markeredgewidth")
+            markeredgewidth = resolve_param("edgewidth")
         self.markeredgewidth = markeredgewidth
 
 
@@ -120,7 +120,7 @@ class LineMarkerPatch(Patch):
     """
     def __init__(self, marker='o', linestyle=None, **kwargs):
         markersize = kwargs.pop("markersize", resolve_param("lines.markersize"))
-        markeredgewidth = kwargs.pop("markeredgewidth", resolve_param("lines.markeredgewidth"))
+        markeredgewidth = kwargs.pop("markeredgewidth", resolve_param("edgewidth"))
         self.marker = marker
         self.markersize = markersize
         self.markeredgewidth = markeredgewidth
@@ -147,7 +147,7 @@ class LineMarkerPatch(Patch):
 
     def set_markeredgewidth(self, markeredgewidth: float):
         if markeredgewidth is None or markeredgewidth == 0:
-            markeredgewidth = resolve_param("lines.markeredgewidth")
+            markeredgewidth = resolve_param("edgewidth")
         self.markeredgewidth = markeredgewidth
 
     def get_linestyle(self) -> str:
@@ -231,9 +231,9 @@ class HandlerRectangle(HandlerPatch):
             (color, alpha, linewidth, edgecolor, hatch_pattern)
         """
         # Defaults
-        color = "gray"
+        color = resolve_param("color")
         alpha = resolve_param("alpha", None)
-        linewidth = resolve_param("lines.linewidth", None)
+        linewidth = resolve_param("edgewidth", None)
         edgecolor = None
         hatch_pattern = None
 
@@ -334,11 +334,11 @@ class HandlerMarker(HandlerBase):
 
         # Defaults
         marker = 'o'
-        color = "gray"
+        color = resolve_param("color")
         size = resolve_param("lines.markersize")
         alpha = resolve_param("alpha")
-        linewidth = resolve_param("lines.linewidth")
-        markeredgewidth = resolve_param("lines.markeredgewidth")
+        linewidth = resolve_param("edgewidth")
+        markeredgewidth = resolve_param("edgewidth")
         edgecolor = None
 
         # Extract from MarkerPatch (created by create_legend_handles)
@@ -356,7 +356,7 @@ class HandlerMarker(HandlerBase):
             marker = orig_handle.get_marker() or 'o'
             color = orig_handle.get_color() or orig_handle.get_markerfacecolor()
             size = orig_handle.get_markersize() or size
-            markeredgewidth = orig_handle.get_mairkeredgewidth() or linewidth
+            markeredgewidth = orig_handle.get_markeredgewidth() or linewidth
             # Line2D doesn't store alpha separately - use default
             # edgecolor will default to face color below
 
@@ -464,11 +464,18 @@ class HandlerLineMarker(HandlerBase):
 
         # Defaults
         marker = 'o'
-        color = "gray"
+        color = resolve_param("color")
         size = resolve_param("lines.markersize")
         alpha = resolve_param("alpha")
+        # The line half of a line+marker swatch is a DATA line, so it falls
+        # back to lines.linewidth -- not edgewidth. Only markeredgewidth
+        # below is an outline. Note this particular default is unreachable
+        # for a LineMarkerPatch (i.e. for every pointplot/lineplot handle),
+        # because the branch below overwrites it from the patch; the
+        # load-bearing version of this distinction is `linewidth_line` in
+        # create_legend_handles.
         linewidth = resolve_param("lines.linewidth")
-        markeredgewidth = resolve_param("lines.markeredgewidth")
+        markeredgewidth = resolve_param("edgewidth")
         edgecolor = None
         linestyle = None
 
@@ -531,6 +538,10 @@ class HandlerLine(HandlerBase):
         linestyle = orig_handle.get_linestyle() if hasattr(orig_handle, "get_linestyle") else "-"
         linestyle = _normalize_dash_linestyle(linestyle)
         if not linewidth:
+            # A line swatch represents a data line, so it falls back to
+            # lines.linewidth -- NOT edgewidth like the outline swatches do.
+            # Only reached for a handle carrying no width at all;
+            # create_legend_handles always sets one (`linewidth_line`).
             linewidth = resolve_param("lines.linewidth")
 
         # Legend line is always fully opaque for readability, matching
@@ -612,12 +623,18 @@ def create_legend_handles(
     linestyles : List[str], optional
         Line styles for each legend entry (e.g., ['-', '--', ':']).
         If provided with markers, creates LineMarkerPatch handles.
-    alpha : float, default=DEFAULT_ALPHA
-        Transparency level for fill layers.
-    linewidth : float, default=DEFAULT_LINEWIDTH
-        Width of edge lines.
-    markeredgewidth : float, default=DEFAULT_MARKEREDEDGWIDTH
-        Width of marker edges.
+    alpha : float, optional
+        Transparency level for fill layers. When omitted it falls back to
+        ``rcParams["alpha"]`` (0.1).
+    linewidth : float, optional
+        Stroke width of the swatch. Applies to whichever stroke the chosen
+        patch type draws: the shape outline for rectangle/marker swatches,
+        or the line itself for line and line+marker swatches. When omitted
+        it falls back per patch type -- ``rcParams["edgewidth"]`` for an
+        outline, ``rcParams["lines.linewidth"]`` for a line.
+    markeredgewidth : float, optional
+        Width of marker edges — an outline, so when omitted it falls back
+        to ``rcParams["edgewidth"]`` (0.75).
     style : str, default="rectangle"
         Style of legend markers: "rectangle", "circle", "marker", or "line".
         Ignored if markers parameter is provided.
@@ -629,10 +646,28 @@ def create_legend_handles(
     List[Patch]
         List of Patch objects with embedded properties.
     """
-    # Read defaults from rcParams if not provided
+    # Read defaults from rcParams if not provided.
+    #
+    # `linewidth` means two different things depending on which patch type
+    # this call produces, so it resolves against two different knobs:
+    #
+    #   linewidth_outline -- the stroke that OUTLINES a shape
+    #                        (RectanglePatch, MarkerPatch) -> edgewidth
+    #   linewidth_line    -- the stroke that IS the data line (LinePatch,
+    #                        and the connecting line of a LineMarkerPatch)
+    #                        -> lines.linewidth
+    #
+    # Resolving one shared value here and handing it to all four branches
+    # renders a line swatch at edgewidth (0.75) for lines actually drawn at
+    # lines.linewidth (1.0) -- the same swatch/figure mismatch this module's
+    # handlers exist to prevent, just on the line half. This is the
+    # load-bearing site for that distinction: HandlerLineMarker and
+    # HandlerLine both overwrite their own defaults from the patch, so it is
+    # the patch's linewidth that actually reaches the canvas.
     alpha = resolve_param("alpha", alpha)
-    linewidth = resolve_param("lines.linewidth", linewidth)
-    markeredgewidth = resolve_param("lines.markeredgewidth", markeredgewidth)
+    linewidth_outline = resolve_param("edgewidth", linewidth)
+    linewidth_line = resolve_param("lines.linewidth", linewidth)
+    markeredgewidth = resolve_param("edgewidth", markeredgewidth)
 
     if colors is None:
         default_color = resolve_param("color", None)
@@ -672,7 +707,7 @@ def create_legend_handles(
                 facecolor=col,
                 edgecolor=edge_col,
                 alpha=alpha,
-                linewidth=linewidth,
+                linewidth=linewidth_line,
                 label=label,
                 markersize=size,
                 markeredgewidth=markeredgewidth,
@@ -686,7 +721,7 @@ def create_legend_handles(
                 facecolor=col,
                 edgecolor=edge_col,
                 alpha=alpha,
-                linewidth=linewidth,
+                linewidth=linewidth_outline,
                 label=label,
                 markersize=size,
                 markeredgewidth=markeredgewidth,
@@ -704,7 +739,7 @@ def create_legend_handles(
                 facecolor=col,
                 edgecolor=edge_col,
                 alpha=alpha,
-                linewidth=linewidth,
+                linewidth=linewidth_line,
                 label=label,
             )
             handles.append(handle)
@@ -718,7 +753,7 @@ def create_legend_handles(
                     facecolor=col,
                     edgecolor=edge_col,
                     alpha=alpha,
-                    linewidth=linewidth,
+                    linewidth=linewidth_outline,
                     label=label,
                     markersize=size,
                     markeredgewidth=markeredgewidth,
@@ -731,7 +766,7 @@ def create_legend_handles(
                     facecolor=col,
                     edgecolor=edge_col,
                     alpha=alpha,
-                    linewidth=linewidth,
+                    linewidth=linewidth_outline,
                     label=label,
                     hatch=hatch,
                     markersize=size,
@@ -751,9 +786,9 @@ def compute_min_labelspacing(
     row overlap given the tallest handle in ``handles``.
 
     Matplotlib's legend packs rows using a fixed-height handle slot of
-    ``fontsize * handleheight`` (~5.6 pt at 8 pt font). Oversized
-    markers overflow that slot on both sides and bleed into adjacent
-    rows when ``labelspacing`` is a small constant. We model the
+    ``fontsize * handleheight`` (~4.9 pt at the 7 pt default font).
+    Oversized markers overflow that slot on both sides and bleed into
+    adjacent rows when ``labelspacing`` is a small constant. We model the
     required spacing directly:
 
     ::
@@ -781,7 +816,8 @@ def compute_min_labelspacing(
         Baseline matplotlib labelspacing used for text-only legends.
     breathing : float, default=0.5
         Edge-to-edge clearance between markers in font-size units.
-        0.5 at 8 pt fonts = 4 pt of whitespace between adjacent swatches.
+        0.5 at the 7 pt default font = 3.5 pt of whitespace between
+        adjacent swatches.
 
     Returns
     -------
