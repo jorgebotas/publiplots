@@ -1105,3 +1105,38 @@ def test_legend_reservation_tracks_handletextpad_rcparam():
         f"reservation should grow with handletextpad rcParam; "
         f"small={small:.2f} mm big={big:.2f} mm"
     )
+
+
+def test_top_legend_title_pad_matches_final_legend_position():
+    """The title pad must be computed from where the legend ENDS UP, not
+    where it sat mid-convergence.
+
+    Regression: _lift_title_above_top_legend measured the band's *absolute*
+    top relative to the axes top. On the first draw the band still sat
+    14.51mm above the axes while it finally rendered at 9.46mm -- baking
+    ~5mm of stale padding into every titled per-axes top legend.
+    """
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax,
+                   title="my title")
+    g = pp.legend(ax, side="top")
+    fig.canvas.draw()
+
+    axb = ax.get_window_extent()
+    band_top_px = max(
+        el.get_window_extent().y1 for _, el in g._builder.elements
+    )
+    band_mm = (band_top_px - axb.y1) / fig.dpi * 25.4
+    # titleOffsetTrans._t[1] is the title pad in INCHES (matplotlib stores
+    # pad/72 there), so *25.4 converts straight to mm. (Cross-check: the
+    # buggy run applied 43.98pt == 15.51mm for a 14.51mm band + 1mm gap.)
+    pad_mm = ax.titleOffsetTrans._t[1] * 25.4
+
+    # The pad clears the band it actually has to clear, plus the ~1mm
+    # breathing gap the implementation adds -- not 5mm more.
+    assert pad_mm == pytest.approx(band_mm + 1.0, abs=1.5), (
+        f"title pad {pad_mm:.2f}mm should track the final band height "
+        f"{band_mm:.2f}mm + ~1mm breathing, not a stale pre-convergence "
+        f"measurement"
+    )
