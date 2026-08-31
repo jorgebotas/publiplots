@@ -466,13 +466,7 @@ def _draw_dot_heatmap(
     elif size_col:
         scatter_legend_kws["size_label"] = size_col
 
-    # Half a cell of padding on each side ("heatmap look"): independent of
-    # cell count. matplotlib's ``ax.margins`` expresses padding as a
-    # fraction of the data extent, so 0.5 / (n_cells - 1) equals a
-    # half-cell visual pad on either side of the data.
     n_rows, n_cols = len(y_labels), len(x_labels)
-    x_margin = 0.5 / max(n_cols - 1, 1)
-    y_margin = 0.5 / max(n_rows - 1, 1)
 
     pp_scatterplot(
         data=long_df,
@@ -490,9 +484,23 @@ def _draw_dot_heatmap(
         ax=ax,
         legend=legend,
         legend_kws=scatter_legend_kws,
-        margins=(x_margin, y_margin),
         **kwargs,
     )
+
+    # Half a cell of padding on each side ("heatmap look"), set explicitly
+    # rather than via ``margins``. The limits land exactly on the outer cell
+    # boundaries, which is the invariant the minor-grid/spine one-tone
+    # property below depends on -- so state it outright instead of relying on
+    # a margin fraction (or on ``set_ticks`` widening the view to include the
+    # outer ticks) to produce it. A margin fraction also cannot express this
+    # on a degenerate axis: a single row/column has zero data extent, so any
+    # fraction of it is zero and matplotlib falls back to +/-0.1, which
+    # breaks ``square=True`` on a 1xN or Nx1 heatmap.
+    #
+    # y is inverted: scatter's categorical handling puts the first row at the
+    # top, and passing the limits high-to-low keeps it there.
+    ax.set_xlim(-0.5, n_cols - 0.5)
+    ax.set_ylim(n_rows - 0.5, -0.5)
 
     # Heatmap chrome: minor grid between cells, no spines. Scatter's
     # categorical-axis handling already places the first row at the top,
