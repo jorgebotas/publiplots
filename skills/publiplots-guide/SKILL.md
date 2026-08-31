@@ -60,10 +60,12 @@ By plot family:
 
 **Two stroke widths, two meanings.** publiplots splits "a stroke that outlines a shape" from "a stroke that *is* the data":
 
-- `pp.rcParams['edgewidth']` (0.75) — every outline: bar and histogram borders, box whiskers and medians, violin outlines, marker edges, hex-cell edges, dendrogram links, error-bar stems, upset bars. Pairs with `pp.rcParams['edgecolor']`.
-- `lines.linewidth` (1.0) — strokes that are data: `lineplot` series, `kdeplot` curves, `histplot(kde=True, element='bars')`'s KDE overlay, `regplot`/`residplot` fit and lowess lines, `pointplot` connectors and error bars, the upset membership-matrix connector, `pp.add_reference_line`.
+- `pp.rcParams['edgewidth']` (0.75) — outlines drawn by publiplots: bar and histogram borders, box whiskers and medians, violin outlines, marker edges, hex-cell edges, dendrogram links, venn circles, `pp.errorbarplot` stems, upset bars. Pairs with `pp.rcParams['edgecolor']`.
+- `lines.linewidth` (1.0) — strokes that are data: `lineplot` series, `kdeplot` curves, `histplot(kde=True, element='bars')`'s KDE overlay, `regplot`/`residplot` fit and lowess lines, `pointplot` connectors and error bars (its `err_kws`), the upset membership-matrix connector, `pp.add_reference_line`.
 
 Migration: code that set `lines.linewidth` to change *border* widths must now set `pp.rcParams['edgewidth']`.
+
+**Exception: seaborn-drawn confidence bands.** The band edges of `pp.lineplot` and of `pp.regplot`/`pp.residplot` are drawn by seaborn as fill-between collections, so their stroke follows matplotlib's `patch.linewidth`, not `edgewidth`. publiplots pins `patch.linewidth` to the same 0.75, so the default look matches — but raising `edgewidth` alone leaves those band edges at 0.75. Raise `patch.linewidth` too if you need them to follow.
 
 The per-call `linewidth=` on `regplot`, `residplot` and `histplot` is an **outline** width (marker edges / bar edges) and does *not* reach the curve. To set the fit or lowess line, pass `line_kws={'linewidth': ...}`. `histplot`'s KDE overlay honours `line_kws={'linewidth': ...}` too under the default `element='bars'`, but is floored at `lines.linewidth` — you can widen it, not thin it.
 

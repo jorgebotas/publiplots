@@ -1,4 +1,7 @@
-"""pp.rcParams['edgewidth'] drives every stroke that outlines a shape.
+"""pp.rcParams['edgewidth'] drives the outlines publiplots draws itself.
+
+(Seaborn-drawn confidence-band edges are the documented exception: they
+follow matplotlib's ``patch.linewidth``. See ``test_stroke_split.py``.)
 
 The legend assertions are the point of this file: a swatch that does not
 match the stroke actually drawn is the regression that motivated the
@@ -6,11 +9,19 @@ edgewidth/lines.linewidth split. See
 docs/superpowers/specs/2026-08-31-rcparams-polish-design.md section 4.
 """
 import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
 
 import publiplots as pp
+
+
+@pytest.fixture(autouse=True)
+def _close_figures():
+    yield
+    plt.close("all")
+
 
 PROBE = 2.5  # deliberately unlike any default, so a fallback is obvious
 
@@ -101,6 +112,20 @@ def test_patch_edges_follow_edgewidth(df, edgewidth_probe, fn_name):
         fn(data=df, x="cat", y="y", hue="g", ax=ax)
     assert _patch_widths(ax), "expected patches"
     assert all(w == pytest.approx(PROBE) for w in _patch_widths(ax))
+
+
+def test_venn_circle_outlines_follow_edgewidth(edgewidth_probe):
+    """Venn circles are shape outlines, so they must follow edgewidth.
+
+    They previously rode matplotlib's ``patch.linewidth`` -- the same
+    default value, so the appearance matched, but the wrong knob.
+    """
+    ax = pp.venn(sets={"A": {1, 2, 3}, "B": {2, 3, 4}})
+    ellipses = [
+        p for p in ax.patches if isinstance(p, matplotlib.patches.Ellipse)
+    ]
+    assert len(ellipses) == 2, "expected two venn circles"
+    assert all(float(e.get_linewidth()) == pytest.approx(PROBE) for e in ellipses)
 
 
 @pytest.mark.parametrize("fn_name", ["violinplot", "hexbinplot"])

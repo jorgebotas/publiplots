@@ -10,6 +10,12 @@ import pytest
 import publiplots as pp
 
 
+@pytest.fixture(autouse=True)
+def _close_figures():
+    yield
+    plt.close("all")
+
+
 # ---- Type: flat 7pt ---------------------------------------------------------
 
 @pytest.mark.parametrize("key", [

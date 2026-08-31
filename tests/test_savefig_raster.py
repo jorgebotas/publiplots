@@ -44,6 +44,14 @@ def df():
     })
 
 
+# Minimum acceptable fraction of non-transparent pixels. Healthy figures
+# in this file measure 0.09-0.18, and the bug produces exactly 0.0, so any
+# threshold in between discriminates. A real floor rather than ``> 0.0``
+# also catches a partially cropped or clipped band, which a
+# single-non-transparent-pixel test would pass.
+_MIN_INK = 0.02
+
+
 def _ink_fraction(path):
     """Fraction of pixels in the saved PNG with non-zero alpha."""
     img = plt.imread(str(path))
@@ -85,13 +93,13 @@ def test_figure_level_bottom_legend_png_has_ink_at_default_dpi(df, tmp_path):
     written with zero non-transparent pixels at ``savefig.dpi=600``.
     """
     _figure_level_bottom_legend(df)
-    assert _save_and_measure(tmp_path, "figure_bottom") > 0.0
+    assert _save_and_measure(tmp_path, "figure_bottom") > _MIN_INK
 
 
 def test_per_axes_bottom_legend_png_has_ink_at_default_dpi(df, tmp_path):
     """legend_kws={'side': 'bottom'} + pp.savefig() at the DEFAULT dpi."""
     _per_axes_bottom_legend(df)
-    assert _save_and_measure(tmp_path, "per_axes_bottom") > 0.0
+    assert _save_and_measure(tmp_path, "per_axes_bottom") > _MIN_INK
 
 
 @pytest.mark.parametrize("dpi", [100, 150, 250, 300, 600])
@@ -108,7 +116,7 @@ def test_bottom_legend_png_has_ink_across_dpis(df, tmp_path, build, dpi):
     resize. Sweep both sides of the default.
     """
     build(df)
-    assert _save_and_measure(tmp_path, f"bottom_{dpi}", dpi=dpi) > 0.0
+    assert _save_and_measure(tmp_path, f"bottom_{dpi}", dpi=dpi) > _MIN_INK
 
 
 def test_right_legend_and_no_legend_png_have_ink(df, tmp_path):
@@ -116,25 +124,46 @@ def test_right_legend_and_no_legend_png_have_ink(df, tmp_path):
     fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
     pp.scatterplot(data=df, x="x", y="y", hue="g", ax=ax)
     pp.legend(side="right")
-    assert _save_and_measure(tmp_path, "right_legend") > 0.0
+    assert _save_and_measure(tmp_path, "right_legend") > _MIN_INK
     plt.close(fig)
 
     fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
     pp.scatterplot(data=df, x="x", y="y", ax=ax)
-    assert _save_and_measure(tmp_path, "no_legend") > 0.0
+    assert _save_and_measure(tmp_path, "no_legend") > _MIN_INK
 
 
-def test_savefig_leaves_figure_size_matching_the_settled_layout(df, tmp_path):
-    """The saved buffer and the figure must agree on the figure size.
+def test_saved_pixel_dimensions_match_the_settled_figure_size(df, tmp_path):
+    """The written file must have the pixel size of the settled layout.
 
     A resize applied from inside the output render is exactly what blanks
-    the file, so after ``pp.savefig`` the figure's size must still be the
-    one ``settle()`` converged on -- rendering must not have moved it.
+    the file, and it also truncates the written raster: the writer emits
+    the buffer that was drawn (the pre-resize size) while the figure ends
+    up at the post-resize size. Reading the saved dimensions back is what
+    makes this discriminating -- asserting on ``fig.get_size_inches()``
+    after the fact does not, because the next draw restores the settled
+    size before the assertion runs.
+
+    Measured with the freeze reverted: the saved PNG came back
+    ``(1129, 1135)`` against an expected ``(1135, 1135)``.
+
+    ``bbox_inches`` is ``None`` for ``pp.savefig``, so pixel dimensions
+    are exactly ``size_inches * dpi``.
     """
     fig = _figure_level_bottom_legend(df)
     fig._publiplots_auto_layout.settle()
     settled = tuple(fig.get_size_inches())
-    pp.savefig(str(tmp_path / "stable.png"))
+    dpi = pp.rcParams["savefig.dpi"]  # publiplots' own default, 600
+    path = tmp_path / "stable.png"
+    pp.savefig(str(path))
+
+    width_in, height_in = settled
+    expected = (round(height_in * dpi), round(width_in * dpi))  # imread: (h, w)
+    assert plt.imread(str(path)).shape[:2] == expected, (
+        "saved raster dimensions disagree with the settled figure size -- "
+        "the layout resized the figure mid-render"
+    )
+
+    # The figure itself must also still be the size settle() converged on.
     assert tuple(fig.get_size_inches()) == pytest.approx(settled, abs=1e-9)
 
 

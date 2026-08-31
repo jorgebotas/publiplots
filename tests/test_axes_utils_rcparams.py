@@ -10,6 +10,12 @@ import pytest
 import publiplots as pp
 
 
+@pytest.fixture(autouse=True)
+def _close_figures():
+    yield
+    plt.close("all")
+
+
 def test_adjust_spines_uses_axes_linewidth():
     fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
     pp.adjust_spines(ax, spines="left-bottom")

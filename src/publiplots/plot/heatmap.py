@@ -538,6 +538,13 @@ def _draw_dot_heatmap(
     )
     ax.tick_params(which="minor", bottom=False, left=False)
 
+    # Trade-off, deliberate: these spines take their width from
+    # `grid.linewidth`, not `axes.linewidth` as spines do everywhere else.
+    # Here the border IS the outermost cell boundary, so matching the grid is
+    # what keeps the lattice one uniform tone (see the note above). The cost:
+    # a user who moves `grid.linewidth` alone gets a dot-heatmap border that
+    # no longer matches other panels' spines. Both rcParams default to 0.75,
+    # so out of the box they agree; move them together to keep them agreeing.
     for spine in ax.spines.values():
         spine.set_edgecolor(to_rgba(grid_color, grid_alpha))
         spine.set_linewidth(grid_linewidth)

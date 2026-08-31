@@ -4,11 +4,18 @@
 stroke that IS the data. regplot, residplot and the upset membership
 matrix each drew both from one resolved value.
 """
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
 
 import publiplots as pp
+
+
+@pytest.fixture(autouse=True)
+def _close_figures():
+    yield
+    plt.close("all")
 
 
 @pytest.fixture
@@ -93,7 +100,6 @@ def test_upset_matrix_dots_and_connector_use_different_knobs():
     distinguishes them. Inactive dots are drawn with linewidths=0 by
     design, so only nonzero collection widths are the active dot edges.
     """
-    import matplotlib.pyplot as plt
     from matplotlib.colors import to_rgba
 
     saved_ew = pp.rcParams["edgewidth"]
