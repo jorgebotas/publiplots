@@ -252,7 +252,17 @@ def _legend(
     linewidth = resolve_param("edgewidth", linewidth)
 
     kwargs = kwargs or {}
-    handle_kwargs = dict(alpha=alpha, linewidth=linewidth, color=color, style="circle")
+    # markeredgewidth, not just linewidth: HandlerMarker draws a marker
+    # swatch's outline from markeredgewidth, so a swatch that receives only
+    # linewidth silently falls back to the rcParams default and reports a
+    # stroke the figure never drew.
+    handle_kwargs = dict(
+        alpha=alpha,
+        linewidth=linewidth,
+        markeredgewidth=linewidth,
+        color=color,
+        style="circle",
+    )
 
     flags = resolve_legend_flags(legend)
 
