@@ -120,7 +120,7 @@ def errorbarplot(
         color too.
     linewidth : float, optional
         Stroke width for both marker edges and errorbar stems. Falls
-        back to ``rcParams['lines.linewidth']``.
+        back to ``rcParams['edgewidth']``.
     edgecolor : str, optional
         Color for marker edges *and* the default stem color when
         ``hue`` is None or continuous. Falls back to
@@ -239,7 +239,7 @@ def errorbarplot(
     )
     reject_figsize(kwargs)
 
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     edgecolor = resolve_param("edgecolor", edgecolor)
     capsize = resolve_param("capsize", capsize)

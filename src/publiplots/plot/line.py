@@ -238,7 +238,7 @@ def lineplot(
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)
     markersize = resolve_param("lines.markersize", markersize)
-    markeredgewidth = resolve_param("lines.markeredgewidth", markeredgewidth)
+    markeredgewidth = resolve_param("edgewidth", markeredgewidth)
 
     # Create figure via pp.subplots to install SubplotsAutoLayout; users who
     # want custom dimensions should compose with pp.subplots(axes_size=...)

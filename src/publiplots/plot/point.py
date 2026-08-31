@@ -208,7 +208,7 @@ def pointplot(
     # Read defaults from rcParams if not provided
     linewidth = resolve_param("lines.linewidth", linewidth)
     markersize = resolve_param("lines.markersize", markersize)
-    markeredgewidth = resolve_param("lines.markeredgewidth", markeredgewidth)
+    markeredgewidth = resolve_param("edgewidth", markeredgewidth)
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     linestyle = resolve_param("lines.linestyle", linestyle)
@@ -418,7 +418,7 @@ def _legend(
     alpha = resolve_param("alpha", alpha)
     linewidth = resolve_param("lines.linewidth", linewidth)
     markersize = resolve_param("lines.markersize", markersize)
-    markeredgewidth = resolve_param("lines.markeredgewidth", markeredgewidth)
+    markeredgewidth = resolve_param("edgewidth", markeredgewidth)
 
     kwargs = kwargs or {}
 

@@ -117,7 +117,7 @@ def heatmap(
         ``publiplots.rcParams["alpha"]``.
     linewidth : float, optional
         Edge linewidth for markers in dot mode. When None, resolved from
-        ``publiplots.rcParams["lines.linewidth"]``.
+        ``publiplots.rcParams["edgewidth"]``.
     edgecolor : str, optional
         Edge color for markers in dot mode. If None, uses marker color.
         Can also be set globally via ``publiplots.rcParams["edgecolor"]``.
@@ -183,7 +183,7 @@ def heatmap(
     reject_figsize(kwargs)
 
     # Read defaults from rcParams if not provided
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     edgecolor = resolve_param("edgecolor", edgecolor)
 
@@ -1363,7 +1363,7 @@ def dendrogram(
 
     # Resolve defaults
     color = resolve_param("color", color)
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
 
     # Create axes if needed
     if ax is None:

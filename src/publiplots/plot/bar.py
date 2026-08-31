@@ -135,7 +135,7 @@ def barplot(
         Axis labels. Pass ``None`` to leave the existing label unchanged.
     linewidth : float, optional
         Width of bar edges and hatch strokes. Defaults to
-        ``rcParams["lines.linewidth"]``.
+        ``rcParams["edgewidth"]``.
     capsize : float, optional
         Width of errorbar caps in data units (dodge path only — stacked
         bars drop errorbars). Defaults to ``rcParams["capsize"]``.
@@ -399,7 +399,7 @@ def barplot(
     reject_figsize(kwargs)
 
     # Read defaults from rcParams if not provided
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    linewidth = resolve_param("edgewidth", linewidth)
     alpha = resolve_param("alpha", alpha)
     capsize = resolve_param("capsize", capsize)
     color = resolve_param("color", color)
