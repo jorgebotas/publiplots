@@ -250,21 +250,46 @@ def test_title_set(kde_df):
 
 
 def test_rcparams_linewidth_edgecolor_flow_through(kde_df):
+    """lines.linewidth reaches the density *curve*.
+
+    It deliberately does not reach a filled density's outline -- that is
+    an outline of a shape and follows ``edgewidth`` (see
+    ``test_rcparams_edgewidth_flows_to_the_fill_outline`` below and
+    tests/test_stroke_split.py).
+    """
     saved_lw = pp.rcParams["lines.linewidth"]
     try:
         pp.rcParams["lines.linewidth"] = 2.5
-        ax = kdeplot(data=kde_df, x="value", hue="group", fill=True)
-        # At least one drawn artist should carry the resolved linewidth.
-        colls_lw = []
-        for c in ax.collections:
-            lw = c.get_linewidth()
-            arr = np.atleast_1d(np.asarray(lw))
-            colls_lw.extend(arr.tolist())
+        ax = kdeplot(data=kde_df, x="value", hue="group", fill=False)
         lines_lw = [l.get_linewidth() for l in ax.lines]
-        all_lw = colls_lw + lines_lw
-        assert any(abs(lw - 2.5) < 1e-6 for lw in all_lw)
+        assert lines_lw, "expected a density curve per hue level"
+        assert all(abs(lw - 2.5) < 1e-6 for lw in lines_lw)
     finally:
         pp.rcParams["lines.linewidth"] = saved_lw
+
+
+def test_rcparams_edgewidth_flows_to_the_fill_outline(kde_df):
+    """A filled density's opaque edge is an outline -> edgewidth."""
+    saved_ew = pp.rcParams["edgewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        ax = kdeplot(data=kde_df, x="value", hue="group", fill=True)
+        colls_lw = []
+        for c in ax.collections:
+            colls_lw.extend(np.atleast_1d(np.asarray(c.get_linewidth())).tolist())
+        assert colls_lw, "expected a filled density collection per hue level"
+        assert all(abs(lw - 2.5) < 1e-6 for lw in colls_lw)
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+
+
+def test_explicit_linewidth_still_reaches_the_fill_outline(kde_df):
+    """The public parameter must not go inert in fill mode."""
+    ax = kdeplot(data=kde_df, x="value", fill=True, linewidth=3.0)
+    colls_lw = []
+    for c in ax.collections:
+        colls_lw.extend(np.atleast_1d(np.asarray(c.get_linewidth())).tolist())
+    assert colls_lw == pytest.approx([3.0] * len(colls_lw))
 
 
 # ---- multiple= ----

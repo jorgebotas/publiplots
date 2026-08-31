@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`regplot(linewidth=)` and `residplot(linewidth=)` set the scatter marker
   edge only.** Previously `regplot`'s also thickened the fit line. Use
   `line_kws={'linewidth': ...}` for the line.
+- **`kdeplot(fill=True)`'s fill outline now defaults from `edgewidth`** (0.75)
+  instead of `lines.linewidth` (1.0), so it matches the borders of every
+  other filled shape — `histplot(element='step', fill=True)`, `violinplot`,
+  `barplot`. Also covers the implicit fills under `multiple='stack'`/`'fill'`,
+  the `hue` variants, and `jointplot(kind='kde', fill=True)`. The 1D density
+  curve and the 2D contour isolines are data and stay on `lines.linewidth`.
+  A per-call `kdeplot(linewidth=)` still reaches whichever of the two the
+  call actually draws — only the defaults split.
 - **Two derived stroke widths are gone.** `histplot`'s KDE overlay was
   `max(bar_edge_linewidth + 0.5, 1.5)`, so it drifted whenever the bar edge
   width changed; under the default `element="bars"` it now reads

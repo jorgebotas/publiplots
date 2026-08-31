@@ -1,8 +1,8 @@
 """Plots that draw an outline AND a data line must use two different knobs.
 
 `edgewidth` is a stroke that outlines a shape; `lines.linewidth` is a
-stroke that IS the data. regplot, residplot and the upset membership
-matrix each drew both from one resolved value.
+stroke that IS the data. regplot, residplot, kdeplot and the upset
+membership matrix each drew both from one resolved value.
 """
 import matplotlib.pyplot as plt
 import numpy as np
@@ -153,3 +153,92 @@ def test_data_lines_ignore_edgewidth(df, fn_name):
         assert all(w == pytest.approx(pp.rcParams["lines.linewidth"]) for w in lines)
     finally:
         pp.rcParams["edgewidth"] = saved_ew
+
+
+def _fill_collection_widths(ax):
+    """Widths of the filled-density polygons.
+
+    ``kdeplot(fill=True)`` emits ``FillBetweenPolyCollection`` (a
+    ``PolyCollection`` subclass); the 2D contour path emits
+    ``QuadContourSet``, which is not one, so this picks out the 1D fills.
+    """
+    from matplotlib.collections import PolyCollection
+
+    out = []
+    for c in ax.collections:
+        if not isinstance(c, PolyCollection):
+            continue
+        out += [float(v) for v in np.atleast_1d(c.get_linewidths())]
+    return out
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"fill": True},
+        {"fill": True, "hue": "g"},
+        {"hue": "g", "multiple": "stack"},
+        {"hue": "g", "multiple": "fill"},
+    ],
+    ids=["fill", "fill+hue", "stack", "fill-multiple"],
+)
+def test_kdeplot_fill_outline_uses_edgewidth(df, kwargs):
+    """A filled density's opaque edge outlines a shape -> edgewidth.
+
+    This is the same classification histplot(element='step', fill=True)
+    and violinplot already use for their KDE-shaped outlines; kdeplot
+    was the last filled shape still riding lines.linewidth.
+    ``multiple='stack'``/``'fill'`` are covered because seaborn fills
+    implicitly there even with ``fill`` unset.
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.kdeplot(data=df, x="x", ax=ax, **kwargs)
+
+        fills = _fill_collection_widths(ax)
+        assert fills, "expected a filled density collection"
+        assert all(w == pytest.approx(2.5) for w in fills), (
+            f"fill outline {fills} should follow edgewidth"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+def test_kdeplot_curve_and_contours_ignore_edgewidth(df):
+    """The 1D curve and the 2D contour isolines are data lines.
+
+    Cranking edgewidth must not move either. (The 1D curve is also
+    covered by ``test_data_lines_ignore_edgewidth`` above; this pins the
+    2D contour path, whose stroke lives on a QuadContourSet rather than
+    on Line2D artists.)
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.kdeplot(data=df, x="x", fill=False, ax=ax)
+        curves = _line_widths(ax)
+        assert curves, "expected a density curve"
+        assert all(w == pytest.approx(0.5) for w in curves), (
+            f"density curve {curves} should follow lines.linewidth"
+        )
+
+        fig2, ax2 = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.kdeplot(data=df, x="x", y="y", ax=ax2)
+        contour_widths = []
+        for c in ax2.collections:
+            contour_widths += [float(v) for v in np.atleast_1d(c.get_linewidths())]
+        assert contour_widths, "expected a contour set"
+        assert all(w == pytest.approx(0.5) for w in contour_widths), (
+            f"contour isolines {contour_widths} should follow lines.linewidth"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
