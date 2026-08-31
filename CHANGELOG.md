@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`pp.rcParams['edgewidth']` (0.75) — one knob for every stroke that
+  *outlines* a shape.** Bar and histogram borders, box whiskers and medians,
+  violin outlines, marker edges, hex-cell edges, dendrogram links, error-bar
+  stems and upset bars all resolve their width from it. It pairs with the
+  existing `edgecolor` global, so edge colour and edge width are now set the
+  same way.
+
+### Changed
+
+- **`lines.linewidth` (1.0) now means only what matplotlib means by it** — a
+  stroke that *is* the data: `lineplot` series, `kdeplot` curves,
+  `regplot`/`residplot` fit and lowess lines, `pointplot` connectors, the
+  upset membership-matrix connector, and `pp.add_reference_line`. Everything
+  that outlines a shape reads `edgewidth` instead.
+  **Migration:** code that set `lines.linewidth` in order to change *border*
+  widths must now set `pp.rcParams['edgewidth']`.
+- **Publication defaults polished.** Every font size is 7pt (was 7–11pt), so
+  headings read as headings by position and weight rather than by size.
+  Spines and gridlines are black, with `grid.alpha` (0.15) carrying the
+  dimming instead of a gray `grid.color` compounding with it — the rendered
+  gray is effectively unchanged (0.850 vs 0.840), but there is one knob per
+  job. `patch.linewidth`, `lines.markeredgewidth` and `grid.linewidth` are
+  0.75, matching `axes.linewidth`. The default panel is 40×40 mm (was
+  70×50 mm), so `pp.subplots(...)` without `axes_size=` yields a smaller
+  square panel.
+- **`regplot(linewidth=)` and `residplot(linewidth=)` set the scatter marker
+  edge only.** Previously `regplot`'s also thickened the fit line. Use
+  `line_kws={'linewidth': ...}` for the line. `histplot`'s KDE overlay and
+  the upset matrix connector likewise no longer derive their width from the
+  edge width via a multiplier.
+
+### Fixed
+
+- **Legend swatches now inherit the stroke width actually drawn.**
+  `scatterplot`, `stripplot` and `swarmplot` stashed only `linewidth`, but a
+  marker swatch's outline is drawn from `markeredgewidth` — so every marker
+  swatch silently fell back to rcParams and reported a stroke the figure never
+  drew. Visible at stock defaults too: scatter drew marker edges at 1.0 while
+  its swatch read 0.75. Rectangle swatches were already correct, and the line
+  half of a line+marker swatch correctly stays on `lines.linewidth`.
+- **`pp.adjust_spines` and `pp.add_grid` ignored their rcParams.**
+  `adjust_spines` hardcoded a 1.5pt spine over a 0.75pt `axes.linewidth` and
+  overrode `axes.edgecolor`; `add_grid` hardcoded all four of its `grid.*`
+  values. Both resolve from rcParams now, with explicitly passed arguments
+  still winning.
+- **Per-axes `side='top'` legends no longer over-pad the axes title.** The
+  title lift computed its pad from the legend band's still-settling absolute
+  position while convergence was mid-flight, baking roughly 5 mm of stale
+  padding into every top-side legend that also had a title. The pad now
+  derives from the band's own height plus the configured outward gap, both
+  stable on the first draw.
+- `pp.heatmap`'s dot mode hardcoded its cell-separator colour and width, and
+  `pp.upsetplot` hardcoded a grid width, a separator colour, and an
+  `alpha=0.3` that overrode `grid.alpha`. Both read the `grid.*` rcParams now.
+  Spines and `axhline` rules composite `grid.alpha` explicitly, since — unlike
+  `ax.grid()` — they do not inherit it.
+- A latent `AttributeError` (`get_mairkeredgewidth`) on raw `Line2D` legend
+  handles, plus three `"gray"` colour fallbacks in the legend handlers that
+  ignored rcParams.
+- `pp.venn` set labels were drawn at `font.size * 1.2`, above the flat 7pt type.
+
 ## [0.15.3] - 2026-07-21
 
 ### Fixed

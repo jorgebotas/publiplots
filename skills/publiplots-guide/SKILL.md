@@ -10,7 +10,7 @@ publiplots is a publication-ready plotting library with a seaborn-shaped API but
 ## Philosophy
 
 - **Axes dimensions are in millimeters, not inches.** The figure grows to fit decorations; `axes_size=(w_mm, h_mm)` is the single source of truth.
-- **rcParams auto-apply on import.** Arial, 8pt labels, 0.75pt strokes, PDF `fonttype=42`, `savefig.dpi=600`, transparent background.
+- **rcParams auto-apply on import.** Arial, flat 7pt type (every label, tick, title and legend entry), 0.75pt outlines (`pp.rcParams['edgewidth']`), 1.0pt data lines (`lines.linewidth`), black spines/gridlines dimmed by `grid.alpha`, PDF `fonttype=42`, `savefig.dpi=600`, transparent background.
 - **Palette is either a name or a dict.** Pass `palette='pastel'` for a named palette or `palette={'a': '#...', 'b': '#...'}` to pin levels to colors (critical when panels see different subsets of levels).
 - **Legend entries are stashed at plot time; `pp.legend(...)` collects them later.** The legend is an independent artist registered with a layout reactor — it never fights the axes for space.
 - **`pp.savefig` does NOT force `bbox_inches='tight'`.** The figure is already laid out to mm-precise margins; tight-cropping would shift figure-anchored legend bands.
@@ -58,6 +58,15 @@ By plot family:
 - `pp.color_palette(name, n_colors)` — seaborn-compatible palette accessor.
 - `pp.reset_style()` — revert to matplotlib defaults (undoes `init_rcparams`).
 
+**Two stroke widths, two meanings.** publiplots splits "a stroke that outlines a shape" from "a stroke that *is* the data":
+
+- `pp.rcParams['edgewidth']` (0.75) — every outline: bar and histogram borders, box whiskers and medians, violin outlines, marker edges, hex-cell edges, dendrogram links, error-bar stems, upset bars. Pairs with `pp.rcParams['edgecolor']`.
+- `lines.linewidth` (1.0) — strokes that are data: `lineplot` series, `kdeplot` curves, `regplot`/`residplot` fit and lowess lines, `pointplot` connectors, the upset matrix connector, `pp.add_reference_line`.
+
+Migration: code that set `lines.linewidth` to change *border* widths must now set `pp.rcParams['edgewidth']`.
+
+`lines.markeredgewidth` is set to 0.75 for consistency, but no publiplots function reads it — every marker-edge default resolves from `edgewidth`. It exists so raw matplotlib calls in a publiplots figure match the surrounding look; leave it set.
+
 ### Markers + hatches
 - `pp.resolve_markers`, `pp.resolve_marker_map`, `pp.STANDARD_MARKERS`.
 - `pp.set_hatch_mode(mode)`, `pp.get_hatch_mode`, `pp.get_hatch_patterns`, `pp.list_hatch_patterns`, `pp.resolve_hatches`, `pp.resolve_hatch_map`, `pp.HATCH_PATTERNS`.
@@ -72,7 +81,7 @@ import publiplots as pp
 fig, axes = pp.subplots(2, 3, axes_size=(45, 30))  # 45mm × 30mm per cell
 ```
 
-Scalar is coerced: `axes_size=40` → `(40, 40)`. Omitting the kwarg falls back to `pp.rcParams['subplots.axes_size']` (70×50 mm under publication defaults).
+Scalar is coerced: `axes_size=40` → `(40, 40)`. Omitting the kwarg falls back to `pp.rcParams['subplots.axes_size']` (40×40 mm under publication defaults).
 
 **Pin palette levels.** When the same hue appears across panels, pass a mapping so colors don't drift.
 

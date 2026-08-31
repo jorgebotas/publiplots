@@ -75,7 +75,7 @@ def hexbinplot(
     gridsize : int or (int, int), default 30
         Number of hexagons along x (and y, if a tuple is passed). The
         matplotlib default of 100 is too fine for publiplots' mm-sized
-        axes; 30 is legible at the 70×50 mm baseline.
+        axes; 30 is legible at the 40×40 mm baseline.
     bins : {None, 'log', int, sequence}, optional
         Passed through to :meth:`matplotlib.axes.Axes.hexbin`. The
         special string ``'log'`` log-normalizes the color scale, which is
