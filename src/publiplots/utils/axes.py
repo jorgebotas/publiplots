@@ -9,12 +9,14 @@ from typing import Optional, List, Union, Tuple, Literal
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 
+from publiplots.themes.rcparams import resolve_param
+
 
 def adjust_spines(
     ax: Axes,
     spines: Union[str, List[str]] = 'left-bottom',
-    color: str = '0.2',
-    linewidth: float = 1.5,
+    color: Optional[str] = None,
+    linewidth: Optional[float] = None,
     offset: Optional[float] = None
 ) -> None:
     """
@@ -33,10 +35,12 @@ def adjust_spines(
         - ``'box'`` — equivalent to ``'all'``.
         - A list of spine names (subset of
           ``['left', 'bottom', 'right', 'top']``).
-    color : str, default ``'0.2'``
-        Color of visible spines.
-    linewidth : float, default ``1.5``
-        Width of visible spines (points).
+    color : str, optional
+        Color of visible spines. Defaults to
+        ``rcParams['axes.edgecolor']``.
+    linewidth : float, optional
+        Width of visible spines (points). Defaults to
+        ``rcParams['axes.linewidth']``.
     offset : float, optional
         Offset visible spines outward from the data by this many points.
         ``None`` leaves the spine position alone.
@@ -64,6 +68,9 @@ def adjust_spines(
 
     >>> pp.adjust_spines(ax, spines=['left', 'bottom'], offset=3)
     """
+    color = resolve_param("axes.edgecolor", color)
+    linewidth = resolve_param("axes.linewidth", linewidth)
+
     # Parse spines parameter
     if spines == 'all':
         visible_spines = ['left', 'bottom', 'right', 'top']
@@ -104,10 +111,10 @@ def add_grid(
     ax: Axes,
     which: str = 'major',
     axis: str = 'both',
-    alpha: float = 0.3,
-    linestyle: str = '--',
-    linewidth: float = 0.5,
-    color: str = '0.8',
+    alpha: Optional[float] = None,
+    linestyle: Optional[str] = None,
+    linewidth: Optional[float] = None,
+    color: Optional[str] = None,
     zorder: int = 0
 ) -> None:
     """
@@ -124,14 +131,17 @@ def add_grid(
         Which tick gridlines to show.
     axis : {'x', 'y', 'both'}, default ``'both'``
         Which axis to add gridlines to.
-    alpha : float, default ``0.3``
-        Gridline transparency in ``[0, 1]``.
-    linestyle : str, default ``'--'``
-        Matplotlib linestyle spec.
-    linewidth : float, default ``0.5``
-        Gridline width (points).
-    color : str, default ``'0.8'``
-        Gridline color.
+    alpha : float, optional
+        Gridline transparency in ``[0, 1]``. Defaults to
+        ``rcParams['grid.alpha']``.
+    linestyle : str, optional
+        Matplotlib linestyle spec. Defaults to
+        ``rcParams['grid.linestyle']``.
+    linewidth : float, optional
+        Gridline width (points). Defaults to
+        ``rcParams['grid.linewidth']``.
+    color : str, optional
+        Gridline color. Defaults to ``rcParams['grid.color']``.
     zorder : int, default ``0``
         Gridline z-order (lower values render behind other elements).
 
@@ -149,6 +159,13 @@ def add_grid(
 
     >>> pp.add_grid(ax, alpha=0.5, linestyle=':', color='steelblue')
     """
+    # grid.color is black ink; grid.alpha does the dimming. Passing colour
+    # without alpha would render a full-opacity black grid.
+    alpha = resolve_param("grid.alpha", alpha)
+    linestyle = resolve_param("grid.linestyle", linestyle)
+    linewidth = resolve_param("grid.linewidth", linewidth)
+    color = resolve_param("grid.color", color)
+
     ax.grid(
         True,
         which=which,
@@ -363,7 +380,7 @@ def add_reference_line(
     axis: str = 'y',
     color: str = 'red',
     linestyle: str = '--',
-    linewidth: float = 1.5,
+    linewidth: Optional[float] = None,
     alpha: float = 0.7,
     label: Optional[str] = None,
     zorder: int = 1
@@ -386,13 +403,16 @@ def add_reference_line(
         Which axis to add the line to: ``'x'`` draws a vertical line at
         ``x=value``; ``'y'`` draws a horizontal line at ``y=value``.
     color : str, default ``'red'``
-        Line color.
+        Line color. Deliberately not an rcParam: a reference line is meant
+        to be conspicuous against the data.
     linestyle : str, default ``'--'``
         Matplotlib linestyle spec.
-    linewidth : float, default ``1.5``
-        Line width (points).
+    linewidth : float, optional
+        Line width (points). Defaults to ``rcParams['lines.linewidth']`` --
+        a reference line is a data line, not an outline.
     alpha : float, default ``0.7``
-        Line transparency in ``[0, 1]``.
+        Line transparency in ``[0, 1]``. Deliberately not an rcParam, for
+        the same reason as ``color``.
     label : str, optional
         Label for the legend. ``None`` leaves the line unlabelled.
     zorder : int, default ``1``
@@ -413,6 +433,8 @@ def add_reference_line(
 
     >>> pp.add_reference_line(ax, value=5, axis='x', color='steelblue')
     """
+    linewidth = resolve_param("lines.linewidth", linewidth)
+
     if axis == 'y':
         ax.axhline(
             y=value,
