@@ -218,10 +218,10 @@ def test_continuous_hue_warns_and_falls_back(continuous_hue_df):
 
 
 def test_rcparams_defaults_flow_through(linear_df):
-    saved_lw = pp.rcParams["lines.linewidth"]
+    saved_lw = pp.rcParams["edgewidth"]
     saved_alpha = pp.rcParams["alpha"]
     try:
-        pp.rcParams["lines.linewidth"] = 1.75
+        pp.rcParams["edgewidth"] = 1.75
         pp.rcParams["alpha"] = 0.5
         ax = residplot(data=linear_df, x="x", y="y")
         # Find the scatter PathCollection (skip Line2D reference line, etc.)
@@ -240,7 +240,7 @@ def test_rcparams_defaults_flow_through(linear_df):
         face = np.asarray(coll.get_facecolors())
         assert np.allclose(face[..., -1], 0.5)
     finally:
-        pp.rcParams["lines.linewidth"] = saved_lw
+        pp.rcParams["edgewidth"] = saved_lw
         pp.rcParams["alpha"] = saved_alpha
 
 

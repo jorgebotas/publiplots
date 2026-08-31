@@ -680,14 +680,19 @@ def _paint_kde(
     linewidth: float,
     alpha: float,
 ) -> None:
-    """Style KDE overlay lines with a slightly bolder stroke.
+    """Style KDE overlay lines with the data-line stroke.
+
+    The histogram bars are outlines (edgewidth); the KDE curve laid over
+    them is data, so it takes lines.linewidth. Previously this invented a
+    width as max(linewidth + 0.5, 1.5), which drifted whenever the bar
+    edge width changed.
 
     KDE lines live in ``ax.lines`` alongside any step/poly lines; we
     identify them by re-matching against the palette. When ``fill=True``
     on step/poly there are no competing lines, so any ``Line2D`` seaborn
     emitted is a KDE curve.
     """
-    bold_lw = max(linewidth + 0.5, 1.5)
+    bold_lw = resolve_param("lines.linewidth")
     for line in new_lines:
         if palette:
             level = _match_line_to_level(line, palette)

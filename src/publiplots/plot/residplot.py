@@ -90,7 +90,9 @@ def residplot(
         ``marker=`` kwarg).
     linewidth : float, optional
         Scatter marker edge width. Falls back to
-        ``pp.rcParams["lines.linewidth"]``.
+        ``pp.rcParams["edgewidth"]``. The LOWESS/fit line defaults from
+        ``pp.rcParams["lines.linewidth"]`` and is overridable via
+        ``line_kws={"linewidth": ...}``.
     edgecolor : str, optional
         Scatter marker edge color. Falls back to
         ``pp.rcParams["edgecolor"]``.
@@ -152,7 +154,12 @@ def residplot(
     reject_figsize(kwargs)
 
     # Read defaults from rcParams if not provided.
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    #
+    # `linewidth` is this plot's marker-edge width -- an outline. The
+    # LOWESS/fit line is data, so it defaults from lines.linewidth and is
+    # overridable via the public line_kws={'linewidth': ...}.
+    linewidth = resolve_param("edgewidth", linewidth)
+    line_linewidth = resolve_param("lines.linewidth")
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)
@@ -176,6 +183,7 @@ def residplot(
     # via apply_transparency on the captured PathCollections.
     scatter_kws = dict(scatter_kws or {})
     line_kws = dict(line_kws or {})
+    line_kws.setdefault("linewidth", line_linewidth)
     scatter_kws.setdefault("linewidths", linewidth)
     if edgecolor is not None:
         scatter_kws.setdefault("edgecolor", edgecolor)

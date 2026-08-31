@@ -132,8 +132,11 @@ def regplot(
         hard-overwrites the scatter collection's paths with whatever it
         received at the top level.
     linewidth : float, optional
-        Width of marker edges (and fit-line thickness via ``line_kws``
-        default). Falls back to ``rcParams["lines.linewidth"]``.
+        Width of scatter marker edges. Falls back to
+        ``pp.rcParams["edgewidth"]``. This does *not* set the regression
+        line's thickness -- that defaults from
+        ``pp.rcParams["lines.linewidth"]`` and is overridable via
+        ``line_kws={"linewidth": ...}``.
     edgecolor : str, optional
         Color for scatter marker edges. Set via ``scatter_kws["edgecolor"]``
         when the user wants per-call control; the top-level ``edgecolor=``
@@ -296,7 +299,11 @@ def regplot(
 
     # Resolve rcParam defaults up front so both the hued and un-hued branches
     # see the same values.
-    linewidth = resolve_param("lines.linewidth", linewidth)
+    # `linewidth` is this plot's marker-edge width -- an outline. The
+    # regression line is data, so it defaults from lines.linewidth and is
+    # overridable via the public line_kws={'linewidth': ...}.
+    linewidth = resolve_param("edgewidth", linewidth)
+    line_linewidth = resolve_param("lines.linewidth")
     alpha = resolve_param("alpha", alpha)
     color = resolve_param("color", color)
     edgecolor = resolve_param("edgecolor", edgecolor)
@@ -351,7 +358,7 @@ def regplot(
     scatter_kws.setdefault("s", float(_markersize) ** 2)
 
     line_kws = dict(line_kws or {})
-    line_kws.setdefault("linewidth", linewidth)
+    line_kws.setdefault("linewidth", line_linewidth)
 
     # Common kwargs for every sns.regplot call (both branches).
     base_kws: Dict[str, Any] = dict(
@@ -474,8 +481,10 @@ def regplot(
                 c.set_facecolor(to_rgba(base_color, alpha=final_alpha))
 
     # Errorbar lines: 2-point Line2Ds with a single unique x value.
+    # Stems are outlines, not data lines -- seaborn draws them at
+    # lines.linewidth * 1.75, which reads heavier than the fit line itself.
     if x_estimator is not None:
-        target_lw = line_kws.get("linewidth", linewidth)
+        target_lw = linewidth
         for line in tracker.get_new_lines():
             xd = np.asarray(line.get_xdata())
             if len(xd) == 2 and len(np.unique(xd)) == 1:
