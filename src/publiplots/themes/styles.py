@@ -20,9 +20,9 @@ def reset_style() -> None:
     """
     Reset matplotlib rcParams to matplotlib's own defaults.
 
-    publiplots applies its publication-grade rcParams (Arial font,
-    0.75 pt strokes, 600 savefig DPI, compact 8 pt labels, etc.)
-    during ``import publiplots``. Call :func:`reset_style` to revert
+    publiplots applies its publication-grade rcParams (Arial font at a
+    uniform 7 pt, 0.75 pt outlines and 1.0 pt data lines, 600 savefig
+    DPI, etc.) during ``import publiplots``. Call :func:`reset_style` to revert
     matplotlib rcParams to matplotlib's stock defaults — for example
     when embedding a publiplots plot inside a larger figure that
     should follow the host project's styling.

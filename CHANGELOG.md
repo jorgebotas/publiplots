@@ -9,12 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`pp.rcParams['edgewidth']` (0.75) — one knob for every stroke that
-  *outlines* a shape.** Bar and histogram borders, box whiskers and medians,
-  violin outlines, marker edges, hex-cell edges, dendrogram links, error-bar
-  stems and upset bars all resolve their width from it. It pairs with the
-  existing `edgecolor` global, so edge colour and edge width are now set the
-  same way.
+- **`pp.rcParams['edgewidth']` (0.75) — one knob for the strokes publiplots
+  draws to *outline* a shape.** Bar and histogram borders, box whiskers and
+  medians, violin outlines, marker edges, hex-cell edges, dendrogram links,
+  venn circles, `errorbarplot` stems and upset bars all resolve their width
+  from it. It pairs with the existing `edgecolor` global, so edge colour and
+  edge width are now set the same way.
+  One exception: the confidence-band edges of `lineplot`, `regplot` and
+  `residplot` are drawn by seaborn as fill-between collections and follow
+  matplotlib's `patch.linewidth`, which publiplots keeps pinned to the same
+  0.75 — so the default appearance matches, but raising `edgewidth` alone
+  does not move them.
 
 ### Changed
 

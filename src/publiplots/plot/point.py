@@ -156,8 +156,9 @@ def pointplot(
     err_kws : dict, optional
         Additional keyword arguments for error bar styling.
         Example: {'linewidth': 1.5, 'alpha': 0.7}
-    alpha : float, default=0.4
-        Transparency level for marker fill (0-1).
+    alpha : float, optional
+        Transparency level for marker fill (0-1). When None, resolved from
+        ``publiplots.rcParams["alpha"]``.
     linewidth : float, optional
         Width of the line connecting the markers, and of the error bars
         unless ``err_kws["linewidth"]`` overrides them. These are data,

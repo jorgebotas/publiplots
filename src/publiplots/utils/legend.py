@@ -623,16 +623,18 @@ def create_legend_handles(
     linestyles : List[str], optional
         Line styles for each legend entry (e.g., ['-', '--', ':']).
         If provided with markers, creates LineMarkerPatch handles.
-    alpha : float, default=DEFAULT_ALPHA
-        Transparency level for fill layers.
+    alpha : float, optional
+        Transparency level for fill layers. When omitted it falls back to
+        ``rcParams["alpha"]`` (0.1).
     linewidth : float, optional
         Stroke width of the swatch. Applies to whichever stroke the chosen
         patch type draws: the shape outline for rectangle/marker swatches,
         or the line itself for line and line+marker swatches. When omitted
         it falls back per patch type -- ``rcParams["edgewidth"]`` for an
         outline, ``rcParams["lines.linewidth"]`` for a line.
-    markeredgewidth : float, default=DEFAULT_MARKEREDEDGWIDTH
-        Width of marker edges.
+    markeredgewidth : float, optional
+        Width of marker edges — an outline, so when omitted it falls back
+        to ``rcParams["edgewidth"]`` (0.75).
     style : str, default="rectangle"
         Style of legend markers: "rectangle", "circle", "marker", or "line".
         Ignored if markers parameter is provided.
@@ -784,9 +786,9 @@ def compute_min_labelspacing(
     row overlap given the tallest handle in ``handles``.
 
     Matplotlib's legend packs rows using a fixed-height handle slot of
-    ``fontsize * handleheight`` (~5.6 pt at 8 pt font). Oversized
-    markers overflow that slot on both sides and bleed into adjacent
-    rows when ``labelspacing`` is a small constant. We model the
+    ``fontsize * handleheight`` (~4.9 pt at the 7 pt default font).
+    Oversized markers overflow that slot on both sides and bleed into
+    adjacent rows when ``labelspacing`` is a small constant. We model the
     required spacing directly:
 
     ::
@@ -814,7 +816,8 @@ def compute_min_labelspacing(
         Baseline matplotlib labelspacing used for text-only legends.
     breathing : float, default=0.5
         Edge-to-edge clearance between markers in font-size units.
-        0.5 at 8 pt fonts = 4 pt of whitespace between adjacent swatches.
+        0.5 at the 7 pt default font = 3.5 pt of whitespace between
+        adjacent swatches.
 
     Returns
     -------
