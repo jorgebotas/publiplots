@@ -39,9 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `line_kws={'linewidth': ...}` for the line.
 - **Two derived stroke widths are gone.** `histplot`'s KDE overlay was
   `max(bar_edge_linewidth + 0.5, 1.5)`, so it drifted whenever the bar edge
-  width changed; it now reads `lines.linewidth` (1.0) like any other curve.
-  The upset membership-matrix connector was `lines.linewidth * 1.2` and is now
-  `lines.linewidth` (1.0) unmultiplied.
+  width changed; under the default `element="bars"` it now reads
+  `lines.linewidth` (1.0) like any other curve. The upset membership-matrix
+  connector was `lines.linewidth * 1.2` and is now `lines.linewidth` (1.0)
+  unmultiplied.
+  Note that `element="step"` and `element="poly"` combined with `kde=True`
+  still do **not** separate the outline from the curve — both are `Line2D`
+  artists, so both take `linewidth` and are then floored at `lines.linewidth`.
+  That scope is unchanged from 0.15.3 (the old expression had it too); only the
+  resulting number moved. Use `element="bars"` to set the two independently.
 
 ### Fixed
 
