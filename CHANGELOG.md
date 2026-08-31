@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`pp.histplot(kde=True, element='step'|'poly')` now separates the outline
+  stroke from the KDE curve stroke** (#205). The two are both `Line2D` artists
+  in `ax.lines`, so the whole list was painted with the outline width and then
+  floored at `lines.linewidth`. As a result `line_kws={'linewidth': 3.0}` drew a
+  1.0 curve (silently discarded), `linewidth=2.0` leaked into the curve, and
+  `fill=False, linewidth=0.4` drew *both* strokes at 1.0. Now the hull follows
+  `linewidth=` / `edgewidth` and the curve follows `line_kws` /
+  `lines.linewidth`, exactly as under `element='bars'`. Verified across `hue`,
+  `multiple='layer'|'stack'|'fill'|'dodge'`, `fill=True|False` and all three
+  elements.
+  Nothing already on the artists could tell the two apart — seaborn draws them
+  interleaved per hue level, `element='poly'` gives both the same `drawstyle`,
+  their `sticky_edges` are identical, and their point counts collide at
+  `bins=200` — so the curves are now tagged at creation through `line_kws`
+  (which seaborn forwards only to the KDE `ax.plot` call) and untagged again
+  once painted. A caller-supplied `line_kws={'gid': ...}` is preserved.
+  The v0.16.0 "known limitation" notes in the `histplot` docstring and in
+  `skills/publiplots-guide/SKILL.md` are removed.
+- **`pp.histplot`'s `line_kws` documentation was wrong.** It claimed the dict
+  reached "step/poly/KDE line artists"; seaborn routes it to the KDE curve
+  only. The step/poly hull is styled from `linewidth=` and `edgecolor=`.
+
 ## [0.16.0] - 2026-08-31
 
 ### Added
@@ -63,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   artists, so both take `linewidth` and are then floored at `lines.linewidth`.
   That scope is unchanged from 0.15.3 (the old expression had it too); only the
   resulting number moved. Use `element="bars"` to set the two independently.
+  (Fixed after this release — see #205 under Unreleased.)
 
 ### Fixed
 
