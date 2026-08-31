@@ -132,3 +132,99 @@ def test_add_reference_line_keeps_its_deliberate_red():
     pp.add_reference_line(ax, value=0.0, axis="y")
     from matplotlib.colors import to_rgba
     assert to_rgba(ax.lines[-1].get_color()) == to_rgba("red")
+
+
+# ---------------------------------------------------------------------------
+# set_axis_labels: the per-role font rcParams must survive an unset kwarg.
+#
+# Forwarding fontsize=None / fontweight=None is not the same as omitting them:
+# set_fontsize(None) / set_fontweight(None) reset the Text to the *generic*
+# font.size / font.weight, discarding axes.labelsize / axes.labelweight and
+# axes.titlesize / axes.titleweight that matplotlib applied at creation.
+# ---------------------------------------------------------------------------
+
+_ROLE_FONT_RCPARAMS = {
+    "font.size": 7,
+    "font.weight": "normal",
+    "axes.labelsize": 11,
+    "axes.labelweight": "bold",
+    "axes.titlesize": 13,
+    "axes.titleweight": "bold",
+}
+
+
+def test_set_axis_labels_keeps_axes_labelsize():
+    with plt.rc_context(_ROLE_FONT_RCPARAMS):
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.set_axis_labels(ax, xlabel="X", ylabel="Y")
+        assert ax.xaxis.label.get_fontsize() == pytest.approx(11)
+        assert ax.yaxis.label.get_fontsize() == pytest.approx(11)
+
+
+def test_set_axis_labels_keeps_axes_labelweight():
+    with plt.rc_context(_ROLE_FONT_RCPARAMS):
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.set_axis_labels(ax, xlabel="X", ylabel="Y")
+        assert ax.xaxis.label.get_fontweight() == "bold"
+        assert ax.yaxis.label.get_fontweight() == "bold"
+
+
+def test_set_axis_labels_keeps_axes_titlesize():
+    with plt.rc_context(_ROLE_FONT_RCPARAMS):
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.set_axis_labels(ax, title="T")
+        assert ax.title.get_fontsize() == pytest.approx(13)
+
+
+def test_set_axis_labels_keeps_axes_titleweight():
+    with plt.rc_context(_ROLE_FONT_RCPARAMS):
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.set_axis_labels(ax, title="T")
+        assert ax.title.get_fontweight() == "bold"
+
+
+def test_set_axis_labels_matches_bare_matplotlib_when_nothing_is_passed():
+    """The whole contract: omitting the font kwargs must be indistinguishable
+    from never having gone through set_axis_labels at all."""
+    with plt.rc_context(_ROLE_FONT_RCPARAMS):
+        fig, ax = pp.subplots(1, 2, axes_size=(40, 30))
+        pp.set_axis_labels(ax[0], xlabel="X", ylabel="Y", title="T")
+        ax[1].set_xlabel("X")
+        ax[1].set_ylabel("Y")
+        ax[1].set_title("T")
+        for a, b in (
+            (ax[0].xaxis.label, ax[1].xaxis.label),
+            (ax[0].yaxis.label, ax[1].yaxis.label),
+            (ax[0].title, ax[1].title),
+        ):
+            assert a.get_fontsize() == pytest.approx(b.get_fontsize())
+            assert a.get_fontweight() == b.get_fontweight()
+
+
+def test_set_axis_labels_explicit_fontsize_still_wins():
+    with plt.rc_context(_ROLE_FONT_RCPARAMS):
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.set_axis_labels(ax, xlabel="X", ylabel="Y", title="T", fontsize=20)
+        assert ax.xaxis.label.get_fontsize() == pytest.approx(20)
+        assert ax.yaxis.label.get_fontsize() == pytest.approx(20)
+        assert ax.title.get_fontsize() == pytest.approx(20)
+
+
+def test_set_axis_labels_explicit_fontweight_still_wins():
+    with plt.rc_context(_ROLE_FONT_RCPARAMS):
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.set_axis_labels(
+            ax, xlabel="X", ylabel="Y", title="T", fontweight="light"
+        )
+        assert ax.xaxis.label.get_fontweight() == "light"
+        assert ax.yaxis.label.get_fontweight() == "light"
+        assert ax.title.get_fontweight() == "light"
+
+
+def test_set_axis_labels_explicit_normal_overrides_a_bold_rcparam():
+    """'normal' is a real value, not a sentinel -- it must still override."""
+    with plt.rc_context(_ROLE_FONT_RCPARAMS):
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.set_axis_labels(ax, xlabel="X", title="T", fontweight="normal")
+        assert ax.xaxis.label.get_fontweight() == "normal"
+        assert ax.title.get_fontweight() == "normal"

@@ -203,7 +203,7 @@ def set_axis_labels(
     ylabel: Optional[str] = None,
     title: Optional[str] = None,
     fontsize: Optional[float] = None,
-    fontweight: str = 'normal'
+    fontweight: Optional[str] = None
 ) -> None:
     """
     Set axis labels and title with consistent formatting.
@@ -222,22 +222,38 @@ def set_axis_labels(
     title : str, optional
         Plot title. ``None`` leaves it unchanged.
     fontsize : float, optional
-        Font size (points) for labels and title. ``None`` uses the
-        active rcParams.
-    fontweight : str, default ``'normal'``
+        Font size (points) for labels and title. ``None`` omits the
+        kwarg entirely, so labels keep ``axes.labelsize`` and the title
+        keeps ``axes.titlesize``.
+    fontweight : str, optional
         Font weight — e.g. ``'normal'``, ``'bold'``, ``'light'``.
+        ``None`` omits the kwarg entirely, so labels keep
+        ``axes.labelweight`` and the title keeps ``axes.titleweight``.
+
+    Notes
+    -----
+    Each font kwarg is omitted when not supplied rather than forwarded as
+    ``None``: matplotlib's ``set_fontsize(None)`` / ``set_fontweight(None)``
+    reset the text to the *generic* ``font.size`` / ``font.weight``, which
+    would discard the per-role rcParam already applied at creation.
 
     Examples
     --------
     >>> pp.set_axis_labels(ax, xlabel='Time (s)', ylabel='Signal',
     ...                    title='Results')
     """
+    kwargs = {}
+    if fontsize is not None:
+        kwargs['fontsize'] = fontsize
+    if fontweight is not None:
+        kwargs['fontweight'] = fontweight
+
     if xlabel is not None:
-        ax.set_xlabel(xlabel, fontsize=fontsize, fontweight=fontweight)
+        ax.set_xlabel(xlabel, **kwargs)
     if ylabel is not None:
-        ax.set_ylabel(ylabel, fontsize=fontsize, fontweight=fontweight)
+        ax.set_ylabel(ylabel, **kwargs)
     if title is not None:
-        ax.set_title(title, fontsize=fontsize, fontweight=fontweight)
+        ax.set_title(title, **kwargs)
 
 
 def set_axis_limits(
