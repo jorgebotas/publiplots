@@ -20,6 +20,9 @@ publiplots-specific keys (not in matplotlib) include:
 
 - ``edgecolor`` — global edge color for patches and marker outlines
   (``None`` = each plot's default).
+- ``edgewidth`` — global width for every stroke that outlines a shape
+  (patch borders, whiskers, marker edges); ``0.75``. Strokes that *are*
+  the data read matplotlib's ``lines.linewidth`` instead.
 - ``alpha`` — default fill transparency for bars (``0.1``).
 - ``palette`` — default qualitative palette name (``"pastel"``).
 - ``hatch_mode`` — global hatch density (``1`` – ``4``). Prefer
@@ -42,7 +45,11 @@ import matplotlib.pyplot as plt
 # =============================================================================
 # Base Default Dictionaries
 # =============================================================================
-TEXT_COLOR = "black"
+# Every piece of figure furniture -- text, tick marks, tick labels, patch
+# edges, spines, gridlines -- is drawn in one ink. Gridlines dim themselves
+# via grid.alpha rather than by using a lighter colour, so the colour and
+# the dimming stay one knob each.
+INK = "black"
 MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     # Figure settings - compact by default (publication-ready)
     # NB: figure.figsize is intentionally not set. publiplots sizes figures
@@ -52,34 +59,34 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     "figure.edgecolor": "none",
     "figure.subplot.hspace": 0.05,
     "figure.subplot.wspace": 0.05,
-    # Figure-level suptitle: one notch above axes.titlesize (10) so the
-    # figure title reads as the outermost heading in the type hierarchy
-    # (matplotlib's default 'large' resolves to 9.6pt, which is smaller
-    # than the panel titles — flipped hierarchy).
-    "figure.titlesize": 11,
+    # Flat 7pt type. Every label, tick, title and legend entry is the same
+    # size, so headings read as headings by position and weight, not by
+    # size. 7pt is the body-text ceiling for the journals publiplots
+    # targets; exceeding it anywhere means a redraw at submission.
+    "figure.titlesize": 7,
     "figure.titleweight": "normal",
 
     # Font settings - optimized for readability
-    "font.size": 8,
+    "font.size": 7,
     "font.family": "sans-serif",
     "font.sans-serif": ["Arial", "Helvetica", "sans-serif"],
 
     # Text settings
-    "text.color": TEXT_COLOR,
-    "axes.labelcolor": TEXT_COLOR,
-    "axes.titlecolor": TEXT_COLOR,
-    "xtick.color": TEXT_COLOR,
-    "xtick.labelcolor": TEXT_COLOR,
-    "ytick.color": TEXT_COLOR,
-    "ytick.labelcolor": TEXT_COLOR,
-    "legend.labelcolor": TEXT_COLOR,
+    "text.color": INK,
+    "axes.labelcolor": INK,
+    "axes.titlecolor": INK,
+    "xtick.color": INK,
+    "xtick.labelcolor": INK,
+    "ytick.color": INK,
+    "ytick.labelcolor": INK,
+    "legend.labelcolor": INK,
 
     # Axes settings
     "axes.linewidth": 0.75,
-    "axes.edgecolor": "0.3",
+    "axes.edgecolor": INK,
     "axes.facecolor": "white",
-    "axes.labelsize": 9,
-    "axes.titlesize": 10,
+    "axes.labelsize": 7,
+    "axes.titlesize": 7,
     "axes.titleweight": "normal",
     "axes.spines.top": True,
     "axes.spines.right": True,
@@ -87,8 +94,15 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     "axes.spines.left": True,
 
     # Line settings
+    # NB: lines.linewidth means what matplotlib means by it -- the width of a
+    # stroke that IS the data (a lineplot series, a kde curve, a regression
+    # fit). Strokes that OUTLINE a shape -- bar borders, box whiskers, violin
+    # outlines, marker edges -- read pp.rcParams['edgewidth'] instead. 1.0 is
+    # 1.33x the 0.75 frame: heavy enough that data does not read as furniture,
+    # restrained enough that many overlapping series stay legible on a 40mm
+    # panel.
     "lines.linewidth": 1.0,
-    "lines.markeredgewidth": 1.0,
+    "lines.markeredgewidth": 0.75,
     # Diameter in points. Used directly by pp.pointplot, pp.lineplot,
     # pp.swarmplot, pp.stripplot. pp.scatterplot / pp.regplot /
     # pp.residplot square it internally to get matplotlib's points² area.
@@ -98,12 +112,12 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
     "lines.markersize": 4,
 
     # Patch settings (for bars, etc.)
-    "patch.linewidth": 1.0,
-    "patch.edgecolor": TEXT_COLOR,
+    "patch.linewidth": 0.75,
+    "patch.edgecolor": INK,
 
     # Tick settings
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
     "xtick.major.width": 0.75,
     "ytick.major.width": 0.75,
     "xtick.major.size": 0,
@@ -111,9 +125,13 @@ MATPLOTLIB_RCPARAMS: Dict[str, Any] = {
 
     # Grid settings
     "axes.grid": False,
-    "grid.linewidth": 0.8,
-    "grid.color": "0.8",
-    "grid.alpha": 0.8,
+    "grid.linewidth": 0.75,
+    # Black ink dimmed by alpha, not a gray colour dimmed again by alpha.
+    # black at alpha 0.15 renders as 0.85 gray on white, matching the
+    # previous '0.8' colour at 0.8 alpha (0.840) -- same appearance, one
+    # knob instead of two that compounded.
+    "grid.color": INK,
+    "grid.alpha": 0.15,
     "grid.linestyle": "--",
 
     # Legend settings
@@ -157,6 +175,12 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     "color": "#5d83c3",  # Default blue
     "alpha": 0.1,  # Default transparency for bars
     "edgecolor": None,  # Global edge color for patches and marker outlines; None = each plot's default auto behavior
+    # Global width for every stroke that OUTLINES a shape: bar/hist borders,
+    # box and violin outlines, whiskers, caps, marker edges, hex-cell edges,
+    # dendrogram links. Pairs with `edgecolor` above -- one knob for the ink
+    # of an outline, one for its width. Strokes that ARE the data read
+    # matplotlib's `lines.linewidth` instead.
+    "edgewidth": 0.75,
 
     # Error bars
     "capsize": 0.0,  # Error bar cap size
@@ -177,7 +201,7 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
 
     # Subplots layout (mm) — baseline is publication-grade; notebook style
     # overrides these in themes/styles.py.
-    "subplots.axes_size": (70.0, 50.0),  # default (width, height) of each axes in pp.subplots
+    "subplots.axes_size": (40.0, 40.0),  # default (width, height) of each axes in pp.subplots
     "subplots.title_space": 5,    # reserved above each row
     "subplots.xlabel_space": 8,   # reserved below each row
     "subplots.ylabel_space": 10,  # reserved left of each col
@@ -407,9 +431,9 @@ def init_rcparams() -> None:
     >>> pp.themes.rcparams.init_rcparams()
     """
     # publiplots is opinionated about its publication-grade defaults — always
-    # overwrite, so users get consistent styling (Arial fonts, 0.75pt strokes,
-    # 8pt labels, etc.) regardless of their matplotlibrc. Per-parameter
-    # overrides are still easy: assign to pp.rcParams after import, or call
+    # overwrite, so users get consistent styling (Arial, 7pt labels, 0.75pt
+    # outlines, 1.0pt data lines, etc.) regardless of their matplotlibrc.
+    # Per-parameter overrides are still easy: assign to pp.rcParams, or call
     # pp.reset_style() to revert to matplotlib's own defaults entirely.
     plt.rcParams.update(MATPLOTLIB_RCPARAMS)
 
