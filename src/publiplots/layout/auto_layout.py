@@ -455,25 +455,51 @@ class SubplotsAutoLayout:
         then sees the title at its lifted position and reserves room for
         the legend + title together — no manual reservation arithmetic and
         no double-counting (``_side_extent`` excludes the legend artist).
-        Idempotent: re-running over convergence iterations recomputes from
-        the same band geometry, so the pad converges instead of drifting.
+
+        Convergent by construction: the pad is derived only from geometry
+        that does NOT move between convergence iterations — the band's own
+        height (relative, so independent of where the band currently sits)
+        plus the band's *configured* outward gap (the value the reactor will
+        place it at). Re-running therefore recomputes the same pad. Measuring
+        the band's absolute top against ``ax.y1`` instead would bake in a
+        mid-convergence position: on the first draw the band has not been
+        repositioned by the reactor yet, so it can read several mm high and
+        leave that much stale padding behind (the lift only ever grows the
+        pad, so nothing later takes it back out).
         """
         ax = group.anchor
         title = getattr(ax, "title", None)
         if title is None or not title.get_text():
             return  # no title to lift
 
-        ax_bb = ax.get_window_extent()
-        # Tallest legend band element above the axes top, in pixels.
-        band_top_px = ax_bb.y1
+        # Band extent measured relative to the band itself (stable), not
+        # relative to ax.y1 (still settling on the first draw).
+        band_top_px = None
+        band_bottom_px = None
         for _, obj in group._builder.elements:
             extent = self._artist_window_extent(obj)
             if extent is None:
                 continue
-            band_top_px = max(band_top_px, extent.y1)
-        band_above_ax_px = band_top_px - ax_bb.y1
-        if band_above_ax_px <= 0:
-            return  # band hasn't rendered above the axes yet
+            band_top_px = (
+                extent.y1 if band_top_px is None
+                else max(band_top_px, extent.y1)
+            )
+            band_bottom_px = (
+                extent.y0 if band_bottom_px is None
+                else min(band_bottom_px, extent.y0)
+            )
+        if band_top_px is None:
+            return  # nothing measurable in the band yet
+        band_height_px = band_top_px - band_bottom_px
+        if band_height_px <= 0:
+            return  # band hasn't rendered yet
+
+        # Outward gap the reactor places the band at: the builder's
+        # ``x_offset`` (mm). Per-axes in-frame top groups never get a
+        # decoration offset baked in (only the external/left paths call
+        # ``_set_decoration_offset``), so x_offset is the whole gap.
+        gap_mm = float(getattr(group._builder._layout, "x_offset", 2.0))
+        band_above_ax_px = band_height_px + gap_mm * dpi / 25.4
 
         # pad (points) = band height above axes + a small breathing gap.
         # matplotlib's title pad positions the title baseline; the text's
