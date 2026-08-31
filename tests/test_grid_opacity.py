@@ -14,6 +14,14 @@ from matplotlib.colors import to_rgba
 import publiplots as pp
 
 
+@pytest.fixture(autouse=True)
+def _close_figures():
+    """Repo convention (see tests/test_upset_layout.py, test_venn_orientation.py,
+    test_heatmap_legend_stash.py): close every figure between tests so none leak."""
+    yield
+    plt.close("all")
+
+
 def _visible_gridlines(ax):
     lines = list(ax.xaxis.get_gridlines()) + list(ax.yaxis.get_gridlines())
     return [l for l in lines if l.get_visible()]
@@ -77,6 +85,44 @@ def test_dot_heatmap_separators_use_grid_rcparams(dot_heatmap_ax):
         assert line.get_alpha() == pytest.approx(plt.rcParams["grid.alpha"])
 
 
+def test_dot_heatmap_border_is_one_tone_with_the_inner_grid(dot_heatmap_ax):
+    """The border and the inner lattice must render as ONE tone.
+
+    The spine composites grid.alpha into its colour, while a minor gridline
+    carries the same colour at grid.alpha as a separate channel -- so the two
+    match only if the effective RGBA agrees. This also pins the reason the
+    minor ticks stop at the INTERIOR boundaries: the axis limits sit exactly
+    on the outer boundaries, so a gridline there would overlay the spine and
+    the two alphas would compound into a heavier border (measured 1.44x
+    before the fix, 1.00x after).
+    """
+    lines = _minor_gridlines(dot_heatmap_ax)
+    assert lines, "expected minor gridlines between cells"
+
+    def effective(color, alpha):
+        r, g, b, a = to_rgba(color)
+        return (r, g, b, a if alpha is None else a * alpha)
+
+    grid_tone = effective(lines[0].get_color(), lines[0].get_alpha())
+    for spine in dot_heatmap_ax.spines.values():
+        spine_tone = effective(spine.get_edgecolor(), spine.get_alpha())
+        assert spine_tone == pytest.approx(grid_tone), (
+            f"border tone {spine_tone} != inner grid tone {grid_tone}"
+        )
+        assert spine.get_linewidth() == pytest.approx(lines[0].get_linewidth())
+
+    # No gridline may coincide with a spine, or the alphas compound.
+    xlim, ylim = dot_heatmap_ax.get_xlim(), dot_heatmap_ax.get_ylim()
+    edges = {round(v, 6) for v in (*xlim, *ylim)}
+    ticks = [
+        *dot_heatmap_ax.xaxis.get_minorticklocs(),
+        *dot_heatmap_ax.yaxis.get_minorticklocs(),
+    ]
+    assert not (edges & {round(t, 6) for t in ticks}), (
+        "a minor gridline sits on the axes limit, doubling the border ink"
+    )
+
+
 def test_dot_heatmap_spines_are_not_opaque_black(dot_heatmap_ax):
     """A spine inherits nothing from grid.alpha, so the alpha has to be
     composited into its colour or the cell-matrix border lands solid."""
@@ -88,29 +134,40 @@ def test_dot_heatmap_spines_are_not_opaque_black(dot_heatmap_ax):
 # ---- upset: gridlines and the separator axhline ---------------------------
 
 @pytest.fixture
-def upset_figure():
-    plt.close("all")
-    pp.upsetplot(data={"A": {1, 2, 3, 4}, "B": {3, 4, 5}, "C": {4, 5, 6}})
-    fig = plt.gcf()
+def upset_axes():
+    """pp.upsetplot returns {"intersections", "matrix", "sets"} -> Axes, which
+    lets the separator test scope itself to the matrix axes."""
+    axes = pp.upsetplot(data={"A": {1, 2, 3, 4}, "B": {3, 4, 5}, "C": {4, 5, 6}})
+    fig = axes["matrix"].get_figure()
     fig.canvas.draw()
-    return fig
+    return {**axes, "figure": fig}
 
 
-def test_upset_gridlines_use_grid_alpha(upset_figure):
-    """The hardcoded alpha=0.3 used to override the rcParam."""
+def test_upset_gridlines_use_grid_alpha(upset_axes):
+    """The hardcoded alpha=0.3 used to override the rcParam, and the width
+    came from a GRID_LINEWIDTH = 1 constant instead of grid.linewidth."""
     found = False
-    for ax in upset_figure.get_axes():
+    for ax in upset_axes["figure"].get_axes():
         for line in _visible_gridlines(ax):
             found = True
             assert line.get_alpha() == pytest.approx(plt.rcParams["grid.alpha"])
+            assert to_rgba(line.get_color()) == to_rgba(plt.rcParams["grid.color"])
+            assert line.get_linewidth() == pytest.approx(
+                plt.rcParams["grid.linewidth"]
+            )
     assert found, "expected gridlines on the upset bar axes"
 
 
-def test_upset_set_separators_are_not_opaque(upset_figure):
-    """The separators are axhlines, which inherit no grid alpha at all."""
+def test_upset_set_separators_are_not_opaque(upset_axes):
+    """The separators are axhlines, which inherit no grid alpha at all.
+
+    Scoped to the matrix axes rather than matching every black line in the
+    figure: grid.color is plain black now, so a figure-wide colour match
+    would sweep in any future black line and force it to carry grid.alpha.
+    """
     grid_rgba = to_rgba(plt.rcParams["grid.color"])
     separators = [
-        l for ax in upset_figure.get_axes() for l in ax.lines
+        l for l in upset_axes["matrix"].lines
         if to_rgba(l.get_color())[:3] == grid_rgba[:3]
     ]
     assert separators, "expected set-separator lines in the grid colour"
@@ -129,7 +186,6 @@ def test_venn_labels_are_not_scaled_above_body_type():
     reports two distinct text sizes (font.size and font.size * 1.2); after
     it, exactly one.
     """
-    plt.close("all")
     ax = pp.venn(sets={"A": {1, 2, 3}, "B": {2, 3, 4}})
     ax.get_figure().canvas.draw()
     sizes = {round(t.get_fontsize(), 3) for t in ax.texts}
