@@ -1716,7 +1716,7 @@ class LegendBuilder:
             mm_x_from_right=placement_x_mm,
             mm_y_from_top=mm_y_from_top,
             mm_width=width,        # the mm width parameter of add_colorbar
-            mm_height=cbar_height, # measured mm height (from _measure_object_dimensions)
+            mm_height=cbar_height, # == the ``height`` argument; see above
             side=self._side,
             external_to_axis=self._external_to_axis,
         )

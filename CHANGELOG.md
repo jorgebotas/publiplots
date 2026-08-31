@@ -41,10 +41,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   along axis is horizontal, so the offset pushed the strip sideways instead:
   a top band left its label hanging over the axes with the strip displaced
   ~3mm to the right, and a bottom band overlapped the two. Both sides now
-  stack the block outward from the edge, and the strip's mm height is taken
-  from the value it was built with rather than re-read in pixels (a re-read
-  reported a 15mm strip as 20mm whenever the surrounding figure had grown to
-  fit the band). (#203)
+  stack the block outward from the edge, so label and strip share a centre
+  line.
+  **Scope:** this covers a band holding a single colorbar — the common case,
+  and what `pp.legend(ax, side='top')` produces for a continuous hue. A band
+  that also holds a categorical legend (a plot with both `hue=<continuous>`
+  and `style=`) still separates the strip from its label, for a different
+  reason in the along-edge alignment pass; that is tracked separately.
+  (#203)
+- **`add_colorbar(height=...)` is now honoured exactly.** The strip's
+  millimetre height was read back from the rendered axes, which stores a
+  figure *fraction* — so once `pp.subplots` resized the figure around the
+  band, the value drifted. It is now taken from the `height` argument the
+  strip was built with. Labelled colorbars were already correct by accident
+  (measuring their label forced the figure to settle first); **unlabelled**
+  ones were not, on every side including `right` and `left`. The error was
+  whatever the figure happened to resize by — measured between −17% and
+  +21% of the declared height across configurations, in both directions.
+  Expect unlabelled colorbars to change size slightly, to the size you
+  asked for. (#203)
 
 ## [0.16.0] - 2026-08-31
 
