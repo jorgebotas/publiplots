@@ -202,6 +202,12 @@ Configure global plotting parameters using ``pp.rcParams``:
    # Per-call ``edgecolor=`` arguments override the rcParam.
    pp.rcParams['edgecolor'] = 'black'
 
+   # Set the global width (points) for every stroke that outlines a shape:
+   # patch borders, box whiskers, violin outlines, marker edges. Pairs with
+   # ``edgecolor``. Strokes that *are* the data (lineplot series, kde curves,
+   # regression fits) read matplotlib's ``lines.linewidth`` instead.
+   pp.rcParams['edgewidth'] = 0.75
+
    # Set figure size
    pp.rcParams['figure.figsize'] = (8, 6)
 
