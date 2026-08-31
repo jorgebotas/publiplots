@@ -34,6 +34,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fontweight`'s default changes from `'normal'` to `None` — under the flat
   7pt type of 0.16.0, weight is the remaining hierarchy signal, and the old
   default silently closed it off.
+- **A per-axes `side='top'` or `side='bottom'` colorbar band now stacks its
+  label above the colour strip.** `add_colorbar` expressed "the strip goes
+  below the label" as an offset *along* the anchor edge, which is only the
+  downward direction for `side='right'`/`'left'`. On a top or bottom band the
+  along axis is horizontal, so the offset pushed the strip sideways instead:
+  a top band left its label hanging over the axes with the strip displaced
+  ~3mm to the right, and a bottom band overlapped the two. Both sides now
+  stack the block outward from the edge, and the strip's mm height is taken
+  from the value it was built with rather than re-read in pixels (a re-read
+  reported a 15mm strip as 20mm whenever the surrounding figure had grown to
+  fit the band). (#203)
 
 ## [0.16.0] - 2026-08-31
 

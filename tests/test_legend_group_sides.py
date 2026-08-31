@@ -1175,3 +1175,88 @@ def test_top_legend_title_pad_matches_final_legend_position(hue_kind):
             f"track the band's true rise above the axes {band_mm:.3f}mm "
             f"+ ~1mm breathing"
         )
+
+
+@pytest.mark.parametrize("side", ["top", "bottom"])
+def test_per_axes_horizontal_colorbar_band_stacks_label_above_strip(side):
+    """A per-axes top/bottom colorbar band must stack its label ABOVE the
+    colour strip and place the whole block clear of the axes rectangle.
+
+    Regression for #203. ``add_colorbar`` expressed "the strip goes below
+    the label" as an *along-the-edge* offset. That is only the downward
+    direction for side='right'/'left'; on a top/bottom band the along axis
+    is horizontal (``layout_reactor._Registration``), so the offset pushed
+    the strip SIDEWAYS by title_height + pad while the label stayed pinned
+    at the outward line -- hanging over the axes on a top band and
+    colliding with the strip on a bottom one.
+
+    Measured before the fix (50x40mm axes, mm relative to the axes rect):
+
+        side='top'     label y=[-0.37, +2.00] above ax.y1  (0.37mm INSIDE
+                       the axes), strip y=[+0.56, +17.93]; label x=[21.13,
+                       22.37] vs strip x=[24.37, 33.56] -- disjoint.
+        side='bottom'  label y=[-4.37, -2.00] below ax.y0, strip
+                       y=[-18.66, -1.07] -- the strip's top OVERLAPS the
+                       label; same 3.24mm sideways displacement in x.
+
+    Its sibling ``test_top_legend_title_pad_matches_final_legend_position``
+    asserts only the resulting title pad, so it stayed green throughout.
+    Hence the three structural assertions here: outward clearance, the
+    label/strip stacking order, and the horizontal overlap that proves the
+    two are stacked rather than laid side by side.
+    """
+    df = _scatter_df().assign(c=lambda d: np.linspace(0.0, 1.0, len(d)))
+
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="c", ax=ax, title="my title")
+    group = pp.legend(ax, side=side)
+
+    sizer = fig._publiplots_auto_layout
+    to_mm = lambda px: px / fig.dpi * 25.4
+
+    # Draw 0 must already be right (a consumer that draws once never gets a
+    # second pass), and so must steady state (settle() loops draws for
+    # savefig, so draw 1+ is what gets written out).
+    for draw in range(3):
+        fig.canvas.draw()
+        by_kind = {
+            kind: sizer._artist_window_extent(obj)
+            for kind, obj in group._builder.elements
+        }
+        assert set(by_kind) == {"colorbar", "text"}, (
+            f"expected a strip + a floating label, got {sorted(by_kind)}"
+        )
+        strip, label = by_kind["colorbar"], by_kind["text"]
+        ax_bb = ax.get_window_extent()
+        tag = f"[{side}, draw {draw}]"
+
+        # 1. The whole block clears the axes rectangle on its own side.
+        if side == "top":
+            assert to_mm(min(strip.y0, label.y0) - ax_bb.y1) > -0.1, (
+                f"{tag} band must sit above ax.y1; strip y0 is "
+                f"{to_mm(strip.y0 - ax_bb.y1):+.2f}mm and label y0 is "
+                f"{to_mm(label.y0 - ax_bb.y1):+.2f}mm relative to it"
+            )
+        else:
+            assert to_mm(max(strip.y1, label.y1) - ax_bb.y0) < 0.1, (
+                f"{tag} band must sit below ax.y0; strip y1 is "
+                f"{to_mm(strip.y1 - ax_bb.y0):+.2f}mm and label y1 is "
+                f"{to_mm(label.y1 - ax_bb.y0):+.2f}mm relative to it"
+            )
+
+        # 2. The label sits above the strip with a modest gap -- never
+        #    overlapping it, never flung off to a different height.
+        gap_mm = to_mm(label.y0 - strip.y1)
+        assert 0.0 <= gap_mm < 4.0, (
+            f"{tag} label should sit just above the strip; label y0 - "
+            f"strip y1 = {gap_mm:+.2f}mm"
+        )
+
+        # 3. They are stacked, not laid out side by side along the edge:
+        #    the label's horizontal span must fall within the strip's.
+        assert strip.x0 - 0.1 <= label.x0 and label.x1 <= strip.x1 + 0.1, (
+            f"{tag} label x=[{to_mm(label.x0 - ax_bb.x0):+.2f},"
+            f"{to_mm(label.x1 - ax_bb.x0):+.2f}]mm should sit over the "
+            f"strip x=[{to_mm(strip.x0 - ax_bb.x0):+.2f},"
+            f"{to_mm(strip.x1 - ax_bb.x0):+.2f}]mm, not beside it"
+        )

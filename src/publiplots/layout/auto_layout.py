@@ -498,10 +498,9 @@ class SubplotsAutoLayout:
         high and leave that much stale padding behind (the lift only ever
         grows the pad, so nothing later takes it back out). Spanning the
         band's own ``min(y0) → max(y1)`` instead is wrong for a different
-        reason: an element may extend *below* its placement reference (a
-        per-axes top colorbar's label is a ``va='top'`` Text pinned at the
-        reference, so it hangs downward), and the span would then count
-        that overhang a second time on top of ``outward_mm``.
+        reason: an element that extends *below* its placement reference
+        would have that overhang counted a second time on top of
+        ``outward_mm``.
         """
         ax = group.anchor
         title = getattr(ax, "title", None)
@@ -533,7 +532,17 @@ class SubplotsAutoLayout:
             obj_ax = getattr(obj, "ax", None)
             if obj_ax is not None and hasattr(obj_ax, "get_window_extent"):
                 base = obj_ax.get_window_extent()
-            rise_mm = (extent.y1 - base.y0) / dpi * 25.4
+            if reg.mm_height is not None:
+                # A colorbar strip is added in figure *fractions*, so its
+                # pixel height lags one resize behind whenever this pass
+                # grows the figure — the reactor only restores the declared
+                # mm at the end of the draw. Take the height from the
+                # registration (authoritative, and what the reactor will
+                # apply) and measure only the decoration overhang above the
+                # strip, which is text and doesn't scale with the figure.
+                rise_mm = reg.mm_height + (extent.y1 - base.y1) / dpi * 25.4
+            else:
+                rise_mm = (extent.y1 - base.y0) / dpi * 25.4
             outward_mm = (
                 reg.mm_x_from_right + reg.mm_outward_decoration_offset
             )
