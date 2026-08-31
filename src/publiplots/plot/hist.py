@@ -173,7 +173,12 @@ def histplot(
     alpha : float, optional
         Transparency for the face fill (0-1). Falls back to rcParams.
     linewidth : float, optional
-        Width of bar edges / step / poly / KDE line. Falls back to rcParams.
+        Outline width for the bar edges and the step / poly lines. Falls
+        back to ``pp.rcParams["edgewidth"]``. This does **not** set the
+        KDE overlay's width — the KDE curve is data, not an outline, so it
+        defaults from ``pp.rcParams["lines.linewidth"]``; widen it via
+        ``line_kws={"linewidth": ...}`` (values below
+        ``lines.linewidth`` are floored).
     log_scale : bool, number, or pair, optional
         If True, apply a log scale on the value axis. A number sets the
         base. A 2-tuple sets (x_log, y_log) independently — forwarded

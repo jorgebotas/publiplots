@@ -25,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that outlines a shape reads `edgewidth` instead.
   **Migration:** code that set `lines.linewidth` in order to change *border*
   widths must now set `pp.rcParams['edgewidth']`.
-- **Publication defaults polished.** Every font size is 7pt (was 7–11pt), so
-  headings read as headings by position and weight rather than by size.
+- **Publication defaults polished.** Every font size is 7pt (was 7–11pt);
+  titles are now distinguished by position alone, not by size.
   Spines and gridlines are black, with `grid.alpha` (0.15) carrying the
   dimming instead of a gray `grid.color` compounding with it — the rendered
   gray is effectively unchanged (0.850 vs 0.840), but there is one knob per
@@ -36,9 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   square panel.
 - **`regplot(linewidth=)` and `residplot(linewidth=)` set the scatter marker
   edge only.** Previously `regplot`'s also thickened the fit line. Use
-  `line_kws={'linewidth': ...}` for the line. `histplot`'s KDE overlay and
-  the upset matrix connector likewise no longer derive their width from the
-  edge width via a multiplier.
+  `line_kws={'linewidth': ...}` for the line.
+- **Two derived stroke widths are gone.** `histplot`'s KDE overlay was
+  `max(bar_edge_linewidth + 0.5, 1.5)`, so it drifted whenever the bar edge
+  width changed; it now reads `lines.linewidth` (1.0) like any other curve.
+  The upset membership-matrix connector was `lines.linewidth * 1.2` and is now
+  `lines.linewidth` (1.0) unmultiplied.
 
 ### Fixed
 
@@ -46,14 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scatterplot`, `stripplot` and `swarmplot` stashed only `linewidth`, but a
   marker swatch's outline is drawn from `markeredgewidth` — so every marker
   swatch silently fell back to rcParams and reported a stroke the figure never
-  drew. Visible at stock defaults too: scatter drew marker edges at 1.0 while
-  its swatch read 0.75. Rectangle swatches were already correct, and the line
-  half of a line+marker swatch correctly stays on `lines.linewidth`.
+  drew. Visible whenever `linewidth=` was passed explicitly: the drawn marker
+  edge changed and the swatch did not. Rectangle swatches were already
+  correct, and the line half of a line+marker swatch correctly stays on
+  `lines.linewidth`.
 - **`pp.adjust_spines` and `pp.add_grid` ignored their rcParams.**
   `adjust_spines` hardcoded a 1.5pt spine over a 0.75pt `axes.linewidth` and
   overrode `axes.edgecolor`; `add_grid` hardcoded all four of its `grid.*`
   values. Both resolve from rcParams now, with explicitly passed arguments
-  still winning.
+  still winning. `pp.add_reference_line`'s width was likewise a hardcoded
+  1.5 pt and now defaults from `lines.linewidth` (1.0); its `color="red"`,
+  `alpha=0.7` and `linestyle="--"` remain deliberate literals.
 - **Per-axes `side='top'` legends no longer over-pad the axes title.** The
   title lift computed its pad from the legend band's still-settling absolute
   position while convergence was mid-flight, baking roughly 5 mm of stale

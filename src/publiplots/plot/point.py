@@ -158,12 +158,17 @@ def pointplot(
         Example: {'linewidth': 1.5, 'alpha': 0.7}
     alpha : float, default=0.4
         Transparency level for marker fill (0-1).
-    linewidth : float, default=2.0
-        Width of marker edges and connecting lines.
-    markersize : float, default=10
-        Size of markers.
-    markeredgewidth : float, default=1.0
-        Width of marker edges.
+    linewidth : float, optional
+        Width of the line connecting the markers, and of the error bars
+        unless ``err_kws["linewidth"]`` overrides them. These are data,
+        not outlines, so this falls back to
+        ``pp.rcParams["lines.linewidth"]``. It does **not** set the marker
+        edge width — see ``markeredgewidth``.
+    markersize : float, optional
+        Size of markers. Falls back to ``pp.rcParams["lines.markersize"]``.
+    markeredgewidth : float, optional
+        Width of the marker edges — an outline, so it falls back to
+        ``pp.rcParams["edgewidth"]``.
     ax : Axes, optional
         Matplotlib axes object. If None, creates new figure.
     title : str, default=""
