@@ -27,6 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once painted. A caller-supplied `line_kws={'gid': ...}` is preserved.
   The v0.16.0 "known limitation" notes in the `histplot` docstring and in
   `skills/publiplots-guide/SKILL.md` are removed.
+- **`pp.histplot(line_kws={'linewidth': ...})` is now honoured exactly**, thinner
+  than `lines.linewidth` as well as thicker. It was previously floored at
+  `lines.linewidth`, so `line_kws={'linewidth': 0.4}` silently drew a 1.0 curve
+  — the same class of surprise as #205 itself, a knob that worked upward only.
+  The floor was a vestige of the pre-0.16.0 `max(linewidth + 0.5, 1.5)`
+  expression: back when the curve could not be told apart from the hull it kept
+  the curve from inheriting a hairline outline width. It is removed outright
+  rather than conditioned on the caller, because its other branch was
+  unreachable — without `line_kws` seaborn draws the curve with `ax.plot`, whose
+  default is `plt.rcParams['lines.linewidth']`, the very storage
+  `pp.rcParams['lines.linewidth']` writes to, so the floor's comparison could
+  never fire. Default curve widths are therefore unchanged at every setting.
 - **`pp.histplot`'s `line_kws` documentation was wrong.** It claimed the dict
   reached "step/poly/KDE line artists"; seaborn routes it to the KDE curve
   only. The step/poly hull is styled from `linewidth=` and `edgecolor=`.
@@ -87,7 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   artists, so both take `linewidth` and are then floored at `lines.linewidth`.
   That scope is unchanged from 0.15.3 (the old expression had it too); only the
   resulting number moved. Use `element="bars"` to set the two independently.
-  (Fixed after this release — see #205 under Unreleased.)
+  (Both the scope and the `lines.linewidth` floor were fixed after this release
+  — see #205 under Unreleased.)
 
 ### Fixed
 

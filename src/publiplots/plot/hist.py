@@ -211,9 +211,9 @@ def histplot(
 
         It never sets the KDE overlay's width, under any ``element``:
         the KDE curve is data, not an outline, so it defaults from
-        ``pp.rcParams["lines.linewidth"]``. Widen it with
-        ``line_kws={"linewidth": ...}``; values below
-        ``lines.linewidth`` are floored back up to it.
+        ``pp.rcParams["lines.linewidth"]``. Set it with
+        ``line_kws={"linewidth": ...}``, which is honoured exactly —
+        thinner than ``lines.linewidth`` as well as thicker.
     log_scale : bool, number, or pair, optional
         If True, apply a log scale on the value axis. A number sets the
         base. A 2-tuple sets (x_log, y_log) independently — forwarded
@@ -737,27 +737,34 @@ def _paint_kde(
     palette: Optional[Dict],
     color: Optional[str],
 ) -> None:
-    """Style KDE overlay lines with the data-line stroke.
+    """Recolour the KDE overlay lines from the resolved palette.
 
     The histogram bars and the step/poly hull are outlines (edgewidth);
     the KDE curve laid over them is data, so it takes lines.linewidth.
-    Previously this invented a width as max(linewidth + 0.5, 1.5), which
-    drifted whenever the bar edge width changed.
+    Nothing here needs to *set* that width: seaborn draws the curve with
+    ``ax.plot``, whose default is ``plt.rcParams["lines.linewidth"]`` —
+    the very storage ``pp.rcParams["lines.linewidth"]`` writes to. So the
+    curve already arrives at the right width, and an explicit
+    ``line_kws={"linewidth": ...}`` already arrives at the caller's.
+
+    This used to floor the width at ``lines.linewidth``, a vestige of the
+    pre-0.16.0 ``max(linewidth + 0.5, 1.5)`` expression: back when the
+    curve could not be told apart from the hull, the floor kept it from
+    inheriting a hairline outline width. With the curve identified at
+    creation (:data:`_KDE_GID`) that guard had exactly two possible
+    effects — a no-op without ``line_kws``, or silently overriding an
+    explicit ``line_kws={"linewidth": 0.4}`` — so it is gone.
 
     ``new_lines`` must already be narrowed to the KDE curves — the caller
     does that with :data:`_KDE_GID`, since the step/poly outline is a
     ``Line2D`` in the same ``ax.lines`` list.
     """
-    bold_lw = resolve_param("lines.linewidth")
     for line in new_lines:
         if palette:
             level = _match_line_to_level(line, palette)
             line_color = palette.get(level, color) if level is not None else color
         else:
             line_color = color
-        current_lw = line.get_linewidth()
-        if current_lw < bold_lw:
-            line.set_linewidth(bold_lw)
         line.set_color(to_rgba(line_color, alpha=1.0))
 
 

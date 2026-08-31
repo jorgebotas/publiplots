@@ -67,7 +67,7 @@ Migration: code that set `lines.linewidth` to change *border* widths must now se
 
 **Exception: seaborn-drawn confidence bands.** The band edges of `pp.lineplot` and of `pp.regplot`/`pp.residplot` are drawn by seaborn as fill-between collections, so their stroke follows matplotlib's `patch.linewidth`, not `edgewidth`. publiplots pins `patch.linewidth` to the same 0.75, so the default look matches — but raising `edgewidth` alone leaves those band edges at 0.75. Raise `patch.linewidth` too if you need them to follow.
 
-The per-call `linewidth=` on `regplot`, `residplot` and `histplot` is an **outline** width (marker edges / bar edges / the step-poly hull) and does *not* reach the curve. To set the fit or lowess line, pass `line_kws={'linewidth': ...}`. `histplot`'s KDE overlay honours `line_kws={'linewidth': ...}` too, under every `element`, but is floored at `lines.linewidth` — you can widen it, not thin it.
+The per-call `linewidth=` on `regplot`, `residplot` and `histplot` is an **outline** width (marker edges / bar edges / the step-poly hull) and does *not* reach the curve. To set the fit or lowess line, pass `line_kws={'linewidth': ...}`. `histplot`'s KDE overlay honours `line_kws={'linewidth': ...}` too, under every `element`, and honours it exactly — you can thin the curve below `lines.linewidth` as well as widen it.
 
 `kdeplot(linewidth=)` is the one that means *whichever stroke the call draws* — the 1D curve, the 1D fill outline, or the 2D contour lines. The two never coexist in 1D (seaborn emits a `Line2D` for `fill=False` and a filled collection otherwise), so only the **defaults** split: the curve and the contours default from `lines.linewidth`, the fill outline from `edgewidth`.
 

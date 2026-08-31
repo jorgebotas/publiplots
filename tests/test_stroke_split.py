@@ -363,6 +363,63 @@ def test_histplot_line_kws_width_reaches_the_kde_curve(df, element):
 
 
 @pytest.mark.parametrize("element", ["bars", "step", "poly"])
+@pytest.mark.parametrize("key", ["linewidth", "lw"])
+def test_histplot_line_kws_can_thin_the_kde_curve(df, element, key):
+    """An explicit ``line_kws`` width is honoured downward as well as up.
+
+    ``_paint_kde`` used to floor the curve at ``lines.linewidth``, so
+    ``line_kws={'linewidth': 0.4}`` silently drew 1.0. That floor was a
+    vestige of the days when the curve could not be told apart from the
+    hull; it could only ever no-op (no ``line_kws``, where seaborn's
+    ``ax.plot`` default IS ``lines.linewidth``) or override an explicit
+    caller value. A knob that works upward but not downward is only half
+    a knob, so the floor is gone.
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.histplot(
+            data=df, x="x", ax=ax, kde=True, element=element, fill=False,
+            bins=_HIST_BINS, line_kws={key: 0.4},
+        )
+        outline, curve = _hist_outline_and_curve_widths(ax)
+        assert curve and all(w == pytest.approx(0.4) for w in curve), (
+            f"{element}: line_kws {key}=0.4 was floored -- curve is {curve}"
+        )
+        assert outline and all(w == pytest.approx(2.5) for w in outline), (
+            f"{element}: line_kws must not reach the outline {outline}"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+def test_histplot_kde_curve_default_width_is_unchanged_without_line_kws(df):
+    """Removing the floor must not move the default: with no ``line_kws``
+    the curve still lands on ``lines.linewidth``, because that rcParam is
+    the same storage seaborn's ``ax.plot`` reads its default from."""
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        for width in (0.2, 0.5, 1.0, 3.0):
+            pp.rcParams["lines.linewidth"] = width
+            fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+            pp.histplot(
+                data=df, x="x", ax=ax, kde=True, element="step", fill=False,
+                bins=_HIST_BINS,
+            )
+            _, curve = _hist_outline_and_curve_widths(ax)
+            assert curve and all(w == pytest.approx(width) for w in curve), (
+                f"lines.linewidth={width} should give a {width} curve, got {curve}"
+            )
+            plt.close("all")
+    finally:
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+@pytest.mark.parametrize("element", ["bars", "step", "poly"])
 def test_histplot_linewidth_does_not_leak_into_the_kde_curve(df, element):
     """The public ``linewidth=`` is the outline width only.
 
