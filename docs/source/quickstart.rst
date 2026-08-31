@@ -215,11 +215,36 @@ Configure global plotting parameters using ``pp.rcParams``:
    # same 0.75). Raise ``patch.linewidth`` too if you need them to follow.
    pp.rcParams['edgewidth'] = 0.75
 
-   # Set figure size
-   pp.rcParams['figure.figsize'] = (8, 6)
-
    # Set hatch pattern density
    pp.set_hatch_mode(2)  # 1=sparse, 2=medium, 3=dense
+
+Figure Size
+~~~~~~~~~~~
+
+Figures are sized in **millimetres**, and the quantity you control is the
+**axes** — the spine bounding box of each panel — not the canvas. Pass
+``axes_size=(width_mm, height_mm)`` to ``pp.subplots``; publiplots then grows
+the canvas around it to fit titles, axis labels and tick labels, so panels
+stay the size you asked for however much decoration they end up carrying:
+
+.. code-block:: python
+
+   # One 60 x 45 mm panel
+   fig, ax = pp.subplots(axes_size=(60, 45))
+   pp.scatterplot(data=df, x='measurement_a', y='measurement_b', ax=ax)
+
+   # A 2 x 3 grid of 35 x 25 mm panels
+   fig, axes = pp.subplots(2, 3, axes_size=(35, 25))
+
+Without ``axes_size`` each panel defaults to 40 x 40 mm.
+
+.. note::
+
+   ``figure.figsize`` is the one matplotlib rcParam publiplots deliberately
+   does **not** manage. ``pp.subplots`` computes the canvas from
+   ``axes_size`` plus its reservations, so setting ``figure.figsize`` has no
+   effect on it, and passing ``figsize=`` to a publiplots plotting function
+   raises ``TypeError`` by design.
 
 Next Steps
 ----------
