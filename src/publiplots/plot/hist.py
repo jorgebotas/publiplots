@@ -173,12 +173,28 @@ def histplot(
     alpha : float, optional
         Transparency for the face fill (0-1). Falls back to rcParams.
     linewidth : float, optional
-        Outline width for the bar edges and the step / poly lines. Falls
-        back to ``pp.rcParams["edgewidth"]``. This does **not** set the
-        KDE overlay's width — the KDE curve is data, not an outline, so it
-        defaults from ``pp.rcParams["lines.linewidth"]``; widen it via
-        ``line_kws={"linewidth": ...}`` (values below
-        ``lines.linewidth`` are floored).
+        Outline width — the bar edges under ``element="bars"``, or the
+        step / poly lines otherwise. Falls back to
+        ``pp.rcParams["edgewidth"]``.
+
+        Under the default ``element="bars"`` it does **not** set the KDE
+        overlay's width: the KDE curve is data, not an outline, so it
+        defaults from ``pp.rcParams["lines.linewidth"]``. Widen it with
+        ``line_kws={"linewidth": ...}``; values below
+        ``lines.linewidth`` are floored back up to it.
+
+        **Known limitation — ``element="step"`` or ``"poly"`` combined
+        with ``kde=True``.** The outline and the KDE curve are not
+        separated there. Both are ``Line2D`` artists in ``ax.lines``, so
+        both are painted with ``linewidth`` and then floored at
+        ``lines.linewidth``. In that combination:
+        ``linewidth`` *does* reach the curve (``linewidth=2.0`` gives a
+        2.0 curve), ``line_kws={"linewidth": ...}`` is overwritten and has
+        no effect, and a ``linewidth`` below ``lines.linewidth`` is raised
+        to it for the outline as well (``linewidth=0.4`` draws both
+        strokes at 1.0, where ``kde=False`` draws the outline at 0.4).
+        Use ``element="bars"``, or ``kde=False``, to control the two
+        strokes independently.
     log_scale : bool, number, or pair, optional
         If True, apply a log scale on the value axis. A number sets the
         base. A 2-tuple sets (x_log, y_log) independently — forwarded
