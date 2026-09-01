@@ -399,7 +399,9 @@ class SubplotsAutoLayout:
                     # labels / axis label that live on its own side of the
                     # axes rectangle, dynamically (Issue B for 'left';
                     # #212 for 'bottom') rather than at a fixed offset.
-                    self._offset_inside_legend_past_decorations(group)
+                    self._offset_inside_legend_past_decorations(
+                        group, axes_matrix
+                    )
             return
 
         side = group._side
@@ -445,21 +447,25 @@ class SubplotsAutoLayout:
         # both lock guards below still skip the ``measured[cell_field]``
         # write, but they position the band first. The reservation-derived
         # ``pure_decoration_mm`` used further down is unusable here — under
-        # a pin ``existing[idx]`` is the caller's mm, not a measurement —
-        # so the offset is measured directly off the anchor instead. The
-        # band may then extend past the pinned reservation; overflowing is
-        # the caller's explicit choice, silently overlapping is not.
+        # a pin ``existing[idx]`` is the caller's mm, not a measurement — so
+        # the offset is measured directly off the anchor instead, and clamped
+        # there to keep the band on the canvas (the pinned row/column will
+        # not grow around it, and ``savefig.bbox`` is ``"standard"``).
+        #
+        # ``group._band_contribution_mm`` is deliberately NOT written on
+        # either pinned branch: its only reader is
+        # ``_bake_decoration_offset``, whose own guards are these same two
+        # conditions on this same group and side, so nothing could ever read
+        # it back.
         if cell_field in self._locked:
-            group._band_contribution_mm = overhang_mm
-            self._offset_inside_legend_past_decorations(group)
+            self._offset_inside_legend_past_decorations(group, axes_matrix)
             return
         r, c = self._find_ax_indices(ax, axes_matrix)
         idx = c if axis_kind == "col" else r
         if idx in self._locked_positions.get(cell_field, frozenset()):
             # Per-position lock: this slot is pinned (e.g., JointGrid's
             # joint↔marginal gap edges). Don't grow it for legend overhang.
-            group._band_contribution_mm = overhang_mm
-            self._offset_inside_legend_past_decorations(group)
+            self._offset_inside_legend_past_decorations(group, axes_matrix)
             return
         # Read the pure-decoration reservation BEFORE we write our
         # overhang into it. _measure() already filled ``measured[cell_field]``
@@ -588,9 +594,9 @@ class SubplotsAutoLayout:
         # re-merge the default fontdict and clobber user styling).
         ax._set_title_offset_trans(max(base_pad, pad_pt))
 
-    def _offset_inside_legend_past_decorations(self, group) -> None:
+    def _offset_inside_legend_past_decorations(self, group, axes_matrix) -> None:
         """Step a per-axes left/bottom legend just past the tick labels and
-        axis label on its own side, dynamically.
+        axis label on its own side, as far as the canvas allows.
 
         Issue B (``side='left'``): with the old fixed 8mm offset removed, an
         internal left legend would render only ``x_offset`` mm left of the
@@ -631,12 +637,30 @@ class SubplotsAutoLayout:
         ``measured[cell_field]``. This method writes nothing but the band's
         outward *position*, so gating it here conflated the pin with "do not
         MOVE the band clear of the decorations" and dropped the band on top
-        of the tick labels and axis label. A pinned reservation now keeps its
-        exact mm AND gets collision avoidance; if the pinned space is too
-        small to hold both the decorations and the band, the band still
-        lands past the decorations and simply extends beyond the pinned
-        reservation — overflowing is the caller's explicit choice, silently
-        overlapping is not.
+        of the tick labels and axis label.
+
+        The lock sets are consulted for one thing only: whether the step
+        outward has to be CLAMPED to keep the band on the canvas. When the
+        reservation auto-measures, the row/column grows to contain the band
+        (an ``external_to_axis=False`` band is inside ``ax.get_tightbbox()``,
+        and an external one is added as an overhang), so the band can never
+        leave the figure and there is nothing to clamp — clamping there would
+        actively harm, because mid-convergence the figure is transiently too
+        small and the reservation would then settle around the clamped
+        position, freezing the band short of the decorations. A pinned
+        reservation is exactly the case where the figure will NOT grow, so
+        the clamp applies and the priority order is:
+
+        1. the band stays fully inside the figure — ``savefig.bbox`` is
+           ``"standard"``, so anything outside is cropped out of the saved
+           file, and a deleted legend is far worse than an overlapping one;
+        2. subject to that, step as far past the decorations as fits, so any
+           residual overlap is the minimum achievable rather than the full
+           pre-#222 overlap.
+
+        The floor is 0 mm — the offset a pinned reservation got before #222 —
+        so a pin too small to fit even the band alone degrades exactly to the
+        old placement and never moves the band further INWARD than that.
         """
         side = group._side
         ax = group.anchor
@@ -667,10 +691,92 @@ class SubplotsAutoLayout:
         if tight is None:
             return
         tight = self._union_pinned_artists(ax, tight, managed)
-        pure_decoration_mm = max(
-            0.0, self._OVERHANG_BY_SIDE[side](ax_bb, tight) / dpi * 25.4
+        pure_decoration_mm = (
+            self._OVERHANG_BY_SIDE[side](ax_bb, tight) / dpi * 25.4
         )
-        group._set_decoration_offset(pure_decoration_mm)
+
+        offset_mm = pure_decoration_mm
+        if self._is_pinned_cell(side, ax, axes_matrix):
+            offset_mm = min(
+                offset_mm, self._max_onscreen_offset_mm(group, side, ax_bb, dpi)
+            )
+        # Single floor for both paths: a side whose tight bbox does not reach
+        # past the axes edge measures a negative "decoration", and a pin too
+        # small for the band alone makes the clamp negative. Either way the
+        # band must not be pulled INWARD of the pre-#222 placement.
+        group._set_decoration_offset(max(0.0, offset_mm))
+
+    def _is_pinned_cell(self, side, ax, axes_matrix) -> bool:
+        """True when the reservation ``ax``'s band draws into is user-pinned.
+
+        Whole-side (``self._locked``) and per-position
+        (``self._locked_positions``) pins both count — in either case
+        ``_measure`` will not grow that row/column, so the figure cannot
+        stretch to contain a band stepped outward past the decorations.
+        """
+        _, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
+        if cell_field in self._locked:
+            return True
+        locked_idxs = self._locked_positions.get(cell_field, frozenset())
+        if not locked_idxs:
+            return False
+        r, c = self._find_ax_indices(ax, axes_matrix)
+        return (c if axis_kind == "col" else r) in locked_idxs
+
+    def _max_onscreen_offset_mm(self, group, side, ax_bb, dpi) -> float:
+        """Largest outward offset (mm) that keeps the whole band on the canvas.
+
+        The reactor places each element at ``mm_x_from_right +
+        mm_outward_decoration_offset`` from the axes edge and the element then
+        extends its own size further outward, so the band's total reach is
+        ``base_gap + offset + own_size`` and the offset that just touches the
+        figure edge is ``available - base_gap - own_size``.
+
+        ``available`` is measured, not derived from ``FigureLayout``: the
+        pixel gap between the anchor's edge and the figure edge already
+        accounts for ``outer_pad``, every reservation stacked between them and
+        (for a non-edge row/column) the neighbouring cells, none of which this
+        method would otherwise have to re-derive. ``own_size`` is taken from
+        the element's own tight bbox rather than from its current position, so
+        it does not go stale when ``_apply`` has repositioned the axes but the
+        reactor has not yet re-anchored the artists.
+
+        Returns ``+inf`` when nothing measurable exists, so the caller's
+        ``min()`` becomes a no-op.
+        """
+        fig_bb = self._fig.get_window_extent()
+        if side == "bottom":
+            available_mm = (ax_bb.y0 - fig_bb.y0) / dpi * 25.4
+        elif side == "top":
+            available_mm = (fig_bb.y1 - ax_bb.y1) / dpi * 25.4
+        elif side == "left":
+            available_mm = (ax_bb.x0 - fig_bb.x0) / dpi * 25.4
+        else:  # "right"
+            available_mm = (fig_bb.x1 - ax_bb.x1) / dpi * 25.4
+
+        regs = {
+            id(reg.artist): reg
+            for reg in group._builder._reactor._registrations
+        }
+        vertical = side in ("bottom", "top")
+        band_mm = 0.0
+        for _, obj in group._builder.elements:
+            extent = self._artist_window_extent(obj)
+            reg = regs.get(id(obj))
+            if extent is None or reg is None:
+                continue
+            size_mm = (extent.height if vertical else extent.width) / dpi * 25.4
+            # A colorbar strip is sized in figure fractions, so its pixel
+            # size lags one resize behind whenever the layout is growing.
+            # The declared mm is authoritative and is what the reactor will
+            # restore, so use it as a floor on the outward dimension.
+            declared = reg.mm_height if vertical else reg.mm_width
+            if declared is not None:
+                size_mm = max(size_mm, declared)
+            band_mm = max(band_mm, reg.mm_x_from_right + size_mm)
+        if band_mm <= 0.0:
+            return float("inf")
+        return available_mm - band_mm
 
     def _bake_decoration_offset(self, group, measured, axes_matrix) -> None:
         """Write the decoration offset onto the group's registrations
