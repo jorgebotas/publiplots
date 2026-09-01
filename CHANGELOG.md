@@ -41,6 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MultiAxesLegendGroup._evict_claimed_per_axis_legends` matches
   `matplotlib.legend.Legend` children only and has never handled colorbars. The
   "before" ordering (`pp.legend(...)` first) is unaffected.
+- **`group.add_colorbar(..., inside=False)` on an inside-mode group no longer
+  raises.** The `inside` and `loc` injections were independent `setdefault`
+  calls, so an explicit `inside=False` suppressed the first while the second
+  still fired and sent `loc` on to `fig.colorbar()`
+  (`TypeError: ... unexpected keyword argument 'loc'`). `loc` is now injected
+  only when the resolved `inside` is truthy, matching the `_colorbar_kwargs`
+  guard on the plot-call path.
 
 ## [0.16.1] - 2026-08-31
 

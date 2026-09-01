@@ -1316,13 +1316,23 @@ class MultiAxesLegendGroup:
         from ``side``/``align`` exactly as :meth:`add_legend` does, so a
         continuous hue lands inside the anchor cell rather than in a band
         outside it (#215). Explicit user kwargs win.
+
+        The two injections are coupled: ``loc`` only means anything to
+        ``add_colorbar`` in inside mode, and an outside band derives its
+        placement from the mm cursor instead. Injecting them
+        independently let an explicit ``inside=False`` suppress the
+        first while the second still fired, sending ``loc`` on to
+        ``fig.colorbar()`` and raising ``TypeError``. Mirrors the
+        ``_colorbar_kwargs`` guard on the plot-call path.
         """
         target_ax = ax if ax is not None else self._default_target_ax()
         if self._inside:
             kwargs.setdefault("inside", True)
-            kwargs.setdefault(
-                "loc", _inside_loc_from_side_align(self._side, self._align),
-            )
+            if kwargs["inside"]:
+                kwargs.setdefault(
+                    "loc",
+                    _inside_loc_from_side_align(self._side, self._align),
+                )
         original_ax = self._builder.ax
         try:
             self._builder.ax = target_ax

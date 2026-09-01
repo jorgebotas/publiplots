@@ -333,6 +333,7 @@ def test_continuous_outside_default_unchanged(cont_df):
     {"title_fontsize": 6},
     {"loc": "upper right"},
     {"handletextpad": 1.0, "labelspacing": 0.5},
+    {"borderpad": 4.0},
 ])
 def test_legend_only_keys_do_not_reach_colorbar(cont_df, kws):
     """Legend-only legend_kws are dropped, not forwarded to Colorbar.
@@ -430,3 +431,59 @@ def test_inside_continuous_rejects_unknown_loc(cont_df):
             data=cont_df, x="x", y="y", hue="z", ax=ax,
             legend_kws={"inside": True, "loc": "nowhere"},
         )
+
+
+def test_inside_continuous_ignores_borderpad(cont_df):
+    """``borderpad`` is legend-frame padding and does not move the strip.
+
+    It stays a legend-only key: for a Legend it is the padding inside the
+    frame in font-size units, while the inside strip's pad is the mm gap
+    to the axes edge (matplotlib's ``borderaxespad``). One legend_kws key
+    must not mean two things in two units, so the colorbar drops it.
+    """
+    bounds = []
+    for kws in ({"inside": True}, {"inside": True, "borderpad": 8.0}):
+        fig, ax = pp.subplots(axes_size=(60, 40))
+        pp.scatterplot(data=cont_df, x="x", y="y", hue="z", ax=ax,
+                       legend_kws=kws)
+        fig.canvas.draw()
+        bounds.append(_inside_cbar_axes(ax)[0].get_position().bounds)
+        plt.close(fig)
+    assert bounds[0] == bounds[1], (
+        "borderpad must not silently move the inside colorbar; it is "
+        f"dropped on the colorbar path. got {bounds[0]} vs {bounds[1]}"
+    )
+
+
+def test_group_add_colorbar_explicit_inside_false(cont_df):
+    """An inside-mode group must not inject ``loc`` when inside is off.
+
+    The injections are coupled: ``loc`` is meaningless to an outside
+    band and used to reach ``fig.colorbar()`` as an unexpected kwarg.
+    """
+    fig, axes = pp.subplots(nrows=1, ncols=2, axes_size=(45, 35))
+    group = pp.legend(anchor=axes[1], inside=True, collect=[])
+    pp.scatterplot(data=cont_df, x="x", y="y", hue="z", ax=axes[0],
+                   legend=False)
+    sm = plt.cm.ScalarMappable(
+        norm=plt.Normalize(vmin=0, vmax=1), cmap="viridis"
+    )
+    cbar = group.add_colorbar(mappable=sm, label="z", inside=False)
+    fig.canvas.draw()
+    assert cbar is not None
+    # inside=False means the outside band, i.e. a figure-level axes and
+    # no inset parented to the anchor.
+    assert _inside_cbar_axes(axes[1]) == []
+    assert cbar.ax in fig.axes
+
+
+def test_group_add_colorbar_inside_default_still_injects(cont_df):
+    """The default (no explicit inside=) keeps rendering inside the anchor."""
+    fig, axes = pp.subplots(nrows=1, ncols=2, axes_size=(45, 35))
+    group = pp.legend(anchor=axes[1], inside=True, collect=[])
+    sm = plt.cm.ScalarMappable(
+        norm=plt.Normalize(vmin=0, vmax=1), cmap="viridis"
+    )
+    group.add_colorbar(mappable=sm, label="z")
+    fig.canvas.draw()
+    assert len(_inside_cbar_axes(axes[1])) == 1

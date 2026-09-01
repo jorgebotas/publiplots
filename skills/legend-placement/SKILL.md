@@ -264,6 +264,10 @@ Details that differ from the categorical legend:
 - The strip is an **inset of its axes** — it lives in `ax.child_axes`, not
   in `fig.axes`. Code that inspects a figure's colorbars by walking
   `fig.axes` will not see it.
+- The gap to the axes edge is fixed at 2 mm. `borderpad` does not set it:
+  in the legend family that key is the padding *inside* the legend frame in
+  font-size units, and a strip has no frame — so it stays a legend-only key
+  rather than meaning two things in two units in one `legend_kws` dict.
 
 **Known gap — `pp.legend(anchor=..., inside=True)` with a continuous hue and
 the "after" ordering.** The band renders its colorbar inside the anchor cell

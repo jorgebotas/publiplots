@@ -1586,9 +1586,14 @@ class LegendBuilder:
         if loc in ("best", 0):
             loc = self._INSIDE_CBAR_DEFAULT_LOC
         vertical, horizontal = self._inside_cbar_anchor(loc)
-        pad_mm = kwargs.pop("borderpad", None)
-        if pad_mm is None:
-            pad_mm = self._INSIDE_CBAR_PAD_MM
+        # Deliberately not user-tunable through ``borderpad``: in the
+        # legend family that key is the padding *inside* the legend
+        # frame, in font-size units. A strip has no frame, and the pad
+        # here is the mm distance to the axes edge — matplotlib spells
+        # that one ``borderaxespad``. Honouring ``borderpad`` would give
+        # a single ``legend_kws`` key two meanings in two units on a
+        # plot that draws both a legend and a colorbar.
+        pad_mm = self._INSIDE_CBAR_PAD_MM
 
         # mm -> axes fractions, against the axes the strip lands in
         # (``self.ax``; a group in inside mode retargets it per call).
