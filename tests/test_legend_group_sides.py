@@ -1578,15 +1578,28 @@ def _band_element_overlaps_mm(group, fig):
     """Pairwise overlap rectangles between every element in the band.
 
     Returns ``[(label_a, label_b, w_mm, h_mm), ...]`` for each pair whose
-    rectangles intersect by more than 0.5mm on both axes -- the tolerance
-    keeps abutting elements (a strip whose edge touches its neighbour)
-    from registering. Colorbars are measured by their own rectangle, so a
-    strip's tick labels are not counted as a collision.
+    bboxes intersect by more than 0.5mm on both axes -- the tolerance keeps
+    abutting elements (a strip whose edge touches its neighbour) from
+    registering.
+
+    Colorbars are measured by their **tight bbox**: the colour strip plus
+    its tick labels and label. Tick labels are visible ink and they
+    collide, so excluding them hid a real defect -- two default strips
+    sequenced along one top band had rects a nominal 2.00mm apart while
+    their end tick labels overlapped by 1.45mm, and this helper reported
+    the band clean. That is #221's part 1, and measuring the strip
+    rectangle here is what let it through. (The strip *rectangle* is still
+    the right reference for the intra-block label pairing -- see
+    ``_paired_band_centres_mm`` -- but not for a collision test.)
     """
     items = []
     for i, (kind, obj) in enumerate(group._builder.elements):
-        bb = obj.ax.get_window_extent() if kind == "colorbar" \
-            else obj.get_window_extent()
+        if kind == "colorbar":
+            bb = obj.ax.get_tightbbox()
+            if bb is None:
+                bb = obj.ax.get_window_extent()
+        else:
+            bb = obj.get_window_extent()
         items.append((f"{kind}{i}", bb))
     to_mm = lambda px: px / fig.dpi * 25.4
     out = []

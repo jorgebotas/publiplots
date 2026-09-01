@@ -48,6 +48,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A colorbar's extent for band layout is now its tight bbox, not the colour
+  strip's rectangle** (#221). The rule: **strip rect for intra-block pairing,
+  tight bbox for inter-block layout.** A default horizontal strip draws 15mm of
+  colour rectangle but 18.45mm of ink — its end tick labels overhang 1.73mm per
+  side — and both the along-edge alignment pass and `add_colorbar`'s packing
+  measured only the rectangle. Two consequences, on all four sides:
+
+  - *Neighbours collided.* Two default colorbars sequenced along one top band
+    ended up with their rects a nominal 2.00mm apart and their end tick labels
+    **overlapping by 1.45mm**; a band mixing two colorbars with a categorical
+    legend sat **6.43mm** off the band's centre line at the default
+    `align='center'`, and a colorbar-plus-legend band 0.86mm off (0.72mm on
+    left/right). Nothing was clipped — the numbers were simply drawn over one
+    another and the visible block was off-centre.
+  - *Rows overran the anchor edge.* The overflow pre-check and the along-edge
+    cursor advance both counted the rectangle, so three default strips packed
+    into a 50mm edge (3 x 15 + 2 x 2 = 49mm of rectangle) drew 59.35mm of ink
+    and overran by 1.23mm at each end. Six strips became two rows of three,
+    each overrunning; they now wrap into three rows of two with a clean 2.00mm
+    gap and zero overrun.
+
+  `MultiAxesLegendGroup._apply_along_alignment` and `add_colorbar` now share
+  `LegendBuilder._measure_along_extent` (tight extent, rect extent, and how far
+  the ink leads the rect) and `LegendBuilder._colorbar_block_along_geometry`
+  (the block's union extent plus each member's offset inside it). The pre-check
+  runs on an estimate — neither strip nor label exists yet — while the cursor
+  advance uses the measured value. `_measure_object_dimensions` deliberately
+  still reports the strip *rectangle*: that is the intra-block measurement, and
+  what the layout reactor is handed as `mm_width` / `mm_height`.
+
+  **#214 is unchanged**: the label still sits over the coloured band, centred on
+  the strip rectangle, for short and long labels and every `align`. The accepted
+  cost is its mirror image — with asymmetric tick labels, centring the block's
+  tight bbox leaves the colour strip itself slightly off the band's centre line.
+  That is the right trade against the visible block sitting off-centre.
+  On `side='left'`/`'right'` the strip additionally moves 0.93mm further along
+  the edge, which is what turns the 2mm label-to-strip pad into a gap between
+  visible ink instead of a gap to a rectangle whose tick labels already reached
+  back into it. A left band's *inward* tick-label overhang (4.68mm toward the
+  axes, clearing by 1.36mm) is on the outward axis and is left exactly as #213
+  left it.
+
 - **A pinned `xlabel_space` / `ylabel_space` no longer disables legend-band
   collision avoidance** (#222). One flag (`SubplotsAutoLayout._locked` /
   `_locked_positions`) was doing two jobs: "do not grow this reservation",

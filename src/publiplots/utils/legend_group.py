@@ -1232,6 +1232,25 @@ class MultiAxesLegendGroup:
         for any number of elements. A block with a single member reduces
         to the historical behaviour exactly (offset ``cursor``, extent its
         own), so categorical bands are untouched.
+
+        Every extent here is a **tight bbox** — for a colorbar, the colour
+        strip plus its tick labels and label, not the 4.5mm strip
+        rectangle. Packing and alignment exist to centre visible ink and to
+        stop neighbours colliding, and tick labels are both visible and
+        collidable: measuring the rectangle put two default strips a
+        nominal 2mm apart while their end tick labels overlapped by 1.45mm,
+        and left the visible block off the band's centre line. Because a
+        strip's ink leads its rectangle, a member is registered at its
+        block-relative *rectangle* offset — see
+        ``LegendBuilder._measure_along_extent`` and
+        ``LegendBuilder._colorbar_block_along_geometry``, which own that
+        arithmetic and which ``add_colorbar``'s cursor path shares. (#221)
+
+        The accepted cost: with asymmetric tick labels, centring the tight
+        bbox leaves the colour strip itself slightly off the band's centre
+        line. That is the right trade against the block's visible ink
+        sitting off-centre, and #214's intra-block pairing is unaffected —
+        the label is still centred on the strip RECTANGLE.
         """
         if self._align == "start":
             return
@@ -1291,11 +1310,14 @@ class MultiAxesLegendGroup:
             rows.setdefault(round(outward, 3), []).append(reg)
 
         def _extent_of(reg, horizontal=None):
-            # force_draw=False: this runs as a post-refresh reactor
-            # callback, so matplotlib's renderer cache is already
+            # force_draw defaults to False: this runs as a post-refresh
+            # reactor callback, so matplotlib's renderer cache is already
             # current. Forcing a fresh fig.canvas.draw() here would
             # trigger O(panels) nested full redraws on every settle
             # iteration (Issue A: side='top'/'bottom' 5x slowdown).
+            # ``_measure_along_extent`` honours that: it reads
+            # ``get_tightbbox()`` off the cached renderer, exactly as
+            # ``get_window_extent()`` did.
             #
             # ``horizontal`` defaults to the band's orientation, which is
             # what every element has always been measured on. Members of a
@@ -1303,39 +1325,53 @@ class MultiAxesLegendGroup:
             # ``side``, and a paired band is only ever top/bottom, where
             # the along-edge axis is horizontal no matter what orientation
             # the caller asked for.
+            #
+            # Returns ``(tight, rect, lead)`` — tight extent for packing,
+            # rect extent for the intra-block pairing, lead for turning a
+            # tight-bbox position into the registration value.
             if horizontal is None:
                 horizontal = orient == "horizontal"
-            w, h = self._builder._measure_object_dimensions(
-                reg.artist, force_draw=False
+            return self._builder._measure_along_extent(
+                reg.artist, horizontal=horizontal, force_draw=False
             )
-            return w if horizontal else h
+
+        block_geometry = self._builder._colorbar_block_along_geometry
 
         for row_regs in rows.values():
-            # Build the row's blocks: (block extent, [(reg, own extent)]).
+            # Build the row's blocks as
+            # (block extent, [(reg, offset within block), ...]).
             blocks = []
             for reg in row_regs:
                 label_reg = label_regs.get(id(reg.artist))
                 if label_reg is None:
-                    own = _extent_of(reg)
-                    blocks.append((own, [(reg, own)]))
+                    tight, _rect, lead = _extent_of(reg)
+                    blocks.append((tight, [(reg, lead)], None))
                     continue
-                own = _extent_of(reg, horizontal=True)
-                label_extent = _extent_of(label_reg, horizontal=True)
+                s_tight, s_rect, s_lead = _extent_of(reg, horizontal=True)
+                l_tight, l_rect, _l_lead = _extent_of(label_reg, horizontal=True)
+                extent, strip_off, label_off = block_geometry(
+                    s_tight, s_rect, s_lead, l_tight,
+                )
                 blocks.append((
-                    max(own, label_extent),
-                    [(reg, own), (label_reg, label_extent)],
+                    extent,
+                    [(reg, strip_off), (label_reg, label_off)],
+                    (s_rect, l_rect),
                 ))
             total = sum(b[0] for b in blocks) + gap_mm * (len(blocks) - 1)
             if total >= edge_length_mm:
                 # Block already fills the edge — no room to align. The
                 # pairing still has to hold, so re-seat each label on the
                 # strip it belongs to and leave the strips where they are.
-                for _, members in blocks:
-                    if len(members) > 1:
-                        (strip_reg, strip_ext), (label_reg, label_ext) = members
-                        label_reg.mm_y_from_top = (
-                            strip_reg.mm_y_from_top + (strip_ext - label_ext) / 2
-                        )
+                # Pairing is on the strip RECTANGLE (#214), so this uses
+                # the rect extents rather than the tight ones.
+                for _extent, members, rects in blocks:
+                    if rects is None:
+                        continue
+                    (strip_reg, _s_off), (label_reg, _l_off) = members
+                    s_rect, l_rect = rects
+                    label_reg.mm_y_from_top = (
+                        strip_reg.mm_y_from_top + (s_rect - l_rect) / 2
+                    )
                 continue
             if self._align == "center":
                 start = (edge_length_mm - total) / 2
@@ -1344,13 +1380,13 @@ class MultiAxesLegendGroup:
             else:
                 start = self._builder._layout.vpad
             cursor = start
-            for block_extent, members in blocks:
-                for member_reg, member_extent in members:
-                    # Centre every member on the block's centre line. For a
-                    # lone member that is exactly ``cursor``.
-                    member_reg.mm_y_from_top = (
-                        cursor + (block_extent - member_extent) / 2
-                    )
+            for block_extent, members, _rects in blocks:
+                for member_reg, member_offset in members:
+                    # ``cursor`` is where the block's INK starts;
+                    # ``member_offset`` steps from there to the member's own
+                    # positioning rectangle. For a lone element whose bbox
+                    # is its rectangle that is exactly ``cursor``.
+                    member_reg.mm_y_from_top = cursor + member_offset
                 cursor += block_extent + gap_mm
 
         reactor._refresh_all()

@@ -913,6 +913,13 @@ class LegendBuilder:
     MM2INCH = 1 / 25.4
     PT2MM = 25.4 / 72
 
+    # Nominal character count for a colorbar tick label, used only by the
+    # pre-flight overflow estimate in ``add_colorbar`` — see
+    # :meth:`_estimate_tick_label_extent`. Three characters is what a
+    # default ``ScalarFormatter`` produces on the common 0-1 range
+    # ('0.0', '0.5', '1.0').
+    _CBAR_TICK_LABEL_CHARS = 3
+
     def __init__(
         self,
         ax: Axes,
@@ -1143,6 +1150,15 @@ class LegendBuilder:
         # working on non-AGG canvases (PDF / PS / SVG), which don't
         # expose ``canvas.get_renderer()`` — previously a legend_group
         # that worked under PNG save crashed under PDF save. See #115.
+        #
+        # A Colorbar is deliberately measured by its own colour
+        # RECTANGLE here, tick labels excluded. This is the answer to
+        # "how big is this one artist", which is what the intra-block
+        # pairing needs (#214: the label sits over the coloured band,
+        # not over band-plus-ticks) and what the reactor is handed as
+        # ``mm_width``/``mm_height``. Inter-block layout — packing and
+        # along-edge alignment — asks a different question and gets the
+        # tight bbox instead; see :meth:`_measure_along_extent` (#221).
         if hasattr(obj, 'ax'):  # Colorbar
             bbox = obj.ax.get_window_extent()
         elif hasattr(obj, 'get_window_extent'):
@@ -1155,6 +1171,168 @@ class LegendBuilder:
         height_mm = bbox.height / self.fig.dpi / self.MM2INCH
 
         return width_mm, height_mm
+
+    def _measure_along_extent(
+        self,
+        obj: Union[Legend, Colorbar, Any],
+        horizontal: bool,
+        force_draw: bool = False,
+    ) -> Tuple[float, float, float]:
+        """Along-edge footprint of one band element, in mm.
+
+        Companion to :meth:`_measure_object_dimensions` and the
+        inter-block half of the #221 rule: **strip rect for intra-block
+        pairing, tight bbox for inter-block layout.** Packing and
+        alignment exist to centre visible ink and to stop neighbours
+        colliding, and a colorbar's tick labels are both visible and
+        collidable — so a colorbar is measured by
+        ``obj.ax.get_tightbbox()`` here, not by its 4.5mm colour
+        rectangle.
+
+        Parameters
+        ----------
+        obj : Legend or Colorbar or Text
+            The band element to measure.
+        horizontal : bool
+            True when the band's along-edge axis runs horizontally
+            (``side='top'``/``'bottom'``), False when it runs vertically
+            (``side='right'``/``'left'``).
+        force_draw : bool, default False
+            Force a full figure redraw first. Defaults to False because
+            the hot caller is the alignment pass, which runs as a
+            post-refresh reactor callback where a nested draw costs
+            O(panels) redraws — see
+            :meth:`_measure_object_dimensions`. ``get_tightbbox()`` is
+            called without a renderer for the same reason
+            ``get_window_extent()`` is: non-AGG canvases (PDF/SVG/PS)
+            have no ``canvas.get_renderer()`` (#115).
+
+        Returns
+        -------
+        tight_mm : float
+            The element's tight-bbox extent along the edge.
+        rect_mm : float
+            The element's own positioning rectangle's extent along the
+            edge. Equal to ``tight_mm`` for everything but a colorbar.
+        lead_mm : float
+            How far the tight bbox leads that rectangle, i.e. the mm
+            from the tight bbox's leading edge to the rectangle's
+            leading edge. "Leading" is the direction the along-edge
+            cursor advances *from*: the left edge for a top/bottom band,
+            the top edge for a right/left one — matching what a reactor
+            registration's ``mm_y_from_top`` positions (see
+            ``layout_reactor._Registration``). Non-negative; 0 for
+            everything but a colorbar.
+
+            A caller that wants an element's tight bbox to start at
+            along-edge offset ``p`` therefore registers it at
+            ``p + lead_mm``.
+        """
+        if force_draw:
+            self._fig_canvas_draw_for_measure()
+
+        if hasattr(obj, 'ax'):  # Colorbar
+            rect = obj.ax.get_window_extent()
+            tight = obj.ax.get_tightbbox()
+            if tight is None:
+                tight = rect
+        elif hasattr(obj, 'get_window_extent'):
+            # A Legend's get_window_extent() already IS its tight bbox,
+            # and a Text's is its rendered extent; neither has anything
+            # hanging off the rectangle the reactor positions.
+            rect = tight = obj.get_window_extent()
+        else:
+            return 0.0, 0.0, 0.0
+
+        px2mm = 1.0 / (self.fig.dpi * self.MM2INCH)
+        if horizontal:
+            return (
+                tight.width * px2mm,
+                rect.width * px2mm,
+                max(0.0, (rect.x0 - tight.x0) * px2mm),
+            )
+        return (
+            tight.height * px2mm,
+            rect.height * px2mm,
+            max(0.0, (tight.y1 - rect.y1) * px2mm),
+        )
+
+    @staticmethod
+    def _colorbar_block_along_geometry(
+        strip_tight: float,
+        strip_rect: float,
+        strip_lead: float,
+        label_extent: float,
+    ) -> Tuple[float, float, float]:
+        """Along-edge geometry of one colorbar *block* on a top/bottom band.
+
+        A block is a strip plus the label stacked outward from it: the two
+        share a single along-edge slot (``add_colorbar``), so they are
+        packed and aligned as a unit. This is the single place where the
+        two halves of the #221 rule meet:
+
+        - **intra-block pairing uses the strip RECTANGLE** — the label is
+          centred on the coloured band, not on band-plus-ticks (#214);
+        - **the block's own extent is the union of TIGHT bboxes** — that
+          is what neighbouring blocks are packed against and what the
+          band centres (#221).
+
+        All arguments and results are mm on the along-edge axis.
+        ``strip_lead`` is :meth:`_measure_along_extent`'s third return
+        value for the strip. ``label_extent`` is the label's extent
+        (a Text's rect and tight bbox coincide, so it needs no lead).
+
+        Returns
+        -------
+        block_extent : float
+            Extent of the block's union tight bbox.
+        strip_offset, label_offset : float
+            Each artist's *rectangle* leading edge, measured from the
+            block's tight leading edge. A caller placing the block's ink
+            at along-edge offset ``p`` registers the strip at
+            ``p + strip_offset`` and the label at ``p + label_offset``.
+
+        A block with no label (``label_extent == 0``) reduces to
+        ``(strip_tight, strip_lead, strip_lead)``; a strip whose tight
+        bbox equals its rectangle further reduces to ``(strip_rect, 0,
+        ...)`` — the historical behaviour exactly.
+        """
+        if label_extent <= 0:
+            return strip_tight, strip_lead, strip_lead
+        # Label rectangle centred on the strip rectangle, in coordinates
+        # whose origin is the strip's tight leading edge.
+        label_off = strip_lead + (strip_rect - label_extent) / 2
+        lo = min(0.0, label_off)
+        hi = max(strip_tight, label_off + label_extent)
+        return hi - lo, strip_lead - lo, label_off - lo
+
+    def _estimate_tick_label_extent(self, horizontal: bool) -> float:
+        """Nominal mm extent of ONE colorbar tick label along an axis.
+
+        Pre-flight estimate only. ``add_colorbar``'s overflow check has
+        to know the block's along-edge width *before* the strip exists,
+        and it is the strip's tick labels that make the block wider than
+        the colour rectangle (18.45mm against 15mm for a default
+        horizontal strip, measured). The exact number replaces this one
+        for the cursor advance, once the strip has been drawn.
+
+        One whole label is the right budget on either axis: the labels at
+        the two ends of a strip are centred on those ends, so the two
+        overhanging halves sum to one label. A strip whose tick labels
+        sit on one side only (a vertical strip measured along a
+        horizontal edge) overhangs by one whole label there too.
+
+        The 0.6-per-character factor is the same rough sans-serif
+        approximation :meth:`_estimate_legend_width` uses.
+        """
+        fontsize = plt.rcParams["xtick.labelsize"]
+        if not isinstance(fontsize, (int, float)) or isinstance(fontsize, bool):
+            # matplotlib accepts the named sizes ('medium', 'large', ...);
+            # fall back to the numeric base size rather than guess a scale.
+            fontsize = resolve_param("font.size")
+        if horizontal:
+            return self._CBAR_TICK_LABEL_CHARS * fontsize * 0.6 * self.PT2MM
+        return fontsize * self.PT2MM
 
     # =========================================================================
     # Estimation Utilities (for overflow detection)
@@ -1912,17 +2090,32 @@ class LegendBuilder:
         if title_position == "top" and label:
             fontsize = resolve_param("legend.title_fontsize", resolve_param("font.size"))
             estimated_title_height = fontsize * self.PT2MM * 1.3
+            estimated_title_width = len(str(label)) * fontsize * 0.6 * self.PT2MM
             total_estimated_height = height + estimated_title_height + title_pad
         else:
+            estimated_title_width = 0.0
             total_estimated_height = height
 
-        # Check overflow using estimate. Overflow is about the *along-edge*
-        # budget: for right/left the whole stack consumes it, but for
-        # top/bottom the stack grows outward and only the strip's width
-        # does. (The label may be wider than the strip; it isn't measured
-        # until it exists, and this is only the pre-flight estimate — the
-        # cursor advance below uses the real widths.)
-        if self._check_overflow(width if stack_outward else total_estimated_height):
+        # Check overflow using an estimate of the BLOCK's along-edge
+        # extent, not of the bare colour rectangle. Overflow is about the
+        # along-edge budget, and what consumes it is everything the block
+        # draws: for right/left the whole label -> strip stack, for
+        # top/bottom the wider of the strip and the label it is stacked
+        # under. Either way the strip's own tick labels hang off its
+        # rectangle and are part of the footprint — measuring only the
+        # rectangle is what let a many-colorbar band wrap late and overrun
+        # the axes edge (three default strips packed into 50mm drew
+        # 59.35mm of ink; #221).
+        #
+        # These are estimates by necessity: neither the strip nor its label
+        # exists yet. The cursor advance further down replaces every one of
+        # them with a measured value.
+        tick_estimate = self._estimate_tick_label_extent(stack_outward)
+        if stack_outward:
+            estimated_along = max(width + tick_estimate, estimated_title_width)
+        else:
+            estimated_along = total_estimated_height + tick_estimate
+        if self._check_overflow(estimated_along):
             self._start_new_band()
 
         # Add title if needed and measure actual height
@@ -1959,6 +2152,14 @@ class LegendBuilder:
             # this the two are merely left-aligned, which reads as a
             # 6.5mm offset for a label wider than the 4.5mm strip and is
             # what a band using ``align='start'`` renders (#214).
+            #
+            # PROVISIONAL. Both artists' final along-edge offsets come out
+            # of ``_colorbar_block_along_geometry`` below, once the strip
+            # has been drawn and its tick-label overhang measured, and both
+            # are re-positioned there. This shift is only what the figure
+            # sees during the measuring draw in between, so it is kept
+            # close to the final value rather than skipped: that draw is
+            # what ``pp.subplots`` sizes the figure from.
             if stack_outward:
                 title_along_shift = (
                     max(width, title_width_actual) - title_width_actual
@@ -1972,14 +2173,6 @@ class LegendBuilder:
                 )
                 title_obj.set_position((x_fig, y_fig))
 
-            # The reactor registration is deliberately deferred to after
-            # the strip exists: a horizontal strip on a top band shifts
-            # the WHOLE block outward by its inward tick-label overhang
-            # (see below), and that overhang can only be measured once
-            # the colorbar has been drawn. Registering here would pin the
-            # label to the pre-shift outward line.
-            title_mm_y_from_top = self._layout.along_from_start + title_along_shift
-
         # Place the strip relative to the measured label: further outward
         # on a bottom band, further along the edge on right/left, and
         # unmoved on a top band (there the label was lifted above it).
@@ -1991,14 +2184,10 @@ class LegendBuilder:
             elif not stack_outward:
                 cbar_y_start -= title_height_actual + title_pad
 
-        # Counterpart of the label's shift above: centre the strip in the
-        # shared along-edge slot too. Zero unless the label is wider than
-        # the strip on a top/bottom band.
+        # Counterpart of the label's provisional shift above, and equally
+        # provisional: centre the strip in the shared along-edge slot too.
         if stack_outward and title_width_actual:
-            cbar_along_shift = (max(width, title_width_actual) - width) / 2
-        else:
-            cbar_along_shift = 0.0
-        cbar_y_start -= cbar_along_shift
+            cbar_y_start -= (max(width, title_width_actual) - width) / 2
 
         # Create colorbar axes
         x_fig, y_fig = self._mm_to_figure_coords(cbar_outward_mm, cbar_y_start)
@@ -2054,6 +2243,33 @@ class LegendBuilder:
         self._fig_canvas_draw_for_measure()
         cbar_width, cbar_height = width, height
 
+        # Along-edge tight geometry of the strip: how much room its ink
+        # really takes on the band's edge, and how far that ink leads the
+        # colour rectangle. This is the inter-block half of the #221 rule
+        # and it is what the cursor advance and the pre-check estimate are
+        # replaced by.
+        #
+        # Rescaled by the ratio between the strip's KNOWN mm extent and the
+        # extent read back in pixels, for the reason the comment above
+        # gives: the draw may have grown the figure, and ``cbar_ax`` still
+        # holds the fraction it was built with, so every pixel reading here
+        # is uniformly scaled by that growth (a 15mm strip reads back as
+        # 20.06mm). Both a tight extent and an overhang are affected, and
+        # both are corrected by the same single factor because they are
+        # measured on the same axis.
+        along_horizontal = stack_outward
+        strip_tight_along, strip_rect_along, strip_lead_along = (
+            self._measure_along_extent(cbar, horizontal=along_horizontal)
+        )
+        true_rect_along = width if along_horizontal else height
+        if strip_rect_along > 0:
+            scale = true_rect_along / strip_rect_along
+            strip_tight_along *= scale
+            strip_lead_along *= scale
+        else:
+            strip_tight_along = true_rect_along
+            strip_lead_along = 0.0
+
         # A horizontal strip carries its tick labels BELOW itself. On a
         # bottom band "below" is further outward, past everything else in
         # the block; on a top band it points back TOWARD the axes, so the
@@ -2083,33 +2299,80 @@ class LegendBuilder:
                 )
         if inward_overhang_mm:
             cbar_outward_mm += inward_overhang_mm
-            # Re-derive the strip's rectangle at the shifted offset. Only
-            # side='top' reaches here, and there ``_mm_to_figure_coords``
-            # returns the strip's bottom-left corner directly — which is
-            # what ``set_position`` wants. The figure extent is re-read
-            # because the draw above may have grown the figure to fit
-            # the band.
-            fig_extent = self.fig.get_window_extent()
-            x_fig, y_fig = self._mm_to_figure_coords(cbar_outward_mm, cbar_y_start)
-            cbar_ax.set_position([
-                x_fig,
-                y_fig,
-                (width * self.MM2INCH * self.fig.dpi) / fig_extent.width,
-                (height * self.MM2INCH * self.fig.dpi) / fig_extent.height,
-            ])
             if title_obj is not None:
                 title_outward_mm += inward_overhang_mm
-                x_fig, y_fig = self._mm_to_figure_coords(
-                    title_outward_mm,
-                    self._layout.current_along - title_along_shift,
+
+        # Calculate actual total height
+        if title_position == "top" and label:
+            total_height_actual = title_height_actual + title_pad + cbar_height
+        else:
+            total_height_actual = cbar_height
+
+        # The block's along-edge extent and the two members' offsets within
+        # it, now that the strip has been measured. ``*_along_offset`` is
+        # each artist's own rectangle measured from where the block's INK
+        # starts, so the cursor advance below and the alignment pass in
+        # ``MultiAxesLegendGroup`` can both place a block by its tight bbox
+        # while the label stays centred on the colour rectangle (#221 +
+        # #214).
+        if stack_outward:
+            block_along, strip_along_offset, label_along_offset = (
+                self._colorbar_block_along_geometry(
+                    strip_tight_along, width, strip_lead_along,
+                    title_width_actual,
                 )
-                title_obj.set_position((x_fig, y_fig))
+            )
+        else:
+            # right/left: the label and the strip are stacked ALONG the
+            # edge, label first. Shifting the strip by its own lead is
+            # what makes ``title_pad`` a gap between visible ink rather
+            # than between the label and a rectangle whose tick labels
+            # already reach back into the pad. It also matches how the
+            # alignment pass sequences the two (they are separate blocks
+            # in one row there), so ``align='start'`` and ``'center'``
+            # agree.
+            label_along_offset = 0.0
+            strip_along_offset = strip_lead_along
+            block_along = strip_tight_along
+            if title_height_actual:
+                strip_along_offset += title_height_actual + title_pad
+                block_along += title_height_actual + title_pad
+
+        # Re-derive both artists' positions from the final offsets. The
+        # reactor owns them from the first draw onward — these calls only
+        # set the pre-first-draw state — but they must agree with the
+        # registrations below or a figure measured before its first draw
+        # reads back a stale block. The figure extent is re-read because
+        # the draw above may have grown the figure to fit the band.
+        cbar_y_start = self._layout.current_along - strip_along_offset
+        fig_extent = self.fig.get_window_extent()
+        x_fig, y_fig = self._mm_to_figure_coords(cbar_outward_mm, cbar_y_start)
+        # ``_mm_to_figure_coords`` returns the strip's outward edge, which
+        # is its bottom-left corner only for side='top'; every other side
+        # needs the same corner arithmetic ``add_axes`` was given above.
+        cbar_w_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
+        cbar_h_fig = (height * self.MM2INCH * self.fig.dpi) / fig_extent.height
+        cbar_ax.set_position([
+            x_fig - cbar_w_fig if self._side == "left" else x_fig,
+            y_fig if self._side == "top" else y_fig - cbar_h_fig,
+            cbar_w_fig,
+            cbar_h_fig,
+        ])
+        if title_obj is not None:
+            x_fig, y_fig = self._mm_to_figure_coords(
+                title_outward_mm,
+                self._layout.current_along - label_along_offset,
+            )
+            title_obj.set_position((x_fig, y_fig))
 
         # Deferred from the title block above so it picks up the shifted
         # outward offset. The reactor owns the label's position from the
         # first draw onward, so this registration — not the set_position
         # calls — is what keeps the block clear of the axes.
         if title_obj is not None:
+            title_mm_y_from_top = (
+                self._layout.along_from_start + label_along_offset
+            )
             self._reactor.register(
                 ax=self._anchor_ax,
                 artist=title_obj,
@@ -2119,38 +2382,28 @@ class LegendBuilder:
                 external_to_axis=self._external_to_axis,
             )
 
-        # Calculate actual total width (max of title and colorbar)
-        actual_width = max(cbar_width, title_width_actual)
-
-        # Calculate actual total height
-        if title_position == "top" and label:
-            total_height_actual = title_height_actual + title_pad + cbar_height
-        else:
-            total_height_actual = cbar_height
-
         # The layout cursor still points at the block's origin, so the
-        # strip's own placement is re-derived here from the same offsets
-        # used above: outward past the label on a bottom band, along past
-        # it on right/left, unchanged on a top band.
+        # strip's own placement is re-derived here from the same offset.
         placement_x_mm = cbar_outward_mm
-        if title_height_actual and not stack_outward:
-            mm_y_from_top = (
-                self._layout.along_from_start + title_height_actual + title_pad
-            )
-        else:
-            mm_y_from_top = self._layout.along_from_start + cbar_along_shift
+        mm_y_from_top = self._layout.along_from_start + strip_along_offset
 
         # Update layout cursor past the full title+colorbar block. The
         # stack's extent lands on whichever axis carries it: outward for
         # top/bottom bands, along the edge for right/left.
+        #
+        # The along-edge advance is ``block_along`` — the block's measured
+        # TIGHT extent, not the colour rectangle's width. Advancing by the
+        # rectangle is what let a band of default strips lay its rects a
+        # nominal 2mm apart while their end tick labels overlapped by
+        # 1.45mm, and what made the row overrun the axes edge before it
+        # wrapped (#221).
         if stack_outward:
             # The inward tick overhang sits between the outward line and
             # the strip, so it is part of the block's outward extent.
             self._layout.update_width(total_height_actual + inward_overhang_mm)
-            self._layout.advance_along(actual_width)
         else:
-            self._layout.update_width(actual_width)
-            self._layout.advance_along(total_height_actual)
+            self._layout.update_width(max(cbar_width, title_width_actual))
+        self._layout.advance_along(block_along)
 
         # Register with the reactor. Colorbars need mm_width + mm_height so
         # the reactor dispatches to cbar.ax.set_position instead of
