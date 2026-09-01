@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A bar whose value is exactly `0` no longer shifts every label onto the
+  neighbouring bar** (#199). `_is_bar_rect` rejected any Rectangle with a zero
+  extent, and matplotlib draws a zero-valued bar with a zero *value* extent
+  (`width == 0` horizontal, `height == 0` vertical). The filtered rect list was
+  then zipped positionally against the unfiltered aggregate list, so every
+  record paired with the next bar over and `zip` truncated the last category
+  outright — silently, and only visible by checking labels against the data.
+  Only *fully* degenerate rects (zero on **both** axes) are rejected now, which
+  is exactly the shape seaborn emits for a `(category, hue)` combination with
+  no observations — the case the filter was there for, and one
+  `BarSplitSpec.iter_draw_order` skips too, so the two lists stay aligned. A
+  group whose aggregate is `0` is a real group that happens to be zero, and it
+  now gets a correctly-anchored `0` label. Empty histogram bins are still
+  unlabelled: an absent observation is not a category worth annotating.
+- **Bar labels no longer desync when the axes already holds a patch publiplots
+  did not draw** (#199). Both bar meta builders scanned all of `ax.patches`, so
+  a user-drawn highlight `Rectangle` took bar 0's slot in the positional
+  pairing and pushed every label one bar over. They are now handed the patches
+  the call itself produced. A count mismatch between drawn bars and data groups
+  additionally emits a `UserWarning` instead of silently truncating, so a
+  future regression of this shape fails loudly rather than shipping a
+  mislabelled panel.
+- **`pp.pointplot` now honours `palette=` on every call to the same axes**
+  (#103). The shape×color idiom — one call per marker shape over a shared hue
+  axis — painted the second call's markers in matplotlib's tab10 defaults, with
+  a legend that still showed the requested palette. `apply_double_layer_markers`
+  rescanned every line on the axes, and its own marker copies are
+  marker-bearing `Line2D` objects, so a second call re-layered the first call's
+  copies. Those copies were drawn without an explicit `color=`, so they had
+  picked up the axes property cycle; re-layering them made the cycle colors
+  visible. `pp.pointplot` and `pp.lineplot` now layer only the lines seaborn
+  drew for that call, and the copies declare their own color so they neither
+  advance the property cycle nor misreport `get_color()`.
+- **`ax._publiplots_point_meta` now describes the `pp.pointplot` call that
+  built it** (#103). `_iter_point_marker_series` also rescanned the whole axes,
+  so after a second call it found six seaborn marker series and paired the
+  surplus three against a three-level `hue_order`, dropping their `hue_value`
+  to `None` and mislabelling any follow-up annotation.
+
 ## [0.16.2] - 2026-09-01
 
 ### Fixed

@@ -517,6 +517,9 @@ def barplot(
             ax=ax, data=data, x=x, y=y, hue=hue, hatch=hatch,
             categorical_axis=categorical_axis, palette=palette,
             multiple=multiple, source_frame=_source_data,
+            # Only this call's patches: anything already on the axes would
+            # take a segment's slot in the positional pairing.
+            bar_patches=tracker.get_new_patches(),
         )
         if annotate:
             from publiplots.annotate import annotate as _annotate_fn
@@ -641,6 +644,9 @@ def barplot(
         categorical_axis=categorical_axis,
         palette=palette, errorbar=errorbar,
         source_frame=_source_data,
+        # Re-read after apply_border_radius, which swaps in new patch
+        # objects; get_new_patches() recomputes against the live axes.
+        bar_patches=tracker.get_new_patches(),
     )
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn

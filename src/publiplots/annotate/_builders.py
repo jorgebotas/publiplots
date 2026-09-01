@@ -11,6 +11,7 @@ inputs (data, column names, palette map, errorbar spec) and returns a
 """
 from __future__ import annotations
 
+import warnings
 from typing import Dict, List, Literal, Optional, Tuple
 
 import numpy as np
@@ -166,7 +167,7 @@ def _categorical_order(series, order: Optional[List] = None) -> List:
     return list(uniques)
 
 
-def _iter_point_marker_series(ax: Axes) -> List:
+def _iter_point_marker_series(ax: Axes, candidates: Optional[List] = None) -> List:
     """Yield seaborn's original per-hue marker series in draw order.
 
     ``pp.pointplot`` runs ``apply_double_layer_markers`` after
@@ -181,9 +182,17 @@ def _iter_point_marker_series(ax: Axes) -> List:
     copies, and rather than recomputing an aggregate — makes the annotation
     track whatever ``estimator`` seaborn drew at, with no de-duplication
     guesswork; see issue #194.
+
+    ``candidates`` restricts the scan to a known set of lines — the ones
+    ``pp.pointplot`` just handed to seaborn. Without it, a second
+    ``pp.pointplot`` call on the same axes finds the first call's originals
+    too and pairs the surplus series against a too-short ``hue_order``,
+    losing their hue (issue #103). Defaults to every line on ``ax``, which
+    is what the introspection path (``pp.annotate`` on an axes publiplots
+    did not draw) has to work from.
     """
     series = []
-    for line in ax.lines:
+    for line in (ax.lines if candidates is None else candidates):
         if line.get_marker() in (None, "None", ""):
             continue
         if line.get_markersize() != 0:
@@ -207,6 +216,7 @@ def build_from_pointplot_call(
     source_frame,
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
+    marker_lines: Optional[List] = None,
 ) -> PointValueMeta:
     """Build a `PointValueMeta` paired with the pointplot's drawn markers.
 
@@ -233,6 +243,12 @@ def build_from_pointplot_call(
     coordinate rounding. Ordering is resolved with `_categorical_order`, which
     matches seaborn — including sorting numeric/bool levels — so a numeric
     ``hue`` or categorical axis is not misattributed.
+
+    ``marker_lines`` should be the lines seaborn added during *this* call
+    (``ArtistTracker(ax).get_new_lines()``). Passing them keeps the
+    positional pairing exact when the caller layers several
+    ``pp.pointplot`` calls onto one axes; omitting them falls back to
+    scanning the whole axes, which only holds for a single call.
     """
     spec = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
@@ -244,7 +260,7 @@ def build_from_pointplot_call(
     else:
         hue_levels = [None]
 
-    marker_series = _iter_point_marker_series(ax)
+    marker_series = _iter_point_marker_series(ax, marker_lines)
 
     # Pair each drawn marker series to a hue level by position, and each point
     # within a series to a category by position. When hue does not split (no
@@ -343,6 +359,7 @@ def build_from_barplot_call(
     hatch: Optional[str] = None,
     *,
     source_frame,
+    bar_patches: Optional[List] = None,
 ) -> BarValueMeta:
     """Build a `BarValueMeta` paired with the barplot's Rectangles.
 
@@ -365,6 +382,14 @@ def build_from_barplot_call(
         ``meta.source_frame is df`` holds and
         ``source_frame.iloc[record.frame_row_index]`` resolves correctly
         regardless of the caller's index kind.
+    bar_patches : list of Patch, optional
+        The patches this barplot call drew
+        (``ArtistTracker(ax).get_new_patches()``). Records are paired to
+        patches by position, so anything else already on the axes — a
+        user-drawn highlight Rectangle, an earlier plot's bars — would
+        take a bar's slot and shift every label onto its neighbour.
+        Defaults to scanning ``ax.patches``, which only holds for an axes
+        nothing else has drawn on.
     """
     orient = "v" if categorical_axis == x else "h"
 
@@ -379,9 +404,26 @@ def build_from_barplot_call(
                                 categorical_axis=categorical_axis,
                                 source_frame=source_frame)
     # `_is_bar_rect` treats signed extents as valid so negative-valued bars
-    # (matplotlib emits them as rects with negative height/width) are kept.
-    rects = [p for p in ax.patches if _is_bar_rect(p)]
+    # (matplotlib emits them as rects with negative height/width) are kept,
+    # as are bars whose value is exactly 0 (see issue #199).
+    candidates = ax.patches if bar_patches is None else bar_patches
+    rects = [p for p in candidates if _is_bar_rect(p)]
     err_by_bar = _match_errorbars(ax, rects, orient)
+
+    # The zip below pairs rects to group keys by position, so a count
+    # mismatch means every label from the divergence onward sits on the
+    # wrong bar — and the shorter list silently truncates the rest. That
+    # combination shipped a mislabelled panel in issue #199, so make it
+    # loud rather than trusting the geometry filters to stay in sync.
+    if len(rects) != len(agg):
+        warnings.warn(
+            f"annotate: the number of drawn bars ({len(rects)}) does not "
+            f"match the number of data groups ({len(agg)}). Bar labels are "
+            "paired by draw order, so some may be attached to the wrong "
+            "bar or omitted. Please report this with a reproducer.",
+            UserWarning,
+            stacklevel=3,
+        )
 
     bars: List[BarRecord] = []
     for i, (rect, row, (err_low, err_high)) in enumerate(
@@ -449,6 +491,7 @@ def build_from_stacked_barplot_call(
     multiple: Literal["stack", "fill", "gain"] = "stack",
     *,
     source_frame,
+    bar_patches: Optional[List] = None,
 ) -> BarValueMeta:
     """Build a ``BarValueMeta`` paired with a stacked bar plot's Rectangles.
 
@@ -475,6 +518,9 @@ def build_from_stacked_barplot_call(
         ``meta.source_frame is df`` holds and
         ``source_frame.iloc[record.frame_row_index]`` resolves correctly
         regardless of the caller's index kind.
+    bar_patches : list of Patch, optional
+        The patches this call drew; see the same parameter on
+        `build_from_barplot_call`. Defaults to scanning ``ax.patches``.
     """
     # Lazy import to avoid a cycle through utils.rounding.
     from publiplots.utils.rounding import _RoundedBarPatch
@@ -490,7 +536,8 @@ def build_from_stacked_barplot_call(
     # Rectangle per aggregated row via ax.bar, including legitimate
     # zero-valued segments (e.g. a group mean that happens to be 0).
     # Pairing with agg is 1:1 in deterministic draw order.
-    rects = [p for p in ax.patches if isinstance(p, (Rectangle, _RoundedBarPatch))]
+    candidates = ax.patches if bar_patches is None else bar_patches
+    rects = [p for p in candidates if isinstance(p, (Rectangle, _RoundedBarPatch))]
 
     bars: List[BarRecord] = []
     for i, (rect, row) in enumerate(zip(rects, agg)):
@@ -584,7 +631,15 @@ def build_from_histplot_call(
     """
     orient = "v" if x is not None else "h"
 
-    rects = [p for p in ax.patches if _is_bar_rect(p)]
+    # Unlike a bar chart — where a category with value 0 is a real category
+    # that deserves a "0" label (issue #199) — an empty histogram bin is not
+    # an observation, and labelling every gap in a sparse histogram is noise.
+    # This builder enumerates rects rather than pairing them positionally
+    # against group keys, so dropping them here desyncs nothing.
+    rects = [
+        p for p in ax.patches
+        if _is_bar_rect(p) and (p.get_height() if orient == "v" else p.get_width()) != 0
+    ]
 
     bars: List[BarRecord] = []
     for rect in rects:

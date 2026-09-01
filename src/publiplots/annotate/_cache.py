@@ -146,14 +146,26 @@ class BoxStatsMeta:
 
 
 def _is_bar_rect(p) -> bool:
-    """True for a Rectangle with non-zero width AND non-zero height.
+    """True for a Rectangle that is a real bar rather than an empty slot.
 
     Seaborn/matplotlib draw negative-valued bars as Rectangles with a
     negative ``get_height()`` (or ``get_width()`` for horizontal orient):
     ``x, y=0, height=-12.3`` instead of ``x, y=-12.3, height=12.3``.
     A strict ``> 0`` check would silently drop those bars from meta,
-    causing annotate strategies to skip every negative bar. Here we only
-    reject *degenerate* zero-size rects (e.g. truly empty groups).
+    causing annotate strategies to skip every negative bar.
+
+    Only *fully* degenerate rects are rejected — zero on **both** axes.
+    That is precisely the shape seaborn emits for a ``(category, hue)``
+    combination with no observations: ``x=0, y=0, width=0, height=0``,
+    which ``BarSplitSpec.iter_draw_order`` also skips, so the two lists
+    stay aligned.
+
+    A single zero extent is NOT degenerate. A group whose aggregate is
+    exactly 0 is a real group that happens to be zero, and matplotlib
+    draws it with a full-size categorical extent and a zero value extent.
+    Rejecting it desynced the positional pairing between rects and group
+    keys in `_builders.build_from_barplot_call`, shifting every label onto
+    its neighbour's bar and dropping the last category — see issue #199.
     """
     # Lazy import to avoid a cycle: utils.rounding pulls in publiplots
     # internals at import time.
@@ -161,7 +173,7 @@ def _is_bar_rect(p) -> bool:
 
     if not isinstance(p, (Rectangle, _RoundedBarPatch)):
         return False
-    return p.get_width() != 0 and p.get_height() != 0
+    return p.get_width() != 0 or p.get_height() != 0
 
 
 def _iter_error_segments(ax: Axes):
