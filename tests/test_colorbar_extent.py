@@ -462,6 +462,20 @@ def test_colorbar_block_along_geometry_is_pure_arithmetic():
     assert label_off == pytest.approx(0.0)
     assert label_off + 31.33 / 2 == pytest.approx(strip_off + 15.0 / 2)
 
+    # ASYMMETRIC tick labels, which is the only shape that separates
+    # "centred on the strip rectangle" from "centred on the strip's ink".
+    # A strip whose ink leads its rectangle by 4.847mm and trails it by
+    # 0.688mm: pairing on the tight bbox would put the label 2.08mm off
+    # the coloured band, and every symmetric case above is blind to it
+    # because there ``strip_lead`` is exactly half the overhang.
+    extent, strip_off, label_off = geom(20.535, 15.0, 4.847, 4.0)
+    assert extent == pytest.approx(20.535)
+    assert strip_off == pytest.approx(4.847)
+    assert label_off == pytest.approx(4.847 + (15.0 - 4.0) / 2)
+    assert label_off + 4.0 / 2 == pytest.approx(strip_off + 15.0 / 2)
+    # ... and that is NOT the same as centring on the ink.
+    assert label_off + 4.0 / 2 != pytest.approx(20.535 / 2, abs=1.0)
+
 
 # --- nothing may leave the canvas -----------------------------------------
 
@@ -600,3 +614,451 @@ def test_colorbar_band_measures_on_a_pdf_canvas(tmp_path):
     for ext in ("pdf", "svg", "png"):
         fig.savefig(tmp_path / f"ok.{ext}")
         assert (tmp_path / f"ok.{ext}").exists()
+
+
+# ---------------------------------------------------------------------------
+# The UNLABELLED path: ``add_colorbar``'s ``label`` defaults to ``""``
+# ---------------------------------------------------------------------------
+#
+# Every case above passes a label, and that is exactly what hid a second
+# half of the defect. A labelled strip is measured at the figure's final
+# size by accident: ``_measure_object_dimensions(title_obj)`` forces a
+# draw *before* the strip is created, so the figure has already grown by
+# the time the strip is drawn and measured. An unlabelled band has no
+# such pre-draw, and the first strip on it is measured while it is
+# physically 11% narrow — at which size matplotlib's locator has chosen a
+# SPARSER tick set (['0','1'] rather than ['0.0','0.5','1.0']), so its
+# tight bbox reads 16.55mm against a true 18.45mm.
+#
+# ``align='center'``/``'end'`` survived that because the alignment pass
+# re-measures at the settled size every draw. ``align='start'`` does not
+# run that pass at all, so ``add_colorbar``'s own cursor advance is
+# final — and ``'start'`` is ``_DEFAULT_ALIGN`` for left and right, so
+# ``pp.legend(ax, side='right')`` with an unlabelled colorbar reached it
+# on nothing but defaults. Measured: a 1.03mm ink gap against a declared
+# 2.00mm, with 0.97mm of the row hanging past the anchor edge.
+
+
+def _row_ink_spans(group, fig, side):
+    """{row key: [(lo, hi) mm]} of each strip's tight bbox along the edge."""
+    rows = {}
+    for kind, obj in _elements(group):
+        if kind != "colorbar":
+            continue
+        r = obj.ax.get_window_extent()
+        t = obj.ax.get_tightbbox() or r
+        key = round(_to_mm(r.y0 if side in ("top", "bottom") else r.x0, fig), 1)
+        lo, hi = _along(t, side)
+        rows.setdefault(key, []).append((_to_mm(lo, fig), _to_mm(hi, fig)))
+    for spans in rows.values():
+        spans.sort()
+    return rows
+
+
+@pytest.mark.parametrize("side", SIDES)
+@pytest.mark.parametrize("align", ALIGNS)
+@pytest.mark.parametrize("n", [2, 3, 6])
+@pytest.mark.parametrize("labelled", [True, False], ids=["labelled", "unlabelled"])
+def test_band_gap_holds_for_labelled_and_unlabelled_colorbars(
+    side, align, n, labelled
+):
+    """The declared gap falls between the ink, label or no label.
+
+    The full 4 sides x 3 aligns x {2, 3, 6} colorbars x
+    {labelled, unlabelled} matrix, because the unlabelled half is the one
+    that regressed silently. Measured before this fix, ``align='start'``
+    unlabelled: 1.049mm on top/bottom (and 0.951mm of overrun) and
+    2.284mm on left/right, against 2.000mm everywhere for the labelled
+    half.
+    """
+    fig, group = _colorbar_band(side, align, n,
+                                "cb{}" if labelled else "{}"[:0] or "")
+    _draw(fig)
+    gap_mm = group._builder._layout.gap
+    lo_edge, hi_edge = _axes_edge_mm(group, fig, side)
+    seen = 0
+    for key, spans in _row_ink_spans(group, fig, side).items():
+        for a, b in zip(spans, spans[1:]):
+            seen += 1
+            assert b[0] - a[1] == pytest.approx(gap_mm, abs=0.1), (
+                f"[{side}, align={align}, n={n}, "
+                f"{'labelled' if labelled else 'unlabelled'}] row@{key}: "
+                f"{b[0] - a[1]:.3f}mm between the ink, declared {gap_mm:.3f}mm"
+            )
+        assert spans[0][0] > lo_edge - 0.1 and spans[-1][1] < hi_edge + 0.1, (
+            f"[{side}, align={align}, n={n}, "
+            f"{'labelled' if labelled else 'unlabelled'}] row@{key} spans "
+            f"[{spans[0][0]:.3f},{spans[-1][1]:.3f}] past the anchor edge "
+            f"[{lo_edge:.3f},{hi_edge:.3f}]"
+        )
+    if labelled and side in ("left", "right"):
+        # A 15mm strip plus its label is 21.7mm of a 40mm edge, so two of
+        # them wrap and no row holds an adjacent pair to compare. The
+        # per-row overrun assertion above still runs.
+        return
+    assert seen >= 1, "expected at least one adjacent pair to compare"
+
+
+@pytest.mark.parametrize("side", SIDES)
+def test_first_unlabelled_strip_is_measured_at_its_final_size(side):
+    """The cursor advance must be the strip's *final* tight extent.
+
+    Root cause of the unlabelled defect, asserted directly rather than
+    through the rendered gap: ``add_colorbar`` re-seats the strip on its
+    declared mm and re-draws until the read-back rectangle agrees, so the
+    tick set it measures is the one the strip keeps. Without that, the
+    first strip on an unlabelled band advanced the cursor by 16.55mm
+    instead of 18.45mm.
+    """
+    fig, ax = pp.subplots(1, 1, axes_size=AXES_MM)
+    ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend(ax, side=side, align="start")
+    layout = group._builder._layout
+    before = layout.along_from_start
+    cbar = group.add_colorbar(cmap="viridis", vmin=0, vmax=1, label="")
+    advanced = layout.along_from_start - before
+    _draw(fig)
+
+    horizontal = side in ("top", "bottom")
+    tight = cbar.ax.get_tightbbox() or cbar.ax.get_window_extent()
+    true_extent = _to_mm(tight.width if horizontal else tight.height, fig)
+    assert advanced == pytest.approx(true_extent + layout.gap, abs=0.05), (
+        f"[{side}] the cursor advanced {advanced:.3f}mm for a block whose "
+        f"ink measures {true_extent:.3f}mm plus a {layout.gap:.3f}mm gap"
+    )
+
+
+def test_measurement_survives_a_figure_that_resizes_under_it():
+    """The ``known_mm / measured_mm`` rescaling is the last line of defence.
+
+    ``cbar_ax`` holds a figure *fraction* and is not reactor-managed until
+    the end of ``add_colorbar``, so a figure that resizes between the
+    measuring draw and the measurement leaves the strip at the wrong
+    physical size. The re-seat loop normally converges that away in at
+    most one extra draw; this drives a figure that shrinks 20% on *every*
+    measuring draw, so the loop exhausts and the residual scale
+    correction is all that is left.
+
+    Measured on this figure: +0.270mm of ink gap with the rescaling and
+    **-3.074mm** (a real overlap) without it.
+    """
+    orig = LegendBuilder._fig_canvas_draw_for_measure
+
+    def shrinking(self):
+        orig(self)
+        w, h = self.fig.get_size_inches()
+        self.fig.set_size_inches(w * 0.80, h, forward=False)
+
+    LegendBuilder._fig_canvas_draw_for_measure = shrinking
+    try:
+        fig, ax = pp.subplots(1, 1, axes_size=AXES_MM)
+        ax.plot([0, 1, 2], [0, 1, 0])
+        group = pp.legend(ax, side="top", align="start")
+        for _ in range(2):
+            group.add_colorbar(cmap="viridis", vmin=0, vmax=1, label="")
+    finally:
+        LegendBuilder._fig_canvas_draw_for_measure = orig
+
+    _draw(fig)
+    spans = sorted(s for row in _row_ink_spans(group, fig, "top").values()
+                   for s in row)
+    assert len(spans) == 2
+    gap = spans[1][0] - spans[0][1]
+    assert gap > 0.0, (
+        f"a figure resizing under the measurement must not be allowed to "
+        f"overlap the strips; ink gap {gap:+.3f}mm"
+    )
+
+
+def test_overflow_precheck_counts_the_tick_labels():
+    """Part 2 of #221, isolated so the estimate itself is under test.
+
+    The wrap decision is made before either the strip or its label
+    exists, so it runs on an estimate. Sizing the anchor edge to 36mm
+    puts the second block's budget at 15.55mm — above the 15mm colour
+    rectangle and below the 19.45mm the estimate charges for rectangle
+    plus tick labels — so the two answers disagree about whether it fits.
+    Measured with the bare-rectangle pre-check: both blocks admitted into
+    one row, whose ink then runs **2.900mm** past the anchor edge (1.900
+    at 37mm, 0.900 at 38mm). With the estimate the second block wraps and
+    the overrun is zero.
+
+    The cursor advance cannot substitute for this: it is what makes the
+    *next* element's budget correct, but the element being placed has
+    only the estimate to go on.
+    """
+    fig, ax = pp.subplots(1, 1, axes_size=(36, 40))
+    ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend(ax, side="top", align="start")
+    for _ in range(2):
+        group.add_colorbar(cmap="viridis", vmin=0, vmax=1, label="")
+    _draw(fig)
+
+    lo_edge, hi_edge = _axes_edge_mm(group, fig, "top")
+    rows = _row_ink_spans(group, fig, "top")
+    assert len(rows) == 2, (
+        f"18.45mm of ink twice plus a 2mm gap does not fit a 36mm edge; "
+        f"expected the second block to wrap, got rows "
+        f"{ {k: len(v) for k, v in rows.items()} }"
+    )
+    for key, spans in rows.items():
+        assert spans[0][0] > lo_edge - 0.1 and spans[-1][1] < hi_edge + 0.1, (
+            f"row@{key} spans [{spans[0][0]:.3f},{spans[-1][1]:.3f}] past "
+            f"the anchor edge [{lo_edge:.3f},{hi_edge:.3f}]"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Asymmetric tick labels: where "lead" has a direction and the trade bites
+# ---------------------------------------------------------------------------
+
+ASYM_TICKS = dict(cmap="viridis", vmin=-999999, vmax=1, ticks=[-999999, 1])
+# '−999999' at one end and '1' at the other: the tight bbox leads the
+# colour rectangle by 4.85mm and trails it by 0.69mm, so the rect centre
+# and the tight centre are 2.08mm apart. Symmetric ticks put them within
+# 0.35mm of each other, which is why every other case in this file is
+# blind to the direction ``lead`` is measured in.
+
+
+def test_asymmetric_ticks_centre_the_ink_and_offset_the_strip():
+    """``align='center'`` centres the INK; the strip lands off-centre.
+
+    Both halves of the accepted #221 trade in one measurement. The band's
+    visible ink is centred on the anchor edge to within 0.35mm, and the
+    colour rectangle is consequently 2.08mm off that centre line — which
+    is the cost the issue accepted in exchange for the block not sitting
+    off-centre.
+
+    This is also the only configuration in the file that pins the
+    *direction* ``_measure_along_extent`` measures ``lead`` in. Measuring
+    it from the trailing end instead moves the ink centre to -4.16mm and
+    leaves every symmetric-tick case unchanged.
+    """
+    fig, ax = pp.subplots(1, 1, axes_size=AXES_MM)
+    ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend(ax, side="top", align="center")
+    cbar = group.add_colorbar(label="L", **ASYM_TICKS)
+    _draw(fig)
+
+    lo_edge, hi_edge = _axes_edge_mm(group, fig, "top")
+    edge_c = (lo_edge + hi_edge) / 2
+    rect = cbar.ax.get_window_extent()
+    tight = cbar.ax.get_tightbbox() or rect
+    ink_c = _to_mm((tight.x0 + tight.x1) / 2, fig)
+    rect_c = _to_mm((rect.x0 + rect.x1) / 2, fig)
+
+    assert abs(ink_c - edge_c) < 0.35, (
+        f"the band's ink must be centred on the anchor edge; it is "
+        f"{ink_c - edge_c:+.3f}mm off"
+    )
+    assert abs(rect_c - edge_c) > 1.0, (
+        "this figure is supposed to make the accepted trade visible: with "
+        f"asymmetric tick labels the strip rectangle should NOT be centred, "
+        f"but it is only {rect_c - edge_c:+.3f}mm off — the fixture has "
+        "stopped exercising what it claims to"
+    )
+
+
+@pytest.mark.parametrize("align", ["center", "end"])
+def test_an_edge_too_small_to_align_still_pairs_on_the_strip_rectangle(align):
+    """The ``total >= edge_length`` bail-out keeps #214's rule.
+
+    When a row's blocks already fill the anchor edge there is no room to
+    align, so the pass leaves the strips where the cursor put them and
+    only re-seats each label on its own strip. That re-seating is
+    intra-block pairing, so it uses the strip RECTANGLE like every other
+    part of #214 — pairing it on the tight bbox instead would offset the
+    label by the tick labels' asymmetry.
+
+    A 12mm anchor edge is what reaches the branch: one block of 20.5mm of
+    ink already exceeds it. Measured, with the bail-out pairing on the
+    tight bbox instead: the label lands 2.77mm off its strip.
+    ``align='start'`` is excluded because it does not run the pass at all.
+    """
+    fig, ax = pp.subplots(1, 1, axes_size=(12, 40))
+    ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend(ax, side="top", align=align)
+    cbar = group.add_colorbar(label="L", **ASYM_TICKS)
+    _draw(fig)
+
+    els = _elements(group)
+    text = next(o for k, o in els if k == "text")
+    rect = cbar.ax.get_window_extent()
+    tight = cbar.ax.get_tightbbox() or rect
+    lbl_c = _to_mm((text.get_window_extent().x0
+                    + text.get_window_extent().x1) / 2, fig)
+    rect_c = _to_mm((rect.x0 + rect.x1) / 2, fig)
+    tight_c = _to_mm((tight.x0 + tight.x1) / 2, fig)
+
+    edge = _axes_edge_mm(group, fig, "top")
+    assert _to_mm(tight.width, fig) > edge[1] - edge[0], (
+        "this fixture must reach the no-room-to-align branch: the block's "
+        f"ink ({_to_mm(tight.width, fig):.2f}mm) has to exceed the anchor "
+        f"edge ({edge[1] - edge[0]:.2f}mm)"
+    )
+    assert abs(lbl_c - rect_c) < 0.1, (
+        f"[align={align}] the label must stay centred on the strip "
+        f"RECTANGLE: {lbl_c - rect_c:+.3f}mm off it, "
+        f"{lbl_c - tight_c:+.3f}mm off the tight bbox"
+    )
+    assert abs(tight_c - rect_c) > 1.0, (
+        "the fixture has stopped separating the two centres "
+        f"({tight_c - rect_c:+.3f}mm apart); it no longer discriminates"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The pre-flight estimate reads the font the ticks are actually drawn in
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("strip_horizontal,side,orientation", [
+    (True, "top", "horizontal"),
+    (False, "right", "vertical"),
+])
+def test_tick_label_fontsize_follows_the_strips_own_axis(
+    strip_horizontal, side, orientation
+):
+    """A vertical strip's ticks take ``ytick.labelsize``, a horizontal
+    strip's take ``xtick.labelsize``.
+
+    The estimate used to read ``xtick.labelsize`` unconditionally, so
+    with ``ytick.labelsize=30`` it budgeted for a 7pt font while
+    matplotlib drew 30pt. Asserted against the size actually rendered,
+    not against the rcParam, so the helper cannot drift from matplotlib.
+    """
+    own = "xtick.labelsize" if strip_horizontal else "ytick.labelsize"
+    other = "ytick.labelsize" if strip_horizontal else "xtick.labelsize"
+    for key, expected_is_30 in ((own, True), (other, False)):
+        with plt.rc_context({key: 30}):
+            fig, ax = pp.subplots(1, 1, axes_size=AXES_MM)
+            ax.plot([0, 1, 2], [0, 1, 0])
+            group = pp.legend(ax, side=side)
+            cbar = group.add_colorbar(cmap="viridis", vmin=0, vmax=1,
+                                      label="", orientation=orientation)
+            fig.canvas.draw()
+            ticks = (cbar.ax.get_xticklabels() if strip_horizontal
+                     else cbar.ax.get_yticklabels())
+            rendered = {t.get_fontsize() for t in ticks}
+            estimated = group._builder._tick_label_fontsize(strip_horizontal)
+            assert rendered == {estimated}, (
+                f"{orientation} strip with {key}=30: matplotlib rendered "
+                f"{rendered}, the estimate assumed {estimated}"
+            )
+            assert (estimated == 30.0) is expected_is_30
+            plt.close(fig)
+
+
+@pytest.mark.parametrize("named", ["xx-small", "small", "large", "xx-large"])
+def test_named_tick_label_sizes_use_matplotlibs_scaling_table(named):
+    """Named sizes resolve through ``font_manager.font_scalings``.
+
+    matplotlib publishes the table, so collapsing a named size to the
+    numeric base is a needless approximation: ``xtick.labelsize='xx-large'``
+    renders at ``font.size * 1.728`` = 12.096pt, and the estimate used to
+    charge for 7.0.
+    """
+    from matplotlib.font_manager import font_scalings
+    with plt.rc_context({"xtick.labelsize": named}):
+        fig, ax = pp.subplots(1, 1, axes_size=AXES_MM)
+        ax.plot([0, 1, 2], [0, 1, 0])
+        group = pp.legend(ax, side="top")
+        cbar = group.add_colorbar(cmap="viridis", vmin=0, vmax=1, label="")
+        fig.canvas.draw()
+        rendered = {t.get_fontsize() for t in cbar.ax.get_xticklabels()}
+        estimated = group._builder._tick_label_fontsize(True)
+        assert len(rendered) == 1
+        assert rendered.pop() == pytest.approx(estimated), (
+            f"xtick.labelsize={named!r}: matplotlib rendered a size the "
+            f"estimate ({estimated}) does not match"
+        )
+        assert estimated == pytest.approx(
+            plt.rcParams["font.size"] * font_scalings[named]
+        )
+        plt.close(fig)
+
+
+@pytest.mark.parametrize("side,orientation", [
+    ("top", "vertical"), ("bottom", "vertical"),
+    ("left", "horizontal"), ("right", "horizontal"),
+])
+def test_along_edge_axis_follows_side_not_orientation(side, orientation):
+    """Which axis the band's cursor runs on is a fact about ``side``.
+
+    ``layout_reactor._Registration`` maps top/bottom to "rightward from
+    ax.x0" and right/left to "downward from ax.y1" whatever orientation
+    the strip has. The alignment pass used to read the band's
+    ``orientation`` for a lone element, which agrees only at the per-side
+    defaults; an explicit override measured a strip on the wrong axis and
+    rendered a declared 2.0mm gap as 10.19mm (top/vertical) or 2.71mm
+    (left/horizontal).
+    """
+    fig, ax = pp.subplots(1, 1, axes_size=AXES_MM)
+    ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend(ax, side=side, orientation=orientation)
+    for _ in range(2):
+        group.add_colorbar(cmap="viridis", vmin=0, vmax=1, label="")
+    _draw(fig)
+
+    gap_mm = group._builder._layout.gap
+    spans = sorted(s for row in _row_ink_spans(group, fig, side).values()
+                   for s in row)
+    assert len(spans) == 2
+    measured = spans[1][0] - spans[0][1]
+    assert measured == pytest.approx(gap_mm, abs=0.1), (
+        f"[side={side}, orientation={orientation}] {measured:.3f}mm between "
+        f"the ink, declared {gap_mm:.3f}mm"
+    )
+
+
+@pytest.mark.parametrize("align", ALIGNS)
+def test_an_over_subscribed_row_keeps_its_gap_at_every_align(align):
+    """A row whose ink exceeds the edge degenerates to the same layout.
+
+    ``align`` distributes slack; a row with none has nothing to
+    distribute, so all three aligns must fall back to the leading-corner
+    sequence the cursor produced — and in particular must still leave the
+    band's gap between neighbours.
+
+    The alignment pass mutates ``mm_y_from_top`` in place on every draw,
+    which made this a real overlap rather than a tidiness point: the row
+    fitted while it held one element and was aligned then, and skipping
+    the pass once a second element pushed it over the edge froze the
+    first element at that stale offset. Measured on this figure — two
+    12mm strips whose ``%+.6e`` ticks make each block 29.38mm of ink on a
+    50mm edge — the two overlapped by 15.38mm on ``origin/main`` and by
+    6.15mm (``center``) / 16.46mm (``end``) before this fix.
+
+    The row still runs 10.76mm past the anchor edge, and that is a stated
+    limitation, not an oversight: the pre-flight wrap estimate budgets
+    ``_CBAR_TICK_LABEL_CHARS`` characters of tick, so a much longer
+    formatter wraps late. Overlap is what the measured cursor advance
+    guarantees against; overrun is not.
+    """
+    from matplotlib.ticker import FuncFormatter
+
+    fig, ax = pp.subplots(1, 1, axes_size=AXES_MM)
+    ax.plot([0, 1, 2], [0, 1, 0])
+    group = pp.legend(ax, side="top", align=align)
+    for _ in range(2):
+        group.add_colorbar(cmap="viridis", vmin=0, vmax=1, label="", width=12,
+                           format=FuncFormatter(lambda v, p: f"{v:+.6e}"))
+    _draw(fig)
+
+    gap_mm = group._builder._layout.gap
+    rows = _row_ink_spans(group, fig, "top")
+    spans = sorted(s for row in rows.values() for s in row)
+    assert len(spans) == 2
+    edge = _axes_edge_mm(group, fig, "top")
+    assert spans[0][1] - spans[0][0] > (edge[1] - edge[0]) / 2, (
+        "this fixture must over-subscribe the row: each block's ink has to "
+        "be a large fraction of the anchor edge for the no-slack branch to "
+        f"fire (block {spans[0][1] - spans[0][0]:.2f}mm, edge "
+        f"{edge[1] - edge[0]:.2f}mm)"
+    )
+    measured = spans[1][0] - spans[0][1]
+    assert measured == pytest.approx(gap_mm, abs=0.1), (
+        f"[align={align}] an over-subscribed row must still keep the band's "
+        f"gap between neighbours; got {measured:+.3f}mm against a declared "
+        f"{gap_mm:.3f}mm"
+    )

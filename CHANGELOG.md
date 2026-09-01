@@ -66,8 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     cursor advance both counted the rectangle, so three default strips packed
     into a 50mm edge (3 x 15 + 2 x 2 = 49mm of rectangle) drew 59.35mm of ink
     and overran by 1.23mm at each end. Six strips became two rows of three,
-    each overrunning; they now wrap into three rows of two with a clean 2.00mm
-    gap and zero overrun.
+    each overrunning; they now wrap into three rows of two.
 
   `MultiAxesLegendGroup._apply_along_alignment` and `add_colorbar` now share
   `LegendBuilder._measure_along_extent` (tight extent, rect extent, and how far
@@ -77,6 +76,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   advance uses the measured value. `_measure_object_dimensions` deliberately
   still reports the strip *rectangle*: that is the intra-block measurement, and
   what the layout reactor is handed as `mm_width` / `mm_height`.
+
+  Measuring the strip is itself made reliable first. `add_colorbar` re-seats the
+  strip on its declared mm at the live figure size and re-draws until the
+  read-back rectangle agrees, because a strip drawn at the wrong physical size is
+  not merely scaled: matplotlib re-runs the tick locator at the size it actually
+  drew, so an 11%-narrow strip picks a sparser tick set (`['0','1']` rather than
+  `['0.0','0.5','1.0']`) and reports 16.55mm of ink against a true 18.45mm — an
+  error no scalar can divide out. This is what an **unlabelled** colorbar hit and
+  a labelled one did not: a label's own measurement forces a draw before the
+  strip exists, settling the figure by accident. With `align='start'` — the
+  default on `side='left'`/`'right'`, and the one `align` that does not re-measure
+  every draw — `pp.legend(ax, side='right')` plus an unlabelled colorbar rendered
+  a 1.03mm gap and hung 0.97mm past the anchor edge. It costs one extra draw per
+  unlabelled band and none otherwise.
+
+  Two smaller corrections to the pre-flight estimate: it reads `ytick.labelsize`
+  for a vertical strip and `xtick.labelsize` for a horizontal one (it always read
+  the latter, so `ytick.labelsize=30` budgeted a 7pt font against a 30pt render),
+  and named sizes resolve through `matplotlib.font_manager.font_scalings` instead
+  of collapsing to the base size (`'xx-large'` renders at 12.096pt, not 7.0).
+  Separately, the along-edge axis in the alignment pass is now read from `side`
+  rather than from the band's `orientation` — the two coincide at the per-side
+  defaults, but an explicit `pp.legend(ax, side='top', orientation='vertical')`
+  measured a lone strip on its vertical extent while positioning it on a
+  horizontal edge, rendering a declared 2.0mm gap as 10.19mm.
 
   **#214 is unchanged**: the label still sits over the coloured band, centred on
   the strip rectangle, for short and long labels and every `align`. The accepted
@@ -89,6 +113,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   back into it. A left band's *inward* tick-label overhang (4.68mm toward the
   axes, clearing by 1.36mm) is on the outward axis and is left exactly as #213
   left it.
+
+  **Scope of the guarantee.** Every adjacent pair of blocks in a row is now
+  exactly the band's `gap` apart, measured between tight bboxes, across the
+  4 sides x 3 `align` values x {labelled, unlabelled} x {2, 3, 6} colorbars
+  matrix, with no row past the anchor edge and no element off the figure canvas
+  (96 configurations checked for the latter). A row whose ink cannot fit the
+  edge at all keeps the gap too, degenerating to the leading-corner layout at
+  every `align`.
+
+  What is *not* guaranteed is that such a row fits: the wrap decision is a
+  pre-flight estimate that budgets three characters of tick label, so a much
+  longer tick formatter **wraps late and its row can overrun** — measured at
+  10.76mm of overrun for a `%+.6e` formatter on a 12mm strip. The overlap
+  guarantee is unaffected there, because the cursor advance is measured rather
+  than estimated.
 
 - **A pinned `xlabel_space` / `ylabel_space` no longer disables legend-band
   collision avoidance** (#222). One flag (`SubplotsAutoLayout._locked` /

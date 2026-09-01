@@ -1263,7 +1263,6 @@ class MultiAxesLegendGroup:
         if not regs:
             return
 
-        orient = self._orientation
         edge_length_mm = self._builder._get_edge_length()
         gap_mm = self._builder._layout.gap
 
@@ -1309,7 +1308,21 @@ class MultiAxesLegendGroup:
                 outward = min(outward, label_reg.mm_x_from_right)
             rows.setdefault(round(outward, 3), []).append(reg)
 
-        def _extent_of(reg, horizontal=None):
+        # Which axis the along-edge cursor runs on is a fact about
+        # ``side`` and nothing else: ``layout_reactor._Registration`` maps
+        # top/bottom to "rightward from ax.x0" and right/left to
+        # "downward from ax.y1", whatever ``orientation`` the caller
+        # asked for. This used to be read off the band's ``orientation``
+        # for a lone element while the members of a label/strip pair
+        # overrode it to True, which agreed only because the two
+        # coincide at the per-side defaults. An explicit
+        # ``pp.legend(ax, side='top', orientation='vertical')`` broke the
+        # agreement: a lone strip was measured on its VERTICAL extent and
+        # positioned on the horizontal edge, which rendered a declared
+        # 2.0mm gap as 10.19mm.
+        along_horizontal = self._side in ("top", "bottom")
+
+        def _extent_of(reg):
             # force_draw defaults to False: this runs as a post-refresh
             # reactor callback, so matplotlib's renderer cache is already
             # current. Forcing a fresh fig.canvas.draw() here would
@@ -1319,20 +1332,11 @@ class MultiAxesLegendGroup:
             # ``get_tightbbox()`` off the cached renderer, exactly as
             # ``get_window_extent()`` did.
             #
-            # ``horizontal`` defaults to the band's orientation, which is
-            # what every element has always been measured on. Members of a
-            # label/strip pair override it: their stack is a fact about
-            # ``side``, and a paired band is only ever top/bottom, where
-            # the along-edge axis is horizontal no matter what orientation
-            # the caller asked for.
-            #
             # Returns ``(tight, rect, lead)`` — tight extent for packing,
             # rect extent for the intra-block pairing, lead for turning a
             # tight-bbox position into the registration value.
-            if horizontal is None:
-                horizontal = orient == "horizontal"
             return self._builder._measure_along_extent(
-                reg.artist, horizontal=horizontal, force_draw=False
+                reg.artist, horizontal=along_horizontal, force_draw=False
             )
 
         block_geometry = self._builder._colorbar_block_along_geometry
@@ -1345,42 +1349,45 @@ class MultiAxesLegendGroup:
                 label_reg = label_regs.get(id(reg.artist))
                 if label_reg is None:
                     tight, _rect, lead = _extent_of(reg)
-                    blocks.append((tight, [(reg, lead)], None))
+                    blocks.append((tight, [(reg, lead)]))
                     continue
-                s_tight, s_rect, s_lead = _extent_of(reg, horizontal=True)
-                l_tight, l_rect, _l_lead = _extent_of(label_reg, horizontal=True)
+                s_tight, s_rect, s_lead = _extent_of(reg)
+                l_tight, _l_rect, _l_lead = _extent_of(label_reg)
                 extent, strip_off, label_off = block_geometry(
                     s_tight, s_rect, s_lead, l_tight,
                 )
                 blocks.append((
-                    extent,
-                    [(reg, strip_off), (label_reg, label_off)],
-                    (s_rect, l_rect),
+                    extent, [(reg, strip_off), (label_reg, label_off)],
                 ))
             total = sum(b[0] for b in blocks) + gap_mm * (len(blocks) - 1)
             if total >= edge_length_mm:
-                # Block already fills the edge — no room to align. The
-                # pairing still has to hold, so re-seat each label on the
-                # strip it belongs to and leave the strips where they are.
-                # Pairing is on the strip RECTANGLE (#214), so this uses
-                # the rect extents rather than the tight ones.
-                for _extent, members, rects in blocks:
-                    if rects is None:
-                        continue
-                    (strip_reg, _s_off), (label_reg, _l_off) = members
-                    s_rect, l_rect = rects
-                    label_reg.mm_y_from_top = (
-                        strip_reg.mm_y_from_top + (s_rect - l_rect) / 2
-                    )
-                continue
-            if self._align == "center":
+                # The row's ink already fills the edge — there is no slack
+                # to distribute, so ``align`` has nothing to say and the
+                # row degenerates to the leading-corner layout. That is
+                # the same sequence the cursor in ``add_colorbar`` /
+                # ``add_legend`` produced, so on a row that overflows from
+                # the first draw this rewrites the identical values.
+                #
+                # It is written out rather than skipped because this pass
+                # mutates ``mm_y_from_top`` in place on every draw: a row
+                # that fitted while it held one element was aligned then,
+                # and simply ``continue``-ing once a second element pushed
+                # it over the edge left the first element frozen at that
+                # stale aligned offset while the second sat at its cursor
+                # position. Measured on a deliberately over-subscribed
+                # band (two 12mm strips whose long-format ticks make each
+                # block 29.4mm of ink on a 50mm edge): the two overlapped
+                # by 15.4mm rather than keeping the 2mm gap the cursor
+                # gave them.
+                start = self._builder._layout.vpad
+            elif self._align == "center":
                 start = (edge_length_mm - total) / 2
             elif self._align == "end":
                 start = edge_length_mm - total - self._builder._layout.vpad
             else:
                 start = self._builder._layout.vpad
             cursor = start
-            for block_extent, members, _rects in blocks:
+            for block_extent, members in blocks:
                 for member_reg, member_offset in members:
                     # ``cursor`` is where the block's INK starts;
                     # ``member_offset`` steps from there to the member's own

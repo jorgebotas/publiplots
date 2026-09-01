@@ -1501,6 +1501,20 @@ def test_top_bottom_multi_colorbar_band_pairs_every_label_with_its_own_strip(
     The nearest-strip assertion is the one that discriminates: a band
     where every label happens to sit near *some* strip is not paired, and
     a global centring can put a label neatly over a neighbour's strip.
+
+    The pairing itself is measured on the strip RECTANGLE and stays that
+    way -- #214 is about the label sitting over the coloured band, not
+    over band-plus-ticks. What #221 adds here is the assertion the rect
+    measurement cannot make: the band's declared 2mm ``gap`` has to fall
+    between adjacent strips' **ink**, not between their rectangles.
+
+    A bare non-overlap check would not discriminate on this figure -- the
+    17.5mm labels are wider than the strips and hold them apart, so the
+    worst adjacent tight gap on ``origin/main`` is +1.07mm rather than
+    the -1.45mm two short-labelled strips produce. The *size* of the gap
+    is what gives it away: 1.065-1.076mm before #221 against a declared
+    2.000mm, because the block was packed by the 15mm rectangle while
+    18.45mm of ink was drawn.
     """
     fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
     ax.plot([0, 1], [0, 1])
@@ -1511,6 +1525,25 @@ def test_top_bottom_multi_colorbar_band_pairs_every_label_with_its_own_strip(
 
     for draw in range(3):
         fig.canvas.draw()
+        gap_mm = group._builder._layout.gap
+        strip_rows = {}
+        for k, o in group._builder.elements:
+            if k != "colorbar":
+                continue
+            r = o.ax.get_window_extent()
+            t = o.ax.get_tightbbox() or r
+            strip_rows.setdefault(round(r.y0 / fig.dpi * 25.4, 1), []).append(
+                (t.x0 / fig.dpi * 25.4, t.x1 / fig.dpi * 25.4)
+            )
+        for row_key, spans in strip_rows.items():
+            spans.sort()
+            for a, b in zip(spans, spans[1:]):
+                measured = b[0] - a[1]
+                assert measured == pytest.approx(gap_mm, abs=0.15), (
+                    f"[{side}, draw {draw}] row@{row_key}: adjacent strips "
+                    f"leave {measured:.3f}mm between their ink, but the band "
+                    f"declares a {gap_mm:.3f}mm gap"
+                )
         pairs = _paired_band_centres_mm(group, fig)
         assert len(pairs) == 10, f"expected 10 strip/label pairs, got {len(pairs)}"
         assert len({row for _, _, row in pairs}) > 1, (

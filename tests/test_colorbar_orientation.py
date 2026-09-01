@@ -264,7 +264,17 @@ def test_top_band_horizontal_strip_clears_the_axes_rect():
 
 def test_two_colorbars_in_one_top_band_do_not_overlap():
     """Two horizontal strips in a top band sit side by side along the
-    edge, each under its own label."""
+    edge, each under its own label.
+
+    Measured on the **tight bbox** -- the colour strip plus its tick
+    labels -- not on the colour rectangle. A horizontal strip's end tick
+    labels overhang its rectangle by 1.73mm per side, so the rectangles
+    can be a comfortable 2mm apart while the numbers printed at their
+    ends are drawn on top of each other. On this exact figure the two
+    measurements disagreed by 3.45mm: rect gap +2.00 while the tight gap
+    was **-1.45**, and the rect assertion passed anyway. That is #221's
+    part 1, and this is the test that should have caught it.
+    """
     fig, ax = pp.subplots(1, 1, axes_size=(60, 40))
     ax.plot([0, 1], [0, 1])
     group = pp.legend(ax, side="top")
@@ -276,18 +286,21 @@ def test_two_colorbars_in_one_top_band_do_not_overlap():
         fig.canvas.draw()
         first, second = _strips(group)
         assert first.orientation == second.orientation == "horizontal"
-        a = first.ax.get_window_extent()
-        b = second.ax.get_window_extent()
+        a_rect = first.ax.get_window_extent()
+        b_rect = second.ax.get_window_extent()
+        a = first.ax.get_tightbbox() or a_rect
+        b = second.ax.get_tightbbox() or b_rect
         # Same outward row (they share the band's base offset), sequenced
-        # along the edge with a positive gap between the rectangles.
-        assert _mm(fig, abs(a.y0 - b.y0)) < 0.1, (
+        # along the edge with a positive gap between the drawn ink.
+        assert _mm(fig, abs(a_rect.y0 - b_rect.y0)) < 0.1, (
             f"[draw {draw}] the two strips should share one outward row; "
-            f"y0 differs by {_mm(fig, abs(a.y0 - b.y0)):.2f}mm"
+            f"y0 differs by {_mm(fig, abs(a_rect.y0 - b_rect.y0)):.2f}mm"
         )
         gap = _mm(fig, b.x0 - a.x1)
         assert gap > 0.5, (
             f"[draw {draw}] the two strips overlap or touch along the "
-            f"edge; gap is {gap:+.2f}mm"
+            f"edge; tight-bbox gap is {gap:+.2f}mm (rectangles are "
+            f"{_mm(fig, b_rect.x0 - a_rect.x1):+.2f}mm apart)"
         )
 
 

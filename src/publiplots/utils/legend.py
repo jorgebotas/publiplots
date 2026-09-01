@@ -1293,9 +1293,11 @@ class LegendBuilder:
             ``p + strip_offset`` and the label at ``p + label_offset``.
 
         A block with no label (``label_extent == 0``) reduces to
-        ``(strip_tight, strip_lead, strip_lead)``; a strip whose tight
-        bbox equals its rectangle further reduces to ``(strip_rect, 0,
-        ...)`` — the historical behaviour exactly.
+        ``(strip_tight, strip_lead, strip_lead)`` — the third value
+        repeats the strip's offset only to keep the tuple one shape, and
+        means nothing, since there is no label to apply it to. A strip
+        whose tight bbox equals its rectangle reduces further to
+        ``(strip_rect, 0, 0)`` — the historical behaviour exactly.
         """
         if label_extent <= 0:
             return strip_tight, strip_lead, strip_lead
@@ -1306,7 +1308,38 @@ class LegendBuilder:
         hi = max(strip_tight, label_off + label_extent)
         return hi - lo, strip_lead - lo, label_off - lo
 
-    def _estimate_tick_label_extent(self, horizontal: bool) -> float:
+    def _tick_label_fontsize(self, strip_horizontal: bool) -> float:
+        """Point size a colorbar's tick labels will actually be drawn at.
+
+        A colorbar strip is an ordinary Axes, so its tick labels take
+        ``xtick.labelsize`` when the strip is horizontal and
+        ``ytick.labelsize`` when it is vertical — verified by rendering:
+        ``ytick.labelsize=30`` puts a vertical strip's numbers at 30.0
+        and leaves a horizontal strip's at 7.0, and vice versa. Which
+        one to read is therefore a fact about the STRIP's orientation,
+        not about the band's along-edge axis.
+
+        Named sizes are resolved through matplotlib's own published
+        table, :data:`matplotlib.font_manager.font_scalings`, rather
+        than collapsed to the base size: ``xtick.labelsize='xx-large'``
+        renders at ``font.size * 1.728`` (12.096pt on the publiplots
+        default of 7.0), measured. Anything the table does not cover
+        falls back to the base size.
+        """
+        key = "xtick.labelsize" if strip_horizontal else "ytick.labelsize"
+        size = plt.rcParams[key]
+        if isinstance(size, (int, float)) and not isinstance(size, bool):
+            return float(size)
+        from matplotlib.font_manager import font_scalings
+        scale = font_scalings.get(size)
+        base = float(resolve_param("font.size"))
+        return base * scale if scale is not None else base
+
+    def _estimate_tick_label_extent(
+        self,
+        along_horizontal: bool,
+        strip_horizontal: bool,
+    ) -> float:
         """Nominal mm extent of ONE colorbar tick label along an axis.
 
         Pre-flight estimate only. ``add_colorbar``'s overflow check has
@@ -1322,15 +1355,31 @@ class LegendBuilder:
         sit on one side only (a vertical strip measured along a
         horizontal edge) overhangs by one whole label there too.
 
+        Parameters
+        ----------
+        along_horizontal : bool
+            Whether the BAND's along-edge axis runs horizontally. Picks
+            the label's width or its height.
+        strip_horizontal : bool
+            Whether the STRIP is horizontal. Picks which of
+            ``xtick.labelsize`` / ``ytick.labelsize`` the labels are
+            drawn at — see :meth:`_tick_label_fontsize`. The two differ
+            whenever a caller overrides ``orientation``.
+
+        Notes
+        -----
         The 0.6-per-character factor is the same rough sans-serif
-        approximation :meth:`_estimate_legend_width` uses.
+        approximation :meth:`_estimate_legend_width` uses, and
+        :attr:`_CBAR_TICK_LABEL_CHARS` assumes a default
+        ``ScalarFormatter`` tick. A formatter that produces much longer
+        ticks is under-budgeted here, so such a band **wraps late and
+        its row can overrun the anchor edge** — measured at 14.52mm of
+        overrun for a 14-character formatter on a 12mm strip. The
+        overlap guarantee is unaffected (the cursor advance is measured,
+        not estimated); only the wrap decision is.
         """
-        fontsize = plt.rcParams["xtick.labelsize"]
-        if not isinstance(fontsize, (int, float)) or isinstance(fontsize, bool):
-            # matplotlib accepts the named sizes ('medium', 'large', ...);
-            # fall back to the numeric base size rather than guess a scale.
-            fontsize = resolve_param("font.size")
-        if horizontal:
+        fontsize = self._tick_label_fontsize(strip_horizontal)
+        if along_horizontal:
             return self._CBAR_TICK_LABEL_CHARS * fontsize * 0.6 * self.PT2MM
         return fontsize * self.PT2MM
 
@@ -2110,7 +2159,10 @@ class LegendBuilder:
         # These are estimates by necessity: neither the strip nor its label
         # exists yet. The cursor advance further down replaces every one of
         # them with a measured value.
-        tick_estimate = self._estimate_tick_label_extent(stack_outward)
+        tick_estimate = self._estimate_tick_label_extent(
+            along_horizontal=stack_outward,
+            strip_horizontal=orientation == "horizontal",
+        )
         if stack_outward:
             estimated_along = max(width + tick_estimate, estimated_title_width)
         else:
@@ -2211,6 +2263,28 @@ class LegendBuilder:
             ymargin=0
         )
 
+        def _seat_strip(outward_mm: float, along_mm: float) -> None:
+            """Re-express the strip's rectangle at the figure's CURRENT size.
+
+            ``cbar_ax`` stores a figure *fraction*, and it is not
+            reactor-managed until the registration at the end of this
+            method, so any figure resize in between silently changes how
+            many mm that fraction covers. Recomputing it from the live
+            ``fig.get_window_extent()`` puts the rectangle back on its
+            declared mm. Same corner arithmetic ``add_axes`` was given
+            above and the same the reactor applies per draw.
+            """
+            fx = self.fig.get_window_extent()
+            fx_x, fx_y = self._mm_to_figure_coords(outward_mm, along_mm)
+            w_fig = (width * self.MM2INCH * self.fig.dpi) / fx.width
+            h_fig = (height * self.MM2INCH * self.fig.dpi) / fx.height
+            cbar_ax.set_position([
+                fx_x - w_fig if self._side == "left" else fx_x,
+                fx_y if self._side == "top" else fx_y - h_fig,
+                w_fig,
+                h_fig,
+            ])
+
         # Create colorbar
         cbar = self.fig.colorbar(
             mappable,
@@ -2247,21 +2321,45 @@ class LegendBuilder:
         # really takes on the band's edge, and how far that ink leads the
         # colour rectangle. This is the inter-block half of the #221 rule
         # and it is what the cursor advance and the pre-check estimate are
-        # replaced by.
+        # derived from.
         #
-        # Rescaled by the ratio between the strip's KNOWN mm extent and the
-        # extent read back in pixels, for the reason the comment above
-        # gives: the draw may have grown the figure, and ``cbar_ax`` still
-        # holds the fraction it was built with, so every pixel reading here
-        # is uniformly scaled by that growth (a 15mm strip reads back as
-        # 20.06mm). Both a tight extent and an overhang are affected, and
-        # both are corrected by the same single factor because they are
-        # measured on the same axis.
+        # The draw above may have resized the figure, and ``cbar_ax`` is
+        # not reactor-managed yet, so the strip can be sitting at the
+        # wrong physical size when it is measured. That is NOT a scaling
+        # error that can be divided out: matplotlib re-runs the tick
+        # locator at the size the axes was actually drawn, so a strip
+        # drawn 11% narrow picks a SPARSER tick set — measured, ['0','1']
+        # at 8.13px instead of the final ['0.0','0.5','1.0'] at 20.38px —
+        # and its tight bbox comes out 16.55mm against a true 18.45mm.
+        # The rectangle rescales; a different set of tick labels does not.
+        #
+        # So re-seat the rectangle on its declared mm at the live figure
+        # size and draw again until the read-back rectangle agrees with
+        # what was asked for, at which point the strip is being drawn at
+        # its final size and the tick set is the one it will keep. Bounded
+        # at two extra draws; in practice zero are needed for any strip
+        # after the first on a band, and zero for a labelled strip (whose
+        # label's own ``_measure_object_dimensions`` already settled the
+        # figure). Without this the first strip on an UNLABELLED band
+        # advanced the cursor by 16.55mm instead of 18.45mm, which
+        # ``align='start'`` — the default on left/right, and the one align
+        # the reactor's alignment pass does not re-seat — then rendered as
+        # a 1.03mm gap and a 0.97mm overrun. (#221)
         along_horizontal = stack_outward
-        strip_tight_along, strip_rect_along, strip_lead_along = (
-            self._measure_along_extent(cbar, horizontal=along_horizontal)
-        )
         true_rect_along = width if along_horizontal else height
+        for _attempt in range(3):
+            strip_tight_along, strip_rect_along, strip_lead_along = (
+                self._measure_along_extent(cbar, horizontal=along_horizontal)
+            )
+            if abs(strip_rect_along - true_rect_along) <= 1e-3:
+                break
+            _seat_strip(cbar_outward_mm, cbar_y_start)
+            self._fig_canvas_draw_for_measure()
+
+        # Residual correction for the case the loop above gave up on (a
+        # figure that never settles). A uniform scale is the best that can
+        # be done there, and it is exact whenever the tick set did not
+        # change.
         if strip_rect_along > 0:
             scale = true_rect_along / strip_rect_along
             strip_tight_along *= scale
@@ -2345,19 +2443,7 @@ class LegendBuilder:
         # reads back a stale block. The figure extent is re-read because
         # the draw above may have grown the figure to fit the band.
         cbar_y_start = self._layout.current_along - strip_along_offset
-        fig_extent = self.fig.get_window_extent()
-        x_fig, y_fig = self._mm_to_figure_coords(cbar_outward_mm, cbar_y_start)
-        # ``_mm_to_figure_coords`` returns the strip's outward edge, which
-        # is its bottom-left corner only for side='top'; every other side
-        # needs the same corner arithmetic ``add_axes`` was given above.
-        cbar_w_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
-        cbar_h_fig = (height * self.MM2INCH * self.fig.dpi) / fig_extent.height
-        cbar_ax.set_position([
-            x_fig - cbar_w_fig if self._side == "left" else x_fig,
-            y_fig if self._side == "top" else y_fig - cbar_h_fig,
-            cbar_w_fig,
-            cbar_h_fig,
-        ])
+        _seat_strip(cbar_outward_mm, cbar_y_start)
         if title_obj is not None:
             x_fig, y_fig = self._mm_to_figure_coords(
                 title_outward_mm,
