@@ -843,6 +843,31 @@ def compute_min_labelspacing(
 # =============================================================================
 
 
+class _AxesFractionLocator:
+    """Axes locator pinning an axes to a rectangle of a parent's axes fraction.
+
+    ``Axes.inset_axes`` installs an equivalent (private) locator; this one
+    exists so an inset's rectangle can be *replaced* after the fact —
+    :meth:`LegendBuilder._nudge_inside_cbar` measures the drawn colorbar
+    and slides it back inside the parent. Being a locator rather than a
+    fixed position, the rectangle is re-solved against the parent on
+    every draw, so the strip follows the axes without any
+    ``LayoutReactor`` registration.
+    """
+
+    def __init__(self, parent: Axes, bounds: Tuple[float, float, float, float]):
+        self._parent = parent
+        self.bounds = tuple(bounds)
+
+    def __call__(self, ax: Axes, renderer):
+        from matplotlib.transforms import Bbox, TransformedBbox
+        fig = self._parent.get_figure()
+        bbox = TransformedBbox(
+            Bbox.from_bounds(*self.bounds), self._parent.transAxes
+        )
+        return bbox.transformed(fig.transSubfigure.inverted())
+
+
 class LegendBuilder:
     """
     Publication-ready legend builder with automatic column overflow.
@@ -1456,6 +1481,195 @@ class LegendBuilder:
 
         return legend
 
+    # Matplotlib's legend ``loc='best'`` searches for the emptiest corner
+    # using the legend's own handles; a colorbar strip has no equivalent
+    # search, so the inside path resolves 'best' to a fixed corner.
+    _INSIDE_CBAR_DEFAULT_LOC = "upper right"
+
+    # Padding between the strip and the axes edge, in mm. Matches the
+    # visual weight of matplotlib's ``legend.borderaxespad`` at the
+    # publiplots default font size without inheriting its font units.
+    _INSIDE_CBAR_PAD_MM = 2.0
+
+    @staticmethod
+    def _inside_cbar_anchor(loc: str) -> Tuple[str, str]:
+        """Split a matplotlib ``loc`` string into (vertical, horizontal).
+
+        Accepts the nine axes-relative legend locations plus the bare
+        ``'right'`` alias matplotlib keeps for ``'center right'``.
+        """
+        if loc == "center":
+            return "center", "center"
+        if loc == "right":
+            return "center", "right"
+        parts = str(loc).split()
+        if len(parts) != 2:
+            raise ValueError(
+                "inside colorbar loc must be one of 'upper|center|lower' "
+                f"+ 'left|center|right' (or 'center'), got {loc!r}"
+            )
+        vertical, horizontal = parts
+        if vertical not in ("upper", "center", "lower") or \
+                horizontal not in ("left", "center", "right"):
+            raise ValueError(
+                "inside colorbar loc must be one of 'upper|center|lower' "
+                f"+ 'left|center|right' (or 'center'), got {loc!r}"
+            )
+        return vertical, horizontal
+
+    def _nudge_inside_cbar(self, cbar_ax, bounds, pad_mm: float) -> None:
+        """Slide an inside colorbar back inside the axes if its decorations spill.
+
+        ``bounds`` positions the *strip*; its tick labels (and the label
+        drawn above it) hang off that rectangle, so an anchored corner
+        can push them past the axes edge — a right-anchored strip is the
+        common case, since the tick labels sit to its right. Measuring
+        the drawn tightbbox and translating the rectangle is enough:
+        the strip keeps its requested mm size and only moves.
+        """
+        self._fig_canvas_draw_for_measure()
+        tight = cbar_ax.get_tightbbox()
+        if tight is None:
+            return
+        ax_bbox = self.ax.get_window_extent()
+        if not (ax_bbox.width and ax_bbox.height):
+            return
+        pad_px = pad_mm * self.MM2INCH * self.fig.dpi
+
+        def _shift(lo, hi, ax_lo, ax_hi):
+            # Pull the high edge in first, then the low edge; a
+            # decoration block wider than the axes stays left/bottom
+            # aligned rather than oscillating.
+            delta = min(0.0, (ax_hi - pad_px) - hi)
+            if lo + delta < ax_lo + pad_px:
+                delta = (ax_lo + pad_px) - lo
+            return delta
+
+        dx = _shift(tight.x0, tight.x1, ax_bbox.x0, ax_bbox.x1)
+        dy = _shift(tight.y0, tight.y1, ax_bbox.y0, ax_bbox.y1)
+        if dx or dy:
+            x0, y0, w, h = bounds
+            cbar_ax.set_axes_locator(_AxesFractionLocator(
+                self.ax,
+                (x0 + dx / ax_bbox.width, y0 + dy / ax_bbox.height, w, h),
+            ))
+
+    def _add_colorbar_inside(
+        self,
+        *,
+        mappable: Optional[ScalarMappable],
+        label: str,
+        height: float,
+        width: float,
+        title_position: str,
+        orientation: str,
+        ticks: Optional[List[float]],
+        center: Optional[float],
+        vmin: Optional[float],
+        vmax: Optional[float],
+        **kwargs,
+    ) -> Colorbar:
+        """Render the colorbar inside ``self.ax`` instead of in an outside band.
+
+        The counterpart of the ``inside=True`` branch of
+        :meth:`add_legend`. Both hand placement to matplotlib's own
+        axes-relative machinery: the legend via ``ax.legend(loc=...)``,
+        the colorbar via ``ax.inset_axes``, whose rectangle is expressed
+        in axes fractions and therefore re-solved from the parent axes'
+        bbox on every draw. That means no mm cursor, no overflow band,
+        and no :class:`~publiplots.utils.layout_reactor.LayoutReactor`
+        registration — the strip tracks the axes by itself.
+
+        ``height``/``width`` stay mm, converted against the *axes*
+        rectangle rather than the figure. That is what keeps the strip
+        the requested size through the first draw: ``pp.subplots`` pins
+        the axes at ``axes_size`` mm and re-sizes the *figure* around it,
+        so an axes-fraction rectangle is stable in mm where a
+        figure-relative one would be scaled by the mid-draw resize.
+
+        Like the inside legend, the strip is marked ``in_layout=False``
+        so ``SubplotsAutoLayout``'s tightbbox measurement doesn't grow the
+        cell around it (same reasoning as #180).
+        """
+        loc = kwargs.pop("loc", self._INSIDE_CBAR_DEFAULT_LOC)
+        if loc in ("best", 0):
+            loc = self._INSIDE_CBAR_DEFAULT_LOC
+        vertical, horizontal = self._inside_cbar_anchor(loc)
+        # Deliberately not user-tunable through ``borderpad``: in the
+        # legend family that key is the padding *inside* the legend
+        # frame, in font-size units. A strip has no frame, and the pad
+        # here is the mm distance to the axes edge — matplotlib spells
+        # that one ``borderaxespad``. Honouring ``borderpad`` would give
+        # a single ``legend_kws`` key two meanings in two units on a
+        # plot that draws both a legend and a colorbar.
+        pad_mm = self._INSIDE_CBAR_PAD_MM
+
+        # mm -> axes fractions, against the axes the strip lands in
+        # (``self.ax``; a group in inside mode retargets it per call).
+        ax_pos = self.ax.get_position()
+        fig_extent = self.fig.get_window_extent()
+        ax_width_mm = (
+            ax_pos.width * fig_extent.width / self.fig.dpi / self.MM2INCH
+        )
+        ax_height_mm = (
+            ax_pos.height * fig_extent.height / self.fig.dpi / self.MM2INCH
+        )
+        w_frac = width / ax_width_mm
+        h_frac = height / ax_height_mm
+        pad_x = pad_mm / ax_width_mm
+        pad_y = pad_mm / ax_height_mm
+
+        if horizontal == "left":
+            x0 = pad_x
+        elif horizontal == "right":
+            x0 = 1 - pad_x - w_frac
+        else:
+            x0 = (1 - w_frac) / 2
+        if vertical == "lower":
+            y0 = pad_y
+        elif vertical == "upper":
+            y0 = 1 - pad_y - h_frac
+        else:
+            y0 = (1 - h_frac) / 2
+
+        cbar_ax = self.ax.inset_axes([x0, y0, w_frac, h_frac])
+        cbar_ax.set_xmargin(0)
+        cbar_ax.set_ymargin(0)
+        cbar_ax.set_in_layout(False)
+
+        cbar = self.fig.colorbar(
+            mappable,
+            cax=cbar_ax,
+            orientation=orientation,
+            **kwargs,
+        )
+
+        # Outside bands draw the label as a free-standing fig.text and
+        # re-anchor it every draw; here the inset's own title rides along
+        # with the strip for free.
+        if label:
+            if title_position == "top":
+                cbar_ax.set_title(
+                    label,
+                    fontsize=resolve_param(
+                        "legend.title_fontsize", resolve_param("font.size")
+                    ),
+                    fontweight="normal",
+                )
+                cbar.set_label("")
+            else:
+                cbar.set_label(label)
+
+        if ticks is not None:
+            cbar.set_ticks(ticks)
+        elif center is not None and vmin is not None and vmax is not None:
+            cbar.set_ticks([vmin, center, vmax])
+
+        self._nudge_inside_cbar(cbar_ax, [x0, y0, w_frac, h_frac], pad_mm)
+
+        self.elements.append(("colorbar", cbar))
+        return cbar
+
     def add_colorbar(
         self,
         mappable: Optional[ScalarMappable] = None,
@@ -1504,7 +1718,12 @@ class LegendBuilder:
             Custom tick positions. If None and center is provided,
             automatically sets ticks at [vmin, center, vmax].
         **kwargs
-            Additional kwargs passed to fig.colorbar().
+            Additional kwargs passed to fig.colorbar(). ``inside`` (bool,
+            default ``False``) bypasses the mm-based outside-axes band and
+            renders the strip inside the axes rectangle, mirroring
+            ``add_legend(inside=True)``; pair with ``loc='upper right'``
+            etc. to pick the corner. ``height``/``width`` keep their mm
+            meaning there, and the strip is excluded from layout math.
 
         Returns
         -------
@@ -1541,6 +1760,26 @@ class LegendBuilder:
             else:
                 norm = Normalize(vmin=vmin, vmax=vmax)
             mappable = SM(norm=norm, cmap=cmap_obj)
+
+        # Inside-axes placement short-circuit, the colorbar counterpart of
+        # ``add_legend(inside=True)``. Everything below this point is the
+        # outside-band machinery (mm cursor, overflow bands, reactor
+        # registration) and none of it applies to a strip that lives in
+        # the axes rectangle. (Fixes #215.)
+        if bool(kwargs.pop("inside", False)):
+            return self._add_colorbar_inside(
+                mappable=mappable,
+                label=label,
+                height=height,
+                width=width,
+                title_position=title_position,
+                orientation=orientation,
+                ticks=ticks,
+                center=center,
+                vmin=vmin,
+                vmax=vmax,
+                **kwargs,
+            )
 
         # Which cursor axis carries the label -> strip stack.
         #

@@ -14,7 +14,8 @@ Since 0.14.0, `pp.legend(ax)` **adopts** the per-axes legend group the plot call
 ```
 Single axes, legend sits inside the axes frame?
     -> legend_kws={'inside': True, 'loc': 'upper right'}
-       on the plot call (bypasses the reactor)
+       on the plot call (bypasses the reactor; continuous
+       hue -> colorbar strip inside the axes)
 
 Single axes, legend next to the axes?
     -> pp.legend(ax)               # INTERNAL — counted in ax.tightbbox
@@ -217,7 +218,7 @@ Same word, two distinct mechanisms. Pick by where the legend should end up.
 
 | Form | Where the legend renders | When to use |
 |------|--------------------------|-------------|
-| `legend_kws={'inside': True, 'loc': '...'}` on a **plot call** | Inside the SAME axes the plot lives in (matplotlib corner placement). | Single-axes plots; quick in-frame legend that doesn't claim layout space. |
+| `legend_kws={'inside': True, 'loc': '...'}` on a **plot call** | Inside the SAME axes the plot lives in (matplotlib corner placement; a continuous hue becomes an in-axes colorbar strip). | Single-axes plots; quick in-frame legend that doesn't claim layout space. |
 | `pp.legend(anchor=ax, inside=True)` on a **legend factory call** | Inside a SEPARATE axes you point at via `anchor=`. Collection still walks the full figure (or `axes=`). | Asymmetric grids where one cell is reserved for the legend; auto-blanks the anchor cell so the cell reads as a clean tile. |
 
 Combine with a figure-level `pp.legend(collect=[...])` to split legend kinds: collected names go in the figure band, everything else can go inside via the plot-call form.
@@ -231,6 +232,50 @@ for (r, c), panel in zip([(0, 0), (0, 1), (1, 0), (1, 1)], "ABCD"):
                    legend_kws={"inside": True, "loc": "upper right"},
                    ax=axes[r, c])
 ```
+
+### Continuous hue: `inside=True` renders the colorbar in-axes (since 0.16.2)
+
+Both flavors work when the hue is continuous — the colorbar strip goes
+inside the axes (or inside the anchor cell) instead of in an outside
+band, at the requested `loc`:
+
+```python
+pp.scatterplot(data=df, x="x", y="y", hue="score", ax=ax,
+               legend_kws={"inside": True, "loc": "upper right"})
+```
+
+Details that differ from the categorical legend:
+
+- The strip keeps `add_colorbar`'s mm size (4.5 × 15 mm by default) and is
+  measured against the **axes** rectangle, so it stays that size through
+  the layout's figure resize. It claims no layout space and is not
+  registered with the reactor — it tracks the axes on its own.
+- `loc` accepts the nine axes-relative positions (`'upper right'`,
+  `'center left'`, `'center'`, …). `loc='best'` has no meaning for a
+  strip (there are no handles to search around) and resolves to
+  `'upper right'`.
+- The strip is nudged back inside the axes if its ticklabels or label
+  would overhang the edge, so a right-anchored colorbar stays legible.
+- Legend-only `legend_kws` (`ncol`, `frameon`, `markerscale`,
+  `handletextpad`, `title_fontsize`, …) apply to categorical entries
+  only. On a colorbar entry they are **dropped**, not forwarded — before
+  0.16.2 every one of them (including `inside`) reached
+  `Colorbar.__init__` and raised `TypeError`.
+- The strip is an **inset of its axes** — it lives in `ax.child_axes`, not
+  in `fig.axes`. Code that inspects a figure's colorbars by walking
+  `fig.axes` will not see it.
+- The gap to the axes edge is fixed at 2 mm. `borderpad` does not set it:
+  in the legend family that key is the padding *inside* the legend frame in
+  font-size units, and a strip has no frame — so it stays a legend-only key
+  rather than meaning two things in two units in one `legend_kws` dict.
+
+**Known gap — `pp.legend(anchor=..., inside=True)` with a continuous hue and
+the "after" ordering.** The band renders its colorbar inside the anchor cell
+correctly, but the per-axes colorbars the earlier plot calls already drew are
+not removed, so they survive next to each panel. Band eviction matches
+`Legend` artists only and has never handled colorbars. Until that is fixed,
+put `pp.legend(...)` **before** the plot calls when collecting a continuous
+hue into an in-cell legend — that ordering is unaffected.
 
 ## Grid scoping (PR 4 / v0.12)
 

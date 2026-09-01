@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`legend_kws={'inside': True}` now works when the hue is continuous**
+  (#215). The key was consumed on the categorical path but forwarded verbatim
+  on the continuous one, so it reached `Colorbar.__init__` via `fig.colorbar()`
+  and raised `TypeError: Colorbar.__init__() got an unexpected keyword argument
+  'inside'`. It now renders the colorbar strip inside the axes rectangle, the
+  counterpart of what `inside=True` already did for a categorical legend:
+  placed by `loc=` at any of the nine axes-relative positions (`'best'`, which
+  has no meaning for a strip, resolves to `'upper right'`), keeping
+  `add_colorbar`'s mm size, claiming no layout space, and tracking the axes
+  through an axes-fraction inset instead of a `LayoutReactor` registration.
+  Ticklabels and the label that would overhang the axes edge slide the strip
+  back inside.
+- **Every other `legend_kws` passthrough key raised the same `TypeError` on a
+  continuous hue** (#215). `loc`, `ncol`, `frameon`, `markerscale`,
+  `title_fontsize`, `handletextpad` — the whole `ax.legend()` family was
+  forwarded to `add_colorbar`, which passes its leftovers to `fig.colorbar()`.
+  The colorbar branch now takes only the keys a colorbar can honour
+  (`inside`, and `loc` in inside mode) and drops the legend-only ones.
+- **`pp.legend(anchor=ax, inside=True)` now places a collected colorbar inside
+  the anchor cell** (#215). The in-cell flavor injected `inside=True` + the
+  `loc` derived from `side`/`align` for legends only, so a continuous hue
+  silently rendered in a band outside the cell it was supposed to fill. The
+  strip is an *inset* of the anchor, i.e. a member of `anchor.child_axes` and
+  deliberately not of `fig.axes`.
+  Still outstanding on this path, and untouched here because it lives in the
+  eviction machinery rather than the colorbar one: with the "after" ordering
+  (plots first, then `pp.legend(...)`), the per-axes colorbars each plot call
+  already drew are **not** evicted when the band claims the same entry, so they
+  survive alongside the band's copy.
+  `MultiAxesLegendGroup._evict_claimed_per_axis_legends` matches
+  `matplotlib.legend.Legend` children only and has never handled colorbars. The
+  "before" ordering (`pp.legend(...)` first) is unaffected.
+- **`group.add_colorbar(..., inside=False)` on an inside-mode group no longer
+  raises.** The `inside` and `loc` injections were independent `setdefault`
+  calls, so an explicit `inside=False` suppressed the first while the second
+  still fired and sent `loc` on to `fig.colorbar()`
+  (`TypeError: ... unexpected keyword argument 'loc'`). `loc` is now injected
+  only when the resolved `inside` is truthy, matching the `_colorbar_kwargs`
+  guard on the plot-call path.
 - **A `side='top'` or `side='bottom'` legend band now keeps every colorbar
   label over its own colour strip, however many elements the band holds**
   (#214). 0.16.1 stacked the label outward from the strip, giving it its own
