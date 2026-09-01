@@ -399,9 +399,7 @@ class SubplotsAutoLayout:
                     # labels / axis label that live on its own side of the
                     # axes rectangle, dynamically (Issue B for 'left';
                     # #212 for 'bottom') rather than at a fixed offset.
-                    self._offset_inside_legend_past_decorations(
-                        group, measured, axes_matrix
-                    )
+                    self._offset_inside_legend_past_decorations(group)
             return
 
         side = group._side
@@ -441,14 +439,27 @@ class SubplotsAutoLayout:
         # Axes-anchored: grow the per-cell reservation for the anchor's
         # row/column. Merge with whatever the auto-measurement already
         # produced (so label/title space co-exists with legend space).
-        if cell_field in self._locked:
-            return
         ax = group.anchor
+        # A pinned reservation forbids GROWING the row/column; it does not
+        # forbid MOVING the band clear of the decorations (Issue #222). So
+        # both lock guards below still skip the ``measured[cell_field]``
+        # write, but they position the band first. The reservation-derived
+        # ``pure_decoration_mm`` used further down is unusable here — under
+        # a pin ``existing[idx]`` is the caller's mm, not a measurement —
+        # so the offset is measured directly off the anchor instead. The
+        # band may then extend past the pinned reservation; overflowing is
+        # the caller's explicit choice, silently overlapping is not.
+        if cell_field in self._locked:
+            group._band_contribution_mm = overhang_mm
+            self._offset_inside_legend_past_decorations(group)
+            return
         r, c = self._find_ax_indices(ax, axes_matrix)
         idx = c if axis_kind == "col" else r
         if idx in self._locked_positions.get(cell_field, frozenset()):
             # Per-position lock: this slot is pinned (e.g., JointGrid's
             # joint↔marginal gap edges). Don't grow it for legend overhang.
+            group._band_contribution_mm = overhang_mm
+            self._offset_inside_legend_past_decorations(group)
             return
         # Read the pure-decoration reservation BEFORE we write our
         # overhang into it. _measure() already filled ``measured[cell_field]``
@@ -577,9 +588,7 @@ class SubplotsAutoLayout:
         # re-merge the default fontdict and clobber user styling).
         ax._set_title_offset_trans(max(base_pad, pad_pt))
 
-    def _offset_inside_legend_past_decorations(
-        self, group, measured, axes_matrix
-    ) -> None:
+    def _offset_inside_legend_past_decorations(self, group) -> None:
         """Step a per-axes left/bottom legend just past the tick labels and
         axis label on its own side, dynamically.
 
@@ -594,10 +603,15 @@ class SubplotsAutoLayout:
         share this one implementation; only the side's field and axis differ,
         which ``_FIELD_BY_SIDE`` / ``_OVERHANG_BY_SIDE`` already encode.
 
-        ``side='right'`` needs nothing (no decoration lives past ``ax.x1``)
-        and ``side='top'`` is handled by ``_lift_title_above_top_legend``
-        instead: there the title must end up OUTSIDE the band, so the title
-        moves rather than the band.
+        For an in-frame (``external_to_axis=False``) group only 'left' and
+        'bottom' route here: ``side='right'`` needs nothing (no decoration
+        lives past ``ax.x1``) and ``side='top'`` is handled by
+        ``_lift_title_above_top_legend`` instead, because there the title
+        must end up OUTSIDE the band, so the title moves rather than the
+        band. The pinned axes-anchored path in ``_measure_one_group`` also
+        calls this for the remaining sides (see below); the measurement is
+        side-generic — ``_OVERHANG_BY_SIDE`` supplies the direction — and
+        collapses to ~0 on a side with no decoration.
 
         Unlike a figure-anchored band, an ``external_to_axis=False`` group
         is NOT excluded from ``ax.get_tightbbox()``, so the standard
@@ -609,16 +623,22 @@ class SubplotsAutoLayout:
         own legend) and bake it as the band's outward decoration offset.
         Idempotent, and it collapses to 0 on an axes with no tick labels and
         no axis label — no fixed gap is ever added.
+
+        Deliberately NOT gated on ``self._locked`` /
+        ``self._locked_positions`` (Issue #222). A pinned ``xlabel_space`` /
+        ``ylabel_space`` means "do not GROW this reservation", which is what
+        the guards in ``_measure_one_group`` enforce — that path writes
+        ``measured[cell_field]``. This method writes nothing but the band's
+        outward *position*, so gating it here conflated the pin with "do not
+        MOVE the band clear of the decorations" and dropped the band on top
+        of the tick labels and axis label. A pinned reservation now keeps its
+        exact mm AND gets collision avoidance; if the pinned space is too
+        small to hold both the decorations and the band, the band still
+        lands past the decorations and simply extends beyond the pinned
+        reservation — overflowing is the caller's explicit choice, silently
+        overlapping is not.
         """
         side = group._side
-        _, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
-        if cell_field in self._locked:
-            return
-        r, c = self._find_ax_indices(group.anchor, axes_matrix)
-        idx = c if axis_kind == "col" else r
-        if idx in self._locked_positions.get(cell_field, frozenset()):
-            return
-
         ax = group.anchor
         dpi = self._fig.dpi
         ax_bb = ax.get_window_extent()
@@ -657,6 +677,22 @@ class SubplotsAutoLayout:
         without touching its reservation. Used on first draw when the
         band hasn't rendered yet (no overhang to measure) but we still
         want the band to land past decorations once it materializes.
+
+        The lock guards below are KEPT (unlike the ones removed from
+        ``_offset_inside_legend_past_decorations`` for Issue #222), because
+        here the offset is *derived from the reservation*:
+        ``existing[idx] - group._band_contribution_mm``. That subtraction is
+        only a valid stand-in for the pure decoration extent while
+        ``existing[idx]`` is an auto-measurement. Under a pin it is the
+        caller's pinned mm, so the difference is arbitrary — a generous pin
+        would fling the band far outward, a tight one would clamp it to 0.
+        Skipping the pre-bake is harmless: this is a first-draw estimate for
+        a band that has not rendered yet, and the very next pass (once the
+        band has an overhang) supersedes it with a real measurement —
+        ``_measure_one_group``'s axes-anchored path for
+        ``external_to_axis=True`` groups, and
+        ``_offset_inside_legend_past_decorations``, which measures the pure
+        decoration directly, for ``external_to_axis=False`` ones.
         """
         if group._anchor_kind != "axes":
             return

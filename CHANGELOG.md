@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pinned `xlabel_space` / `ylabel_space` no longer disables legend-band
+  collision avoidance** (#222). One flag (`SubplotsAutoLayout._locked` /
+  `_locked_positions`) was doing two jobs: "do not grow this reservation",
+  which is what a caller asks for by pinning, and "do not move the band clear
+  of the decorations", which nobody asks for. With `xlabel_space=14.0` pinned
+  on a 50x40 mm axes, `pp.legend(ax, side="bottom")` dropped the band 2.00 mm
+  below the axes, on top of x tick labels reaching 3.61 mm and an xlabel
+  reaching 7.39 mm; the same happened on the left with `ylabel_space` pinned.
+  The lock guards now only suppress the reservation write, and the band's
+  outward offset is measured directly off the anchor's decorations, so a
+  pinned row/column keeps exactly its declared mm *and* gets collision
+  avoidance. When the pinned space is too small to hold both the decorations
+  and the band, the band still lands past the decorations and extends beyond
+  the reservation — overflowing is the caller's explicit choice, silently
+  overlapping is not. Covers both the in-frame `pp.legend(ax)` form and the
+  multi-axes `pp.legend(anchor=..., axes=[...])` band.
+
 ## [0.16.2] - 2026-09-01
 
 ### Fixed
