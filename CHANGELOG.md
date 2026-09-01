@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`pp.histplot(kde=True, element='step'|'poly')` now separates the outline
+  stroke from the KDE curve stroke** (#205). The two are both `Line2D` artists
+  in `ax.lines`, so the whole list was painted with the outline width and then
+  floored at `lines.linewidth`. As a result `line_kws={'linewidth': 3.0}` drew a
+  1.0 curve (silently discarded), `linewidth=2.0` leaked into the curve, and
+  `fill=False, linewidth=0.4` drew *both* strokes at 1.0. Now the hull follows
+  `linewidth=` / `edgewidth` and the curve follows `line_kws` /
+  `lines.linewidth`, exactly as under `element='bars'`. Verified across `hue`,
+  `multiple='layer'|'stack'|'fill'|'dodge'`, `fill=True|False` and all three
+  elements.
+  Nothing already on the artists could tell the two apart — seaborn draws them
+  interleaved per hue level, `element='poly'` gives both the same `drawstyle`,
+  their `sticky_edges` are identical, and their point counts collide at
+  `bins=200` — so the curves are now tagged at creation through `line_kws`
+  (which seaborn forwards only to the KDE `ax.plot` call) and untagged again
+  once painted. A caller-supplied `line_kws={'gid': ...}` is preserved.
+  The v0.16.0 "known limitation" notes in the `histplot` docstring and in
+  `skills/publiplots-guide/SKILL.md` are removed.
+  **The default look changes for one call shape.** With
+  `element='step'|'poly'`, `fill=False`, `kde=True` and *no* explicit
+  `linewidth=`, the hull is drawn at 0.75 where 0.16.0 drew it at 1.0
+  (measured against `c46a5ed`): it used to be swept into the curve's
+  `lines.linewidth` floor, and it no longer is. 0.15.3 had the same defect at a
+  different number — its floor was `max(linewidth + 0.5, 1.5)`.
+  That is the intended classification — the hull outlines a shape, so it reads
+  `edgewidth` — but it is a visible change to an existing
+  default-argument plot, not only to calls that pass a width. Pass
+  `linewidth=1.0` to keep the old appearance. Every other combination of
+  `element` / `fill` / `kde` is pixel-identical: `fill=True` already drew its
+  hull as a collection at 0.75, and `kde=False` never reached the floor.
+- **`pp.histplot(line_kws={'linewidth': ...})` is now honoured exactly**, thinner
+  than `lines.linewidth` as well as thicker. It was previously floored at
+  `lines.linewidth`, so `line_kws={'linewidth': 0.4}` silently drew a 1.0 curve
+  — the same class of surprise as #205 itself, a knob that worked upward only.
+  The floor was a vestige of the pre-0.16.0 `max(linewidth + 0.5, 1.5)`
+  expression: back when the curve could not be told apart from the hull it kept
+  the curve from inheriting a hairline outline width. It is removed outright
+  rather than conditioned on the caller, because its other branch was
+  unreachable — without `line_kws` seaborn draws the curve with `ax.plot`, whose
+  default is `plt.rcParams['lines.linewidth']`, the very storage
+  `pp.rcParams['lines.linewidth']` writes to, so the floor's comparison could
+  never fire. Default curve widths are therefore unchanged at every setting, and
+  this bullet changes no default look at all — the hull movement noted above
+  belongs to the scope fix, which stops routing the hull through that floor in
+  the first place.
+- **`pp.histplot`'s `line_kws` documentation was wrong.** It claimed the dict
+  reached "step/poly/KDE line artists"; seaborn routes it to the KDE curve
+  only. The step/poly hull is styled from `linewidth=` and `edgecolor=`.
 - **Documentation corrections.** The README quick start called
   `pp.set_publication_style()`, which has never existed — the publication
   rcParams are applied on import, and `pp.reset_style()` is the escape hatch.
@@ -117,6 +165,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   artists, so both take `linewidth` and are then floored at `lines.linewidth`.
   That scope is unchanged from 0.15.3 (the old expression had it too); only the
   resulting number moved. Use `element="bars"` to set the two independently.
+  (Both the scope and the `lines.linewidth` floor were fixed after this release
+  — see #205 under Unreleased.)
 
 ### Fixed
 

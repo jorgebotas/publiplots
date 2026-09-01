@@ -61,17 +61,15 @@ By plot family:
 **Two stroke widths, two meanings.** publiplots splits "a stroke that outlines a shape" from "a stroke that *is* the data":
 
 - `pp.rcParams['edgewidth']` (0.75) — outlines drawn by publiplots: bar and histogram borders, box whiskers and medians, violin outlines, `kdeplot(fill=True)` fill outlines (and the implicit fills under `multiple='stack'`/`'fill'`), marker edges, hex-cell edges, dendrogram links, venn circles, `pp.errorbarplot` stems, upset bars. Pairs with `pp.rcParams['edgecolor']`.
-- `lines.linewidth` (1.0) — strokes that are data: `lineplot` series, `kdeplot` 1D curves and 2D contour isolines, `histplot(kde=True, element='bars')`'s KDE overlay, `regplot`/`residplot` fit and lowess lines, `pointplot` connectors and error bars (its `err_kws`), the upset membership-matrix connector, `pp.add_reference_line`.
+- `lines.linewidth` (1.0) — strokes that are data: `lineplot` series, `kdeplot` 1D curves and 2D contour isolines, `histplot(kde=True)`'s KDE overlay, `regplot`/`residplot` fit and lowess lines, `pointplot` connectors and error bars (its `err_kws`), the upset membership-matrix connector, `pp.add_reference_line`.
 
 Migration: code that set `lines.linewidth` to change *border* widths must now set `pp.rcParams['edgewidth']`.
 
 **Exception: seaborn-drawn confidence bands.** The band edges of `pp.lineplot` and of `pp.regplot`/`pp.residplot` are drawn by seaborn as fill-between collections, so their stroke follows matplotlib's `patch.linewidth`, not `edgewidth`. publiplots pins `patch.linewidth` to the same 0.75, so the default look matches — but raising `edgewidth` alone leaves those band edges at 0.75. Raise `patch.linewidth` too if you need them to follow.
 
-The per-call `linewidth=` on `regplot`, `residplot` and `histplot` is an **outline** width (marker edges / bar edges) and does *not* reach the curve. To set the fit or lowess line, pass `line_kws={'linewidth': ...}`. `histplot`'s KDE overlay honours `line_kws={'linewidth': ...}` too under the default `element='bars'`, but is floored at `lines.linewidth` — you can widen it, not thin it.
+The per-call `linewidth=` on `regplot`, `residplot` and `histplot` is an **outline** width (marker edges / bar edges / the step-poly hull) and does *not* reach the curve. To set the fit or lowess line, pass `line_kws={'linewidth': ...}`. `histplot`'s KDE overlay honours `line_kws={'linewidth': ...}` too, under every `element`, and honours it exactly — you can thin the curve below `lines.linewidth` as well as widen it.
 
 `kdeplot(linewidth=)` is the one that means *whichever stroke the call draws* — the 1D curve, the 1D fill outline, or the 2D contour lines. The two never coexist in 1D (seaborn emits a `Line2D` for `fill=False` and a filled collection otherwise), so only the **defaults** split: the curve and the contours default from `lines.linewidth`, the fill outline from `edgewidth`.
-
-**Gotcha: `histplot(element='step'|'poly', kde=True)` does not separate the two strokes.** The step/poly outline and the KDE curve are both `Line2D` artists, so both take `linewidth` and both are then floored at `lines.linewidth`. There, `linewidth=2.0` *does* widen the curve, `line_kws={'linewidth': ...}` is overwritten and does nothing, and `linewidth=0.4` draws outline and curve at 1.0 alike. Use `element='bars'` (or `kde=False`) when you need to set the two independently.
 
 `lines.markeredgewidth` is set to 0.75 for consistency, but no publiplots function reads it — every marker-edge default resolves from `edgewidth`. It exists so raw matplotlib calls in a publiplots figure match the surrounding look; leave it set.
 

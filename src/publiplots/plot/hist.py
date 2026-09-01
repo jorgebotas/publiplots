@@ -32,6 +32,46 @@ from publiplots.utils.plot_legend import render_entries, stash_continuous_hue
 from publiplots.utils.transparency import ArtistTracker
 
 
+_KDE_GID = "publiplots:histplot-kde"
+"""Marker written onto every KDE ``Line2D`` so it can be told apart.
+
+With ``element="step"``/``"poly"`` and ``fill=False`` the outline is a
+``Line2D`` too, so ``ax.lines`` holds both kinds of stroke. Nothing
+already on the artists distinguishes them:
+
+- **Draw order.** seaborn draws outline-then-curve *inside* one per-hue
+  loop, so the two interleave rather than forming separate blocks; and a
+  hue level whose density is missing contributes an outline with no
+  curve, breaking even the alternation.
+- **``drawstyle``.** ``"steps-post"`` vs ``"default"`` separates them for
+  ``element="step"`` only — ``element="poly"`` draws its outline with the
+  default drawstyle, exactly like the curve.
+- **``sticky_edges``.** Measured identical (``x=[]``, ``y=(0, inf)``) for
+  both, because seaborn's ``sticky_data`` is empty unless
+  ``multiple="fill"``.
+- **Point count.** The curve has ``gridsize`` points and the outline has
+  one per bin edge, but both are caller-controllable (``kde_kws``,
+  ``bins``) and can coincide.
+
+So the curves are tagged at creation instead: seaborn copies ``line_kws``
+and forwards it only to the KDE ``ax.plot`` call, and ``gid`` is an
+ordinary ``Artist`` property, so it arrives on precisely the KDE lines.
+The tag is removed again once painting is done.
+
+**Upstream dependency.** This holds only while ``line_kws`` reaches the
+KDE curve and nothing else. Verified byte-for-byte in seaborn 0.12.0 (the
+floor of ``pyproject.toml``'s ``seaborn>=0.12.0``) and 0.13.2: in both,
+``plot_univariate_histogram`` copies ``line_kws``, sets only ``color`` on
+it, and passes it to a single ``ax.plot``; the step/poly hull is drawn
+from ``_artist_kws(plot_kws, ...)``, a different dict. A future seaborn
+that also forwarded ``line_kws`` to the hull would mis-tag it and swap
+the two strokes -- a wrong picture rather than an error, so
+``test_histplot_kde_tag_counts_one_curve_per_hue_level`` pins the
+invariant (N tagged lines out of 2N under ``element="step"``,
+``fill=False``, N hue levels) and turns that into a test failure.
+"""
+
+
 def histplot(
     data: Optional[pd.DataFrame] = None,
     *,
@@ -146,7 +186,14 @@ def histplot(
         Extra keyword arguments forwarded to the KDE estimator (see
         :func:`seaborn.histplot`).
     line_kws : dict, optional
-        Extra keyword arguments forwarded to step/poly/KDE line artists.
+        Extra keyword arguments forwarded to the KDE curve's ``Line2D``
+        (seaborn routes them there and nowhere else). Use
+        ``line_kws={"linewidth": ...}`` to set the curve's width
+        independently of the outline's ``linewidth=``. The step/poly
+        outline is styled from ``linewidth=`` / ``edgecolor=`` instead.
+        Since there is no curve to style when ``kde=False``, the whole
+        dict is silently ignored in that case — it never falls back onto
+        the outline.
     hue_order : list, optional
         Order of the hue levels; determines palette assignment and
         legend order.
@@ -177,24 +224,11 @@ def histplot(
         step / poly lines otherwise. Falls back to
         ``pp.rcParams["edgewidth"]``.
 
-        Under the default ``element="bars"`` it does **not** set the KDE
-        overlay's width: the KDE curve is data, not an outline, so it
-        defaults from ``pp.rcParams["lines.linewidth"]``. Widen it with
-        ``line_kws={"linewidth": ...}``; values below
-        ``lines.linewidth`` are floored back up to it.
-
-        **Known limitation — ``element="step"`` or ``"poly"`` combined
-        with ``kde=True``.** The outline and the KDE curve are not
-        separated there. Both are ``Line2D`` artists in ``ax.lines``, so
-        both are painted with ``linewidth`` and then floored at
-        ``lines.linewidth``. In that combination:
-        ``linewidth`` *does* reach the curve (``linewidth=2.0`` gives a
-        2.0 curve), ``line_kws={"linewidth": ...}`` is overwritten and has
-        no effect, and a ``linewidth`` below ``lines.linewidth`` is raised
-        to it for the outline as well (``linewidth=0.4`` draws both
-        strokes at 1.0, where ``kde=False`` draws the outline at 0.4).
-        Use ``element="bars"``, or ``kde=False``, to control the two
-        strokes independently.
+        It never sets the KDE overlay's width, under any ``element``:
+        the KDE curve is data, not an outline, so it defaults from
+        ``pp.rcParams["lines.linewidth"]``. Set it with
+        ``line_kws={"linewidth": ...}``, which is honoured exactly —
+        thinner than ``lines.linewidth`` as well as thicker.
     log_scale : bool, number, or pair, optional
         If True, apply a log scale on the value axis. A number sets the
         base. A 2-tuple sets (x_log, y_log) independently — forwarded
@@ -421,6 +455,18 @@ def histplot(
                         )
             render_entries(ax, flags=flags, legend_kws=_legend_kws)
     else:
+        # A KDE curve and a step/poly outline are both Line2D artists in
+        # ax.lines, and seaborn draws them interleaved (outline then curve,
+        # per hue level), so neither position nor any structural property
+        # separates them -- see _KDE_GID for the measurements. Tag the
+        # curves at creation instead: seaborn copies ``line_kws`` and
+        # forwards it to the KDE ``ax.plot`` call and nowhere else, and
+        # ``gid`` is a plain Artist property that rides through untouched.
+        line_kws_tagged = dict(line_kws) if line_kws else {}
+        user_line_gid = line_kws_tagged.get("gid")
+        if kde:
+            line_kws_tagged["gid"] = _KDE_GID
+
         sns_kwargs = {
             "data": data,
             "x": x,
@@ -441,7 +487,7 @@ def histplot(
             "shrink": shrink,
             "kde": kde,
             "kde_kws": kde_kws,
-            "line_kws": line_kws,
+            "line_kws": line_kws_tagged,
             "palette": palette_map if palette_map else palette,
             "hue_order": hue_order,
             "log_scale": log_scale,
@@ -453,6 +499,13 @@ def histplot(
         sns_kwargs.update(kwargs)
 
         sns.histplot(**sns_kwargs)
+
+        # Split the new Line2Ds by the tag injected above: KDE curves are
+        # data (lines.linewidth, line_kws), the rest outline a shape
+        # (edgewidth, the public ``linewidth=``).
+        new_lines = tracker.get_new_lines()
+        kde_lines = [ln for ln in new_lines if ln.get_gid() == _KDE_GID]
+        outline_lines = [ln for ln in new_lines if ln.get_gid() != _KDE_GID]
 
         if element == "bars":
             _paint_bars(
@@ -470,7 +523,7 @@ def histplot(
             tracker.apply_transparency(on="patches", face_alpha=alpha, edge_alpha=1.0)
         else:
             _paint_lines(
-                new_lines=tracker.get_new_lines(),
+                new_lines=outline_lines,
                 new_collections=tracker.get_new_collections(),
                 palette=palette_map,
                 hue_order=hue_order,
@@ -482,14 +535,21 @@ def histplot(
             )
 
         if kde:
-            _paint_kde(
-                new_lines=tracker.get_new_lines(),
-                palette=palette_map,
-                hue_order=hue_order,
-                color=color,
-                linewidth=linewidth,
-                alpha=alpha,
-            )
+            try:
+                _paint_kde(
+                    new_lines=kde_lines,
+                    palette=palette_map,
+                    color=color,
+                )
+            finally:
+                # The tag is scaffolding, not output: restore whatever gid
+                # the caller asked for (usually none) so SVG ids are
+                # unaffected. In a ``finally`` because ``gid`` is public
+                # artist state and matplotlib writes it straight into SVG
+                # as ``id="..."`` -- a caller who catches a paint error and
+                # saves the figure anyway must not find the sentinel there.
+                for line in kde_lines:
+                    line.set_gid(user_line_gid)
 
         _legend(
             ax=ax,
@@ -696,33 +756,36 @@ def _paint_lines(
 def _paint_kde(
     new_lines: List[Line2D],
     palette: Optional[Dict],
-    hue_order: Optional[List],
     color: Optional[str],
-    linewidth: float,
-    alpha: float,
 ) -> None:
-    """Style KDE overlay lines with the data-line stroke.
+    """Recolour the KDE overlay lines from the resolved palette.
 
-    The histogram bars are outlines (edgewidth); the KDE curve laid over
-    them is data, so it takes lines.linewidth. Previously this invented a
-    width as max(linewidth + 0.5, 1.5), which drifted whenever the bar
-    edge width changed.
+    The histogram bars and the step/poly hull are outlines (edgewidth);
+    the KDE curve laid over them is data, so it takes lines.linewidth.
+    Nothing here needs to *set* that width: seaborn draws the curve with
+    ``ax.plot``, whose default is ``plt.rcParams["lines.linewidth"]`` —
+    the very storage ``pp.rcParams["lines.linewidth"]`` writes to. So the
+    curve already arrives at the right width, and an explicit
+    ``line_kws={"linewidth": ...}`` already arrives at the caller's.
 
-    KDE lines live in ``ax.lines`` alongside any step/poly lines; we
-    identify them by re-matching against the palette. When ``fill=True``
-    on step/poly there are no competing lines, so any ``Line2D`` seaborn
-    emitted is a KDE curve.
+    This used to floor the width at ``lines.linewidth``, a vestige of the
+    pre-0.16.0 ``max(linewidth + 0.5, 1.5)`` expression: back when the
+    curve could not be told apart from the hull, the floor kept it from
+    inheriting a hairline outline width. With the curve identified at
+    creation (:data:`_KDE_GID`) that guard had exactly two possible
+    effects — a no-op without ``line_kws``, or silently overriding an
+    explicit ``line_kws={"linewidth": 0.4}`` — so it is gone.
+
+    ``new_lines`` must already be narrowed to the KDE curves — the caller
+    does that with :data:`_KDE_GID`, since the step/poly outline is a
+    ``Line2D`` in the same ``ax.lines`` list.
     """
-    bold_lw = resolve_param("lines.linewidth")
     for line in new_lines:
         if palette:
             level = _match_line_to_level(line, palette)
             line_color = palette.get(level, color) if level is not None else color
         else:
             line_color = color
-        current_lw = line.get_linewidth()
-        if current_lw < bold_lw:
-            line.set_linewidth(bold_lw)
         line.set_color(to_rgba(line_color, alpha=1.0))
 
 

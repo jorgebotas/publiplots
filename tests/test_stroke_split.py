@@ -329,3 +329,334 @@ def test_regplot_x_estimator_stem_follows_linewidth_not_line_kws(df):
     assert all(w == pytest.approx(3.0) for w in _line_widths(ax)), (
         "line_kws should reach the fit line"
     )
+
+
+# ---------------------------------------------------------------------------
+# histplot(kde=True): the step/poly outline and the KDE curve (#205)
+# ---------------------------------------------------------------------------
+
+_HIST_BINS = 12
+
+
+def _hist_outline_and_curve_widths(ax):
+    """Split a histplot's strokes into (outline widths, KDE curve widths).
+
+    The outline is a ``Rectangle`` (``element='bars'``), a
+    ``PolyCollection`` (step/poly with ``fill=True``) or a short
+    ``Line2D`` (step/poly with ``fill=False``); the KDE curve is always
+    the long ``Line2D``.
+    """
+    from matplotlib.collections import PolyCollection
+    from matplotlib.patches import Rectangle
+
+    outline = [
+        float(p.get_linewidth()) for p in ax.patches if isinstance(p, Rectangle)
+    ]
+    for c in ax.collections:
+        if isinstance(c, PolyCollection):
+            outline += [float(v) for v in np.atleast_1d(c.get_linewidths())]
+
+    curve = []
+    for line in ax.lines:
+        n = len(np.asarray(line.get_xdata()))
+        if n <= _HIST_BINS + 1:
+            outline.append(float(line.get_linewidth()))
+        else:
+            curve.append(float(line.get_linewidth()))
+    return outline, curve
+
+
+@pytest.mark.parametrize("element", ["bars", "step", "poly"])
+@pytest.mark.parametrize("fill", [True, False], ids=["fill", "nofill"])
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {},
+        {"hue": "g"},
+        {"hue": "g", "multiple": "stack"},
+        {"hue": "g", "multiple": "fill"},
+    ],
+    ids=["plain", "hue", "stack", "multiple-fill"],
+)
+def test_histplot_kde_curve_and_outline_use_different_knobs(df, element, fill, extra):
+    """The histogram hull outlines a shape (edgewidth); the KDE curve laid
+    over it is data (lines.linewidth). One knob cannot mean both.
+
+    Before #205 this held only for ``element='bars'``: with step/poly the
+    outline and the curve are both ``Line2D`` artists in ``ax.lines``, and
+    both were painted with ``linewidth`` and then floored at
+    ``lines.linewidth``.
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.histplot(
+            data=df, x="x", ax=ax, kde=True, element=element, fill=fill,
+            bins=_HIST_BINS, **extra,
+        )
+
+        outline, curve = _hist_outline_and_curve_widths(ax)
+        assert outline, "expected a histogram outline"
+        assert curve, "expected a KDE curve"
+        assert all(w == pytest.approx(2.5) for w in outline), (
+            f"{element}/fill={fill}: outline {outline} should follow edgewidth"
+        )
+        assert all(w == pytest.approx(0.5) for w in curve), (
+            f"{element}/fill={fill}: KDE curve {curve} should follow "
+            "lines.linewidth"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+@pytest.mark.parametrize("element", ["bars", "step", "poly"])
+def test_histplot_line_kws_width_reaches_the_kde_curve(df, element):
+    """``line_kws={'linewidth': ...}`` sets the KDE curve, not the outline.
+
+    Row 1 of #205: under step/poly it was silently overwritten by the
+    outline width and then floored at ``lines.linewidth``.
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.histplot(
+            data=df, x="x", ax=ax, kde=True, element=element, fill=False,
+            bins=_HIST_BINS, line_kws={"linewidth": 3.0},
+        )
+        outline, curve = _hist_outline_and_curve_widths(ax)
+        assert curve and all(w == pytest.approx(3.0) for w in curve), (
+            f"{element}: line_kws linewidth lost -- curve is {curve}"
+        )
+        assert outline and all(w == pytest.approx(2.5) for w in outline), (
+            f"{element}: line_kws must not reach the outline {outline}"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+@pytest.mark.parametrize("element", ["bars", "step", "poly"])
+@pytest.mark.parametrize("key", ["linewidth", "lw"])
+def test_histplot_line_kws_can_thin_the_kde_curve(df, element, key):
+    """An explicit ``line_kws`` width is honoured downward as well as up.
+
+    ``_paint_kde`` used to floor the curve at ``lines.linewidth``, so
+    ``line_kws={'linewidth': 0.4}`` silently drew 1.0. That floor was a
+    vestige of the days when the curve could not be told apart from the
+    hull; it could only ever no-op (no ``line_kws``, where seaborn's
+    ``ax.plot`` default IS ``lines.linewidth``) or override an explicit
+    caller value. A knob that works upward but not downward is only half
+    a knob, so the floor is gone.
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.histplot(
+            data=df, x="x", ax=ax, kde=True, element=element, fill=False,
+            bins=_HIST_BINS, line_kws={key: 0.4},
+        )
+        outline, curve = _hist_outline_and_curve_widths(ax)
+        assert curve and all(w == pytest.approx(0.4) for w in curve), (
+            f"{element}: line_kws {key}=0.4 was floored -- curve is {curve}"
+        )
+        assert outline and all(w == pytest.approx(2.5) for w in outline), (
+            f"{element}: line_kws must not reach the outline {outline}"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+def test_histplot_kde_curve_default_width_is_unchanged_without_line_kws(df):
+    """Removing the floor must not move the default: with no ``line_kws``
+    the curve still lands on ``lines.linewidth``, because that rcParam is
+    the same storage seaborn's ``ax.plot`` reads its default from."""
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        for width in (0.2, 0.5, 1.0, 3.0):
+            pp.rcParams["lines.linewidth"] = width
+            fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+            pp.histplot(
+                data=df, x="x", ax=ax, kde=True, element="step", fill=False,
+                bins=_HIST_BINS,
+            )
+            _, curve = _hist_outline_and_curve_widths(ax)
+            assert curve and all(w == pytest.approx(width) for w in curve), (
+                f"lines.linewidth={width} should give a {width} curve, got {curve}"
+            )
+            plt.close("all")
+    finally:
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+@pytest.mark.parametrize("element", ["bars", "step", "poly"])
+def test_histplot_linewidth_does_not_leak_into_the_kde_curve(df, element):
+    """The public ``linewidth=`` is the outline width only.
+
+    Row 2 of #205: under step/poly, ``linewidth=2.0`` widened the curve too.
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.histplot(
+            data=df, x="x", ax=ax, kde=True, element=element, fill=False,
+            bins=_HIST_BINS, linewidth=2.0,
+        )
+        outline, curve = _hist_outline_and_curve_widths(ax)
+        assert outline and all(w == pytest.approx(2.0) for w in outline), (
+            f"{element}: linewidth= should set the outline, got {outline}"
+        )
+        assert curve and all(w == pytest.approx(0.5) for w in curve), (
+            f"{element}: linewidth= leaked into the KDE curve {curve}"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+@pytest.mark.parametrize("element", ["bars", "step", "poly"])
+def test_histplot_thin_outline_is_not_floored_by_the_kde_curve(df, element):
+    """A ``linewidth`` below ``lines.linewidth`` stays where the caller put it.
+
+    Row 3 of #205: under step/poly, ``fill=False, linewidth=0.4`` drew both
+    strokes at ``lines.linewidth`` because the KDE curve's width floor was
+    applied to the outline as well.
+    """
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.histplot(
+            data=df, x="x", ax=ax, kde=True, element=element, fill=False,
+            bins=_HIST_BINS, linewidth=0.4,
+        )
+        outline, curve = _hist_outline_and_curve_widths(ax)
+        assert outline and all(w == pytest.approx(0.4) for w in outline), (
+            f"{element}: outline {outline} was floored at lines.linewidth"
+        )
+        assert curve and all(w == pytest.approx(0.5) for w in curve), (
+            f"{element}: KDE curve {curve} should follow lines.linewidth"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+@pytest.mark.parametrize("n_levels", [1, 2, 3])
+def test_histplot_kde_tag_counts_one_curve_per_hue_level(n_levels):
+    """Exactly one of the two strokes per hue level is a KDE curve.
+
+    ``element='step', fill=False`` puts 2N ``Line2D`` artists on the axes
+    for N hue levels -- one hull and one curve each -- and the tag must
+    claim precisely N of them. This is the upstream-dependency guard: the
+    tag rides on seaborn forwarding ``line_kws`` to the KDE ``ax.plot``
+    and nowhere else. A seaborn that also forwarded it to the hull would
+    tag all 2N, paint every stroke as a curve, and silently swap the two
+    widths -- a wrong picture, not an error. Counting by width (the knobs
+    are inverted, so the two are unambiguous) turns that into a failure.
+    """
+    rng = np.random.default_rng(3)
+    levels = ["one", "two", "three"][:n_levels]
+    data = pd.DataFrame({
+        "x": rng.normal(size=90 * n_levels),
+        "g": np.repeat(levels, 90),
+    })
+
+    saved_ew = pp.rcParams["edgewidth"]
+    saved_lw = pp.rcParams["lines.linewidth"]
+    try:
+        pp.rcParams["edgewidth"] = 2.5
+        pp.rcParams["lines.linewidth"] = 0.5  # deliberately inverted
+        fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+        pp.histplot(
+            data=data, x="x", hue="g", ax=ax, kde=True, element="step",
+            fill=False, bins=_HIST_BINS,
+        )
+
+        widths = [float(line.get_linewidth()) for line in ax.lines]
+        assert len(widths) == 2 * n_levels, (
+            f"expected {2 * n_levels} Line2Ds, got {len(widths)}"
+        )
+        curves = [w for w in widths if w == pytest.approx(0.5)]
+        hulls = [w for w in widths if w == pytest.approx(2.5)]
+        assert len(curves) == n_levels, (
+            f"expected {n_levels} tagged KDE curves, got {len(curves)} "
+            f"from widths {widths} -- has seaborn's line_kws routing changed?"
+        )
+        assert len(hulls) == n_levels, (
+            f"expected {n_levels} untagged hulls, got {len(hulls)} "
+            f"from widths {widths}"
+        )
+    finally:
+        pp.rcParams["edgewidth"] = saved_ew
+        pp.rcParams["lines.linewidth"] = saved_lw
+
+
+def test_histplot_kde_tag_does_not_survive_onto_the_artists(df):
+    """The KDE discriminator is internal scaffolding, not rendered output.
+
+    A caller-supplied ``line_kws={'gid': ...}`` must come back intact, and
+    an absent one must stay absent (duplicate gids would collide in SVG).
+    """
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.histplot(
+        data=df, x="x", hue="g", ax=ax, kde=True, element="step", fill=False,
+        bins=_HIST_BINS,
+    )
+    assert all(line.get_gid() is None for line in ax.lines)
+
+    fig2, ax2 = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.histplot(
+        data=df, x="x", hue="g", ax=ax2, kde=True, element="step", fill=False,
+        bins=_HIST_BINS, line_kws={"gid": "mine"},
+    )
+    gids = [line.get_gid() for line in ax2.lines]
+    assert gids.count("mine") == 2, f"caller gid not preserved: {gids}"
+    assert gids.count(None) == 2, f"outline gid should stay unset: {gids}"
+
+
+@pytest.mark.parametrize("user_gid", [None, "mine"])
+def test_histplot_kde_tag_is_stripped_even_if_painting_raises(
+    df, user_gid, monkeypatch,
+):
+    """The tag must not survive a failure inside the paint step.
+
+    ``gid`` is public artist state and matplotlib writes it straight into
+    SVG as ``id="..."``, so a caller who catches the error and saves the
+    figure anyway would otherwise find the internal sentinel in their
+    output. The restore therefore lives in a ``finally``.
+    """
+    import publiplots.plot.hist as hist_mod
+
+    def _boom(**kwargs):
+        raise RuntimeError("simulated paint failure")
+
+    monkeypatch.setattr(hist_mod, "_paint_kde", _boom)
+
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    line_kws = {"gid": user_gid} if user_gid is not None else {}
+    with pytest.raises(RuntimeError, match="simulated paint failure"):
+        pp.histplot(
+            data=df, x="x", hue="g", ax=ax, kde=True, element="step",
+            fill=False, bins=_HIST_BINS, line_kws=line_kws,
+        )
+
+    gids = [line.get_gid() for line in ax.lines]
+    assert hist_mod._KDE_GID not in gids, f"sentinel survived: {gids}"
+    if user_gid is not None:
+        assert gids.count(user_gid) == 2, f"caller gid not restored: {gids}"
