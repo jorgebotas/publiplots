@@ -1006,6 +1006,15 @@ class LegendBuilder:
         # reactor registrations; both objects stay alive in ``self.elements``
         # for as long as the mapping is consulted.
         self._colorbar_labels = {}
+        # id(Colorbar) -> the ``label`` this strip was created with. For a
+        # per-axes colorbar that label IS the LegendEntry name, which is
+        # what ``MultiAxesLegendGroup._evict_claimed_per_axis_legends``
+        # matches on when a band claims the entry and must drop the
+        # already-rendered per-axes copy (#217). Recorded explicitly
+        # rather than read back off the artist: a ``title_position='top'``
+        # colorbar clears ``cbar.set_label`` and paints the name into a
+        # separate object, so the strip itself no longer carries it.
+        self._colorbar_names = {}
 
     def _get_edge_length(self) -> float:
         """Along-edge length of the anchor in mm.
@@ -1668,6 +1677,7 @@ class LegendBuilder:
         self._nudge_inside_cbar(cbar_ax, [x0, y0, w_frac, h_frac], pad_mm)
 
         self.elements.append(("colorbar", cbar))
+        self._colorbar_names[id(cbar)] = label
         return cbar
 
     def add_colorbar(
@@ -2000,6 +2010,7 @@ class LegendBuilder:
 
         # Store elements
         self.elements.append(("colorbar", cbar))
+        self._colorbar_names[id(cbar)] = label
         if title_obj:
             self.elements.append(("text", title_obj))
             # Remember which strip this floating label belongs to. The two
