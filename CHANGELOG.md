@@ -39,6 +39,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pinned for it — clips as it always has; the fix does not make it worse, and
   the remedy is a larger pin or a smaller band.
 
+- **An inside colorbar now accepts matplotlib's numeric `loc` codes** (#223).
+  `legend_kws={'inside': True, 'loc': 1}` rendered fine for a categorical hue
+  — that path forwards `loc` straight to `ax.legend()`, which takes integers
+  as well as strings — but raised `ValueError: inside colorbar loc must be one
+  of ...` for a continuous one, so switching a column from categorical to
+  continuous broke a working call with no other change. The inside-colorbar
+  path now resolves an integer through matplotlib's own
+  `Legend.codes` mapping, landing the strip in the corner
+  `ax.legend(loc=<code>)` would pick — codes `1`-`10` verified equivalent by
+  measuring both marks in figure pixels. `loc=0`/`'best'` keeps resolving to
+  `'upper right'` rather than raising: a strip has no handles to search
+  around, so it cannot reproduce the real search. Invalid input (a bad string, an out-of-range integer, a float, a
+  coordinate tuple, `None`) still raises the same readable `ValueError`, which
+  now also names the accepted integer range. A float `0.0` used to slip
+  through as `'best'` via `loc in ("best", 0)`, because `0.0 == 0`; it is now
+  rejected, matching matplotlib 3.8+, which validates with
+  `isinstance(loc, int)`. On the declared `matplotlib>=3.7.0` floor, which
+  predates `Legend.set_loc`, a categorical `loc=0.0` is still accepted, so
+  that one input stays asymmetric there.
+
 ## [0.16.2] - 2026-09-01
 
 ### Fixed

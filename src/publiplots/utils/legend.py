@@ -1483,7 +1483,15 @@ class LegendBuilder:
 
     # Matplotlib's legend ``loc='best'`` searches for the emptiest corner
     # using the legend's own handles; a colorbar strip has no equivalent
-    # search, so the inside path resolves 'best' to a fixed corner.
+    # search, so the inside path resolves 'best' to a fixed corner rather
+    # than raising. Not a matplotlib precedent: the ``loc = 'upper right'``
+    # rewrite in ``Legend.set_loc`` sits inside its ``if loc is None``
+    # branch, so it fires only for a default taken from
+    # ``rcParams['legend.loc']`` — an *explicit* ``loc=0`` on a figure
+    # legend raises "Automatic legend placement (loc='best') not
+    # implemented". Resolving is the deliberate choice here, because a
+    # strip has no handles to search around and raising would defeat the
+    # point of accepting the code at all (#223).
     _INSIDE_CBAR_DEFAULT_LOC = "upper right"
 
     # Padding between the strip and the axes edge, in mm. Matches the
@@ -1491,30 +1499,61 @@ class LegendBuilder:
     # publiplots default font size without inheriting its font units.
     _INSIDE_CBAR_PAD_MM = 2.0
 
-    @staticmethod
-    def _inside_cbar_anchor(loc: str) -> Tuple[str, str]:
-        """Split a matplotlib ``loc`` string into (vertical, horizontal).
+    # Integer location code -> name, inverted from the mapping the
+    # *installed* matplotlib actually uses (``Legend.codes``, itself
+    # ``{'best': 0, **AnchoredOffsetbox.codes}``) rather than a copy of
+    # it, so an integer here always resolves to the corner
+    # ``ax.legend(loc=<code>)`` would pick. Codes 5 ('right') and 7
+    # ('center right') are distinct names that anchor identically —
+    # ``offsetbox._get_anchored_bbox`` maps both to "E".
+    _INSIDE_CBAR_LOC_NAMES = {code: name for name, code in Legend.codes.items()}
 
-        Accepts the nine axes-relative legend locations plus the bare
-        ``'right'`` alias matplotlib keeps for ``'center right'``.
+    @classmethod
+    def _inside_cbar_loc_error(cls, loc: Any) -> ValueError:
+        """Build the shared ``loc`` rejection message."""
+        codes = sorted(cls._INSIDE_CBAR_LOC_NAMES)
+        return ValueError(
+            "inside colorbar loc must be one of 'upper|center|lower' "
+            "+ 'left|center|right' (or 'center', 'right', 'best'), or a "
+            f"matplotlib location code {codes[0]}-{codes[-1]}, got {loc!r}"
+        )
+
+    @classmethod
+    def _inside_cbar_anchor(cls, loc: Union[str, int]) -> Tuple[str, str]:
+        """Split a matplotlib ``loc`` into (vertical, horizontal).
+
+        Accepts the nine axes-relative legend location strings, the bare
+        ``'right'`` alias matplotlib keeps for ``'center right'``, and
+        matplotlib's integer location codes — so a hue column switched
+        from categorical to continuous keeps the placement it had when
+        the same ``loc`` went to ``ax.legend()`` (#223).
+
+        ``'best'``/``0`` has no meaning for a strip (there are no handles
+        to search around) and resolves to
+        :attr:`_INSIDE_CBAR_DEFAULT_LOC`.
         """
+        if isinstance(loc, int):
+            # ``bool`` is an ``int`` here exactly as it is in
+            # matplotlib's own ``isinstance(loc, int)`` validation, so
+            # ``loc=True`` means code 1 in both paths.
+            if loc not in cls._INSIDE_CBAR_LOC_NAMES:
+                raise cls._inside_cbar_loc_error(loc)
+            loc = cls._INSIDE_CBAR_LOC_NAMES[loc]
+        if not isinstance(loc, str):
+            raise cls._inside_cbar_loc_error(loc)
+        if loc == "best":
+            loc = cls._INSIDE_CBAR_DEFAULT_LOC
         if loc == "center":
             return "center", "center"
         if loc == "right":
             return "center", "right"
-        parts = str(loc).split()
+        parts = loc.split()
         if len(parts) != 2:
-            raise ValueError(
-                "inside colorbar loc must be one of 'upper|center|lower' "
-                f"+ 'left|center|right' (or 'center'), got {loc!r}"
-            )
+            raise cls._inside_cbar_loc_error(loc)
         vertical, horizontal = parts
         if vertical not in ("upper", "center", "lower") or \
                 horizontal not in ("left", "center", "right"):
-            raise ValueError(
-                "inside colorbar loc must be one of 'upper|center|lower' "
-                f"+ 'left|center|right' (or 'center'), got {loc!r}"
-            )
+            raise cls._inside_cbar_loc_error(loc)
         return vertical, horizontal
 
     def _nudge_inside_cbar(self, cbar_ax, bounds, pad_mm: float) -> None:
@@ -1592,8 +1631,6 @@ class LegendBuilder:
         cell around it (same reasoning as #180).
         """
         loc = kwargs.pop("loc", self._INSIDE_CBAR_DEFAULT_LOC)
-        if loc in ("best", 0):
-            loc = self._INSIDE_CBAR_DEFAULT_LOC
         vertical, horizontal = self._inside_cbar_anchor(loc)
         # Deliberately not user-tunable through ``borderpad``: in the
         # legend family that key is the padding *inside* the legend
@@ -1722,8 +1759,13 @@ class LegendBuilder:
             default ``False``) bypasses the mm-based outside-axes band and
             renders the strip inside the axes rectangle, mirroring
             ``add_legend(inside=True)``; pair with ``loc='upper right'``
-            etc. to pick the corner. ``height``/``width`` keep their mm
-            meaning there, and the strip is excluded from layout math.
+            etc. to pick the corner. ``loc`` takes the nine position
+            strings ``ax.legend()`` accepts, the bare ``'right'`` alias,
+            and matplotlib's integer codes 0-10, and resolves each to the
+            corner the categorical legend would use. ``'best'``/``0``
+            has no meaning for a strip and resolves to ``'upper right'``.
+            ``height``/``width`` keep their mm meaning there, and the
+            strip is excluded from layout math.
 
         Returns
         -------
