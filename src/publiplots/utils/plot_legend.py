@@ -482,7 +482,12 @@ def render_entries(
     inside_mode = bool(legend_kws and legend_kws.get('inside'))
     if inside_mode:
         from publiplots.utils.legend import LegendBuilder
+        from publiplots.utils.legend_group import _register_per_axes_builder
         builder = LegendBuilder(ax, external_to_axis=False)
+        # An inside colorbar is an ``ax.inset_axes`` child, not a Legend
+        # child, so a band that later claims the entry can only find it
+        # through the builder that drew it (#217).
+        _register_per_axes_builder(ax, builder)
     else:
         from publiplots.utils.legend_group import _get_or_create_per_axes_group
         # Split out placement-family keys so they configure the per-axes

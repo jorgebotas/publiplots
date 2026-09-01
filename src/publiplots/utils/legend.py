@@ -1006,6 +1006,25 @@ class LegendBuilder:
         # reactor registrations; both objects stay alive in ``self.elements``
         # for as long as the mapping is consulted.
         self._colorbar_labels = {}
+        # id(Colorbar) -> the ``label`` this strip was created with. For a
+        # per-axes colorbar that label IS the LegendEntry name, which is
+        # what ``MultiAxesLegendGroup._evict_claimed_per_axis_legends``
+        # matches on when a band claims the entry and must drop the
+        # already-rendered per-axes copy (#217). Recorded explicitly
+        # rather than read back off the artist: a ``title_position='top'``
+        # colorbar clears ``cbar.set_label`` and paints the name into a
+        # separate object, so the strip itself no longer carries it.
+        self._colorbar_names = {}
+
+        # id(Colorbar) -> mm the strip's registered outward offset was
+        # padded so its INWARD-hanging decorations (a horizontal strip's
+        # tick labels on a ``side='top'`` band) clear the axes edge. The
+        # pad sits between the band's base outward offset and the colour
+        # rectangle, so the block's visible extent still starts at the
+        # base — which is what ``_apply_along_alignment`` must key its
+        # rows on, or the strip lands in a row of its own and gets
+        # centred on top of a categorical legend sharing the band (#213).
+        self._colorbar_inward_pad = {}
 
     def _get_edge_length(self) -> float:
         """Along-edge length of the anchor in mm.
@@ -1483,7 +1502,15 @@ class LegendBuilder:
 
     # Matplotlib's legend ``loc='best'`` searches for the emptiest corner
     # using the legend's own handles; a colorbar strip has no equivalent
-    # search, so the inside path resolves 'best' to a fixed corner.
+    # search, so the inside path resolves 'best' to a fixed corner rather
+    # than raising. Not a matplotlib precedent: the ``loc = 'upper right'``
+    # rewrite in ``Legend.set_loc`` sits inside its ``if loc is None``
+    # branch, so it fires only for a default taken from
+    # ``rcParams['legend.loc']`` — an *explicit* ``loc=0`` on a figure
+    # legend raises "Automatic legend placement (loc='best') not
+    # implemented". Resolving is the deliberate choice here, because a
+    # strip has no handles to search around and raising would defeat the
+    # point of accepting the code at all (#223).
     _INSIDE_CBAR_DEFAULT_LOC = "upper right"
 
     # Padding between the strip and the axes edge, in mm. Matches the
@@ -1491,30 +1518,61 @@ class LegendBuilder:
     # publiplots default font size without inheriting its font units.
     _INSIDE_CBAR_PAD_MM = 2.0
 
-    @staticmethod
-    def _inside_cbar_anchor(loc: str) -> Tuple[str, str]:
-        """Split a matplotlib ``loc`` string into (vertical, horizontal).
+    # Integer location code -> name, inverted from the mapping the
+    # *installed* matplotlib actually uses (``Legend.codes``, itself
+    # ``{'best': 0, **AnchoredOffsetbox.codes}``) rather than a copy of
+    # it, so an integer here always resolves to the corner
+    # ``ax.legend(loc=<code>)`` would pick. Codes 5 ('right') and 7
+    # ('center right') are distinct names that anchor identically —
+    # ``offsetbox._get_anchored_bbox`` maps both to "E".
+    _INSIDE_CBAR_LOC_NAMES = {code: name for name, code in Legend.codes.items()}
 
-        Accepts the nine axes-relative legend locations plus the bare
-        ``'right'`` alias matplotlib keeps for ``'center right'``.
+    @classmethod
+    def _inside_cbar_loc_error(cls, loc: Any) -> ValueError:
+        """Build the shared ``loc`` rejection message."""
+        codes = sorted(cls._INSIDE_CBAR_LOC_NAMES)
+        return ValueError(
+            "inside colorbar loc must be one of 'upper|center|lower' "
+            "+ 'left|center|right' (or 'center', 'right', 'best'), or a "
+            f"matplotlib location code {codes[0]}-{codes[-1]}, got {loc!r}"
+        )
+
+    @classmethod
+    def _inside_cbar_anchor(cls, loc: Union[str, int]) -> Tuple[str, str]:
+        """Split a matplotlib ``loc`` into (vertical, horizontal).
+
+        Accepts the nine axes-relative legend location strings, the bare
+        ``'right'`` alias matplotlib keeps for ``'center right'``, and
+        matplotlib's integer location codes — so a hue column switched
+        from categorical to continuous keeps the placement it had when
+        the same ``loc`` went to ``ax.legend()`` (#223).
+
+        ``'best'``/``0`` has no meaning for a strip (there are no handles
+        to search around) and resolves to
+        :attr:`_INSIDE_CBAR_DEFAULT_LOC`.
         """
+        if isinstance(loc, int):
+            # ``bool`` is an ``int`` here exactly as it is in
+            # matplotlib's own ``isinstance(loc, int)`` validation, so
+            # ``loc=True`` means code 1 in both paths.
+            if loc not in cls._INSIDE_CBAR_LOC_NAMES:
+                raise cls._inside_cbar_loc_error(loc)
+            loc = cls._INSIDE_CBAR_LOC_NAMES[loc]
+        if not isinstance(loc, str):
+            raise cls._inside_cbar_loc_error(loc)
+        if loc == "best":
+            loc = cls._INSIDE_CBAR_DEFAULT_LOC
         if loc == "center":
             return "center", "center"
         if loc == "right":
             return "center", "right"
-        parts = str(loc).split()
+        parts = loc.split()
         if len(parts) != 2:
-            raise ValueError(
-                "inside colorbar loc must be one of 'upper|center|lower' "
-                f"+ 'left|center|right' (or 'center'), got {loc!r}"
-            )
+            raise cls._inside_cbar_loc_error(loc)
         vertical, horizontal = parts
         if vertical not in ("upper", "center", "lower") or \
                 horizontal not in ("left", "center", "right"):
-            raise ValueError(
-                "inside colorbar loc must be one of 'upper|center|lower' "
-                f"+ 'left|center|right' (or 'center'), got {loc!r}"
-            )
+            raise cls._inside_cbar_loc_error(loc)
         return vertical, horizontal
 
     def _nudge_inside_cbar(self, cbar_ax, bounds, pad_mm: float) -> None:
@@ -1592,8 +1650,6 @@ class LegendBuilder:
         cell around it (same reasoning as #180).
         """
         loc = kwargs.pop("loc", self._INSIDE_CBAR_DEFAULT_LOC)
-        if loc in ("best", 0):
-            loc = self._INSIDE_CBAR_DEFAULT_LOC
         vertical, horizontal = self._inside_cbar_anchor(loc)
         # Deliberately not user-tunable through ``borderpad``: in the
         # legend family that key is the padding *inside* the legend
@@ -1668,6 +1724,7 @@ class LegendBuilder:
         self._nudge_inside_cbar(cbar_ax, [x0, y0, w_frac, h_frac], pad_mm)
 
         self.elements.append(("colorbar", cbar))
+        self._colorbar_names[id(cbar)] = label
         return cbar
 
     def add_colorbar(
@@ -1678,10 +1735,10 @@ class LegendBuilder:
         vmax: Optional[float] = None,
         center: Optional[float] = None,
         label: str = "",
-        height: float = 15,
-        width: float = 4.5,
+        height: Optional[float] = None,
+        width: Optional[float] = None,
         title_position: str = "top",
-        orientation: str = "vertical",
+        orientation: Optional[str] = None,
         ticks: Optional[List[float]] = None,
         **kwargs
     ) -> Colorbar:
@@ -1705,15 +1762,23 @@ class LegendBuilder:
             for proper centering (e.g., 0 for red-white-blue).
         label : str
             Colorbar label/title.
-        height : float, default=15
-            Colorbar height in millimeters.
-        width : float, default=4.5
-            Colorbar width in millimeters.
+        height : float, optional
+            Colorbar height (the *vertical* extent) in millimeters. The
+            meaning is literal at every orientation; only the default
+            follows it — 15 for a vertical strip, 4.5 for a horizontal
+            one.
+        width : float, optional
+            Colorbar width (the *horizontal* extent) in millimeters.
+            Literal at every orientation, like ``height``; defaults to
+            4.5 for a vertical strip and 15 for a horizontal one.
         title_position : {'top', 'right'}, default='top'
             Position of title. 'top' places label above colorbar
             (horizontal), 'right' uses matplotlib default (vertical).
-        orientation : {'vertical', 'horizontal'}, default='vertical'
-            Colorbar orientation.
+        orientation : {'vertical', 'horizontal'}, optional
+            Colorbar orientation. ``None`` (default) derives it from the
+            band it lands in: horizontal on a ``side='top'``/
+            ``'bottom'`` band, vertical on ``'left'``/``'right'``. An
+            explicit value always wins.
         ticks : list of float, optional
             Custom tick positions. If None and center is provided,
             automatically sets ticks at [vmin, center, vmax].
@@ -1722,8 +1787,13 @@ class LegendBuilder:
             default ``False``) bypasses the mm-based outside-axes band and
             renders the strip inside the axes rectangle, mirroring
             ``add_legend(inside=True)``; pair with ``loc='upper right'``
-            etc. to pick the corner. ``height``/``width`` keep their mm
-            meaning there, and the strip is excluded from layout math.
+            etc. to pick the corner. ``loc`` takes the nine position
+            strings ``ax.legend()`` accepts, the bare ``'right'`` alias,
+            and matplotlib's integer codes 0-10, and resolves each to the
+            corner the categorical legend would use. ``'best'``/``0``
+            has no meaning for a strip and resolves to ``'upper right'``.
+            ``height``/``width`` keep their mm meaning there, and the
+            strip is excluded from layout math.
 
         Returns
         -------
@@ -1760,6 +1830,41 @@ class LegendBuilder:
             else:
                 norm = Normalize(vmin=vmin, vmax=vmax)
             mappable = SM(norm=norm, cmap=cmap_obj)
+
+        # Orientation follows the band's own axis unless the caller names
+        # one (#213). ``self._orientation`` is the ALREADY-RESOLVED band
+        # orientation: ``MultiAxesLegendGroup._DEFAULT_ORIENTATION`` maps
+        # top/bottom -> 'horizontal' and left/right -> 'vertical' before
+        # constructing this builder. Deriving from it rather than from
+        # ``self._side`` is what makes an explicit
+        # ``pp.legend(side='bottom', orientation='vertical')`` still
+        # produce a vertical strip — a vertical band should hold a
+        # vertical strip. A bare ``LegendBuilder`` (the ``inside=True``
+        # plot path) stays 'vertical', which is its historical default.
+        if orientation is None:
+            orientation = self._orientation
+        elif orientation not in ("vertical", "horizontal"):
+            raise ValueError(
+                f"orientation must be None | 'vertical' | 'horizontal', "
+                f"got {orientation!r}"
+            )
+
+        # ``height``/``width`` keep their LITERAL mm meaning at every
+        # orientation — ``height`` is the vertical extent, ``width`` the
+        # horizontal one. Only the DEFAULTS swap, so a horizontal strip
+        # comes out flat and wide instead of tall and narrow. Both
+        # parameters default to ``None`` precisely so this can tell "the
+        # caller said nothing" from "the caller passed 15", which is the
+        # only way to swap a default without also overriding an explicit
+        # value.
+        if orientation == "horizontal":
+            default_height, default_width = 4.5, 15.0
+        else:
+            default_height, default_width = 15.0, 4.5
+        if height is None:
+            height = default_height
+        if width is None:
+            width = default_width
 
         # Inside-axes placement short-circuit, the colorbar counterpart of
         # ``add_legend(inside=True)``. Everything below this point is the
@@ -1867,17 +1972,13 @@ class LegendBuilder:
                 )
                 title_obj.set_position((x_fig, y_fig))
 
-            # Register the title with the reactor so it follows axes changes
-            # (otherwise the colorbar would reposition but the title would stay pinned).
+            # The reactor registration is deliberately deferred to after
+            # the strip exists: a horizontal strip on a top band shifts
+            # the WHOLE block outward by its inward tick-label overhang
+            # (see below), and that overhang can only be measured once
+            # the colorbar has been drawn. Registering here would pin the
+            # label to the pre-shift outward line.
             title_mm_y_from_top = self._layout.along_from_start + title_along_shift
-            self._reactor.register(
-                ax=self._anchor_ax,
-                artist=title_obj,
-                mm_x_from_right=title_outward_mm,
-                mm_y_from_top=title_mm_y_from_top,
-                side=self._side,
-                external_to_axis=self._external_to_axis,
-            )
 
         # Place the strip relative to the measured label: further outward
         # on a bottom band, further along the edge on right/left, and
@@ -1953,6 +2054,71 @@ class LegendBuilder:
         self._fig_canvas_draw_for_measure()
         cbar_width, cbar_height = width, height
 
+        # A horizontal strip carries its tick labels BELOW itself. On a
+        # bottom band "below" is further outward, past everything else in
+        # the block; on a top band it points back TOWARD the axes, so the
+        # block's tight bbox dips below the outward line the strip's
+        # rectangle was placed on and the tick numbers land inside the
+        # axes rectangle (1.61mm into a 40mm axes, measured). Step the
+        # whole block — strip and label together — outward by that
+        # overhang, so what clears the axes edge is the block's tight
+        # bbox and not just the bare colour rectangle. (#213)
+        #
+        # Measured rather than derived from ``orientation``: a caller who
+        # asks for a vertical strip on a top band, or who passes
+        # ``ticklocation='top'``, has no inward overhang and the whole
+        # correction collapses to zero. Only side='top' needs it — every
+        # other side already carries its tick labels either outward
+        # (right, bottom) or along the edge, and a left band's inward
+        # overhang is absorbed by the y-decoration offset the band is
+        # already pushed past.
+        inward_overhang_mm = 0.0
+        if self._side == "top":
+            tight = cbar_ax.get_tightbbox()
+            if tight is not None:
+                strip_extent = cbar_ax.get_window_extent()
+                inward_overhang_mm = max(
+                    0.0,
+                    (strip_extent.y0 - tight.y0) / self.fig.dpi / self.MM2INCH,
+                )
+        if inward_overhang_mm:
+            cbar_outward_mm += inward_overhang_mm
+            # Re-derive the strip's rectangle at the shifted offset. Only
+            # side='top' reaches here, and there ``_mm_to_figure_coords``
+            # returns the strip's bottom-left corner directly — which is
+            # what ``set_position`` wants. The figure extent is re-read
+            # because the draw above may have grown the figure to fit
+            # the band.
+            fig_extent = self.fig.get_window_extent()
+            x_fig, y_fig = self._mm_to_figure_coords(cbar_outward_mm, cbar_y_start)
+            cbar_ax.set_position([
+                x_fig,
+                y_fig,
+                (width * self.MM2INCH * self.fig.dpi) / fig_extent.width,
+                (height * self.MM2INCH * self.fig.dpi) / fig_extent.height,
+            ])
+            if title_obj is not None:
+                title_outward_mm += inward_overhang_mm
+                x_fig, y_fig = self._mm_to_figure_coords(
+                    title_outward_mm,
+                    self._layout.current_along - title_along_shift,
+                )
+                title_obj.set_position((x_fig, y_fig))
+
+        # Deferred from the title block above so it picks up the shifted
+        # outward offset. The reactor owns the label's position from the
+        # first draw onward, so this registration — not the set_position
+        # calls — is what keeps the block clear of the axes.
+        if title_obj is not None:
+            self._reactor.register(
+                ax=self._anchor_ax,
+                artist=title_obj,
+                mm_x_from_right=title_outward_mm,
+                mm_y_from_top=title_mm_y_from_top,
+                side=self._side,
+                external_to_axis=self._external_to_axis,
+            )
+
         # Calculate actual total width (max of title and colorbar)
         actual_width = max(cbar_width, title_width_actual)
 
@@ -1978,7 +2144,9 @@ class LegendBuilder:
         # stack's extent lands on whichever axis carries it: outward for
         # top/bottom bands, along the edge for right/left.
         if stack_outward:
-            self._layout.update_width(total_height_actual)
+            # The inward tick overhang sits between the outward line and
+            # the strip, so it is part of the block's outward extent.
+            self._layout.update_width(total_height_actual + inward_overhang_mm)
             self._layout.advance_along(actual_width)
         else:
             self._layout.update_width(actual_width)
@@ -2000,6 +2168,7 @@ class LegendBuilder:
 
         # Store elements
         self.elements.append(("colorbar", cbar))
+        self._colorbar_names[id(cbar)] = label
         if title_obj:
             self.elements.append(("text", title_obj))
             # Remember which strip this floating label belongs to. The two
@@ -2007,6 +2176,8 @@ class LegendBuilder:
             # along-edge alignment pass has no way to tell one band's label
             # from another's (#214).
             self._colorbar_labels[id(cbar)] = title_obj
+        if inward_overhang_mm:
+            self._colorbar_inward_pad[id(cbar)] = inward_overhang_mm
 
         return cbar
 

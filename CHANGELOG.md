@@ -7,7 +7,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A colorbar's orientation now follows the side of the band it lands in**
+  (#213). `add_colorbar`'s `orientation` defaulted to `'vertical'` regardless
+  of `side`, so `pp.legend(ax, side='top')` and `side='bottom'` rendered a
+  4.5 x 15mm strip standing on end across the top of the figure while the band
+  around it stacked horizontally — the mismatch was the visible bug. The
+  parameter now defaults to `None`, meaning "derive": horizontal on a
+  `side='top'`/`'bottom'` band, vertical on `'left'`/`'right'`. An explicit
+  `orientation='vertical'`/`'horizontal'` still wins.
+  The default is derived from the *band's* resolved orientation, not from
+  `side` directly, so `pp.legend(side='bottom', orientation='vertical')` still
+  gets a vertical strip — a vertical band should hold a vertical strip. That
+  also fixes the per-axes and plot-call paths
+  (`pp.scatterplot(..., legend_kws={'side': 'top'})`), which render through the
+  same builder. A plot call's `legend_kws={'inside': True}` renders through a
+  bare `LegendBuilder` with no band to follow, so it stays vertical; an
+  explicitly constructed `pp.legend(anchor=ax, side='top', inside=True)` has
+  named a side and now renders a flat strip along the top of the panel rather
+  than one standing on end inside it.
+
+  **Behaviour change, with a migration.** `height` and `width` keep their
+  *literal* mm meaning at every orientation — `height` is the vertical extent,
+  `width` the horizontal one. Only the **defaults** swap: `height=15,
+  width=4.5` becomes `height=4.5, width=15` when the resolved orientation is
+  horizontal. So a caller who passed `height=20` for a top or bottom band now
+  gets a 20mm-**tall** horizontal strip rather than a 20mm-long one. That is
+  what the argument literally says, and it is visible immediately rather than
+  being a silent change of meaning; the rejected alternative was reinterpreting
+  the two as along-edge/cross-edge extents, which would make `height=20` mean
+  two different things depending on a value the caller may not have passed.
+  Migration: on a `side='top'`/`'bottom'` band, `height=20` becomes
+  `width=20`. Left/right bands are unaffected — their geometry is unchanged to
+  the last measured 0.01mm.
+
+  The band's packing arithmetic needed no change: `add_colorbar` already
+  treated `width` as the along-edge extent and `height` as the outward one on a
+  top/bottom band, and both stay literal.
+
 ### Fixed
+
+- **A pinned `xlabel_space` / `ylabel_space` no longer disables legend-band
+  collision avoidance** (#222). One flag (`SubplotsAutoLayout._locked` /
+  `_locked_positions`) was doing two jobs: "do not grow this reservation",
+  which is what a caller asks for by pinning, and "do not move the band clear
+  of the decorations", which nobody asks for. With `xlabel_space=14.0` pinned
+  on a 50x40 mm axes, `pp.legend(ax, side="bottom")` dropped the band 2.00 mm
+  below the axes, on top of x tick labels reaching 3.61 mm and an xlabel
+  reaching 7.39 mm; the same happened on the left with `ylabel_space` pinned.
+  The lock guards now only suppress the reservation write, and the band's
+  outward offset is measured directly off the anchor's decorations, so a
+  pinned row/column keeps exactly its declared mm *and* gets collision
+  avoidance. Covers both the in-frame `pp.legend(ax)` form and the multi-axes
+  `pp.legend(anchor=..., axes=[...])` band, and per-position pins
+  (`ylabel_space=(14.0, None)`) as well as whole-side ones.
+
+  A pinned reservation does not grow around the band, and `savefig.bbox` is
+  `"standard"`, so the step outward is clamped to keep the band on the canvas
+  — anything past the figure edge would be cropped out of the saved file, and
+  deleted legend content is worse than an overlapping bounding box. The
+  resulting order of preference is: stay inside the figure first, then step as
+  far past the tick labels and axis label as the pinned space allows. So a pin
+  with room for both gets full collision avoidance; a tighter pin gets a
+  partial step and the smallest residual overlap that fits (on a 50x40 mm
+  axes, `xlabel_space=14.0` steps 6.54 mm of the 7.39 mm wanted); and a pin
+  too small to hold even the band on its own degrades to exactly the old
+  placement, adding no clipping of its own and never pulling the band further
+  inward than before. That last case — a band physically larger than the space
+  pinned for it — clips as it always has; the fix does not make it worse, and
+  the remedy is a larger pin or a smaller band.
+
+- **An inside colorbar now accepts matplotlib's numeric `loc` codes** (#223).
+  `legend_kws={'inside': True, 'loc': 1}` rendered fine for a categorical hue
+  — that path forwards `loc` straight to `ax.legend()`, which takes integers
+  as well as strings — but raised `ValueError: inside colorbar loc must be one
+  of ...` for a continuous one, so switching a column from categorical to
+  continuous broke a working call with no other change. The inside-colorbar
+  path now resolves an integer through matplotlib's own
+  `Legend.codes` mapping, landing the strip in the corner
+  `ax.legend(loc=<code>)` would pick — codes `1`-`10` verified equivalent by
+  measuring both marks in figure pixels. `loc=0`/`'best'` keeps resolving to
+  `'upper right'` rather than raising: a strip has no handles to search
+  around, so it cannot reproduce the real search. Invalid input (a bad string, an out-of-range integer, a float, a
+  coordinate tuple, `None`) still raises the same readable `ValueError`, which
+  now also names the accepted integer range. A float `0.0` used to slip
+  through as `'best'` via `loc in ("best", 0)`, because `0.0 == 0`; it is now
+  rejected, matching matplotlib 3.8+, which validates with
+  `isinstance(loc, int)`. On the declared `matplotlib>=3.7.0` floor, which
+  predates `Legend.set_loc`, a categorical `loc=0.0` is still accepted, so
+  that one input stays asymmetric there.
+
+- **A continuous hue no longer renders twice when the band is created after the
+  plots** (#217). `pp.legend(...)` evicts the per-axes legend artists it is
+  about to render itself, but that sweep walked `ax.get_children()` for
+  `Legend` instances only — and a colorbar never is one. An outside per-axes
+  colorbar is a `fig.add_axes` strip plus a free-standing `fig.text` label; an
+  `inside=True` one is an `ax.inset_axes` child. So three plotted panels plus a
+  band produced three orphan strips beside their panels alongside the band's
+  own copy, each orphan keeping its `LayoutReactor` registration and therefore
+  its share of the cell reservation. Colorbars are now matched by entry name
+  the way legends are matched by title text, and strip, label and registrations
+  all go together, so the panels reclaim the space: a `pp.subplots(2, 2,
+  axes_size=(35, 30))` grid with an inside band lands on the same 85.1 x 74.2mm
+  figure and the same panel rectangles as the legend-first ordering, which
+  never had the bug. A colorbar the band did *not* claim — a different entry
+  name, or a panel outside an `ax=`-scoped band — is left in place.
+
+- **A horizontal colorbar on a `side='top'` band no longer draws its tick
+  labels across the axes** (#213). A horizontal strip carries its tick labels
+  below itself, which on a top band points back *toward* the axes: with the
+  strip's bare colour rectangle placed on the band's 2mm outward line, the
+  labels reached 1.61mm inside a 40mm-tall axes and "0.0 0.5 1.0" was drawn
+  over the top spine. The whole block — strip and label together — is now
+  stepped outward by that measured overhang, so what clears the axes edge is
+  the block's tight bbox rather than the bare rectangle. Measured rather than
+  derived from `orientation`, so a vertical strip on a top band, or an explicit
+  `ticklocation='top'`, collapses the correction to zero. The along-edge
+  alignment pass reads the strip's outward offset net of that pad, so the block
+  stays in the band's base row and a categorical legend sharing the band is
+  still sequenced beside it instead of being drawn under it.
+
+  Still outstanding, and unchanged here: two colorbars sequenced along one
+  top/bottom band are spaced by their colour rectangles, so their end tick
+  labels still overlap — 1.45mm for two default 15mm strips, down from 2.56mm
+  when the strips were vertical. That is the "a colorbar's extent is its strip
+  rect, not its tight bbox" question tracked in #221.
 
 - **A bar whose value is exactly `0` no longer shifts every label onto the
   neighbouring bar** (#199). `_is_bar_rect` rejected any Rectangle with a zero
