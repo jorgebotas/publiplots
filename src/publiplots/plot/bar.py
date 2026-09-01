@@ -647,6 +647,9 @@ def barplot(
         # Re-read after apply_border_radius, which swaps in new patch
         # objects; get_new_patches() recomputes against the live axes.
         bar_patches=tracker.get_new_patches(),
+        # This call's own errorbars, so a previous barplot on the same axes
+        # cannot supply the anchor for these labels.
+        err_artists=tracker.get_new_lines() + tracker.get_new_collections(),
     )
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn

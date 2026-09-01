@@ -42,6 +42,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   visible. `pp.pointplot` and `pp.lineplot` now layer only the lines seaborn
   drew for that call, and the copies declare their own color so they neither
   advance the property cycle nor misreport `get_color()`.
+- **`pp.annotate` on a foreign axes no longer labels empty histogram bins**
+  (#199 follow-up). Keeping exactly-zero bars also admitted zero-height bins
+  on the `_introspect` path, so `pp.annotate` over a plain `plt.hist` of
+  `[0, 0, 0, 9]` drew eight `0.00` labels across the gaps. That path cannot
+  tell a zero-valued bar from an empty bin — the rects are the same shape —
+  so it drops both, as before; `pp.barplot` knows it drew a bar chart and
+  still labels the zero, which is where the issue was reported.
+- **All-zero bars no longer report their own thickness as their value**
+  (#199 follow-up). With every value zero the width and height spreads tie,
+  so `_infer_orient` fell back to `"v"` and read a horizontal bar's 0.8
+  thickness as its value, labelling `ax.barh([0,1,2],[0,0,0])` with three
+  `0.80`s. The tie is now broken on where the bars are *positioned*, since
+  they march along the categorical axis.
+- **A second `pp.barplot` on one axes no longer anchors its labels on the
+  first call's error bars** (#199 follow-up). `_match_errorbars` rescanned
+  every line on the axes and took the first segment aligned with a bar's
+  centre, so labels reading `5.06` were positioned at y≈1.17 — beside a
+  different bar entirely, with the rect and group counts still matching so
+  nothing warned. Both the bar and point matchers now take the errorbar
+  artists the call itself drew.
+- **An unused `Categorical` level or an all-NaN group no longer shifts every
+  label** (#199 follow-up). `BarSplitSpec.iter_draw_order`'s no-split branch
+  yielded every declared category without checking that any row matched,
+  unlike its hue and hatch branches, and NaN rows were counted although
+  seaborn drops them before drawing. Filtering a `Categorical` column, or a
+  group whose values are all NaN, therefore invented a group with no bar and
+  paired every later category one bar early — labelling `C`'s bar as `B`, and
+  rendering `?` for a frame-keyed `bar_custom` label. Rows with a NaN value
+  are dropped and categories with no rows are skipped, which also silences
+  the new count-mismatch warning on those calls.
 - **`ax._publiplots_point_meta` now describes the `pp.pointplot` call that
   built it** (#103). `_iter_point_marker_series` also rescanned the whole axes,
   so after a second call it found six seaborn marker series and paired the

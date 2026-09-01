@@ -93,12 +93,15 @@ def test_zero_bar_keeps_pairing_with_hue():
     ]
 
 
-def test_missing_hue_combo_still_excluded():
-    """Regression guard for the fix's premise.
+def test_missing_hue_combo_pairs_only_real_groups():
+    """A (cat, hue) combo with no observations yields no record.
 
-    Seaborn emits a rect with *both* extents zero for a (cat, hue) combo
-    with no observations, and ``_aggregate_group_keys`` skips those combos.
-    Those rects must stay filtered out or the pairing desyncs the other way.
+    Note this does NOT exercise the both-extents-zero branch of
+    `_is_bar_rect`: ``pp.barplot`` emits 4 patches here, none degenerate,
+    because its category preparation never hands seaborn an empty combo.
+    The filter's premise is exercised against raw ``sns.barplot`` in
+    ``tests/annotate/test_pairing_scope.py``. What this pins is that the
+    group aggregation skips the empty combos, so pairing stays 1:1.
     """
     df = pd.DataFrame({
         "cat": ["A", "A", "B", "C"],
@@ -109,7 +112,7 @@ def test_missing_hue_combo_still_excluded():
     pp.barplot(data=df, x="cat", y="val", hue="grp", legend=False, ax=ax)
 
     meta = ax._publiplots_bar_meta
-    # 6 rects drawn (3 cats x 2 hues), only 4 real groups.
+    assert len(ax.patches) == 4, "premise: publiplots emits no degenerate rects"
     assert len(meta.bars) == 4
     assert [(b.category, b.hue_value, b.value) for b in meta.bars] == [
         ("A", "x", 1.0),

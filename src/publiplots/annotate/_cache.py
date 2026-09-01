@@ -155,10 +155,13 @@ def _is_bar_rect(p) -> bool:
     causing annotate strategies to skip every negative bar.
 
     Only *fully* degenerate rects are rejected — zero on **both** axes.
-    That is precisely the shape seaborn emits for a ``(category, hue)``
-    combination with no observations: ``x=0, y=0, width=0, height=0``,
-    which ``BarSplitSpec.iter_draw_order`` also skips, so the two lists
-    stay aligned.
+    That is the shape *raw seaborn* emits for a ``(category, hue)``
+    combination with no observations: ``x=0, y=0, width=0, height=0``.
+    ``BarSplitSpec.iter_draw_order`` skips those combos too, so the rect
+    and group lists stay aligned on either path. Note ``pp.barplot`` does
+    not itself produce such rects (its category preparation means seaborn
+    sees no empty combo), so this branch only bites via `_introspect` on a
+    foreign ``sns.barplot`` axes — which is where the test for it lives.
 
     A single zero extent is NOT degenerate. A group whose aggregate is
     exactly 0 is a real group that happens to be zero, and matplotlib
@@ -176,8 +179,15 @@ def _is_bar_rect(p) -> bool:
     return p.get_width() != 0 or p.get_height() != 0
 
 
-def _iter_error_segments(ax: Axes):
+def _iter_error_segments(ax: Axes, artists: Optional[List] = None):
     """Yield (xs, ys) arrays for every candidate errorbar segment on `ax`.
+
+    ``artists`` restricts the scan to a known set of Line2D / LineCollection
+    objects — the ones the current drawing call produced. Pass it whenever
+    the axes may hold errorbars from an earlier call: the matcher below takes
+    the *first* aligned segment, so an earlier call's errorbar at the same
+    categorical position wins and anchors this call's label at the wrong
+    value. Defaults to everything on ``ax``.
 
     Matplotlib/seaborn render errorbars as either:
       - Line2D artists in `ax.lines` (e.g., seaborn's bar/point errorbars), or
@@ -215,9 +225,13 @@ def _iter_error_segments(ax: Axes):
         if len(run_xs) >= 2:
             yield run_xs, run_ys
 
-    for ln in ax.lines:
+    candidates = (list(ax.lines) + list(ax.collections)
+                  if artists is None else list(artists))
+    for ln in candidates:
+        if not isinstance(ln, Line2D):
+            continue
         yield from _finite_runs(ln.get_xdata(), ln.get_ydata())
-    for col in ax.collections:
+    for col in candidates:
         if not isinstance(col, LineCollection):
             continue
         for seg in col.get_segments():
@@ -230,6 +244,7 @@ def _match_errorbars(
     ax: Axes,
     rects: List[Rectangle],
     orient: Literal["v", "h"],
+    artists: Optional[List] = None,
 ) -> List[Tuple[Optional[float], Optional[float]]]:
     """For each rect, find an errorbar line whose midpoint aligns with the bar's center.
 
@@ -237,6 +252,9 @@ def _match_errorbars(
     whole vertical/horizontal bars or individual cap segments. We match by
     proximity of the segment's midpoint to each rect's center on the
     categorical axis.
+
+    ``artists`` scopes the candidate segments to the current call's own
+    errorbars; see `_iter_error_segments`.
     """
     if not rects:
         return []
@@ -247,7 +265,7 @@ def _match_errorbars(
         heights = [r.get_height() for r in rects]
         tol = 0.5 * min(heights) if heights else 0.0
 
-    segments = list(_iter_error_segments(ax))
+    segments = list(_iter_error_segments(ax, artists))
 
     result: List[Tuple[Optional[float], Optional[float]]] = []
     for r in rects:
@@ -282,13 +300,38 @@ def _infer_orient(rects: List[Rectangle]) -> Literal["v", "h"]:
     heights = [r.get_height() for r in rects]
     w_spread = max(widths) - min(widths)
     h_spread = max(heights) - min(heights)
-    return "v" if w_spread <= h_spread else "h"
+    if w_spread != h_spread:
+        return "v" if w_spread < h_spread else "h"
+
+    # Extents tie. That happens when every bar's value is identical — and in
+    # particular when every value is 0, where the varying extent carries no
+    # signal at all. Fall back to where the bars are *positioned*: they march
+    # along the categorical axis, so the axis whose origins spread is the
+    # categorical one. Without this, all-zero horizontal bars inferred "v"
+    # and reported each bar's thickness as its value.
+    xs = [r.get_x() for r in rects]
+    ys = [r.get_y() for r in rects]
+    x_spread = max(xs) - min(xs)
+    y_spread = max(ys) - min(ys)
+    if x_spread != y_spread:
+        return "v" if x_spread > y_spread else "h"
+    return "v"  # single bar, or genuinely square — no signal either way
 
 
 def _introspect(ax: Axes) -> BarValueMeta:
     """Build a BarValueMeta from an already-drawn Axes."""
-    rects = [p for p in ax.patches if _is_bar_rect(p)]
-    orient = _infer_orient(rects)
+    # Two-step, because the value axis is not known until the orientation is.
+    # `_is_bar_rect` keeps a bar whose value is exactly 0 (#199), which is
+    # right for a bar chart but wrong for a histogram: an empty bin is a
+    # full-width rect with a zero value extent, and labelling every gap in a
+    # sparse histogram with "0" is noise. Infer the orientation from every
+    # bar-shaped rect, then drop the ones with no value extent.
+    candidates = [p for p in ax.patches if _is_bar_rect(p)]
+    orient = _infer_orient(candidates)
+    rects = [
+        p for p in candidates
+        if (p.get_height() if orient == "v" else p.get_width()) != 0
+    ]
     err_by_bar = _match_errorbars(ax, rects, orient)
     bars: List[BarRecord] = []
     for i, (r, (err_low, err_high)) in enumerate(zip(rects, err_by_bar)):

@@ -64,6 +64,15 @@ def _aggregate_group_keys(
         x=x, y=y, hue=hue, hatch=hatch, categorical_axis=categorical_axis,
     )
 
+    # Seaborn drops rows with a NaN value before drawing, so a group whose
+    # values are all NaN gets no bar. Mirror that here, or the group is
+    # counted with no rect to pair it to and every later group shifts by one.
+    # Rows are dropped, not groups: a group with some NaN and some real
+    # values still has a bar and stays.
+    value_axis = y if categorical_axis == x else x
+    if value_axis is not None and value_axis in getattr(data, "columns", ()):
+        data = data[data[value_axis].notna()]
+
     rows: List[Dict] = []
     for cat, h_val, ht_val in spec.iter_draw_order(data):
         parts = [data[categorical_axis] == cat]
@@ -103,6 +112,7 @@ def _match_point_errorbars(
     points_xy: List,
     orient: str,
     tol: float,
+    artists: Optional[List] = None,
 ) -> List:
     """For each (x, y) point, find its errorbar segment.
 
@@ -110,8 +120,13 @@ def _match_point_errorbars(
     then (b) segment midpoint closest to py on the value axis. The second
     step disambiguates overlapping hue series that share an x-position.
     Returns [(err_low, err_high), ...] in point order.
+
+    ``artists`` scopes the candidates to the current call's own lines. Unlike
+    the bar matcher this one picks the *nearest* midpoint rather than the
+    first hit, so it happened to survive a second call on the same axes —
+    but only by luck, and not once two calls dodge to overlapping positions.
     """
-    segments = list(_iter_error_segments(ax))
+    segments = list(_iter_error_segments(ax, artists))
     results: List = []
     for (px, py) in points_xy:
         best = None
@@ -305,7 +320,8 @@ def build_from_pointplot_call(
 
     # Tolerance on the categorical axis: 0.5 is conservative (integer positions)
     tol = 0.5
-    err_by_point = _match_point_errorbars(ax, points_xy, orient, tol)
+    err_by_point = _match_point_errorbars(ax, points_xy, orient, tol,
+                                          marker_lines)
 
     points: List[PointRecord] = []
     for i, (xy, row, (err_low, err_high)) in enumerate(
@@ -360,6 +376,7 @@ def build_from_barplot_call(
     *,
     source_frame,
     bar_patches: Optional[List] = None,
+    err_artists: Optional[List] = None,
 ) -> BarValueMeta:
     """Build a `BarValueMeta` paired with the barplot's Rectangles.
 
@@ -390,6 +407,13 @@ def build_from_barplot_call(
         take a bar's slot and shift every label onto its neighbour.
         Defaults to scanning ``ax.patches``, which only holds for an axes
         nothing else has drawn on.
+    err_artists : list, optional
+        The errorbar artists this call drew
+        (``ArtistTracker`` new lines + collections). `_match_errorbars` takes
+        the *first* segment aligned with a bar's centre, so an earlier call's
+        errorbar at the same categorical position would win and anchor this
+        call's label at the earlier call's value. Defaults to scanning the
+        whole axes.
     """
     orient = "v" if categorical_axis == x else "h"
 
@@ -408,7 +432,7 @@ def build_from_barplot_call(
     # as are bars whose value is exactly 0 (see issue #199).
     candidates = ax.patches if bar_patches is None else bar_patches
     rects = [p for p in candidates if _is_bar_rect(p)]
-    err_by_bar = _match_errorbars(ax, rects, orient)
+    err_by_bar = _match_errorbars(ax, rects, orient, err_artists)
 
     # The zip below pairs rects to group keys by position, so a count
     # mismatch means every label from the divergence onward sits on the
@@ -421,8 +445,9 @@ def build_from_barplot_call(
             f"match the number of data groups ({len(agg)}). These are paired "
             "by draw order, so any value labels on this axes — now or from a "
             "later pp.annotate call — may sit on the wrong bar or be "
-            "omitted. This should not happen; please report it with a "
-            "reproducer.",
+            "omitted. If the plotted data has a group that seaborn drew no "
+            "bar for, that is the likely cause; otherwise please report it "
+            "with a reproducer.",
             UserWarning,
             stacklevel=3,
         )
