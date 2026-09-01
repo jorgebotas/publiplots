@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `side='top'` or `side='bottom'` legend band now keeps every colorbar
+  label over its own colour strip, however many elements the band holds**
+  (#214). 0.16.1 stacked the label outward from the strip, giving it its own
+  outward row; the along-edge alignment pass buckets registrations by outward
+  offset and centres each bucket independently, so the pairing survived only
+  while each row had a single member. With a second element the two rows had
+  different totals and the pair came apart — an entirely ordinary
+  `pp.scatterplot(hue=<continuous>, style=<categorical>)` followed by
+  `pp.legend(ax, side='top')` put the label 17.4mm from its strip at the
+  default `align='center'`, and 34.6mm at `align='end'`. Ten colorbars in one
+  band left no label over its own strip at all.
+  The alignment pass now lays out **blocks** rather than individual
+  registrations: a colorbar and its label are one block, they occupy the
+  wider of the two extents in the strip's row, the label claims no row slot
+  of its own, and both are centred on the block's centre line. `add_colorbar`
+  centres the same way at build time, which also fixes `align='start'` — that
+  path returns before the alignment pass, so a label wider than the 4.5mm
+  strip was left 13.4mm off-centre there on every side.
+  **Scope of the movement:** only top/bottom bands that contain a labelled
+  colorbar change. Verified across 211 configurations against 0.16.1 — all
+  four sides, 1/3/8/20 entries, `align` ∈ {start, center, end}, multi-row
+  wrap, `inside=True`, per-axes, row-scoped and figure-level anchors — every
+  categorical-only band is byte-identical, as are all `right`/`left` bands
+  (where the label stacks along the edge instead and was already paired).
+  Every changed configuration goes from up to 34.9mm of drift to 0.00mm.
+- **A top/bottom colorbar block now reserves the along-edge space it
+  actually occupies during alignment.** The pass measured the block by the
+  4.5mm strip alone, discarding the wider reservation the layout cursor had
+  already made for the label, so a long label could be re-centred straight
+  over a neighbouring categorical legend. It is now measured as the wider of
+  strip and label, matching the cursor.
+
+  Known limitation, unchanged: the alignment pass still measures a colorbar
+  by its strip rectangle rather than its tight bbox, so the strip's tick
+  labels fall outside the alignment budget and the visible block sits
+  ~2.3mm off-centre. That is pre-existing on all four sides and tracked
+  separately.
+
 ## [0.16.1] - 2026-08-31
 
 ### Fixed
@@ -93,11 +133,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ~3mm to the right, and a bottom band overlapped the two. Both sides now
   stack the block outward from the edge, so label and strip share a centre
   line.
-  **Scope:** this covers a band holding a single colorbar — the common case,
-  and what `pp.legend(ax, side='top')` produces for a continuous hue. A band
-  that also holds a categorical legend (a plot with both `hue=<continuous>`
-  and `style=`) still separates the strip from its label, for a different
-  reason in the along-edge alignment pass; that is tracked separately.
+  **Scope:** as released, this covered a band holding a single colorbar —
+  the common case, and what `pp.legend(ax, side='top')` produces for a
+  continuous hue. A band that also held a categorical legend (a plot with
+  both `hue=<continuous>` and `style=`) still separated the strip from its
+  label, for a different reason in the along-edge alignment pass. That
+  restriction is lifted in Unreleased (#214); the stacking now holds for any
+  number of elements.
   (#203)
 - **`add_colorbar(height=...)` is now honoured exactly.** The strip's
   millimetre height was read back from the rendered axes, which stores a

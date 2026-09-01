@@ -1176,6 +1176,19 @@ class MultiAxesLegendGroup:
         side=right/left (top of anchor) and ``ax_pos.x0`` for
         side=top/bottom (left of anchor). "Along-edge mm from start"
         increases as we move AWAY from that corner.
+
+        Rows are made of *blocks*, not of raw registrations. A colorbar on
+        a top/bottom band is stacked outward from its label, so the two
+        sit in different rows (``add_colorbar``); centring each row on its
+        own total then pulls them apart as soon as the band holds a second
+        element, because the rows no longer have equal totals (#214). Such
+        a pair is therefore treated as one block: it occupies the wider of
+        the two extents in the strip's row, the label takes no row slot of
+        its own, and both are centred on the block's centre line — which
+        is what keeps a label over its own strip for every ``align`` and
+        for any number of elements. A block with a single member reduces
+        to the historical behaviour exactly (offset ``cursor``, extent its
+        own), so categorical bands are untouched.
         """
         if self._align == "start":
             return
@@ -1192,28 +1205,67 @@ class MultiAxesLegendGroup:
         edge_length_mm = self._builder._get_edge_length()
         gap_mm = self._builder._layout.gap
 
-        # Group regs into rows sharing the same outward offset.
+        # id(colorbar) -> the registration of the label that belongs to it,
+        # for the sides where the label lives in its own outward row.
+        label_regs = self._paired_label_regs(regs)
+        slaved_ids = {id(r.artist) for r in label_regs.values()}
+
+        # Group regs into rows sharing the same outward offset. A label
+        # that is paired to a strip is skipped: it rides along with the
+        # strip's block instead of claiming a slot in its own row.
         rows = {}
         for reg in regs:
+            if id(reg.artist) in slaved_ids:
+                continue
             key = round(reg.mm_x_from_right, 3)
             rows.setdefault(key, []).append(reg)
 
+        def _extent_of(reg, horizontal=None):
+            # force_draw=False: this runs as a post-refresh reactor
+            # callback, so matplotlib's renderer cache is already
+            # current. Forcing a fresh fig.canvas.draw() here would
+            # trigger O(panels) nested full redraws on every settle
+            # iteration (Issue A: side='top'/'bottom' 5x slowdown).
+            #
+            # ``horizontal`` defaults to the band's orientation, which is
+            # what every element has always been measured on. Members of a
+            # label/strip pair override it: their stack is a fact about
+            # ``side``, and a paired band is only ever top/bottom, where
+            # the along-edge axis is horizontal no matter what orientation
+            # the caller asked for.
+            if horizontal is None:
+                horizontal = orient == "horizontal"
+            w, h = self._builder._measure_object_dimensions(
+                reg.artist, force_draw=False
+            )
+            return w if horizontal else h
+
         for row_regs in rows.values():
-            # Measure each legend's along-edge extent.
-            extents = []
+            # Build the row's blocks: (block extent, [(reg, own extent)]).
+            blocks = []
             for reg in row_regs:
-                # force_draw=False: this runs as a post-refresh reactor
-                # callback, so matplotlib's renderer cache is already
-                # current. Forcing a fresh fig.canvas.draw() here would
-                # trigger O(panels) nested full redraws on every settle
-                # iteration (Issue A: side='top'/'bottom' 5x slowdown).
-                w, h = self._builder._measure_object_dimensions(
-                    reg.artist, force_draw=False
-                )
-                extents.append(w if orient == "horizontal" else h)
-            total = sum(extents) + gap_mm * (len(row_regs) - 1)
+                label_reg = label_regs.get(id(reg.artist))
+                if label_reg is None:
+                    own = _extent_of(reg)
+                    blocks.append((own, [(reg, own)]))
+                    continue
+                own = _extent_of(reg, horizontal=True)
+                label_extent = _extent_of(label_reg, horizontal=True)
+                blocks.append((
+                    max(own, label_extent),
+                    [(reg, own), (label_reg, label_extent)],
+                ))
+            total = sum(b[0] for b in blocks) + gap_mm * (len(blocks) - 1)
             if total >= edge_length_mm:
-                # Block already fills the edge — no room to align.
+                # Block already fills the edge — no room to align. The
+                # pairing still has to hold, so re-seat each label on the
+                # strip it belongs to and leave the strips where they are.
+                for _, members in blocks:
+                    if len(members) > 1:
+                        (strip_reg, strip_ext), (label_reg, label_ext) = members
+                        label_reg.mm_y_from_top = (
+                            strip_reg.mm_y_from_top + (strip_ext - label_ext) / 2
+                        )
                 continue
             if self._align == "center":
                 start = (edge_length_mm - total) / 2
@@ -1222,11 +1274,40 @@ class MultiAxesLegendGroup:
             else:
                 start = self._builder._layout.vpad
             cursor = start
-            for reg, extent in zip(row_regs, extents):
-                reg.mm_y_from_top = cursor
-                cursor += extent + gap_mm
+            for block_extent, members in blocks:
+                for member_reg, member_extent in members:
+                    # Centre every member on the block's centre line. For a
+                    # lone member that is exactly ``cursor``.
+                    member_reg.mm_y_from_top = (
+                        cursor + (block_extent - member_extent) / 2
+                    )
+                cursor += block_extent + gap_mm
 
         reactor._refresh_all()
+
+    def _paired_label_regs(self, regs) -> dict:
+        """Map ``id(colorbar)`` to the reactor registration of its label.
+
+        Only for ``side='top'``/``'bottom'``: there ``add_colorbar`` stacks
+        the label and the strip along the *outward* axis, so they share one
+        along-edge slot and must be positioned as a unit. On
+        ``side='right'``/``'left'`` the stack runs along the edge instead —
+        label and strip already share an outward offset, land in the same
+        row, and are laid out one after the other by the ordinary
+        sequential pass. Returning ``{}`` there keeps that path byte-identical.
+        """
+        if self._side not in ("top", "bottom"):
+            return {}
+        labels = self._builder._colorbar_labels
+        if not labels:
+            return {}
+        by_artist_id = {id(r.artist): r for r in regs}
+        paired = {}
+        for cbar_id, label_text in labels.items():
+            label_reg = by_artist_id.get(id(label_text))
+            if label_reg is not None and cbar_id in by_artist_id:
+                paired[cbar_id] = label_reg
+        return paired
 
     def _set_decoration_offset(self, mm: float) -> None:
         """Bake ``mm`` into every reactor registration this group owns.
