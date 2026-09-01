@@ -335,6 +335,16 @@ def apply_border_radius(
        per bar (and a subsequent
        :func:`~publiplots.utils.transparency.apply_transparency` call
        picks up the new artist via the tracker snapshot diff).
+    4. Move the replacement back to the original patch's index within
+       ``ax._children``, because ``add_patch`` appends.
+
+    **Step 4 is load-bearing, not cosmetic** — do not drop it in a refactor.
+    Any patch this helper skips (a degenerate box, or a kind it does not
+    round) keeps its original slot while converted siblings move to the end.
+    The resulting permutation of ``ax.patches`` mislabels every annotate
+    record downstream, since the meta builders pair records to patches by
+    draw order (issue #236), and it inverts the paint order of overlapping
+    artists that share a zorder.
 
     No-op when ``radius_mm`` is ``(0, 0)`` (or effectively zero on both
     sides) — callers can use the same call site for the default flat
@@ -399,6 +409,13 @@ def apply_border_radius(
             f"orient must be 'v' or 'h', got {orient!r}"
         )
 
+    # `ax.patches` is a filtered view over `ax._children`; we reorder the
+    # latter below to keep each replacement at its original index. Resolved
+    # once, outside the loop: it is private API, so `None` here simply means
+    # a matplotlib that no longer backs the artist lists this way, and the
+    # conversion degrades to append order.
+    children = getattr(ax, "_children", None)
+
     # Iterate over a materialized copy — we mutate ax.patches via
     # rect.remove() + ax.add_patch() below.
     for patch in list(patches):
@@ -452,8 +469,36 @@ def apply_border_radius(
                 # Older mpl without the attr — harmless to skip.
                 pass
 
+        # `remove()` + `add_patch()` *appends*, so any patch this loop
+        # skipped — a degenerate box, or a kind we do not round — keeps its
+        # original slot while its converted siblings move to the end,
+        # permuting `ax.patches`. The annotate meta builders pair records to
+        # patches by draw order, so that permutation mislabels them (#236);
+        # it also inverted the paint order of overlapping equal-zorder
+        # artists. Put the replacement back where the original sat.
+        old_index = None
+        if children is not None:
+            try:
+                old_index = children.index(patch)
+            except ValueError:
+                # Not this axes' child (caller passed a foreign patch).
+                old_index = None
+
         patch.remove()
         ax.add_patch(new)
+
+        if old_index is not None:
+            # `add_patch` appends, so the O(1) pop is the expected path;
+            # `remove` is a fallback for a matplotlib that inserts elsewhere.
+            if children and children[-1] is new:
+                children.pop()
+                children.insert(old_index, new)
+            elif new in children:
+                children.remove(new)
+                children.insert(old_index, new)
+            # If `new` is not in `_children` at all, `add_patch` did not put
+            # it there; leave it alone rather than guessing — the patch is
+            # still registered wherever matplotlib chose to put it.
 
 
 __all__ = [

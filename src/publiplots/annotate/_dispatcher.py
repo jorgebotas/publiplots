@@ -148,6 +148,26 @@ def annotate(
         If ``kind`` is not one of the registered strategies, or if
         ``offset`` / ``pad`` is negative.
 
+    Notes
+    -----
+    **One call per plot call.** Each plot function attaches a fresh meta
+    cache to ``ax``, and this function consumes the one most recently
+    attached. When several plot calls layer onto one axes — the shape x
+    color idiom, for instance, one ``pp.pointplot`` per marker shape over a
+    shared hue — annotate *inside* the loop::
+
+        for pipeline, marker in [('a', 'o'), ('b', 'D')]:
+            pp.pointplot(data=df[df.pipe == pipeline], ..., markers=marker, ax=ax)
+            pp.annotate(ax, kind='point_values')     # <- inside
+
+    A single trailing ``pp.annotate(ax, ...)`` would label only the last
+    call's marks, because the earlier calls' caches have been replaced.
+    Passing ``annotate=`` to each plot call is equivalent and terser.
+
+    The converse also holds: calling this twice after the *same* plot call
+    consumes the same cache twice and draws every label twice. See issue
+    #235.
+
     Examples
     --------
     Label bars outside the top edge:
