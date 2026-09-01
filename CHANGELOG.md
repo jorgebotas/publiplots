@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`legend_kws={'inside': True}` now works when the hue is continuous**
+  (#215). The key was consumed on the categorical path but forwarded verbatim
+  on the continuous one, so it reached `Colorbar.__init__` via `fig.colorbar()`
+  and raised `TypeError: Colorbar.__init__() got an unexpected keyword argument
+  'inside'`. It now renders the colorbar strip inside the axes rectangle, the
+  counterpart of what `inside=True` already did for a categorical legend:
+  placed by `loc=` at any of the nine axes-relative positions (`'best'`, which
+  has no meaning for a strip, resolves to `'upper right'`), keeping
+  `add_colorbar`'s mm size, claiming no layout space, and tracking the axes
+  through an axes-fraction inset instead of a `LayoutReactor` registration.
+  Ticklabels and the label that would overhang the axes edge slide the strip
+  back inside.
+- **Every other `legend_kws` passthrough key raised the same `TypeError` on a
+  continuous hue** (#215). `loc`, `ncol`, `frameon`, `markerscale`,
+  `title_fontsize`, `handletextpad` — the whole `ax.legend()` family was
+  forwarded to `add_colorbar`, which passes its leftovers to `fig.colorbar()`.
+  The colorbar branch now takes only the keys a colorbar can honour
+  (`inside`, and `loc` in inside mode) and drops the legend-only ones.
+- **`pp.legend(anchor=ax, inside=True)` now places a collected colorbar inside
+  the anchor cell** (#215). The in-cell flavor injected `inside=True` + the
+  `loc` derived from `side`/`align` for legends only, so a continuous hue
+  silently rendered in a band outside the cell it was supposed to fill.
+
 ## [0.16.1] - 2026-08-31
 
 ### Fixed

@@ -211,3 +211,183 @@ def test_inside_coexists_with_legend_group():
         assert "group" not in titles, (
             f"group entry leaked to non-anchor panel: {titles}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Continuous hue: the colorbar counterpart of inside=True (#215)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def cont_df():
+    rng = np.random.default_rng(3)
+    return pd.DataFrame({
+        "x": rng.normal(size=60),
+        "y": rng.normal(size=60),
+        "z": rng.normal(size=60),
+    })
+
+
+def _inside_cbar_axes(ax):
+    """The inside colorbar strips parented to ``ax`` (child axes)."""
+    return list(ax.child_axes)
+
+
+def _mm(fig, frac_w, frac_h):
+    w_in, h_in = fig.get_size_inches()
+    return frac_w * w_in * 25.4, frac_h * h_in * 25.4
+
+
+def test_inside_true_continuous_hue_renders_inside_axes(cont_df):
+    """legend_kws={'inside': True} used to raise TypeError from Colorbar."""
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    pp.scatterplot(
+        data=cont_df, x="x", y="y", hue="z", ax=ax,
+        legend_kws={"inside": True, "loc": "upper right"},
+    )
+    fig.canvas.draw()
+    strips = _inside_cbar_axes(ax)
+    assert len(strips) == 1, f"expected one inside colorbar, got {len(strips)}"
+    pos = strips[0].get_position()
+    ax_pos = ax.get_position()
+    assert ax_pos.x0 <= pos.x0 and pos.x1 <= ax_pos.x1, (
+        f"colorbar strip x=({pos.x0:.3f}, {pos.x1:.3f}) escapes the axes "
+        f"x=({ax_pos.x0:.3f}, {ax_pos.x1:.3f})"
+    )
+    assert ax_pos.y0 <= pos.y0 and pos.y1 <= ax_pos.y1
+    # No figure-level colorbar axes: the strip is a child of ax, so it
+    # never claims an outside band.
+    assert [a for a in fig.axes if a is not ax] == []
+
+
+def test_inside_continuous_keeps_mm_size_after_one_draw(cont_df):
+    """The strip keeps add_colorbar's mm defaults through the first draw.
+
+    Sizing against the axes rectangle (not the figure) is what survives
+    pp.subplots' mid-draw figure resize.
+    """
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    pp.scatterplot(
+        data=cont_df, x="x", y="y", hue="z", ax=ax,
+        legend_kws={"inside": True},
+    )
+    fig.canvas.draw()
+    pos = _inside_cbar_axes(ax)[0].get_position()
+    w_mm, h_mm = _mm(fig, pos.width, pos.height)
+    assert w_mm == pytest.approx(4.5, abs=0.1), w_mm
+    assert h_mm == pytest.approx(15.0, abs=0.1), h_mm
+
+
+@pytest.mark.parametrize("loc", [
+    "upper right", "upper left", "lower left", "lower right",
+    "center", "center left", "upper center", "best",
+])
+def test_inside_continuous_locs_keep_decorations_inside(cont_df, loc):
+    """Every supported loc keeps strip + ticklabels + label within the axes."""
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    pp.scatterplot(
+        data=cont_df, x="x", y="y", hue="z", ax=ax,
+        legend_kws={"inside": True, "loc": loc},
+    )
+    fig.canvas.draw()
+    strip = _inside_cbar_axes(ax)[0]
+    tight = strip.get_tightbbox()
+    ax_bbox = ax.get_window_extent()
+    assert tight.x0 >= ax_bbox.x0 - 0.5 and tight.x1 <= ax_bbox.x1 + 0.5, (
+        f"loc={loc!r}: colorbar decorations spill horizontally"
+    )
+    assert tight.y0 >= ax_bbox.y0 - 0.5 and tight.y1 <= ax_bbox.y1 + 0.5, (
+        f"loc={loc!r}: colorbar decorations spill vertically"
+    )
+
+
+def test_inside_continuous_skips_reactor_registration(cont_df):
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    reactor = LayoutReactor.get(fig)
+    before = len(reactor._registrations)
+    pp.scatterplot(
+        data=cont_df, x="x", y="y", hue="z", ax=ax,
+        legend_kws={"inside": True},
+    )
+    assert len(reactor._registrations) == before, (
+        "inside colorbar registered with the reactor; it should track the "
+        "axes on its own"
+    )
+
+
+def test_continuous_outside_default_unchanged(cont_df):
+    """Without inside=, the colorbar still lands in the outside band."""
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    pp.scatterplot(data=cont_df, x="x", y="y", hue="z", ax=ax)
+    fig.canvas.draw()
+    assert _inside_cbar_axes(ax) == []
+    outside = [a for a in fig.axes if a is not ax]
+    assert len(outside) == 1
+    assert outside[0].get_position().x0 >= ax.get_position().x1
+
+
+@pytest.mark.parametrize("kws", [
+    {"frameon": True},
+    {"ncol": 2},
+    {"markerscale": 2},
+    {"title_fontsize": 6},
+    {"loc": "upper right"},
+    {"handletextpad": 1.0, "labelspacing": 0.5},
+])
+def test_legend_only_keys_do_not_reach_colorbar(cont_df, kws):
+    """Legend-only legend_kws are dropped, not forwarded to Colorbar.
+
+    Every key in the builder forward set used to reach
+    ``Colorbar.__init__`` and raise TypeError on a continuous hue (#215).
+    """
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    pp.scatterplot(data=cont_df, x="x", y="y", hue="z", ax=ax, legend_kws=kws)
+    fig.canvas.draw()
+    assert len([a for a in fig.axes if a is not ax]) == 1
+
+
+def test_inside_continuous_in_cell_group(cont_df):
+    """pp.legend(anchor=empty, inside=True) puts the strip in the anchor cell."""
+    fig, axes = pp.subplots(nrows=1, ncols=2, axes_size=(45, 35))
+    pp.legend(anchor=axes[1], inside=True)
+    pp.scatterplot(data=cont_df, x="x", y="y", hue="z", ax=axes[0])
+    fig.canvas.draw()
+    strips = _inside_cbar_axes(axes[1])
+    assert len(strips) == 1, (
+        "in-cell inside=True should render the colorbar inside the anchor "
+        f"cell; got {len(strips)} child axes there"
+    )
+    pos = strips[0].get_position()
+    anchor = axes[1].get_position()
+    assert anchor.x0 <= pos.x0 and pos.x1 <= anchor.x1
+    assert anchor.y0 <= pos.y0 and pos.y1 <= anchor.y1
+
+
+def test_inside_continuous_and_categorical_coexist():
+    """A hue colorbar and a style legend can both go inside one axes."""
+    rng = np.random.default_rng(5)
+    data = pd.DataFrame({
+        "x": rng.normal(size=60),
+        "y": rng.normal(size=60),
+        "z": rng.normal(size=60),
+        "m": np.tile(list("AB"), 30),
+    })
+    fig, ax = pp.subplots(axes_size=(70, 50))
+    pp.scatterplot(
+        data=data, x="x", y="y", hue="z", style="m", ax=ax,
+        legend_kws={"inside": True, "loc": "upper left"},
+    )
+    fig.canvas.draw()
+    assert len(_inside_cbar_axes(ax)) == 1
+    assert ax.get_legend() is not None
+    assert [a for a in fig.axes if a is not ax] == []
+
+
+def test_inside_continuous_rejects_unknown_loc(cont_df):
+    """An unusable loc fails with our own message, not a matplotlib internal."""
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    with pytest.raises(ValueError, match="inside colorbar loc must be one of"):
+        pp.scatterplot(
+            data=cont_df, x="x", y="y", hue="z", ax=ax,
+            legend_kws={"inside": True, "loc": "nowhere"},
+        )

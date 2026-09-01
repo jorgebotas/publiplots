@@ -1310,8 +1310,19 @@ class MultiAxesLegendGroup:
         ax: Optional[Axes] = None,
         **kwargs,
     ) -> Colorbar:
-        """Add a colorbar to the shared band. See add_legend for ax semantics."""
+        """Add a colorbar to the shared band. See add_legend for ax semantics.
+
+        Inside-mode groups inject ``inside=True`` + the ``loc`` derived
+        from ``side``/``align`` exactly as :meth:`add_legend` does, so a
+        continuous hue lands inside the anchor cell rather than in a band
+        outside it (#215). Explicit user kwargs win.
+        """
         target_ax = ax if ax is not None else self._default_target_ax()
+        if self._inside:
+            kwargs.setdefault("inside", True)
+            kwargs.setdefault(
+                "loc", _inside_loc_from_side_align(self._side, self._align),
+            )
         original_ax = self._builder.ax
         try:
             self._builder.ax = target_ax

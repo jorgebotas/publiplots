@@ -403,6 +403,15 @@ _GROUP_PLACEMENT_KEYS = frozenset({
     "side", "orientation", "align", "x_offset", "y_offset", "gap",
 })
 
+# The subset of _BUILDER_FORWARD_KEYS that means anything to
+# ``add_colorbar``. Everything else in that set configures ``ax.legend()``
+# (ncol, frameon, markerscale, handletextpad, ...) and reaches
+# ``Colorbar.__init__`` as an unexpected keyword — a continuous hue used
+# to raise ``TypeError`` for *every* one of those keys, ``inside``
+# included (#215). Placement is the part a colorbar can honour: ``inside``
+# picks the in-axes strip, ``loc`` picks its corner.
+_COLORBAR_FORWARD_KEYS = frozenset({"inside", "loc"})
+
 
 def _builder_kwargs(legend_kws: Optional[Dict]) -> Dict:
     """Extract the subset of ``legend_kws`` meant for ``LegendBuilder``.
@@ -416,6 +425,22 @@ def _builder_kwargs(legend_kws: Optional[Dict]) -> Dict:
     if not legend_kws:
         return {}
     return {k: v for k, v in legend_kws.items() if k in _BUILDER_FORWARD_KEYS}
+
+
+def _colorbar_kwargs(builder_kws: Dict) -> Dict:
+    """Narrow ``builder_kws`` to what ``add_colorbar`` can accept.
+
+    ``add_colorbar`` forwards its leftover kwargs to ``fig.colorbar()``,
+    so any ``ax.legend()``-only key would surface as
+    ``Colorbar.__init__() got an unexpected keyword argument`` (#215).
+    Legend-only keys are dropped instead; ``loc`` only survives in
+    ``inside=True`` mode, where it names the in-axes corner (outside
+    bands derive their own placement from the mm cursor).
+    """
+    kws = {k: v for k, v in builder_kws.items() if k in _COLORBAR_FORWARD_KEYS}
+    if not kws.get("inside"):
+        kws.pop("loc", None)
+    return kws
 
 
 def render_entries(
@@ -475,7 +500,7 @@ def render_entries(
             builder.add_colorbar(
                 mappable=entry.handles[0],
                 label=entry.name,
-                **builder_kws,
+                **_colorbar_kwargs(builder_kws),
             )
         else:
             builder.add_legend(
