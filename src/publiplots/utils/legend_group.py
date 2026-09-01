@@ -893,15 +893,29 @@ class MultiAxesLegendGroup:
         return bool(set(self._collect) & set(other._collect))
 
     def _evict_claimed_per_axis_legends(self) -> None:
-        """Remove per-axis Legend artists that the group will render itself.
+        """Remove per-axis legend artists that the group will render itself.
 
         Walks every axes in this group's scope (``self._scope_axes`` or
         the full grid when unset). For each stashed LegendEntry this
-        group claims, matches the axes' Legend children by title text
-        and removes them — plus unregisters their ``LayoutReactor``
-        registrations so the reactor stops repositioning ghost artists
-        and ``SubplotsAutoLayout`` shrinks the per-column/row
-        reservation on the next settle pass.
+        group claims, matches the already-rendered per-axes artists by
+        entry name and removes them — plus unregisters their
+        ``LayoutReactor`` registrations so the reactor stops
+        repositioning ghost artists and ``SubplotsAutoLayout`` shrinks
+        the per-column/row reservation on the next settle pass.
+
+        Two artist families need matching, because a claimed entry can
+        have rendered either way:
+
+        - a categorical entry is a ``Legend`` child of the axes, matched
+          on its title text;
+        - a continuous-hue entry is a colorbar — a ``fig.add_axes``
+          strip plus a free-standing ``fig.text`` label (or an
+          ``ax.inset_axes`` strip for ``inside=True``). None of those are
+          children of the axes, so the ``get_children()`` sweep below
+          never saw them and a claimed continuous hue rendered twice:
+          once beside each panel, once in the band (#217). They are
+          reached through the per-axes builders that drew them, which
+          record the entry name each strip was given.
         """
         from matplotlib.legend import Legend
 
@@ -929,21 +943,50 @@ class MultiAxesLegendGroup:
                     ax.legend_ = None
                 to_unregister.append(child)
 
+        for ax in scope_axes:
+            for builder in _per_axes_builders(ax):
+                # A band never evicts its own elements. Ordering alone
+                # already prevents it — this pass has one caller,
+                # ``__init__``, which runs before ``_materialize`` puts
+                # anything in ``elements``. But ``_reconfigure_for_adopt``
+                # registers this group's builder ON the anchor axes so a
+                # LATER band can find it, which makes an adopted group's
+                # own builder a candidate here. Any future change that
+                # re-runs this pass would then delete the group's own
+                # colorbar. Structural, so the guarantee does not depend
+                # on call order.
+                if builder is self._builder:
+                    continue
+                claimed_cbars = [
+                    artist for (kind, artist) in builder.elements
+                    if kind == "colorbar"
+                    and builder._colorbar_names.get(id(artist)) in claimed_names
+                ]
+                for cbar in claimed_cbars:
+                    to_unregister.append(cbar)
+                    # The floating label is a separate artist with its own
+                    # reactor registration; ``_colorbar_labels`` is the
+                    # only record of which strip it belongs to. Dropping
+                    # the strip and leaving the label behind is the same
+                    # duplicate in a different costume.
+                    label = builder._colorbar_labels.get(id(cbar))
+                    if label is not None:
+                        to_unregister.append(label)
+                    _remove_colorbar_artists(cbar, label)
+
         if to_unregister:
             ids = {id(a) for a in to_unregister}
             reactor._registrations = [
                 r for r in reactor._registrations if id(r.artist) not in ids
             ]
             # Also purge from the builders' elements lists (per-axis
-            # builders stored on ax._legend_builder) so duplicate
-            # re-adds don't resurrect them.
+            # builders reachable from the axes) so duplicate re-adds
+            # don't resurrect them.
             for ax in scope_axes:
-                builder = getattr(ax, "_legend_builder", None)
-                if builder is None:
-                    continue
-                builder.elements = [
-                    (k, a) for (k, a) in builder.elements if id(a) not in ids
-                ]
+                for builder in _per_axes_builders(ax):
+                    builder.elements = [
+                        (k, a) for (k, a) in builder.elements if id(a) not in ids
+                    ]
 
     def _connect_align_hook(self) -> None:
         """Wrap LayoutReactor._refresh_all so our alignment callback
@@ -1572,6 +1615,14 @@ class MultiAxesLegendGroup:
             orientation=self._orientation,
         )
         self._external_to_axis = False
+        # The axes-side handles pointed at the builder just emptied above.
+        # Repoint them so a later band's eviction pass inspects the live
+        # builder's elements instead of a drained one.
+        if self._anchor_kind == "axes" and getattr(
+            self.anchor, "_legend_builder", None
+        ) is not None:
+            self.anchor._legend_builder = self._builder
+            _register_per_axes_builder(self.anchor, self._builder)
 
         # --- 3. Flip collect so stashed entries are re-collected ----------
         if collect is not None:
@@ -1908,6 +1959,80 @@ def legend(
     return group
 
 
+def _register_per_axes_builder(ax: Axes, builder) -> None:
+    """Record ``builder`` as one that renders per-axes legend elements on ``ax``.
+
+    ``MultiAxesLegendGroup._evict_claimed_per_axis_legends`` needs a way
+    back from an axes to whatever drew its colorbars, because a colorbar
+    strip is not an axes child. Both per-axes render paths register here:
+    the cached ``collect=[]`` group (one builder, reused across plot
+    calls) and the ``inside=True`` short-circuit in ``render_entries``
+    (a fresh ``LegendBuilder`` per call, hence a list rather than a
+    single slot). Deduplicated by identity so repeated ``render_entries``
+    passes don't pile up the same builder.
+
+    A band's own builder is deliberately NOT registered — it must never
+    be a candidate for eviction.
+    """
+    builders = getattr(ax, "_publiplots_legend_builders", None)
+    if builders is None:
+        builders = []
+        ax._publiplots_legend_builders = builders
+    if not any(builder is b for b in builders):
+        builders.append(builder)
+
+
+def _per_axes_builders(ax: Axes) -> list:
+    """Every builder that rendered per-axes legend elements on ``ax``.
+
+    Unions the :func:`_register_per_axes_builder` list with the
+    ``ax._legend_builder`` back-compat alias, so an axes whose builder
+    predates the registry (or was set only through the alias) is still
+    covered.
+    """
+    out = list(getattr(ax, "_publiplots_legend_builders", ()) or ())
+    alias = getattr(ax, "_legend_builder", None)
+    if alias is not None and not any(alias is b for b in out):
+        out.append(alias)
+    return out
+
+
+def _remove_colorbar_artists(cbar, label=None) -> None:
+    """Tear a colorbar (strip axes + optional floating label) off the figure.
+
+    ``Colorbar.remove()`` detaches the strip axes and clears the
+    mappable's ``colorbar`` back-reference, which matters because the
+    band is about to build its own colorbar from that same
+    ``ScalarMappable``. Whether the strip came from ``fig.add_axes`` or
+    from ``ax.inset_axes`` (``inside=True``) is immaterial — each carries
+    its own ``_remove_method``. Same shape as the teardown in
+    :meth:`MultiAxesLegendGroup._reconfigure_for_adopt`.
+
+    ``cbar_ax.remove()`` is a *fallback*, reached only if the first call
+    bailed out. Calling it unconditionally as belt-and-braces looked
+    harmless but was not: since ``Colorbar.remove`` has already detached
+    the strip, it raised every single time (measured 75/75 across the
+    legend suite — 72 ``KeyError``, 3 ``ValueError``), so its guard was
+    an except that is always taken and hid nothing. Only that one call
+    is guarded now. A failure in either of the others is a real bug and
+    should surface: leaving a strip attached with its registration
+    dropped, or a label with no strip, is worse than not trying, because
+    the artist survives unmanaged at a stale position instead of merely
+    being duplicated.
+    """
+    cbar_ax = getattr(cbar, "ax", None)
+    try:
+        cbar.remove()
+    except Exception:
+        if cbar_ax is not None:
+            try:
+                cbar_ax.remove()
+            except Exception:
+                pass
+    if label is not None:
+        label.remove()
+
+
 def _get_or_create_per_axes_group(ax: Axes, **placement_kwargs) -> MultiAxesLegendGroup:
     """Return (or create) the single-axes legend group cached on ``ax``.
 
@@ -1945,4 +2070,5 @@ def _get_or_create_per_axes_group(ax: Axes, **placement_kwargs) -> MultiAxesLege
     group = legend(ax, collect=[], **placement_kwargs)
     ax._legend_group = group
     ax._legend_builder = group._builder  # back-compat alias
+    _register_per_axes_builder(ax, group._builder)
     return group
