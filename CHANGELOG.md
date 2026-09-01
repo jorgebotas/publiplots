@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A per-axes `side='bottom'` legend band no longer overlaps the x tick labels
+  or the x-axis label** (#212). The band was placed a fixed gap below the axes
+  rectangle without measuring what already occupied that space: on a 50x40 mm
+  axes the tick labels reached down to -3.61 mm while the band's top edge sat
+  at -2.00 mm, a 1.61 mm collision, and an xlabel (bottom edge -7.39 mm) fell
+  inside the band entirely — a colorbar's label landing on top of a tick label.
+  Categorical legends and colorbar bands were affected identically.
+  `side='left'` already solved the equivalent problem by stepping the band past
+  the *measured* y-tick-label / ylabel extent, so that offset is now shared by
+  both sides rather than duplicated: `_offset_left_legend_past_yticklabels`
+  becomes `_offset_inside_legend_past_decorations`, picking the field and axis
+  out of the existing per-side tables. `side='top'` keeps its own treatment
+  (the title moves, not the band) and `side='right'` needs none. The offset is
+  measured, so it collapses to zero on an axes with no tick labels and no
+  xlabel — no fixed gap is invented. Figure-anchored bands, external per-axes
+  bands, and the `top` / `left` / `right` sides are byte-identical to before.
+
 ## [0.16.1] - 2026-08-31
 
 ### Fixed
