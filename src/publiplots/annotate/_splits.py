@@ -94,7 +94,13 @@ class BarSplitSpec:
 
         if self.split_hue is None and self.split_hatch is None:
             for cat in cats:
-                yield cat, None, None
+                # Check for rows like the split branches below do. A pandas
+                # Categorical keeps a level in `.cat.categories` after the
+                # rows holding it are filtered out, and seaborn draws no bar
+                # for it — so yielding it unconditionally invented a group
+                # with no rect and paired every later category one bar early.
+                if (data[self.categorical_axis] == cat).any():
+                    yield cat, None, None
             return
 
         if self.split_hue is not None and self.split_hatch is None:

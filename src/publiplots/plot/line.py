@@ -343,19 +343,27 @@ def lineplot(
         sns_kwargs["color"] = color
 
     sns_kwargs.update(kwargs)
+
+    # Track the lines seaborn adds so the styling pass below only layers
+    # this call's series — see issue #103.
+    from publiplots.utils.transparency import (
+        ArtistTracker,
+        apply_double_layer_markers,
+    )
+    tracker = ArtistTracker(ax)
     sns.lineplot(**sns_kwargs)
 
     # Apply publiplots double-layer marker styling (shared with pointplot):
     # pale fill, solid ring, no line bleed-through. Seaborn's default is
     # a white edge on an opaque pastel face, which clashes with the
     # visual language pointplot established.
-    from publiplots.utils.transparency import apply_double_layer_markers
     apply_double_layer_markers(
         ax,
         alpha=alpha,
         markersize=markersize,
         markeredgewidth=markeredgewidth,
         edgecolor=edgecolor,
+        lines=tracker.get_new_lines(),
     )
 
     # Labels
