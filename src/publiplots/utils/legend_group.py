@@ -1228,11 +1228,20 @@ class MultiAxesLegendGroup:
         # puts block and legend in one row on both sides, where they are
         # sequenced. On a top band this is already the strip, so nothing
         # about that side changes.
+        #
+        # A strip's own outward offset is read back net of the inward pad
+        # ``add_colorbar`` added to clear its tick labels off the axes on a
+        # top band (#213). That pad lies between the band's base outward
+        # offset and the colour rectangle, so the block still *starts* at
+        # the base; keying on the padded offset would put it in a row of
+        # its own and centre it on top of a categorical legend sharing the
+        # band.
+        inward_pads = self._builder._colorbar_inward_pad
         rows = {}
         for reg in regs:
             if id(reg.artist) in slaved_ids:
                 continue
-            outward = reg.mm_x_from_right
+            outward = reg.mm_x_from_right - inward_pads.get(id(reg.artist), 0.0)
             label_reg = label_regs.get(id(reg.artist))
             if label_reg is not None:
                 outward = min(outward, label_reg.mm_x_from_right)

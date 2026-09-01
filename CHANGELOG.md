@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A colorbar's orientation now follows the side of the band it lands in**
+  (#213). `add_colorbar`'s `orientation` defaulted to `'vertical'` regardless
+  of `side`, so `pp.legend(ax, side='top')` and `side='bottom'` rendered a
+  4.5 x 15mm strip standing on end across the top of the figure while the band
+  around it stacked horizontally — the mismatch was the visible bug. The
+  parameter now defaults to `None`, meaning "derive": horizontal on a
+  `side='top'`/`'bottom'` band, vertical on `'left'`/`'right'`. An explicit
+  `orientation='vertical'`/`'horizontal'` still wins.
+  The default is derived from the *band's* resolved orientation, not from
+  `side` directly, so `pp.legend(side='bottom', orientation='vertical')` still
+  gets a vertical strip — a vertical band should hold a vertical strip. That
+  also fixes the per-axes and plot-call paths
+  (`pp.scatterplot(..., legend_kws={'side': 'top'})`), which render through the
+  same builder. A plot call's `legend_kws={'inside': True}` renders through a
+  bare `LegendBuilder` with no band to follow, so it stays vertical; an
+  explicitly constructed `pp.legend(anchor=ax, side='top', inside=True)` has
+  named a side and now renders a flat strip along the top of the panel rather
+  than one standing on end inside it.
+
+  **Behaviour change, with a migration.** `height` and `width` keep their
+  *literal* mm meaning at every orientation — `height` is the vertical extent,
+  `width` the horizontal one. Only the **defaults** swap: `height=15,
+  width=4.5` becomes `height=4.5, width=15` when the resolved orientation is
+  horizontal. So a caller who passed `height=20` for a top or bottom band now
+  gets a 20mm-**tall** horizontal strip rather than a 20mm-long one. That is
+  what the argument literally says, and it is visible immediately rather than
+  being a silent change of meaning; the rejected alternative was reinterpreting
+  the two as along-edge/cross-edge extents, which would make `height=20` mean
+  two different things depending on a value the caller may not have passed.
+  Migration: on a `side='top'`/`'bottom'` band, `height=20` becomes
+  `width=20`. Left/right bands are unaffected — their geometry is unchanged to
+  the last measured 0.01mm.
+
+  The band's packing arithmetic needed no change: `add_colorbar` already
+  treated `width` as the along-edge extent and `height` as the outward one on a
+  top/bottom band, and both stay literal.
+
+### Fixed
+
+- **A horizontal colorbar on a `side='top'` band no longer draws its tick
+  labels across the axes** (#213). A horizontal strip carries its tick labels
+  below itself, which on a top band points back *toward* the axes: with the
+  strip's bare colour rectangle placed on the band's 2mm outward line, the
+  labels reached 1.61mm inside a 40mm-tall axes and "0.0 0.5 1.0" was drawn
+  over the top spine. The whole block — strip and label together — is now
+  stepped outward by that measured overhang, so what clears the axes edge is
+  the block's tight bbox rather than the bare rectangle. Measured rather than
+  derived from `orientation`, so a vertical strip on a top band, or an explicit
+  `ticklocation='top'`, collapses the correction to zero. The along-edge
+  alignment pass reads the strip's outward offset net of that pad, so the block
+  stays in the band's base row and a categorical legend sharing the band is
+  still sequenced beside it instead of being drawn under it.
+
+  Still outstanding, and unchanged here: two colorbars sequenced along one
+  top/bottom band are spaced by their colour rectangles, so their end tick
+  labels still overlap — 1.45mm for two default 15mm strips, down from 2.56mm
+  when the strips were vertical. That is the "a colorbar's extent is its strip
+  rect, not its tight bbox" question tracked in #221.
+
 ## [0.16.2] - 2026-09-01
 
 ### Fixed
