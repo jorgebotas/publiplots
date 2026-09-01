@@ -945,6 +945,18 @@ class MultiAxesLegendGroup:
 
         for ax in scope_axes:
             for builder in _per_axes_builders(ax):
+                # A band never evicts its own elements. Ordering alone
+                # already prevents it — this pass has one caller,
+                # ``__init__``, which runs before ``_materialize`` puts
+                # anything in ``elements``. But ``_reconfigure_for_adopt``
+                # registers this group's builder ON the anchor axes so a
+                # LATER band can find it, which makes an adopted group's
+                # own builder a candidate here. Any future change that
+                # re-runs this pass would then delete the group's own
+                # colorbar. Structural, so the guarantee does not depend
+                # on call order.
+                if builder is self._builder:
+                    continue
                 claimed_cbars = [
                     artist for (kind, artist) in builder.elements
                     if kind == "colorbar"
@@ -1982,29 +1994,34 @@ def _remove_colorbar_artists(cbar, label=None) -> None:
     ``Colorbar.remove()`` detaches the strip axes and clears the
     mappable's ``colorbar`` back-reference, which matters because the
     band is about to build its own colorbar from that same
-    ``ScalarMappable``. The follow-up ``cbar.ax.remove()`` is belt-and-
-    braces for the case where that first call bailed out early; both are
-    guarded, since the second one is then a no-op that raises. Whether
-    the strip came from ``fig.add_axes`` or from ``ax.inset_axes``
-    (``inside=True``) is immaterial — each carries its own
-    ``_remove_method``. Same shape as the teardown in
+    ``ScalarMappable``. Whether the strip came from ``fig.add_axes`` or
+    from ``ax.inset_axes`` (``inside=True``) is immaterial — each carries
+    its own ``_remove_method``. Same shape as the teardown in
     :meth:`MultiAxesLegendGroup._reconfigure_for_adopt`.
+
+    ``cbar_ax.remove()`` is a *fallback*, reached only if the first call
+    bailed out. Calling it unconditionally as belt-and-braces looked
+    harmless but was not: since ``Colorbar.remove`` has already detached
+    the strip, it raised every single time (measured 75/75 across the
+    legend suite — 72 ``KeyError``, 3 ``ValueError``), so its guard was
+    an except that is always taken and hid nothing. Only that one call
+    is guarded now. A failure in either of the others is a real bug and
+    should surface: leaving a strip attached with its registration
+    dropped, or a label with no strip, is worse than not trying, because
+    the artist survives unmanaged at a stale position instead of merely
+    being duplicated.
     """
     cbar_ax = getattr(cbar, "ax", None)
     try:
         cbar.remove()
     except Exception:
-        pass
-    if cbar_ax is not None:
-        try:
-            cbar_ax.remove()
-        except Exception:
-            pass
+        if cbar_ax is not None:
+            try:
+                cbar_ax.remove()
+            except Exception:
+                pass
     if label is not None:
-        try:
-            label.remove()
-        except Exception:
-            pass
+        label.remove()
 
 
 def _get_or_create_per_axes_group(ax: Axes, **placement_kwargs) -> MultiAxesLegendGroup:

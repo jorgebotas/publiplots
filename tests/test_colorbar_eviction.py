@@ -285,8 +285,18 @@ def test_unclaimed_colorbar_survives(df):
     # The band's 'c' strip plus the untouched 'd' strip — and nothing else.
     assert len(_colorbars(fig)) == 2
     assert _floating_labels(fig) == ["c", "d"]
-    # 'd' keeps its strip AND its label AND both registrations.
-    assert len(_registrations(fig)) == 4
+
+    # 'd' keeps its strip AND its label AND both registrations. Counted
+    # against a control rather than hard-coded: the absolute number is a
+    # fact about how many artists a band registers, which unrelated layout
+    # work legitimately changes, and a churning literal here would read as
+    # this test failing.
+    reference, ref_axes = pp.subplots(2, 2, axes_size=(35, 30))
+    pp.scatterplot(data=df, x="x", y="y", hue="c", ax=ref_axes[0, 0])
+    pp.scatterplot(data=df, x="x", y="y", hue="d", ax=ref_axes[1, 0])
+    pp.legend(anchor=ref_axes[1, 1], collect=["c"])
+    reference.canvas.draw()
+    assert len(_registrations(fig)) == len(_registrations(reference))
 
 
 def test_out_of_scope_colorbar_survives(df):
@@ -370,3 +380,65 @@ def test_heatmap_colorbars_are_evicted(df):
     fig.canvas.draw()
 
     assert len(_colorbars(fig)) == 1
+
+
+def test_a_claimed_name_that_is_a_substring_of_another_is_matched_exactly(df):
+    """Entry names are matched exactly, not by substring.
+
+    ``'c'`` is a substring of ``'conc'``, so a substring match would evict
+    the ``'conc'`` colorbar along with the claimed ``'c'`` one. Pinned
+    because the mutation is invisible otherwise: replacing the exact
+    ``in claimed_names`` test with a substring test passes both this file
+    and the whole legend suite, while destroying an unrelated colorbar
+    (measured: 2 strips -> 1, figure 141.76mm -> 131.21mm).
+    """
+    frame = df.assign(conc=df["c"] * 3.0)
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    pp.scatterplot(data=frame, x="x", y="y", hue="c", ax=axes[0, 0])
+    pp.scatterplot(data=frame, x="x", y="y", hue="conc", ax=axes[0, 1])
+    pp.legend(anchor=axes[1, 1], collect=["conc"])
+    fig.canvas.draw()
+
+    # 'conc' moved into the band; 'c' was never claimed and is untouched.
+    assert len(_colorbars(fig)) == 2, (
+        f"expected the band's 'conc' strip plus the unclaimed 'c' strip, "
+        f"got {len(_colorbars(fig))}"
+    )
+    assert sorted(_floating_labels(fig)) == ["c", "conc"]
+
+
+def test_a_group_never_evicts_its_own_colorbar(df):
+    """Re-running the eviction pass must not delete the group's own strip.
+
+    The pass has one caller, ``MultiAxesLegendGroup.__init__``, which runs
+    before ``_materialize`` puts anything in ``elements`` — so ordering
+    alone keeps a band's own colorbar safe today. But
+    ``_reconfigure_for_adopt`` registers the group's builder ON the anchor
+    axes, so that a LATER band can find and evict it. That makes an
+    adopted group's own builder a candidate in its own pass, and any
+    future change re-running the pass (on adopt, on re-materialize, per
+    draw) would silently delete the legend it just drew.
+
+    Calling the pass directly is not something callers do; it is the
+    cheapest way to pin the invariant rather than the call order.
+    """
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="c", ax=ax)
+    group = pp.legend(ax, side="left")          # the adopt path
+    fig.canvas.draw()
+
+    before_cbars = len(_colorbars(fig))
+    before_labels = _floating_labels(fig)
+    before_regs = len(_registrations(fig))
+    assert before_cbars == 1, f"setup: expected one strip, got {before_cbars}"
+
+    group._evict_claimed_per_axis_legends()
+    fig.canvas.draw()
+
+    assert len(_colorbars(fig)) == before_cbars, (
+        "the group evicted its own colorbar: "
+        f"{before_cbars} strip(s) became {len(_colorbars(fig))}"
+    )
+    assert _floating_labels(fig) == before_labels
+    assert len(_registrations(fig)) == before_regs
+    assert [k for k, _ in group._builder.elements] != []
