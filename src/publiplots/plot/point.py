@@ -331,15 +331,25 @@ def pointplot(
     # Merge with user-provided kwargs
     pointplot_kwargs.update(kwargs)
 
-    # Create pointplot
+    # Create pointplot. Track the lines seaborn adds so the styling and
+    # cache passes below see only this call's series: layering a previous
+    # call's marker copies again would repaint them (issue #103), and the
+    # cache builder would pair six drawn series against a three-level
+    # hue_order.
+    from publiplots.utils.transparency import (
+        ArtistTracker,
+        apply_double_layer_markers,
+    )
+    tracker = ArtistTracker(ax)
     sns.pointplot(**pointplot_kwargs)
+    drawn_lines = tracker.get_new_lines()
 
     # Apply marker styling (double-layer effect — shared with lineplot)
-    from publiplots.utils.transparency import apply_double_layer_markers
     apply_double_layer_markers(
         ax,
         alpha=alpha,
         edgecolor=edgecolor,
+        lines=drawn_lines,
     )
 
     # Set labels
@@ -387,6 +397,7 @@ def pointplot(
         source_frame=_source_data,
         order=order,
         hue_order=hue_order,
+        marker_lines=drawn_lines,
     )
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn

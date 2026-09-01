@@ -115,10 +115,11 @@ def apply_double_layer_markers(
     edgecolor: Optional[str] = None,
     markersize: Optional[float] = None,
     markeredgewidth: Optional[float] = None,
+    lines: Optional[Sequence[Line2D]] = None,
 ) -> None:
-    """Replace every line's markers with publiplots' double-layer style.
+    """Replace the given lines' markers with publiplots' double-layer style.
 
-    For each ``Line2D`` on ``ax`` that has a marker, strip the marker
+    For each ``Line2D`` in ``lines`` that has a marker, strip the marker
     off the original line (keeping the connecting line intact) and
     draw two stacked marker-only lines on top:
 
@@ -148,9 +149,19 @@ def apply_double_layer_markers(
     markeredgewidth : float, optional
         Override for the ring width. If None, preserves each line's
         current markeredgewidth.
+    lines : sequence of Line2D, optional
+        Restrict layering to these lines. Callers drawing onto a shared
+        axes MUST pass the lines they just created — typically
+        ``ArtistTracker(ax).get_new_lines()`` — because the copies emitted
+        here are themselves marker-bearing ``Line2D`` objects. Rescanning
+        ``ax.lines`` would re-layer a previous call's copies, painting
+        duplicate markers on top of the earlier series; see issue #103.
+        Defaults to every line on ``ax``, which is correct only for an
+        axes nothing else has drawn markers on.
     """
+    candidates = list(ax.lines) if lines is None else list(lines)
     layers: list = []
-    for line in ax.lines:
+    for line in candidates:
         marker = line.get_marker()
         if marker in (None, "None", ""):
             continue
@@ -169,9 +180,16 @@ def apply_double_layer_markers(
 
     for data in layers:
         ring = edgecolor if edgecolor else data["color"]
+        # Both copies carry `color=` explicitly. Without it `ax.plot` draws
+        # from the axes property cycle — which advances the cycle for
+        # whatever is plotted next and, worse, makes `get_color()` report a
+        # tab10 default that has nothing to do with the mark being shown.
+        # The line itself is never drawn (linestyle='none'), so this only
+        # fixes the copies' reported identity.
         # Layer 1: white masks the underlying line.
         ax.plot(
             data["x"], data["y"], data["marker"],
+            color=data["color"],
             markeredgecolor=ring,
             markerfacecolor="white",
             markersize=data["size"],
@@ -182,6 +200,7 @@ def apply_double_layer_markers(
         # Layer 2: semi-transparent colored fill + opaque ring.
         ax.plot(
             data["x"], data["y"], data["marker"],
+            color=data["color"],
             markeredgecolor=ring,
             markerfacecolor=to_rgba(data["color"], alpha),
             markersize=data["size"],
