@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-08-31
+
 ### Fixed
 
 - **`pp.histplot(kde=True, element='step'|'poly')` now separates the outline
