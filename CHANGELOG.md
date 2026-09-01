@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An inside colorbar now accepts matplotlib's numeric `loc` codes** (#223).
+  `legend_kws={'inside': True, 'loc': 1}` rendered fine for a categorical hue
+  — that path forwards `loc` straight to `ax.legend()`, which takes integers
+  as well as strings — but raised `ValueError: inside colorbar loc must be one
+  of ...` for a continuous one, so switching a column from categorical to
+  continuous broke a working call with no other change. The inside-colorbar
+  path now resolves an integer through matplotlib's own
+  `Legend.codes` mapping, landing the strip in the corner
+  `ax.legend(loc=<code>)` would pick — codes `1`-`10` verified equivalent by
+  measuring both marks in figure pixels. `loc=0`/`'best'` keeps resolving to
+  `'upper right'`, matplotlib's own fallback where 'best' is unimplemented; a
+  strip has no handles to search around, so it cannot reproduce the real
+  search. Invalid input (a bad string, an out-of-range integer, a float, a
+  coordinate tuple, `None`) still raises the same readable `ValueError`, which
+  now also names the accepted integer range. A float `0.0` used to slip
+  through as `'best'` via `loc in ("best", 0)`; it is now rejected, matching
+  matplotlib, which requires an `int`.
+
 ## [0.16.2] - 2026-09-01
 
 ### Fixed

@@ -251,9 +251,18 @@ Details that differ from the categorical legend:
   the layout's figure resize. It claims no layout space and is not
   registered with the reactor — it tracks the axes on its own.
 - `loc` accepts the nine axes-relative positions (`'upper right'`,
-  `'center left'`, `'center'`, …). `loc='best'` has no meaning for a
-  strip (there are no handles to search around) and resolves to
-  `'upper right'`.
+  `'center left'`, `'center'`, …), the bare `'right'` alias matplotlib
+  keeps for `'center right'`, and **matplotlib's integer location codes
+  0-10** — each resolves to the same corner
+  `ax.legend(loc=<code>)` would pick, so `{'inside': True, 'loc': 1}`
+  places the strip where the categorical legend would go. `loc='best'`
+  (code `0`) has no meaning for a strip (there are no handles to search
+  around) and resolves to `'upper right'` — matplotlib's own fallback
+  where 'best' is unimplemented. Anything else — a bad string, an
+  out-of-range integer, a float, a coordinate tuple, `None` — raises
+  `ValueError: inside colorbar loc must be one of …`. Codes `5`
+  (`'right'`) and `7` (`'center right'`) are distinct names that anchor
+  identically, in publiplots exactly as in matplotlib.
 - The strip is nudged back inside the axes if its ticklabels or label
   would overhang the edge, so a right-anchored colorbar stays legible.
 - Legend-only `legend_kws` (`ncol`, `frameon`, `markerscale`,
