@@ -417,10 +417,12 @@ def build_from_barplot_call(
     # loud rather than trusting the geometry filters to stay in sync.
     if len(rects) != len(agg):
         warnings.warn(
-            f"annotate: the number of drawn bars ({len(rects)}) does not "
-            f"match the number of data groups ({len(agg)}). Bar labels are "
-            "paired by draw order, so some may be attached to the wrong "
-            "bar or omitted. Please report this with a reproducer.",
+            f"publiplots: the number of drawn bars ({len(rects)}) does not "
+            f"match the number of data groups ({len(agg)}). These are paired "
+            "by draw order, so any value labels on this axes — now or from a "
+            "later pp.annotate call — may sit on the wrong bar or be "
+            "omitted. This should not happen; please report it with a "
+            "reproducer.",
             UserWarning,
             stacklevel=3,
         )
@@ -636,10 +638,16 @@ def build_from_histplot_call(
     # an observation, and labelling every gap in a sparse histogram is noise.
     # This builder enumerates rects rather than pairing them positionally
     # against group keys, so dropping them here desyncs nothing.
-    rects = [
-        p for p in ax.patches
-        if _is_bar_rect(p) and (p.get_height() if orient == "v" else p.get_width()) != 0
-    ]
+    #
+    # `_is_bar_rect` contributes only the patch-type test here: its extent
+    # test (reject zero on BOTH axes) is subsumed by the explicit value-extent
+    # test below, which is strictly stronger. Do not read the conjunction as
+    # also rejecting a zero *categorical* extent — it does not, and no
+    # histogram path produces a zero-width bin.
+    value_extent = (
+        (lambda p: p.get_height()) if orient == "v" else (lambda p: p.get_width())
+    )
+    rects = [p for p in ax.patches if _is_bar_rect(p) and value_extent(p) != 0]
 
     bars: List[BarRecord] = []
     for rect in rects:
