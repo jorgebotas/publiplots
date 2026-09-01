@@ -972,6 +972,15 @@ class LegendBuilder:
         self._external_to_axis = external_to_axis
         # Element storage: list of (type, object) tuples
         self.elements = []
+        # id(Colorbar) -> the floating ``Text`` that labels it. A colorbar
+        # label is a standalone figure text with its own reactor
+        # registration, so nothing else records which strip it belongs to.
+        # ``MultiAxesLegendGroup._apply_along_alignment`` needs that link to
+        # keep the pair together when the band holds more than one element
+        # (#214). Keyed by ``id`` to match how that pass already identifies
+        # reactor registrations; both objects stay alive in ``self.elements``
+        # for as long as the mapping is consulted.
+        self._colorbar_labels = {}
 
     def _get_edge_length(self) -> float:
         """Along-edge length of the anchor in mm.
@@ -1599,9 +1608,29 @@ class LegendBuilder:
             # Measure actual title dimensions
             title_width_actual, title_height_actual = self._measure_object_dimensions(title_obj)
 
+            # On a top/bottom band the label and the strip share ONE
+            # along-edge slot (they are stacked outward), and the slot is
+            # as wide as whichever of the two is wider. Centre each of
+            # them inside it so the label sits over its own strip. Without
+            # this the two are merely left-aligned, which reads as a
+            # 6.5mm offset for a label wider than the 4.5mm strip and is
+            # what a band using ``align='start'`` renders (#214).
+            if stack_outward:
+                title_along_shift = (
+                    max(width, title_width_actual) - title_width_actual
+                ) / 2
+            else:
+                title_along_shift = 0.0
+            if title_along_shift:
+                x_fig, y_fig = self._mm_to_figure_coords(
+                    title_outward_mm,
+                    self._layout.current_along - title_along_shift,
+                )
+                title_obj.set_position((x_fig, y_fig))
+
             # Register the title with the reactor so it follows axes changes
             # (otherwise the colorbar would reposition but the title would stay pinned).
-            title_mm_y_from_top = self._layout.along_from_start
+            title_mm_y_from_top = self._layout.along_from_start + title_along_shift
             self._reactor.register(
                 ax=self._anchor_ax,
                 artist=title_obj,
@@ -1621,6 +1650,15 @@ class LegendBuilder:
                 cbar_outward_mm += title_height_actual + title_pad
             elif not stack_outward:
                 cbar_y_start -= title_height_actual + title_pad
+
+        # Counterpart of the label's shift above: centre the strip in the
+        # shared along-edge slot too. Zero unless the label is wider than
+        # the strip on a top/bottom band.
+        if stack_outward and title_width_actual:
+            cbar_along_shift = (max(width, title_width_actual) - width) / 2
+        else:
+            cbar_along_shift = 0.0
+        cbar_y_start -= cbar_along_shift
 
         # Create colorbar axes
         x_fig, y_fig = self._mm_to_figure_coords(cbar_outward_mm, cbar_y_start)
@@ -1695,7 +1733,7 @@ class LegendBuilder:
                 self._layout.along_from_start + title_height_actual + title_pad
             )
         else:
-            mm_y_from_top = self._layout.along_from_start
+            mm_y_from_top = self._layout.along_from_start + cbar_along_shift
 
         # Update layout cursor past the full title+colorbar block. The
         # stack's extent lands on whichever axis carries it: outward for
@@ -1725,6 +1763,11 @@ class LegendBuilder:
         self.elements.append(("colorbar", cbar))
         if title_obj:
             self.elements.append(("text", title_obj))
+            # Remember which strip this floating label belongs to. The two
+            # carry independent reactor registrations, so without this the
+            # along-edge alignment pass has no way to tell one band's label
+            # from another's (#214).
+            self._colorbar_labels[id(cbar)] = title_obj
 
         return cbar
 
