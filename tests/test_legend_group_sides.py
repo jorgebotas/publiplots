@@ -1294,15 +1294,19 @@ def _paired_band_centres_mm(group, fig):
     the strip's row key (its position on the outward axis, rounded to
     0.1mm) so callers can tell wrapped rows apart -- two strips in
     different rows legitimately share an along-edge centre.
+
+    A colorbar with no trailing ``("text", ...)`` is *skipped*, not an
+    error: an unlabelled colorbar (and an inside-mode one) stores no label
+    element, and this helper is only about pairs. Callers that require a
+    given number of pairs assert on ``len()`` themselves.
     """
     elements = group._builder.elements
     pairs = []
     for i, (kind, obj) in enumerate(elements):
         if kind != "colorbar":
             continue
-        assert i + 1 < len(elements) and elements[i + 1][0] == "text", (
-            "expected each colorbar to be followed by its label Text"
-        )
+        if i + 1 >= len(elements) or elements[i + 1][0] != "text":
+            continue
         strip = obj.ax.get_window_extent()
         label = elements[i + 1][1].get_window_extent()
         to_mm = lambda px: px / fig.dpi * 25.4
@@ -1433,7 +1437,14 @@ def test_top_bottom_wide_colorbar_label_is_centred_on_its_strip(side, align):
     of the two, so both have to be centred inside it. On v0.16.1 they were
     left-aligned at build time, which the ``align='start'`` path (an early
     return from the alignment pass) rendered as-is: a 31.3mm label against
-    a 4.5mm strip came out 13.41mm off-centre on every side and align.
+    a 4.5mm strip came out 13.41mm off-centre.
+
+    ``align='start'`` and ``align='end'`` are what discriminate here.
+    ``align='center'`` passes on v0.16.1 for both sides -- this is a
+    single-element band, the case #211 fixed by giving each of the two a
+    row to itself and letting the alignment pass centre both on the axes.
+    It is kept in the matrix as the property that must not regress; the
+    multi-element pairing is covered by the sibling test above.
     """
     label_text = "Expression level (log2 CPM)"
     df = _scatter_df().assign(
@@ -1453,4 +1464,94 @@ def test_top_bottom_wide_colorbar_label_is_centred_on_its_strip(side, align):
             f"[{side}, align={align}, draw {draw}] a wide label must be "
             f"centred on its strip; strip centre {strip_c:.2f}mm vs label "
             f"centre {label_c:.2f}mm"
+        )
+
+
+def _band_element_overlaps_mm(group, fig):
+    """Pairwise overlap rectangles between every element in the band.
+
+    Returns ``[(label_a, label_b, w_mm, h_mm), ...]`` for each pair whose
+    rectangles intersect by more than 0.5mm on both axes -- the tolerance
+    keeps abutting elements (a strip whose edge touches its neighbour)
+    from registering. Colorbars are measured by their own rectangle, so a
+    strip's tick labels are not counted as a collision.
+    """
+    items = []
+    for i, (kind, obj) in enumerate(group._builder.elements):
+        bb = obj.ax.get_window_extent() if kind == "colorbar" \
+            else obj.get_window_extent()
+        items.append((f"{kind}{i}", bb))
+    to_mm = lambda px: px / fig.dpi * 25.4
+    out = []
+    for i in range(len(items)):
+        for j in range(i + 1, len(items)):
+            (na, a), (nb, b) = items[i], items[j]
+            w = to_mm(min(a.x1, b.x1) - max(a.x0, b.x0))
+            h = to_mm(min(a.y1, b.y1) - max(a.y0, b.y0))
+            if w > 0.5 and h > 0.5:
+                out.append((na, nb, w, h))
+    return out
+
+
+@pytest.mark.parametrize("side", ["top", "bottom"])
+@pytest.mark.parametrize("label_text", ["expr", "Expression level (log2 CPM)"])
+def test_top_bottom_colorbar_band_with_legend_has_no_overlapping_elements(
+    side, label_text
+):
+    """A band holding a labelled colorbar AND a categorical legend lays
+    its elements out side by side -- none of them drawn over another.
+
+    This is the companion constraint to the pairing itself, and it is what
+    decides how a block is bucketed into a row. ``add_colorbar`` puts
+    whichever of label and strip is furthest from the axes on the outward
+    axis, and which one that is flips with the side: on ``top`` the strip
+    is innermost, on ``bottom`` the label is. A categorical legend always
+    sits at the band's base outward offset. Keying the block's row by the
+    *strip* therefore works on ``top`` and fails on ``bottom``: the block
+    lands in a row of its own, the legend is left alone in the inner row,
+    and the two rows are centred independently onto the same centre line
+    -- so the label is drawn across the legend's entries.
+
+    Measured while the block was keyed by its strip, ``side='bottom'``,
+    default ``align='center'`` (overlap w x h in mm):
+
+        label 'expr'                     label/legend 4.85 x 2.37
+        label 'Expression level (log2 CPM)'
+                                         label/legend 31.33 x 2.37
+
+    The long-label case is the sharper of the two. It is **clean on
+    v0.16.1** -- there the label shares the legend's row and the two are
+    sequenced -- so it catches a regression rather than a pre-existing
+    collision. The short-label case additionally fails on v0.16.1, but for
+    an older reason: the strip itself overlaps the legend by 4.50 x 3.09mm
+    there, because the strip has always been keyed into a row of its own on
+    a bottom band. Keying the block by its inward-most member fixes that
+    long-standing collision too, so both cases are asserted clean.
+
+    ``align`` is left at its default because ``'center'`` is
+    ``_DEFAULT_ALIGN`` for both sides -- this reproduces with no explicit
+    argument at all.
+
+    ``side='top'`` is asserted alongside as the control: it has never
+    overlapped, on v0.16.1 or since.
+    """
+    df = _scatter_df().assign(
+        **{label_text: lambda d: np.linspace(0.0, 1.0, len(d))}
+    )
+
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue=label_text, style="g", ax=ax)
+    group = pp.legend(ax, side=side)
+
+    for draw in range(4):
+        fig.canvas.draw()
+        kinds = [k for k, _ in group._builder.elements]
+        assert sorted(kinds) == ["colorbar", "legend", "text"], (
+            f"expected a strip + its label + a categorical legend, got {kinds}"
+        )
+        overlaps = _band_element_overlaps_mm(group, fig)
+        assert not overlaps, (
+            f"[{side}, label={label_text!r}, draw {draw}] band elements "
+            f"must not be drawn over one another; overlapping: "
+            + ", ".join(f"{a}/{b} {w:.2f}x{h:.2f}mm" for a, b, w, h in overlaps)
         )

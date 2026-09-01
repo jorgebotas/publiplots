@@ -22,18 +22,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   band left no label over its own strip at all.
   The alignment pass now lays out **blocks** rather than individual
   registrations: a colorbar and its label are one block, they occupy the
-  wider of the two extents in the strip's row, the label claims no row slot
-  of its own, and both are centred on the block's centre line. `add_colorbar`
-  centres the same way at build time, which also fixes `align='start'` — that
-  path returns before the alignment pass, so a label wider than the 4.5mm
-  strip was left 13.4mm off-centre there on every side.
+  wider of the two extents in one row, the label claims no row slot of its
+  own, and both are centred on the block's centre line. The block is keyed
+  into the row of its **inward-most** member, because which of the two sits
+  furthest from the axes flips with the side — the strip is innermost on a
+  top band, the label is innermost on a bottom one — and a categorical
+  legend in the same band always sits at the band's base outward offset.
+  `add_colorbar` centres the same way at build time, which also fixes
+  `align='start'` — that path returns before the alignment pass, so a label
+  wider than the 4.5mm strip was left 13.4mm off-centre there on every side.
   **Scope of the movement:** only top/bottom bands that contain a labelled
   colorbar change. Verified across 211 configurations against 0.16.1 — all
   four sides, 1/3/8/20 entries, `align` ∈ {start, center, end}, multi-row
   wrap, `inside=True`, per-axes, row-scoped and figure-level anchors — every
-  categorical-only band is byte-identical, as are all `right`/`left` bands
-  (where the label stacks along the edge instead and was already paired).
-  Every changed configuration goes from up to 34.9mm of drift to 0.00mm.
+  one of the 120 categorical-only bands is byte-identical, as are all 104
+  `right`/`left` bands (where the label stacks along the edge instead and was
+  already paired). Every changed configuration goes from up to 34.9mm of
+  drift to 0.00mm.
+- **A `side='bottom'` band holding a labelled colorbar and a categorical
+  legend no longer draws the two over each other.** The colour strip was
+  keyed into a row of its own on a bottom band — `add_colorbar` pushes the
+  strip *past* the label there, the inverse of a top band — so the strip's
+  row and the legend's row were centred independently onto the same centre
+  line, overlapping by 4.50 × 3.09mm. Keying the label/strip block by its
+  inward-most member puts block and legend in one row on both sides, where
+  they are sequenced. This collision predates #214 and is fixed alongside
+  it, since the row keying is the same decision.
 - **A top/bottom colorbar block now reserves the along-edge space it
   actually occupies during alignment.** The pass measured the block by the
   4.5mm strip alone, discarding the wider reservation the layout cursor had

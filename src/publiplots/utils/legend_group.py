@@ -1213,12 +1213,30 @@ class MultiAxesLegendGroup:
         # Group regs into rows sharing the same outward offset. A label
         # that is paired to a strip is skipped: it rides along with the
         # strip's block instead of claiming a slot in its own row.
+        #
+        # A block is keyed by its INWARD-most member, not by the strip.
+        # ``add_colorbar`` puts whichever of the two is furthest from the
+        # axes on the outward axis, and which one that is flips with the
+        # side: on a top band the strip is innermost and the label is
+        # lifted past it, on a bottom band the label is innermost and the
+        # strip is pushed past it. A categorical legend in the same band
+        # always sits at the band's base outward offset, so keying by the
+        # strip would put a bottom band's block in a row of its own and
+        # leave the legend alone in the inner row — two rows then centre
+        # independently onto the same centre line and the label is drawn
+        # across the legend's entries. Keying by the inward-most member
+        # puts block and legend in one row on both sides, where they are
+        # sequenced. On a top band this is already the strip, so nothing
+        # about that side changes.
         rows = {}
         for reg in regs:
             if id(reg.artist) in slaved_ids:
                 continue
-            key = round(reg.mm_x_from_right, 3)
-            rows.setdefault(key, []).append(reg)
+            outward = reg.mm_x_from_right
+            label_reg = label_regs.get(id(reg.artist))
+            if label_reg is not None:
+                outward = min(outward, label_reg.mm_x_from_right)
+            rows.setdefault(round(outward, 3), []).append(reg)
 
         def _extent_of(reg, horizontal=None):
             # force_draw=False: this runs as a post-refresh reactor
