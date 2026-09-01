@@ -59,6 +59,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   predates `Legend.set_loc`, a categorical `loc=0.0` is still accepted, so
   that one input stays asymmetric there.
 
+- **A continuous hue no longer renders twice when the band is created after the
+  plots** (#217). `pp.legend(...)` evicts the per-axes legend artists it is
+  about to render itself, but that sweep walked `ax.get_children()` for
+  `Legend` instances only — and a colorbar never is one. An outside per-axes
+  colorbar is a `fig.add_axes` strip plus a free-standing `fig.text` label; an
+  `inside=True` one is an `ax.inset_axes` child. So three plotted panels plus a
+  band produced three orphan strips beside their panels alongside the band's
+  own copy, each orphan keeping its `LayoutReactor` registration and therefore
+  its share of the cell reservation. Colorbars are now matched by entry name
+  the way legends are matched by title text, and strip, label and registrations
+  all go together, so the panels reclaim the space: a `pp.subplots(2, 2,
+  axes_size=(35, 30))` grid with an inside band lands on the same 85.1 x 74.2mm
+  figure and the same panel rectangles as the legend-first ordering, which
+  never had the bug. A colorbar the band did *not* claim — a different entry
+  name, or a panel outside an `ax=`-scoped band — is left in place.
+
 ## [0.16.2] - 2026-09-01
 
 ### Fixed
