@@ -343,3 +343,186 @@ def test_band_stays_on_the_canvas(side, anchor):
             f"1x3 {side} anchor={anchor}: band element spans "
             f"[{y0:.2f}, {y1:.2f}] mm outside a {h_mm:.2f} mm canvas"
         )
+
+
+# --- pinned bands: geometry, not just convergence ------------------------
+#
+# A pin (#222) is the one case where the row/column does NOT grow around the
+# band, so the band's outward step is clamped to keep it on the canvas. #230
+# moved the reference for that clamp — the decoration measurement, the
+# "is this cell pinned?" test and the space-available measurement all now read
+# the outermost in-scope cell rather than the anchor's. Convergence alone
+# cannot see that move: both the old and the new reference converge, they just
+# converge to different places. These tests assert the placement.
+
+
+def _band_axis_overflow_mm(fig, group, side):
+    """How far the band spills off the canvas along its OWN outward axis.
+
+    Only that axis: a 'top' / 'bottom' band is laid out along the grid's
+    width and can legitimately overhang a one-column figure sideways, which
+    is a pre-existing property of a wide band and nothing to do with the
+    clamp under test.
+    """
+    w_mm, h_mm, boxes = _snapshot(fig, group)
+    assert boxes, "band rendered no elements"
+    if side == "right":
+        return max(0.0, max(b[2] for b in boxes) - w_mm)
+    if side == "left":
+        return max(0.0, -min(b[0] for b in boxes))
+    if side == "top":
+        return max(0.0, max(b[3] for b in boxes) - h_mm)
+    return max(0.0, -min(b[1] for b in boxes))
+
+
+# Whole-side pins and per-position pins, generous and too-tight, on all four
+# sides. The per-position ones are what separate the anchor's cell from the
+# band's cell: `right=(3.0, None, None)` pins the cell an anchor=0 band used
+# to reserve in and leaves the cell it actually occupies free, and the
+# `(None, None, x)` forms are that case mirrored.
+_PINNED_GEOMETRY_CASES = [
+    ("left", {"ylabel_space": 8.0}),
+    ("left", {"ylabel_space": 25.0}),
+    ("left", {"ylabel_space": (8.0, None, None)}),
+    ("left", {"ylabel_space": (None, None, 8.0)}),
+    ("right", {"right": 3.0}),
+    ("right", {"right": (3.0, None, None)}),
+    ("right", {"right": (None, None, 3.0)}),
+    ("right", {"right": (None, None, 30.0)}),
+    ("bottom", {"xlabel_space": 8.0}),
+    ("bottom", {"xlabel_space": 20.0}),
+    ("bottom", {"xlabel_space": (None, None, 6.0)}),
+    ("top", {"title_space": 6.0}),
+]
+
+
+@pytest.mark.parametrize(
+    "side,pin",
+    _PINNED_GEOMETRY_CASES,
+    ids=[f"{s}-{sorted(p)[0]}{sorted(p.values())[0]}" for s, p in
+         _PINNED_GEOMETRY_CASES],
+)
+def test_pinned_band_geometry_is_anchor_independent(side, pin):
+    """Under a pin, the anchor must not change where the band lands.
+
+    The anchor selects which entries the band collects. Everything
+    positional — how far past the decorations it steps, whether that step is
+    clamped, and how much room the clamp thinks it has — belongs to the cell
+    the band occupies, which is the outermost in-scope one whatever the
+    anchor. The outermost anchor is the reference: it is the configuration
+    that behaved correctly before #230, so it is what the others must match.
+
+    Also asserts the resulting spill off the canvas is no worse than the
+    reference's. Both halves matter: anchor-independence catches a reference
+    that moved, and the overflow bound catches one that moved for every
+    anchor at once.
+    """
+    nrows, ncols = (3, 1) if side in ("top", "bottom") else (1, 3)
+    n = nrows * ncols
+    reference_anchor = 0 if side in ("left", "top") else n - 1
+
+    fig, _, group = _make(nrows, ncols, reference_anchor, side, **pin)
+    reference = _assert_converged(
+        fig, group, f"{side} pin={pin} anchor={reference_anchor}"
+    )
+    reference_overflow = _band_axis_overflow_mm(fig, group, side)
+    plt.close(fig)
+
+    for anchor in range(n):
+        if anchor == reference_anchor:
+            continue
+        fig, _, group = _make(nrows, ncols, anchor, side, **pin)
+        got = _assert_converged(fig, group, f"{side} pin={pin} anchor={anchor}")
+        overflow = _band_axis_overflow_mm(fig, group, side)
+        assert got == reference, (
+            f"{side} pin={pin}: anchor={anchor} placed the band differently "
+            f"from the outermost anchor={reference_anchor}. The pinned-cell "
+            f"decision must follow the cell the band occupies, not the "
+            f"anchor.\n  outermost: {reference}\n  this one:  {got}"
+        )
+        assert overflow <= reference_overflow + 1e-6, (
+            f"{side} pin={pin}: anchor={anchor} spills {overflow:.3f} mm off "
+            f"the canvas against {reference_overflow:.3f} mm for the "
+            f"outermost anchor — the clamp is measuring the wrong edge"
+        )
+        plt.close(fig)
+
+
+# --- twin axes resolve to their parent's cell ----------------------------
+
+
+def _twin_figure(nrows, ncols, side, anchor_idx=None, twin="x", scope_idx=None):
+    """A grid whose data lives on twin axes, with a band over the twins.
+
+    A twin is not in ``fig._publiplots_axes``, so before it was resolved to
+    its parent's cell nothing in the scope matched the grid and the band fell
+    back to the anchor — i.e. to the exact #230 loop the rest of this module
+    is about, on a figure that never gets an ``anchor=`` argument.
+    """
+    fig, axes = pp.subplots(nrows, ncols, axes_size=(40, 32))
+    flat = list(np.asarray(axes).flat)
+    twins = [(ax.twinx() if twin == "x" else ax.twiny()) for ax in flat]
+    for tw in twins:
+        pp.scatterplot(data=DF, x="x", y="y", hue="g", ax=tw)
+    scope = twins if scope_idx is None else [twins[i] for i in scope_idx]
+    if anchor_idx is None:
+        group = pp.legend(scope, side=side)
+    else:
+        group = pp.legend(anchor=twins[anchor_idx], axes=scope, side=side)
+    return fig, flat, twins, group
+
+
+@pytest.mark.parametrize("side", SIDES)
+@pytest.mark.parametrize("twin", ["x", "y"])
+def test_twin_axes_scope_converges(side, twin):
+    """The plain dual-axis pattern: no ``anchor=``, band over the twins."""
+    fig, _, _, group = _twin_figure(1, 3, side, twin=twin)
+    _assert_converged(fig, group, f"1x3 {side} twin{twin} scope")
+
+
+@pytest.mark.parametrize("side", SIDES)
+@pytest.mark.parametrize("anchor", [0, 1, 2])
+def test_twin_axes_scope_converges_for_every_anchor(side, anchor):
+    fig, _, _, group = _twin_figure(1, 3, side, anchor_idx=anchor)
+    _assert_converged(fig, group, f"1x3 {side} twin anchor={anchor}")
+
+
+@pytest.mark.parametrize("nrows,ncols", [(2, 2), (3, 1)])
+@pytest.mark.parametrize("side", ["right", "bottom"])
+def test_twin_axes_scope_converges_on_multi_row_grids(nrows, ncols, side):
+    fig, _, _, group = _twin_figure(nrows, ncols, side)
+    _assert_converged(fig, group, f"{nrows}x{ncols} {side} twin scope")
+
+
+@pytest.mark.parametrize("anchor", [0, 1, 2])
+def test_twin_axes_band_reserves_space_in_the_twins_own_column(anchor):
+    """Converging is not enough — the reservation must land in the right cell.
+
+    A twin resolved to the anchor's cell instead of its own still converged
+    whenever the anchor happened to be the outermost member (the measurement
+    reference then translates with the band), but the space was reserved in
+    the wrong column and the band hung off the canvas. Only the band's own
+    axis is checked: the twin's tick labels are a separate matter, below.
+    """
+    fig, _, _, group = _twin_figure(1, 3, "right", anchor_idx=anchor)
+    _assert_converged(fig, group, f"1x3 right twin anchor={anchor}")
+    overflow = _band_axis_overflow_mm(fig, group, "right")
+    assert overflow == pytest.approx(0.0, abs=1e-6), (
+        f"twin scope anchor={anchor}: band hangs {overflow:.2f} mm off the "
+        f"canvas — its space was reserved in the wrong column"
+    )
+
+
+def test_twin_scope_is_anchor_independent():
+    """Every anchor over a twin scope must produce the same layout."""
+    fig, _, _, group = _twin_figure(1, 3, "right", anchor_idx=2)
+    reference = _assert_converged(fig, group, "twin reference anchor=2")
+    plt.close(fig)
+    for anchor in (0, 1):
+        fig, _, _, group = _twin_figure(1, 3, "right", anchor_idx=anchor)
+        got = _assert_converged(fig, group, f"twin anchor={anchor}")
+        assert got == reference, (
+            f"twin scope anchor={anchor} laid out differently from "
+            f"anchor=2:\n  outermost: {reference}\n  this one:  {got}"
+        )
+        plt.close(fig)

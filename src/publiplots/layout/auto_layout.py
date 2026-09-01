@@ -510,9 +510,20 @@ class SubplotsAutoLayout:
         reservation that grows is one of the cells that pushes those axes —
         and with them the band — further out, so the next pass measures more
         again, without limit. Anchoring both halves to the outermost in-scope
-        cell closes the loop: growing that cell's reservation cannot move its
-        own outer edge (it is appended outside it), so the measurement is
-        invariant and the layout settles in one pass.
+        cell closes the loop, for two different reasons depending on the side:
+
+        - On 'right' / 'top' the reservation (``right[idx]`` /
+          ``title_space[idx]``) is appended OUTSIDE the cell's outer edge, so
+          growing it cannot move the edge the overhang is measured from.
+        - On 'left' / 'bottom' it can: ``ylabel_space[idx]`` /
+          ``xlabel_space[idx]`` sit inside the cell's origin, so growing them
+          shifts the reference cell. But it shifts the whole in-scope block
+          rigidly, band included, and the overhang is a RELATIVE distance
+          (``anchor_bb.x0 - obj_bb.x0``), which a rigid translation leaves
+          unchanged.
+
+        Either way the measurement is invariant under the resize it causes, so
+        the layout settles in one pass instead of advancing forever.
 
         Returns ``(axes_list, index)``. ``index`` is the row index for
         ``side`` in ``('top', 'bottom')`` and the column index otherwise, and
@@ -535,15 +546,32 @@ class SubplotsAutoLayout:
         rows, cols = self._find_scope_indices(scope, axes_matrix)
         idxs = cols if axis_kind == "col" else rows
         if not idxs:
-            # No scope axes found in the grid matrix (twin/inset axes, or a
-            # figure publiplots did not build). Fall back to the anchor —
-            # the pre-#230 behaviour, which is exact for a single-axes scope.
+            # No scope axes resolve to a grid cell. Twins DO resolve (see
+            # _find_scope_indices / _cell_siblings), so what reaches here is
+            # an axes with no cell of its own — an ``ax.inset_axes`` child, or
+            # a figure publiplots did not build — and we fall back to the
+            # anchor.
+            #
+            # For a SINGLE-axes scope that is exact: anchor and outermost
+            # axes coincide, which is the whole reason the single-axes case
+            # was always immune to #230. For a MULTI-axes scope it is a best
+            # effort, NOT a fix: the band is still placed past the scope's
+            # union while the reservation grows the anchor's cell, so the
+            # #230 feedback loop survives there unless the anchor happens to
+            # be the outermost member. Closing it needs those axes to resolve
+            # to cells, as twins now do. (``_find_ax_indices`` also answers
+            # (0, 0) for an anchor that is not in the grid at all, which is
+            # why that is a fallback and not a result.)
             r, c = self._find_ax_indices(group.anchor, axes_matrix)
             return [group.anchor], (c if axis_kind == "col" else r)
         # Row 0 is the TOP row (FigureLayout.axes_position stacks upward from
         # the last row), so 'top' takes the first row and 'bottom' the last.
         idx = idxs[-1] if side in ("right", "bottom") else idxs[0]
-        scope_ids = {id(a) for a in scope}
+        # Alias ids, so a twin in the scope selects the GRID axes sharing its
+        # cell — the reference must be an axes the layout owns: it carries the
+        # cell's rectangle and is what _offset_inside_legend_past_decorations
+        # takes a tight bbox of.
+        scope_ids = self._cell_alias_ids(scope)
         cells = (
             [row[idx] for row in axes_matrix] if axis_kind == "col"
             else list(axes_matrix[idx])
@@ -896,6 +924,23 @@ class SubplotsAutoLayout:
         ``ref_idx`` is the cell :meth:`_band_reference` resolved for this
         group — the outermost in-scope row/column on the band's side, i.e.
         the same slot the non-first-draw path grows (#230).
+
+        .. warning::
+
+           This method appears to be DEAD CODE, and the ``ref_idx`` change is
+           therefore theoretically right but empirically inert. Instrumenting
+           it across the full 2017-test suite recorded ZERO calls, and an
+           independent review could not reach it in 14 hand-built
+           configurations — including the "group constructed BEFORE the plot
+           calls" ordering the paragraph above names as its reason to exist,
+           and including a pinned cell.
+           Its guard is ``max_overhang_px <= 0``, and by the time
+           ``_measure_one_group`` runs, ``group._materialize()`` has already
+           created the artists and the reactor has already placed them past
+           the anchor edge, so the overhang is positive on the very first
+           pass. Left in place rather than deleted because proving a negative
+           over every entry point is not the same as proving it unreachable;
+           treat any change here as unverifiable by test.
         """
         if group._anchor_kind != "axes" or ref_idx is None:
             return
@@ -919,20 +964,62 @@ class SubplotsAutoLayout:
                     return r, c
         return 0, 0
 
+    @staticmethod
+    def _cell_siblings(ax):
+        """``ax`` plus every axes matplotlib considers twinned with it.
+
+        ``ax.twinx()`` / ``ax.twiny()`` build a second Axes that occupies
+        EXACTLY the parent's cell — its ``axes_locator`` is pinned to the
+        parent's ``transAxes``, so it tracks the parent through every
+        ``_apply`` repositioning — but that twin is not in
+        ``fig._publiplots_axes`` and so is invisible to an ``is`` comparison
+        against the grid. Resolving it to its parent's cell is what lets
+        ``_band_reference`` treat a twin scope like any other (#230).
+
+        The twinned-axes grouper is the key, NOT ``get_subplotspec()``:
+        ``pp.subplots`` builds every cell with ``fig.add_axes``, so parent and
+        twin both report ``None`` there and matching on it would collapse the
+        entire grid into a single bucket. ``_twinned_axes`` is private
+        matplotlib API, hence the defensive getattr; it degrades to identity
+        matching, i.e. the behaviour before this helper existed.
+
+        Returns ``[ax]`` for an axes with no twin.
+        """
+        grouper = getattr(ax, "_twinned_axes", None)
+        if grouper is None:
+            return [ax]
+        try:
+            siblings = list(grouper.get_siblings(ax))
+        except Exception:
+            return [ax]
+        return siblings or [ax]
+
+    def _cell_alias_ids(self, scope_axes) -> set:
+        """ids of every axes that resolves to the same grid cell as one of these."""
+        ids = set()
+        for ax in scope_axes:
+            ids.update(id(a) for a in self._cell_siblings(ax))
+        return ids
+
     def _find_scope_indices(self, scope_axes, axes_matrix):
         """Return (row_indices, col_indices) touched by any axes in scope_axes.
 
         scope_axes is a list of matplotlib Axes. Returns two sorted lists of
         unique row/col indices within axes_matrix. Used by commit 4's
         multi-axes scope path to aggregate per-cell reservations via max().
+
+        Matching is by grid CELL, not by object identity: an axes that shares
+        a cell with a grid axes (a twin — see :meth:`_cell_siblings`) resolves
+        to that cell, so a band scoped over twins reserves space in the
+        columns/rows those twins are drawn in.
         """
+        alias_ids = self._cell_alias_ids(scope_axes)
         rows, cols = set(), set()
-        for ax in scope_axes:
-            for r, row in enumerate(axes_matrix):
-                for c, a in enumerate(row):
-                    if a is ax:
-                        rows.add(r)
-                        cols.add(c)
+        for r, row in enumerate(axes_matrix):
+            for c, a in enumerate(row):
+                if id(a) in alias_ids:
+                    rows.add(r)
+                    cols.add(c)
         return sorted(rows), sorted(cols)
 
     def _artist_window_extent(self, obj):
