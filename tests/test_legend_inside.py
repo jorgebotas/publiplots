@@ -363,6 +363,45 @@ def test_inside_continuous_in_cell_group(cont_df):
     assert anchor.y0 <= pos.y0 and pos.y1 <= anchor.y1
 
 
+def test_inside_continuous_in_cell_group_grid_after_ordering(cont_df):
+    """The documented 2x2 in-cell pattern, continuous hue, plots first.
+
+    Pins the two things that are easy to mis-measure from outside:
+
+    * the strip is a CHILD axes of the anchor (``anchor.child_axes``), so it
+      never appears in ``fig.axes`` — enumerating ``fig.axes`` finds only the
+      un-evicted per-axes colorbars and wrongly concludes nothing rendered;
+    * the anchor is blanked via ``set_axis_off()``, which flips
+      ``ax.axison`` and deliberately leaves ``ax.get_visible()`` True.
+    """
+    fig, axes = pp.subplots(2, 2, axes_size=(35, 30))
+    for r, c in [(0, 0), (0, 1), (1, 0)]:
+        pp.scatterplot(data=cont_df, x="x", y="y", hue="z", ax=axes[r, c])
+    pp.legend(anchor=axes[1, 1], inside=True)
+    for _ in range(4):
+        fig.canvas.draw()
+
+    anchor = axes[1, 1]
+    strips = _inside_cbar_axes(anchor)
+    assert len(strips) == 1, (
+        "expected exactly one colorbar inside the anchor cell, got "
+        f"{len(strips)}; fig.axes cannot see it because an inset is a child "
+        "axes, not a figure axes"
+    )
+    strip_bbox = strips[0].get_window_extent()
+    anchor_bbox = anchor.get_window_extent()
+    assert anchor_bbox.x0 <= strip_bbox.x0 and strip_bbox.x1 <= anchor_bbox.x1, (
+        f"strip x=({strip_bbox.x0:.0f}, {strip_bbox.x1:.0f}) escapes anchor "
+        f"x=({anchor_bbox.x0:.0f}, {anchor_bbox.x1:.0f})"
+    )
+    assert anchor_bbox.y0 <= strip_bbox.y0 and strip_bbox.y1 <= anchor_bbox.y1
+
+    assert anchor.axison is False, (
+        "anchor cell not blanked; note set_axis_off() flips ax.axison and "
+        "leaves ax.get_visible() True, so get_visible() cannot test this"
+    )
+
+
 def test_inside_continuous_and_categorical_coexist():
     """A hue colorbar and a style legend can both go inside one axes."""
     rng = np.random.default_rng(5)

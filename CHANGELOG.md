@@ -30,7 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`pp.legend(anchor=ax, inside=True)` now places a collected colorbar inside
   the anchor cell** (#215). The in-cell flavor injected `inside=True` + the
   `loc` derived from `side`/`align` for legends only, so a continuous hue
-  silently rendered in a band outside the cell it was supposed to fill.
+  silently rendered in a band outside the cell it was supposed to fill. The
+  strip is an *inset* of the anchor, i.e. a member of `anchor.child_axes` and
+  deliberately not of `fig.axes`.
+  Still outstanding on this path, and untouched here because it lives in the
+  eviction machinery rather than the colorbar one: with the "after" ordering
+  (plots first, then `pp.legend(...)`), the per-axes colorbars each plot call
+  already drew are **not** evicted when the band claims the same entry, so they
+  survive alongside the band's copy.
+  `MultiAxesLegendGroup._evict_claimed_per_axis_legends` matches
+  `matplotlib.legend.Legend` children only and has never handled colorbars. The
+  "before" ordering (`pp.legend(...)` first) is unaffected.
 
 ## [0.16.1] - 2026-08-31
 

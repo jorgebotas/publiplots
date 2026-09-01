@@ -261,6 +261,17 @@ Details that differ from the categorical legend:
   only. On a colorbar entry they are **dropped**, not forwarded — before
   0.16.2 every one of them (including `inside`) reached
   `Colorbar.__init__` and raised `TypeError`.
+- The strip is an **inset of its axes** — it lives in `ax.child_axes`, not
+  in `fig.axes`. Code that inspects a figure's colorbars by walking
+  `fig.axes` will not see it.
+
+**Known gap — `pp.legend(anchor=..., inside=True)` with a continuous hue and
+the "after" ordering.** The band renders its colorbar inside the anchor cell
+correctly, but the per-axes colorbars the earlier plot calls already drew are
+not removed, so they survive next to each panel. Band eviction matches
+`Legend` artists only and has never handled colorbars. Until that is fixed,
+put `pp.legend(...)` **before** the plot calls when collecting a continuous
+hue into an in-cell legend — that ordering is unaffected.
 
 ## Grid scoping (PR 4 / v0.12)
 
