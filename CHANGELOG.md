@@ -82,6 +82,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fontweight`'s default changes from `'normal'` to `None` — under the flat
   7pt type of 0.16.0, weight is the remaining hierarchy signal, and the old
   default silently closed it off.
+- **A per-axes `side='top'` or `side='bottom'` colorbar band now stacks its
+  label above the colour strip.** `add_colorbar` expressed "the strip goes
+  below the label" as an offset *along* the anchor edge, which is only the
+  downward direction for `side='right'`/`'left'`. On a top or bottom band the
+  along axis is horizontal, so the offset pushed the strip sideways instead:
+  a top band left its label hanging over the axes with the strip displaced
+  ~3mm to the right, and a bottom band overlapped the two. Both sides now
+  stack the block outward from the edge, so label and strip share a centre
+  line.
+  **Scope:** this covers a band holding a single colorbar — the common case,
+  and what `pp.legend(ax, side='top')` produces for a continuous hue. A band
+  that also holds a categorical legend (a plot with both `hue=<continuous>`
+  and `style=`) still separates the strip from its label, for a different
+  reason in the along-edge alignment pass; that is tracked separately.
+  (#203)
+- **`add_colorbar(height=...)` is now honoured exactly.** The strip's
+  millimetre height was read back from the rendered axes, which stores a
+  figure *fraction* — so once `pp.subplots` resized the figure around the
+  band, the value drifted. It is now taken from the `height` argument the
+  strip was built with. Labelled colorbars were already correct by accident
+  (measuring their label forced the figure to settle first); **unlabelled**
+  ones were not, on every side including `right` and `left`. The error was
+  whatever the figure happened to resize by — measured between −17% and
+  +21% of the declared height across configurations, in both directions.
+  Expect unlabelled colorbars to change size slightly, to the size you
+  asked for. (#203)
 
 ## [0.16.0] - 2026-08-31
 

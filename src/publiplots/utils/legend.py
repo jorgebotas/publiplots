@@ -1533,6 +1533,26 @@ class LegendBuilder:
                 norm = Normalize(vmin=vmin, vmax=vmax)
             mappable = SM(norm=norm, cmap=cmap_obj)
 
+        # Which cursor axis carries the label -> strip stack.
+        #
+        # ``LegendLayout``'s cursor is (outward, along): *outward* runs
+        # AWAY from the anchor edge, *along* runs down the edge's tangent
+        # — see ``layout_reactor._Registration`` for the per-side mapping
+        # (its ``mm_x_from_right`` is outward, ``mm_y_from_top`` is along,
+        # both historical names). "The label sits above the strip" is a
+        # statement about *screen* geometry, so which cursor axis carries
+        # it depends on the side:
+        #   side='right'/'left' — along runs downward, so the strip sits
+        #       further ALONG than the label (the historical layout).
+        #   side='top'    — outward runs upward, so the label sits further
+        #       OUTWARD than the strip; both share one along slot.
+        #   side='bottom' — outward runs downward, so the strip sits
+        #       further OUTWARD than the label; both share one along slot.
+        # Stacking top/bottom bands along the edge instead is what made a
+        # per-axes top colorbar render its strip sideways and its label
+        # over the axes (#203).
+        stack_outward = self._side in ("top", "bottom")
+
         # Estimate title height for overflow check
         title_pad = 2  # mm
         title_obj = None
@@ -1543,19 +1563,35 @@ class LegendBuilder:
         else:
             total_estimated_height = height
 
-        # Check overflow using estimate
-        if self._check_overflow(total_estimated_height):
+        # Check overflow using estimate. Overflow is about the *along-edge*
+        # budget: for right/left the whole stack consumes it, but for
+        # top/bottom the stack grows outward and only the strip's width
+        # does. (The label may be wider than the strip; it isn't measured
+        # until it exists, and this is only the pre-flight estimate — the
+        # cursor advance below uses the real widths.)
+        if self._check_overflow(width if stack_outward else total_estimated_height):
             self._start_new_band()
 
         # Add title if needed and measure actual height
         title_height_actual = 0
+        title_width_actual = 0
         if title_position == "top" and label:
+            # On a top band the strip is the element closest to the axes,
+            # so the label has to step outward past it (plus the pad).
+            title_outward_mm = self._layout.current_outward
+            if self._side == "top":
+                title_outward_mm += height + title_pad
             x_fig, y_fig = self._mm_to_figure_coords(
-                self._layout.current_outward, self._layout.current_along
+                title_outward_mm, self._layout.current_along
             )
             title_obj = self.fig.text(
                 x_fig, y_fig, label,
-                ha="left", va="top",
+                ha="left",
+                # ``_mm_to_figure_coords`` returns the point on the outward
+                # line; the label must grow AWAY from the axes from there.
+                # A top band grows upward, so anchor its bottom; every
+                # other side grows downward, so anchor its top.
+                va="bottom" if self._side == "top" else "top",
                 fontsize=resolve_param("legend.title_fontsize", resolve_param("font.size")),
                 fontweight="normal"
             )
@@ -1565,32 +1601,45 @@ class LegendBuilder:
 
             # Register the title with the reactor so it follows axes changes
             # (otherwise the colorbar would reposition but the title would stay pinned).
-            title_x_mm = self._layout.current_outward
             title_mm_y_from_top = self._layout.along_from_start
             self._reactor.register(
                 ax=self._anchor_ax,
                 artist=title_obj,
-                mm_x_from_right=title_x_mm,
+                mm_x_from_right=title_outward_mm,
                 mm_y_from_top=title_mm_y_from_top,
                 side=self._side,
                 external_to_axis=self._external_to_axis,
             )
 
-            # Position colorbar below measured title
-            cbar_y_start = self._layout.current_along - title_height_actual - title_pad
-        else:
-            cbar_y_start = self._layout.current_along
-            title_width_actual = 0
+        # Place the strip relative to the measured label: further outward
+        # on a bottom band, further along the edge on right/left, and
+        # unmoved on a top band (there the label was lifted above it).
+        cbar_outward_mm = self._layout.current_outward
+        cbar_y_start = self._layout.current_along
+        if title_height_actual:
+            if self._side == "bottom":
+                cbar_outward_mm += title_height_actual + title_pad
+            elif not stack_outward:
+                cbar_y_start -= title_height_actual + title_pad
 
         # Create colorbar axes
-        x_fig, y_fig_top = self._mm_to_figure_coords(self._layout.current_outward, cbar_y_start)
+        x_fig, y_fig = self._mm_to_figure_coords(cbar_outward_mm, cbar_y_start)
 
         fig_extent = self.fig.get_window_extent()
         cbar_width_fig = (width * self.MM2INCH * self.fig.dpi) / fig_extent.width
         cbar_height_fig = (height * self.MM2INCH * self.fig.dpi) / fig_extent.height
 
+        # ``add_axes`` takes the bottom-left corner, while
+        # ``_mm_to_figure_coords`` returns the strip's *outward* edge —
+        # its bottom for side='top', its top otherwise; its right edge for
+        # side='left', its left otherwise. Mirrors the per-draw arithmetic
+        # in ``LayoutReactor._update_artist_anchor``, which owns the
+        # position from the first draw onward.
+        cbar_bottom_fig = y_fig if self._side == "top" else y_fig - cbar_height_fig
+        cbar_left_fig = x_fig - cbar_width_fig if self._side == "left" else x_fig
+
         cbar_ax = self.fig.add_axes(
-            [x_fig, y_fig_top - cbar_height_fig, cbar_width_fig, cbar_height_fig],
+            [cbar_left_fig, cbar_bottom_fig, cbar_width_fig, cbar_height_fig],
             xmargin=0,
             ymargin=0
         )
@@ -1616,8 +1665,16 @@ class LegendBuilder:
             # Auto-set ticks for divergent colormap
             cbar.set_ticks([vmin, center, vmax])
 
-        # Measure actual colorbar dimensions
-        cbar_width, cbar_height = self._measure_object_dimensions(cbar)
+        # The strip's mm footprint is exactly what ``add_axes`` was given:
+        # ``fig.colorbar`` never resizes a caller-supplied ``cax``. Reading
+        # it back in pixels would report a *stale* size whenever the draw
+        # below grew the figure — pp.subplots resizes to fit the band, and
+        # the axes' stored fraction then covers more mm than it was built
+        # with. That is how a top band's 15mm strip came back as 20.06mm.
+        # The draw itself is kept: callers downstream expect the figure to
+        # be current after add_colorbar.
+        self._fig_canvas_draw_for_measure()
+        cbar_width, cbar_height = width, height
 
         # Calculate actual total width (max of title and colorbar)
         actual_width = max(cbar_width, title_width_actual)
@@ -1628,20 +1685,27 @@ class LegendBuilder:
         else:
             total_height_actual = cbar_height
 
-        # Colorbar top sits below the title (if any) by title_height + title_pad.
-        # The layout cursor still points at the title position, so we compute
-        # the colorbar's offset explicitly before advancing.
-        placement_x_mm = self._layout.current_outward
-        if title_position == "top" and label:
+        # The layout cursor still points at the block's origin, so the
+        # strip's own placement is re-derived here from the same offsets
+        # used above: outward past the label on a bottom band, along past
+        # it on right/left, unchanged on a top band.
+        placement_x_mm = cbar_outward_mm
+        if title_height_actual and not stack_outward:
             mm_y_from_top = (
                 self._layout.along_from_start + title_height_actual + title_pad
             )
         else:
             mm_y_from_top = self._layout.along_from_start
 
-        # Update layout cursor past the full title+colorbar block.
-        self._layout.update_width(actual_width)
-        self._layout.advance_along(total_height_actual)
+        # Update layout cursor past the full title+colorbar block. The
+        # stack's extent lands on whichever axis carries it: outward for
+        # top/bottom bands, along the edge for right/left.
+        if stack_outward:
+            self._layout.update_width(total_height_actual)
+            self._layout.advance_along(actual_width)
+        else:
+            self._layout.update_width(actual_width)
+            self._layout.advance_along(total_height_actual)
 
         # Register with the reactor. Colorbars need mm_width + mm_height so
         # the reactor dispatches to cbar.ax.set_position instead of
@@ -1652,7 +1716,7 @@ class LegendBuilder:
             mm_x_from_right=placement_x_mm,
             mm_y_from_top=mm_y_from_top,
             mm_width=width,        # the mm width parameter of add_colorbar
-            mm_height=cbar_height, # measured mm height (from _measure_object_dimensions)
+            mm_height=cbar_height, # == the ``height`` argument; see above
             side=self._side,
             external_to_axis=self._external_to_axis,
         )

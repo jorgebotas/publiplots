@@ -1175,3 +1175,109 @@ def test_top_legend_title_pad_matches_final_legend_position(hue_kind):
             f"track the band's true rise above the axes {band_mm:.3f}mm "
             f"+ ~1mm breathing"
         )
+
+
+@pytest.mark.parametrize("side", ["top", "bottom"])
+def test_per_axes_horizontal_colorbar_band_stacks_label_above_strip(side):
+    """A per-axes top/bottom colorbar band must stack its label ABOVE the
+    colour strip and place the whole block clear of the axes rectangle.
+
+    Regression for #203. ``add_colorbar`` expressed "the strip goes below
+    the label" as an *along-the-edge* offset. That is only the downward
+    direction for side='right'/'left'; on a top/bottom band the along axis
+    is horizontal (``layout_reactor._Registration``), so the offset pushed
+    the strip SIDEWAYS by title_height + pad while the label stayed pinned
+    at the outward line -- hanging over the axes on a top band and
+    colliding with the strip on a bottom one.
+
+    Measured before the fix, in this exact configuration (50x40mm axes,
+    mm relative to the axes rect):
+
+        side='top'     label bottom at -0.37mm above ax.y1, i.e. 0.37mm
+                       INSIDE the axes, while the strip runs [+0.56,
+                       +17.93] -- the label hangs below its own strip.
+        side='bottom'  label bottom sits 3.30mm BELOW the strip's top, so
+                       the two overlap.
+        both           label centred on 21.75mm, strip on 41.66mm -- 19.9mm
+                       apart, laid out beside each other along the edge
+                       instead of stacked.
+
+    Its sibling ``test_top_legend_title_pad_matches_final_legend_position``
+    asserts only the resulting title pad, so it stayed green throughout.
+    Hence the three structural assertions here: outward clearance, the
+    label/strip stacking order, and the shared centre line that proves the
+    two are stacked rather than laid side by side.
+
+    The label is deliberately long and the centre check is against the
+    strip's own rectangle, not its tight bbox: a one-character label
+    compared against the tight bbox (4.5mm strip + ~4.7mm of tick labels)
+    would sit "within" it for reasons that have nothing to do with the
+    stacking, and would pass on a band that is in fact misaligned.
+    """
+    label_text = "Expression level (log2 CPM)"
+    df = _scatter_df().assign(
+        **{label_text: lambda d: np.linspace(0.0, 1.0, len(d))}
+    )
+
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue=label_text, ax=ax,
+                   title="my title")
+    group = pp.legend(ax, side=side)
+
+    sizer = fig._publiplots_auto_layout
+    to_mm = lambda px: px / fig.dpi * 25.4
+
+    # Draw 0 must already be right (a consumer that draws once never gets a
+    # second pass), and so must steady state (settle() loops draws for
+    # savefig, so draw 1+ is what gets written out).
+    for draw in range(3):
+        fig.canvas.draw()
+        by_kind = {kind: obj for kind, obj in group._builder.elements}
+        assert set(by_kind) == {"colorbar", "text"}, (
+            f"expected a strip + a floating label, got {sorted(by_kind)}"
+        )
+        # Tight bboxes for the vertical checks -- they must account for the
+        # strip's tick labels, which is how the implementation measures the
+        # band. The strip's bare rectangle is kept separately for the
+        # horizontal centre check (its tick labels hang off one side and
+        # would drag the tight bbox's centre with them).
+        strip = sizer._artist_window_extent(by_kind["colorbar"])
+        label = sizer._artist_window_extent(by_kind["text"])
+        strip_rect = by_kind["colorbar"].ax.get_window_extent()
+        ax_bb = ax.get_window_extent()
+        tag = f"[{side}, draw {draw}]"
+
+        # 1. The whole block clears the axes rectangle on its own side.
+        if side == "top":
+            assert to_mm(min(strip.y0, label.y0) - ax_bb.y1) > -0.1, (
+                f"{tag} band must sit above ax.y1; strip y0 is "
+                f"{to_mm(strip.y0 - ax_bb.y1):+.2f}mm and label y0 is "
+                f"{to_mm(label.y0 - ax_bb.y1):+.2f}mm relative to it"
+            )
+        else:
+            assert to_mm(max(strip.y1, label.y1) - ax_bb.y0) < 0.1, (
+                f"{tag} band must sit below ax.y0; strip y1 is "
+                f"{to_mm(strip.y1 - ax_bb.y0):+.2f}mm and label y1 is "
+                f"{to_mm(label.y1 - ax_bb.y0):+.2f}mm relative to it"
+            )
+
+        # 2. The label sits above the strip with a modest gap -- never
+        #    overlapping it, never flung off to a different height.
+        gap_mm = to_mm(label.y0 - strip.y1)
+        assert 0.0 <= gap_mm < 4.0, (
+            f"{tag} label should sit just above the strip; label y0 - "
+            f"strip y1 = {gap_mm:+.2f}mm"
+        )
+
+        # 3. They are stacked, not laid out side by side along the edge:
+        #    label and strip must share a centre line. (A wide label
+        #    legitimately overhangs a 4.5mm strip on both sides, so
+        #    containment is the wrong property -- concentricity is.)
+        label_c = to_mm((label.x0 + label.x1) / 2 - ax_bb.x0)
+        strip_c = to_mm((strip_rect.x0 + strip_rect.x1) / 2 - ax_bb.x0)
+        assert abs(label_c - strip_c) < 0.5, (
+            f"{tag} label and strip should share a centre line; label "
+            f"centre {label_c:.2f}mm vs strip centre {strip_c:.2f}mm "
+            f"(from ax.x0) -- they are laid out beside each other, not "
+            f"stacked"
+        )
