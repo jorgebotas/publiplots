@@ -772,6 +772,113 @@ def test_per_axis_internal_left_clears_yticklabels():
         )
 
 
+@pytest.mark.parametrize("hue_kind", ["categorical", "colorbar"])
+def test_per_axis_internal_bottom_clears_xticklabels(hue_kind):
+    """Issue #212: a per-axes ``side='bottom'`` band must clear the x-tick
+    labels AND the x-axis label, not sit a fixed gap below the axes rect.
+
+    Measured before the fix on this exact configuration (50x40mm axes, mm
+    relative to the axes rect), identically for a categorical legend and a
+    colorbar band::
+
+        x tick labels, bottom edge : -3.61
+        band, top edge             : -2.00   -> overlaps by 1.61mm
+
+    With an xlabel present the collision is worse still (xlabel bottom at
+    -7.39mm vs the same -2.00mm band top). The mirror of
+    ``side='left'``'s dynamic offset cures both.
+    """
+    df = _scatter_df()
+    label_text = "Expression level (log2 CPM)"
+    if hue_kind == "colorbar":
+        df = df.assign(**{label_text: np.linspace(0.0, 1.0, len(df))})
+        hue, kwargs = label_text, {}
+    else:
+        hue, kwargs = "g", {"palette": "pastel"}
+
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue=hue, ax=ax, **kwargs)
+    ax.set_xlabel("x axis label")
+    group = pp.legend(ax, side="bottom")
+
+    sizer = fig._publiplots_auto_layout
+    to_mm = lambda px: px / fig.dpi * 25.4
+
+    # Draw 0 must already be right (a consumer that draws once never gets a
+    # second pass), and so must steady state (settle() loops draws for
+    # savefig, so draw 1+ is what gets written out).
+    for draw in range(3):
+        fig.canvas.draw()
+        ax_bb = ax.get_window_extent()
+        extents = [
+            sizer._artist_window_extent(obj)
+            for _, obj in group._builder.elements
+        ]
+        band_top = max(e.y1 for e in extents if e is not None)
+        tick_bottoms = [
+            t.get_window_extent().y0
+            for t in ax.get_xticklabels() if t.get_text()
+        ]
+        assert tick_bottoms, "expected x tick labels in this fixture"
+        tick_bottom = min(tick_bottoms)
+        tag = f"[{hue_kind}, draw {draw}]"
+
+        assert band_top <= tick_bottom + 0.5, (
+            f"{tag} band top {to_mm(band_top - ax_bb.y0):+.2f}mm overlaps the "
+            f"x tick labels, whose bottom edge is at "
+            f"{to_mm(tick_bottom - ax_bb.y0):+.2f}mm (from ax.y0)"
+        )
+        # ... and it clears them dynamically, not by a large fixed gap. The
+        # xlabel sits between the ticks and the band, so the bound covers
+        # xlabel height + the two ~2mm gaps around it.
+        gap_mm = to_mm(tick_bottom - band_top)
+        assert gap_mm <= 10.0, (
+            f"{tag} bottom band gap to the x tick labels should be "
+            f"small/dynamic, got {gap_mm:.2f}mm"
+        )
+
+    # The xlabel must be cleared too — clearing the ticks alone is a half
+    # fix. Asserted at steady state only: matplotlib recomputes the xlabel's
+    # position from the tick bboxes into ABSOLUTE display coordinates during
+    # each draw, so its placement lags a figure resize by one draw
+    # regardless of this band. savefig settles first, so steady state is
+    # what gets written out.
+    xlabel_bb = ax.xaxis.label.get_window_extent()
+    assert ax.xaxis.label.get_text(), "expected an xlabel in this fixture"
+    assert band_top <= xlabel_bb.y0 + 0.5, (
+        f"[{hue_kind}] band top {to_mm(band_top - ax_bb.y0):+.2f}mm overlaps "
+        f"the xlabel, whose bottom edge is at "
+        f"{to_mm(xlabel_bb.y0 - ax_bb.y0):+.2f}mm (from ax.y0)"
+    )
+    assert to_mm(xlabel_bb.y0 - band_top) <= 5.0, (
+        f"[{hue_kind}] bottom band gap to the xlabel should be "
+        f"small/dynamic, got {to_mm(xlabel_bb.y0 - band_top):.2f}mm"
+    )
+
+
+def test_per_axis_internal_bottom_offset_collapses_without_decorations():
+    """Issue #212 companion: on an axes with no x tick labels and no
+    xlabel the dynamic offset must collapse to zero — the band still sits
+    at its ~2mm outward gap, with no decoration padding invented."""
+    df = _scatter_df()
+    fig, ax = pp.subplots(1, 1, axes_size=(50, 40))
+    pp.scatterplot(data=df, x="x", y="y", hue="g", palette="pastel", ax=ax)
+    ax.set_xticks([])
+    ax.set_xlabel("")
+    group = pp.legend(ax, side="bottom")
+    for _ in range(3):
+        fig.canvas.draw()
+    sizer = fig._publiplots_auto_layout
+    extents = [
+        sizer._artist_window_extent(obj) for _, obj in group._builder.elements
+    ]
+    band_top = max(e.y1 for e in extents if e is not None)
+    gap_mm = (ax.get_window_extent().y0 - band_top) / fig.dpi * 25.4
+    assert -0.5 <= gap_mm <= 4.0, (
+        f"bottom band gap below a bare axes should be ~2mm, got {gap_mm:.2f}mm"
+    )
+
+
 def test_per_axis_top_title_space_reserves_legend_plus_title():
     """Issue C: the reserved title_space for a per-axes top legend should
     be ~ legend_height + gap + title_height — not extra vertical-stacking

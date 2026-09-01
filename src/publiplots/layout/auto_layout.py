@@ -394,12 +394,12 @@ class SubplotsAutoLayout:
             if group._anchor_kind == "axes":
                 if group._side == "top":
                     self._lift_title_above_top_legend(group, dpi)
-                elif group._side == "left":
-                    # A per-axes left legend must clear the y-tick labels /
-                    # y-axis label dynamically (Issue B): step the band past
-                    # the already-measured ylabel_space for this column
-                    # rather than using a fixed 8mm offset.
-                    self._offset_left_legend_past_yticklabels(
+                elif group._side in ("left", "bottom"):
+                    # A per-axes left or bottom legend must clear the tick
+                    # labels / axis label that live on its own side of the
+                    # axes rectangle, dynamically (Issue B for 'left';
+                    # #212 for 'bottom') rather than at a fixed offset.
+                    self._offset_inside_legend_past_decorations(
                         group, measured, axes_matrix
                     )
             return
@@ -577,40 +577,56 @@ class SubplotsAutoLayout:
         # re-merge the default fontdict and clobber user styling).
         ax._set_title_offset_trans(max(base_pad, pad_pt))
 
-    def _offset_left_legend_past_yticklabels(
+    def _offset_inside_legend_past_decorations(
         self, group, measured, axes_matrix
     ) -> None:
-        """Step a per-axes left legend just past the y-tick labels / y-axis
-        label, dynamically.
+        """Step a per-axes left/bottom legend just past the tick labels and
+        axis label on its own side, dynamically.
 
-        Issue B: with the old fixed 8mm offset removed, an internal left
-        legend would render only ``x_offset`` mm left of the axes spine,
-        colliding with the y-tick labels (which live left of the axes).
+        Issue B (``side='left'``): with the old fixed 8mm offset removed, an
+        internal left legend would render only ``x_offset`` mm left of the
+        axes spine, colliding with the y-tick labels (which live left of the
+        axes). Issue #212 (``side='bottom'``): identically, a bottom band was
+        placed a fixed ``x_offset`` mm below the axes rect without measuring
+        the x-tick labels / xlabel already occupying that space, overlapping
+        them by ~1.6mm on a 50x40mm axes. Both sides — categorical legends
+        and colorbar bands alike — are cured by the same measurement, so they
+        share this one implementation; only the side's field and axis differ,
+        which ``_FIELD_BY_SIDE`` / ``_OVERHANG_BY_SIDE`` already encode.
+
+        ``side='right'`` needs nothing (no decoration lives past ``ax.x1``)
+        and ``side='top'`` is handled by ``_lift_title_above_top_legend``
+        instead: there the title must end up OUTSIDE the band, so the title
+        moves rather than the band.
 
         Unlike a figure-anchored band, an ``external_to_axis=False`` group
         is NOT excluded from ``ax.get_tightbbox()``, so the standard
-        ``ylabel_space`` auto-measurement ALREADY widens the column to fit
-        the legend — we must not re-add the legend width (that double-counts
-        and drifts). All we need is to position the legend just past the
-        PURE y-decoration (ticklabels + ylabel) so it doesn't overlap them.
-        We measure that pure extent directly here (excluding our own legend)
-        and bake it as the band's outward decoration offset. Idempotent.
+        ``ylabel_space`` / ``xlabel_space`` auto-measurement ALREADY grows the
+        column/row to fit the legend — we must not re-add the legend size
+        (that double-counts and drifts). All we need is to position the legend
+        just past the PURE decoration (ticklabels + axis label) so it doesn't
+        overlap it. We measure that pure extent directly here (excluding our
+        own legend) and bake it as the band's outward decoration offset.
+        Idempotent, and it collapses to 0 on an axes with no tick labels and
+        no axis label — no fixed gap is ever added.
         """
-        cell_field = "ylabel_space"
+        side = group._side
+        _, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
         if cell_field in self._locked:
             return
         r, c = self._find_ax_indices(group.anchor, axes_matrix)
-        if c in self._locked_positions.get(cell_field, frozenset()):
+        idx = c if axis_kind == "col" else r
+        if idx in self._locked_positions.get(cell_field, frozenset()):
             return
 
         ax = group.anchor
         dpi = self._fig.dpi
         ax_bb = ax.get_window_extent()
 
-        # Pure y-decoration extent left of the axes, EXCLUDING our legend
-        # (and any other externally-managed overlay). Mirrors _side_extent
-        # but computed locally so it's independent of whether the legend is
-        # in-layout.
+        # Pure decoration extent past the axes edge on this side, EXCLUDING
+        # our legend (and any other externally-managed overlay). Mirrors
+        # _side_extent but computed locally so it's independent of whether
+        # the legend is in-layout.
         legend_ids = {id(obj) for _, obj in group._builder.elements}
         # Exclude our own legend from BOTH the tightbbox and the pinned
         # union. The group is external_to_axis=False, so its legend is NOT
@@ -631,8 +647,10 @@ class SubplotsAutoLayout:
         if tight is None:
             return
         tight = self._union_pinned_artists(ax, tight, managed)
-        pure_ylabel_mm = max(0.0, (ax_bb.x0 - tight.x0) / dpi * 25.4)
-        group._set_decoration_offset(pure_ylabel_mm)
+        pure_decoration_mm = max(
+            0.0, self._OVERHANG_BY_SIDE[side](ax_bb, tight) / dpi * 25.4
+        )
+        group._set_decoration_offset(pure_decoration_mm)
 
     def _bake_decoration_offset(self, group, measured, axes_matrix) -> None:
         """Write the decoration offset onto the group's registrations
