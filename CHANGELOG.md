@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-01
+
 ### Changed
 
 - **A colorbar's orientation now follows the side of the band it lands in**
