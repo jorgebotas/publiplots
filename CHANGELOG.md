@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A multi-axes legend band anchored to an inner axes no longer grows the
+  figure on every draw** (#230). `pp.legend(anchor=axes[0], axes=[axes[0],
+  axes[1]], side='right')` widened a 1x2 grid by 67.24mm per draw, without
+  limit — and since `savefig` draws, saving the same figure four times gave
+  four different sizes. The rule was positional, not side-specific: the
+  runaway fired **iff the anchor was not the outermost in-scope axes on the
+  band's side**, on all four sides, and it scaled with the distance inward
+  (on a 1x3 grid, `+342.86` from the innermost anchor against `+201.71` from
+  the middle one). A single-axes scope — including the in-frame
+  `pp.legend(ax)` form — was immune, because there the anchor *is* the
+  outermost axes.
+
+  The band is positioned past the **outermost in-scope axes** (the reactor
+  anchors it to `LegendBuilder._anchor_ax`, which is the scope's union rect
+  for a multi-axes scope), but `SubplotsAutoLayout._measure_one_group`
+  measured its overhang from the **anchor's** edge and wrote that into the
+  **anchor's** row/column reservation. The two disagreed, and the
+  disagreement fed itself: the measured overhang then spanned every
+  intervening axes plus the gaps, and growing the anchor's cell pushed those
+  axes — and with them the band — further out, so the next pass measured
+  about one more cell's width. `settle()` hit `_MAX_CONVERGENCE_ITERS` and
+  returned, silently, on a layout that had never stabilised.
+
+  Both halves now refer to the outermost in-scope cell on the band's side
+  (`_band_reference`, built on the existing `_find_scope_indices`), which is
+  the cell the band actually occupies. That closes the loop structurally
+  rather than damping it: growing a cell's outward reservation cannot move
+  that cell's own outer edge, because the reservation is appended outside it,
+  so the measurement is invariant and the layout settles in one pass. The
+  same reference is used for the decoration offset, the pinned-cell test and
+  the on-canvas clamp, so a pin (#222) now freezes the cell the band draws
+  into rather than an unrelated one.
+
+  Verified across 94 configurations — 1x2 / 1x3 / 2x2 / 3x1 grids, all four
+  sides, every anchor in scope, strict-subset and single-axes scopes, the
+  in-frame and figure-anchored forms, categorical legends and colorbar bands,
+  and whole-side and per-position pins on `right` / `ylabel_space` /
+  `xlabel_space` / `title_space`: the figure size and every band element's
+  position are now bit-identical across eight successive draws and unchanged
+  by `settle()` and by a save to PNG and to PDF. Every configuration that
+  already converged keeps its exact geometry, and each one that did not now
+  lands on precisely the layout its outermost-anchor sibling always had. Two
+  pinned cases change deliberately, both toward the #222 contract: pinning
+  the *anchor's* cell no longer strands the band 17.19mm off the canvas when
+  the cell it actually occupies is free to grow, and where the occupied cell
+  is pinned too small for the band, the clamp is now measured against the
+  right edge and the residual overflow drops from 9.24mm to 5.19mm.
+
 ## [0.17.1] - 2026-09-01
 
 ### Fixed

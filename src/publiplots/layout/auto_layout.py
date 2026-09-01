@@ -406,9 +406,12 @@ class SubplotsAutoLayout:
 
         side = group._side
         overhang_fn = self._OVERHANG_BY_SIDE[side]
-        figure_field, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
+        figure_field, cell_field, _ = self._FIELD_BY_SIDE[side]
 
-        anchor_bb = group.anchor.get_window_extent()
+        # Measure the overhang from the edge the band is actually placed
+        # past — the outermost in-scope axes, not the anchor (#230).
+        ref_axes, ref_idx = self._band_reference(group, axes_matrix)
+        anchor_bb = self._reference_bbox(ref_axes)
         max_overhang_px = 0.0
         for _, obj in group._builder.elements:
             extent = self._artist_window_extent(obj)
@@ -420,7 +423,7 @@ class SubplotsAutoLayout:
             # repositioned). Still re-bake the decoration offset so a
             # group constructed BEFORE plots picks up the offset as soon
             # as its entries materialize.
-            self._bake_decoration_offset(group, measured, axes_matrix)
+            self._bake_decoration_offset(group, measured, ref_idx)
             return
         overhang_mm = max_overhang_px / dpi * 25.4 + 1.0
 
@@ -438,17 +441,18 @@ class SubplotsAutoLayout:
             measured[figure_field] = max(existing_scalar, overhang_mm)
             return
 
-        # Axes-anchored: grow the per-cell reservation for the anchor's
-        # row/column. Merge with whatever the auto-measurement already
-        # produced (so label/title space co-exists with legend space).
-        ax = group.anchor
+        # Axes-anchored: grow the per-cell reservation for the outermost
+        # in-scope row/column on this side. Merge with whatever the
+        # auto-measurement already produced (so label/title space co-exists
+        # with legend space).
+        #
         # A pinned reservation forbids GROWING the row/column; it does not
         # forbid MOVING the band clear of the decorations (Issue #222). So
         # both lock guards below still skip the ``measured[cell_field]``
         # write, but they position the band first. The reservation-derived
         # ``pure_decoration_mm`` used further down is unusable here — under
         # a pin ``existing[idx]`` is the caller's mm, not a measurement — so
-        # the offset is measured directly off the anchor instead, and clamped
+        # the offset is measured directly off ``ref_axes`` instead, and clamped
         # there to keep the band on the canvas (the pinned row/column will
         # not grow around it, and ``savefig.bbox`` is ``"standard"``).
         #
@@ -457,15 +461,18 @@ class SubplotsAutoLayout:
         # ``_bake_decoration_offset``, whose own guards are these same two
         # conditions on this same group and side, so nothing could ever read
         # it back.
+        idx = ref_idx
         if cell_field in self._locked:
-            self._offset_inside_legend_past_decorations(group, axes_matrix)
+            self._offset_inside_legend_past_decorations(
+                group, axes_matrix, ref_axes, idx
+            )
             return
-        r, c = self._find_ax_indices(ax, axes_matrix)
-        idx = c if axis_kind == "col" else r
         if idx in self._locked_positions.get(cell_field, frozenset()):
             # Per-position lock: this slot is pinned (e.g., JointGrid's
             # joint↔marginal gap edges). Don't grow it for legend overhang.
-            self._offset_inside_legend_past_decorations(group, axes_matrix)
+            self._offset_inside_legend_past_decorations(
+                group, axes_matrix, ref_axes, idx
+            )
             return
         # Read the pure-decoration reservation BEFORE we write our
         # overhang into it. _measure() already filled ``measured[cell_field]``
@@ -485,6 +492,74 @@ class SubplotsAutoLayout:
         # so multiple overlapping groups don't shrink it).
         existing[idx] = max(existing[idx], overhang_mm + pure_decoration_mm)
         measured[cell_field] = tuple(existing)
+
+    def _band_reference(self, group, axes_matrix):
+        """Axes the band is actually placed past, and their grid index.
+
+        ``LegendBuilder`` anchors a band to ``_anchor_ax``: the anchor axes
+        for a single-axes scope, but the scope's ``_ScopeAnchor`` (i.e. the
+        union rect of every in-scope axes) for a multi-axes one. The reactor
+        therefore places the band past the OUTERMOST in-scope axes on the
+        band's side, which is not the anchor whenever the caller anchored to
+        an inner axes — ``pp.legend(anchor=axes[0], axes=[axes[0], axes[1]],
+        side='right')``.
+
+        Measuring the overhang from the anchor there, and writing it into the
+        ANCHOR's row/column, made the layout non-convergent (#230): the
+        overhang then spans every intervening axes plus the gaps, and the
+        reservation that grows is one of the cells that pushes those axes —
+        and with them the band — further out, so the next pass measures more
+        again, without limit. Anchoring both halves to the outermost in-scope
+        cell closes the loop: growing that cell's reservation cannot move its
+        own outer edge (it is appended outside it), so the measurement is
+        invariant and the layout settles in one pass.
+
+        Returns ``(axes_list, index)``. ``index`` is the row index for
+        ``side`` in ``('top', 'bottom')`` and the column index otherwise, and
+        is ``None`` for a figure-anchored group — that path writes a
+        figure-level scalar, not a per-cell reservation, so it has no index
+        and ``axes_list`` is the ``_GridAnchor`` proxy itself.
+        """
+        ref = getattr(group._builder, "_anchor_ax", None)
+        if ref is None:
+            ref = group.anchor
+        scope_fn = getattr(ref, "scope_axes", None)
+        scope = list(scope_fn()) if callable(scope_fn) else [ref]
+        if not scope:
+            scope = [group.anchor]
+        side = group._side
+        axis_kind = self._FIELD_BY_SIDE[side][2]
+        if group._anchor_kind != "axes":
+            return scope, None
+
+        rows, cols = self._find_scope_indices(scope, axes_matrix)
+        idxs = cols if axis_kind == "col" else rows
+        if not idxs:
+            # No scope axes found in the grid matrix (twin/inset axes, or a
+            # figure publiplots did not build). Fall back to the anchor —
+            # the pre-#230 behaviour, which is exact for a single-axes scope.
+            r, c = self._find_ax_indices(group.anchor, axes_matrix)
+            return [group.anchor], (c if axis_kind == "col" else r)
+        # Row 0 is the TOP row (FigureLayout.axes_position stacks upward from
+        # the last row), so 'top' takes the first row and 'bottom' the last.
+        idx = idxs[-1] if side in ("right", "bottom") else idxs[0]
+        scope_ids = {id(a) for a in scope}
+        cells = (
+            [row[idx] for row in axes_matrix] if axis_kind == "col"
+            else list(axes_matrix[idx])
+        )
+        outer = [a for a in cells if id(a) in scope_ids]
+        return (outer or [group.anchor]), idx
+
+    def _reference_bbox(self, ref_axes):
+        """Pixel bbox of the reference axes, unioned across the outer cell.
+
+        For the band's own side the union picks exactly the edge the reactor
+        anchors to (max ``x1`` for 'right', min ``x0`` for 'left', and so on),
+        and collapses to the single axes' extent for a single-axes scope.
+        """
+        from matplotlib.transforms import Bbox
+        return Bbox.union([ax.get_window_extent() for ax in ref_axes])
 
     def _lift_title_above_top_legend(self, group, dpi) -> None:
         """Push the anchor axes' title pad above a per-axes top legend band.
@@ -594,7 +669,9 @@ class SubplotsAutoLayout:
         # re-merge the default fontdict and clobber user styling).
         ax._set_title_offset_trans(max(base_pad, pad_pt))
 
-    def _offset_inside_legend_past_decorations(self, group, axes_matrix) -> None:
+    def _offset_inside_legend_past_decorations(
+        self, group, axes_matrix, ref_axes=None, ref_idx=None
+    ) -> None:
         """Step a per-axes left/bottom legend just past the tick labels and
         axis label on its own side, as far as the canvas allows.
 
@@ -661,16 +738,25 @@ class SubplotsAutoLayout:
         The floor is 0 mm — the offset a pinned reservation got before #222 —
         so a pin too small to fit even the band alone degrades exactly to the
         old placement and never moves the band further INWARD than that.
+
+        ``ref_axes`` / ``ref_idx`` come from :meth:`_band_reference`: the
+        outermost in-scope axes on this side, which is the edge the reactor
+        actually places the band past (#230). They are computed here when the
+        caller does not supply them. For a single-axes scope — every
+        ``external_to_axis=False`` group — they collapse to the anchor and its
+        own cell, i.e. the pre-#230 behaviour exactly.
         """
         side = group._side
-        ax = group.anchor
         dpi = self._fig.dpi
-        ax_bb = ax.get_window_extent()
+        if ref_axes is None or ref_idx is None:
+            ref_axes, ref_idx = self._band_reference(group, axes_matrix)
+        ax_bb = self._reference_bbox(ref_axes)
 
         # Pure decoration extent past the axes edge on this side, EXCLUDING
         # our legend (and any other externally-managed overlay). Mirrors
         # _side_extent but computed locally so it's independent of whether
-        # the legend is in-layout.
+        # the legend is in-layout. Taken as the max over the outer cell's
+        # in-scope axes, matching how _measure fills a per-cell reservation.
         legend_ids = {id(obj) for _, obj in group._builder.elements}
         # Exclude our own legend from BOTH the tightbbox and the pinned
         # union. The group is external_to_axis=False, so its legend is NOT
@@ -678,25 +764,34 @@ class SubplotsAutoLayout:
         # back in by _union_pinned_artists — re-inflating the "pure" extent
         # by the legend's own width and causing the offset to drift.
         managed = self._externally_managed_artist_ids() | legend_ids
-        toggled = []
-        for child in ax.get_children():
-            if id(child) in legend_ids and child.get_in_layout():
-                child.set_in_layout(False)
-                toggled.append(child)
-        try:
-            tight = ax.get_tightbbox()
-        finally:
-            for child in toggled:
-                child.set_in_layout(True)
-        if tight is None:
+        pure_decoration_mm = None
+        for ax in ref_axes:
+            toggled = []
+            for child in ax.get_children():
+                if id(child) in legend_ids and child.get_in_layout():
+                    child.set_in_layout(False)
+                    toggled.append(child)
+            try:
+                tight = ax.get_tightbbox()
+            finally:
+                for child in toggled:
+                    child.set_in_layout(True)
+            if tight is None:
+                continue
+            tight = self._union_pinned_artists(ax, tight, managed)
+            one = (
+                self._OVERHANG_BY_SIDE[side](ax.get_window_extent(), tight)
+                / dpi * 25.4
+            )
+            pure_decoration_mm = (
+                one if pure_decoration_mm is None
+                else max(pure_decoration_mm, one)
+            )
+        if pure_decoration_mm is None:
             return
-        tight = self._union_pinned_artists(ax, tight, managed)
-        pure_decoration_mm = (
-            self._OVERHANG_BY_SIDE[side](ax_bb, tight) / dpi * 25.4
-        )
 
         offset_mm = pure_decoration_mm
-        if self._is_pinned_cell(side, ax, axes_matrix):
+        if self._is_pinned_cell(side, ref_idx):
             offset_mm = min(
                 offset_mm, self._max_onscreen_offset_mm(group, side, ax_bb, dpi)
             )
@@ -706,22 +801,20 @@ class SubplotsAutoLayout:
         # band must not be pulled INWARD of the pre-#222 placement.
         group._set_decoration_offset(max(0.0, offset_mm))
 
-    def _is_pinned_cell(self, side, ax, axes_matrix) -> bool:
-        """True when the reservation ``ax``'s band draws into is user-pinned.
+    def _is_pinned_cell(self, side, idx) -> bool:
+        """True when the reservation the band draws into is user-pinned.
 
+        ``idx`` is the row/column the band's overhang would grow — the
+        outermost in-scope cell on this side (:meth:`_band_reference`).
         Whole-side (``self._locked``) and per-position
         (``self._locked_positions``) pins both count — in either case
         ``_measure`` will not grow that row/column, so the figure cannot
         stretch to contain a band stepped outward past the decorations.
         """
-        _, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
+        _, cell_field, _ = self._FIELD_BY_SIDE[side]
         if cell_field in self._locked:
             return True
-        locked_idxs = self._locked_positions.get(cell_field, frozenset())
-        if not locked_idxs:
-            return False
-        r, c = self._find_ax_indices(ax, axes_matrix)
-        return (c if axis_kind == "col" else r) in locked_idxs
+        return idx in self._locked_positions.get(cell_field, frozenset())
 
     def _max_onscreen_offset_mm(self, group, side, ax_bb, dpi) -> float:
         """Largest outward offset (mm) that keeps the whole band on the canvas.
@@ -778,7 +871,7 @@ class SubplotsAutoLayout:
             return float("inf")
         return available_mm - band_mm
 
-    def _bake_decoration_offset(self, group, measured, axes_matrix) -> None:
+    def _bake_decoration_offset(self, group, measured, ref_idx) -> None:
         """Write the decoration offset onto the group's registrations
         without touching its reservation. Used on first draw when the
         band hasn't rendered yet (no overhang to measure) but we still
@@ -799,16 +892,19 @@ class SubplotsAutoLayout:
         ``external_to_axis=True`` groups, and
         ``_offset_inside_legend_past_decorations``, which measures the pure
         decoration directly, for ``external_to_axis=False`` ones.
+
+        ``ref_idx`` is the cell :meth:`_band_reference` resolved for this
+        group — the outermost in-scope row/column on the band's side, i.e.
+        the same slot the non-first-draw path grows (#230).
         """
-        if group._anchor_kind != "axes":
+        if group._anchor_kind != "axes" or ref_idx is None:
             return
         side = group._side
-        _, cell_field, axis_kind = self._FIELD_BY_SIDE[side]
+        _, cell_field, _ = self._FIELD_BY_SIDE[side]
         if cell_field in self._locked:
             return
-        r, c = self._find_ax_indices(group.anchor, axes_matrix)
         existing = measured.get(cell_field, getattr(self._layout, cell_field))
-        idx = c if axis_kind == "col" else r
+        idx = ref_idx
         if idx in self._locked_positions.get(cell_field, frozenset()):
             return
         pure_decoration_mm = existing[idx] - group._band_contribution_mm
