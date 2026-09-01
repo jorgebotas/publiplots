@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pinned `xlabel_space` / `ylabel_space` no longer disables legend-band
+  collision avoidance** (#222). One flag (`SubplotsAutoLayout._locked` /
+  `_locked_positions`) was doing two jobs: "do not grow this reservation",
+  which is what a caller asks for by pinning, and "do not move the band clear
+  of the decorations", which nobody asks for. With `xlabel_space=14.0` pinned
+  on a 50x40 mm axes, `pp.legend(ax, side="bottom")` dropped the band 2.00 mm
+  below the axes, on top of x tick labels reaching 3.61 mm and an xlabel
+  reaching 7.39 mm; the same happened on the left with `ylabel_space` pinned.
+  The lock guards now only suppress the reservation write, and the band's
+  outward offset is measured directly off the anchor's decorations, so a
+  pinned row/column keeps exactly its declared mm *and* gets collision
+  avoidance. Covers both the in-frame `pp.legend(ax)` form and the multi-axes
+  `pp.legend(anchor=..., axes=[...])` band, and per-position pins
+  (`ylabel_space=(14.0, None)`) as well as whole-side ones.
+
+  A pinned reservation does not grow around the band, and `savefig.bbox` is
+  `"standard"`, so the step outward is clamped to keep the band on the canvas
+  — anything past the figure edge would be cropped out of the saved file, and
+  deleted legend content is worse than an overlapping bounding box. The
+  resulting order of preference is: stay inside the figure first, then step as
+  far past the tick labels and axis label as the pinned space allows. So a pin
+  with room for both gets full collision avoidance; a tighter pin gets a
+  partial step and the smallest residual overlap that fits (on a 50x40 mm
+  axes, `xlabel_space=14.0` steps 6.54 mm of the 7.39 mm wanted); and a pin
+  too small to hold even the band on its own degrades to exactly the old
+  placement, adding no clipping of its own and never pulling the band further
+  inward than before. That last case — a band physically larger than the space
+  pinned for it — clips as it always has; the fix does not make it worse, and
+  the remedy is a larger pin or a smaller band.
+
 ## [0.16.2] - 2026-09-01
 
 ### Fixed
