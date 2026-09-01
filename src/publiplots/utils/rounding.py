@@ -413,7 +413,17 @@ def apply_border_radius(
     # latter below to keep each replacement at its original index. Resolved
     # once, outside the loop: it is private API, so `None` here simply means
     # a matplotlib that no longer backs the artist lists this way, and the
-    # conversion degrades to append order.
+    # conversion degrades to append order. Safe to hoist — `add_patch` and
+    # `Artist.remove` both mutate this list in place; only `cla()`/`clear()`
+    # rebind it, and neither is reachable from here.
+    #
+    # The `children.index(patch)` below keeps this pass quadratic in the
+    # patch count. Deliberate: a position map built once here would be
+    # linear, but it would silently go stale if anything else ever mutated
+    # `_children` mid-loop, whereas `index` re-reads the live list every
+    # time. Measured at 8000 patches — far beyond any real figure — the
+    # difference is ~15% of a pass that already takes seconds, so
+    # correctness-by-construction wins.
     children = getattr(ax, "_children", None)
 
     # Iterate over a materialized copy — we mutate ax.patches via

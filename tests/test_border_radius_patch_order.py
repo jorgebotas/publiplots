@@ -7,7 +7,8 @@ to the end, permuting ``ax.patches``. Two things break: the annotate meta
 builders pair records to patches by draw order, so labels land on the wrong
 box; and overlapping artists that share a zorder swap paint order.
 
-Every test below except the two marked as controls fails without the fix.
+Every test below fails without the fix, except the one control and the
+two guards in the final section.
 """
 import matplotlib
 matplotlib.use("Agg")
@@ -149,7 +150,7 @@ def test_rounding_preserves_paint_order_of_overlapping_artists():
         if radius:
             apply_border_radius([rect], (radius, radius), ax, orient="v")
         fig.canvas.draw()
-        # buffer_rgba() is a memoryview; sub-views are unsupported, so copy.
+        # buffer_rgba() is a memoryview and cannot be sub-sliced; wrap it.
         buf = np.asarray(fig.canvas.buffer_rgba())
         h, w = buf.shape[0], buf.shape[1]
         centre = tuple(int(c) for c in buf[h // 2, w // 2][:3])
