@@ -1483,10 +1483,15 @@ class LegendBuilder:
 
     # Matplotlib's legend ``loc='best'`` searches for the emptiest corner
     # using the legend's own handles; a colorbar strip has no equivalent
-    # search, so the inside path resolves 'best' to a fixed corner. Same
-    # corner matplotlib itself falls back to where 'best' is unimplemented
-    # (``Legend.set_loc``: a figure legend with ``loc in [0, 'best']``
-    # becomes 'upper right').
+    # search, so the inside path resolves 'best' to a fixed corner rather
+    # than raising. Not a matplotlib precedent: the ``loc = 'upper right'``
+    # rewrite in ``Legend.set_loc`` sits inside its ``if loc is None``
+    # branch, so it fires only for a default taken from
+    # ``rcParams['legend.loc']`` — an *explicit* ``loc=0`` on a figure
+    # legend raises "Automatic legend placement (loc='best') not
+    # implemented". Resolving is the deliberate choice here, because a
+    # strip has no handles to search around and raising would defeat the
+    # point of accepting the code at all (#223).
     _INSIDE_CBAR_DEFAULT_LOC = "upper right"
 
     # Padding between the strip and the axes edge, in mm. Matches the
@@ -1754,10 +1759,9 @@ class LegendBuilder:
             default ``False``) bypasses the mm-based outside-axes band and
             renders the strip inside the axes rectangle, mirroring
             ``add_legend(inside=True)``; pair with ``loc='upper right'``
-            etc. to pick the corner. ``loc`` takes the same values
-            ``ax.legend()`` does for axes-relative placement — the nine
-            position strings, the bare ``'right'`` alias, and
-            matplotlib's integer codes 0-10 — and resolves each to the
+            etc. to pick the corner. ``loc`` takes the nine position
+            strings ``ax.legend()`` accepts, the bare ``'right'`` alias,
+            and matplotlib's integer codes 0-10, and resolves each to the
             corner the categorical legend would use. ``'best'``/``0``
             has no meaning for a strip and resolves to ``'upper right'``.
             ``height``/``width`` keep their mm meaning there, and the

@@ -253,13 +253,13 @@ Details that differ from the categorical legend:
 - `loc` accepts the nine axes-relative positions (`'upper right'`,
   `'center left'`, `'center'`, …), the bare `'right'` alias matplotlib
   keeps for `'center right'`, and **matplotlib's integer location codes
-  0-10** — each resolves to the same corner
+  0-10** — each of codes `1`-`10` resolves to the same corner
   `ax.legend(loc=<code>)` would pick, so `{'inside': True, 'loc': 1}`
   places the strip where the categorical legend would go. `loc='best'`
   (code `0`) has no meaning for a strip (there are no handles to search
-  around) and resolves to `'upper right'` — matplotlib's own fallback
-  where 'best' is unimplemented. Anything else — a bad string, an
-  out-of-range integer, a float, a coordinate tuple, `None` — raises
+  around) and resolves to `'upper right'` rather than raising. Anything
+  else — a bad string, an out-of-range integer, a float, a coordinate
+  tuple, `None` — raises
   `ValueError: inside colorbar loc must be one of …`. Codes `5`
   (`'right'`) and `7` (`'center right'`) are distinct names that anchor
   identically, in publiplots exactly as in matplotlib.

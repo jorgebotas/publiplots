@@ -19,13 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Legend.codes` mapping, landing the strip in the corner
   `ax.legend(loc=<code>)` would pick — codes `1`-`10` verified equivalent by
   measuring both marks in figure pixels. `loc=0`/`'best'` keeps resolving to
-  `'upper right'`, matplotlib's own fallback where 'best' is unimplemented; a
-  strip has no handles to search around, so it cannot reproduce the real
-  search. Invalid input (a bad string, an out-of-range integer, a float, a
+  `'upper right'` rather than raising: a strip has no handles to search
+  around, so it cannot reproduce the real search. Invalid input (a bad string, an out-of-range integer, a float, a
   coordinate tuple, `None`) still raises the same readable `ValueError`, which
   now also names the accepted integer range. A float `0.0` used to slip
-  through as `'best'` via `loc in ("best", 0)`; it is now rejected, matching
-  matplotlib, which requires an `int`.
+  through as `'best'` via `loc in ("best", 0)`, because `0.0 == 0`; it is now
+  rejected, matching matplotlib 3.8+, which validates with
+  `isinstance(loc, int)`. On the declared `matplotlib>=3.7.0` floor, which
+  predates `Legend.set_loc`, a categorical `loc=0.0` is still accepted, so
+  that one input stays asymmetric there.
 
 ## [0.16.2] - 2026-09-01
 

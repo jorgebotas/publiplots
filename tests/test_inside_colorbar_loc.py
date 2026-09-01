@@ -59,12 +59,55 @@ AXES_SIZE = (60, 50)
 
 
 def _corner(bbox, ax_bbox):
-    """Classify a bbox's centre into (vertical, horizontal) thirds of ``ax``."""
-    fx = ((bbox.x0 + bbox.x1) / 2 - ax_bbox.x0) / ax_bbox.width
-    fy = ((bbox.y0 + bbox.y1) / 2 - ax_bbox.y0) / ax_bbox.height
-    horizontal = "left" if fx < 1 / 3 else ("right" if fx > 2 / 3 else "center")
-    vertical = "lower" if fy < 1 / 3 else ("upper" if fy > 2 / 3 else "center")
-    return vertical, horizontal
+    """Infer the anchor a bbox was placed against, from its flush edges.
+
+    Deliberately NOT a classification of the bbox *centre* into thirds of
+    the axes: that is size-dependent, and both marks here are tall enough
+    relative to a 40-50mm axes that an ``upper``-anchored one lands with
+    its centre in the middle third. A centre-thirds classifier therefore
+    reports ``center`` for a correctly ``upper``-placed mark, and does so
+    or not depending on ``AXES_SIZE`` and the strip's default height —
+    i.e. it passes or fails for reasons unrelated to placement.
+
+    Which edges the mark is flush against is size-independent: an
+    ``upper right`` mark sits near the top and right edges whichever way
+    the axes is scaled. So compare the gap to each pair of opposing
+    edges and take the closer one, calling it ``center`` only when the
+    two are within a hair of each other.
+    """
+    def _axis(lo_gap, hi_gap, lo_name, hi_name):
+        # Equal gaps (within 2% of the axes extent) means centred. The
+        # precondition below guarantees the three anchors are separated by
+        # far more than that, so the tolerance never has to adjudicate a
+        # close call.
+        if abs(lo_gap - hi_gap) < 0.02:
+            return "center"
+        return lo_name if lo_gap < hi_gap else hi_name
+
+    # Fail loudly on the precondition rather than confusingly on the
+    # result. ``_nudge_inside_cbar`` pulls a mark back inside when its
+    # decorations spill, so on an axes too small to hold the mark
+    # comfortably, 'upper' and 'center' collapse to the SAME geometry —
+    # measured identical bottom gaps of 0.161 for both at 45x25mm. The
+    # anchors are then genuinely indistinguishable and no classifier can
+    # separate them. Anything under half the axes leaves ample room.
+    for extent, span, name in (
+        (bbox.width, ax_bbox.width, "width"),
+        (bbox.height, ax_bbox.height, "height"),
+    ):
+        assert extent / span < 0.5, (
+            f"mark {name} is {extent / span:.0%} of the axes — too large for "
+            "its anchor to be identifiable. Raise AXES_SIZE."
+        )
+
+    left = (bbox.x0 - ax_bbox.x0) / ax_bbox.width
+    right = (ax_bbox.x1 - bbox.x1) / ax_bbox.width
+    bottom = (bbox.y0 - ax_bbox.y0) / ax_bbox.height
+    top = (ax_bbox.y1 - bbox.y1) / ax_bbox.height
+    return (
+        _axis(bottom, top, "lower", "upper"),
+        _axis(left, right, "left", "right"),
+    )
 
 
 def _colorbar_corner(df, loc):
@@ -144,6 +187,24 @@ def test_numeric_loc_matches_the_categorical_legend(df, code):
     continuous.
     """
     assert _colorbar_corner(df, code) == _legend_corner(df, code)
+
+
+@pytest.mark.parametrize("value,code", [(True, 1), (False, 0)])
+def test_bool_is_an_int_exactly_as_in_matplotlib(value, code):
+    """``loc=True``/``False`` resolve as codes 1/0, matching matplotlib.
+
+    Pins a deliberate decision rather than an accident. ``Legend.set_loc``
+    validates with a bare ``isinstance(loc, int)``, under which a bool IS
+    an int, so ``ax.legend(loc=True)`` renders. Rejecting bools here would
+    recreate the very asymmetry #223 exists to remove: the call would work
+    for a categorical hue and raise for a continuous one. Without this
+    test, narrowing the check to ``isinstance(loc, int) and not
+    isinstance(loc, bool)`` passes the whole suite.
+    """
+    assert (
+        LegendBuilder._inside_cbar_anchor(value)
+        == LegendBuilder._inside_cbar_anchor(code)
+    )
 
 
 def test_best_and_zero_resolve_to_upper_right(df):
