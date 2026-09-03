@@ -81,6 +81,7 @@ from publiplots.utils.legend_group import (
     legend,
 )
 from publiplots.layout import subplots, label_outer
+from publiplots.layout.auto_layout import LayoutConvergenceWarning
 from publiplots.layout.jointgrid import JointGrid, jointplot
 # Register custom fonts
 from publiplots.utils.fonts import _register_fonts
@@ -162,6 +163,7 @@ __all__ = [
     # Layout functions
     "subplots",
     "label_outer",
+    "LayoutConvergenceWarning",
     # Color/palette functions
     "color_palette",
     # Parameter system
