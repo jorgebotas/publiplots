@@ -354,6 +354,10 @@ def boxplot(
         palette=palette if isinstance(palette, dict) else None,
         whis=whis,
         source_frame=_source_data,
+        # Only this call's patches. Re-read here because apply_border_radius
+        # swaps in new objects; get_new_patches() recomputes against the
+        # live axes.
+        drawn_artists=tracker.get_new_patches(),
     )
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn

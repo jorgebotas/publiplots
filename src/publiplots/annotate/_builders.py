@@ -647,6 +647,7 @@ def build_from_histplot_call(
     palette: Optional[Dict],
     stat: str,
     hue_order: Optional[List],
+    drawn_artists: Optional[List] = None,
 ) -> BarValueMeta:
     """Build a ``BarValueMeta`` paired with the histplot's Rectangles.
 
@@ -655,6 +656,12 @@ def build_from_histplot_call(
     each Rectangle's facecolor against the resolved palette map, same
     strategy the paint pass uses — ordering-agnostic under
     ``multiple="dodge"`` / ``"stack"``.
+
+    ``drawn_artists`` should be the patches this call drew
+    (``ArtistTracker(ax).get_new_patches()``). This builder enumerates rather
+    than pairing positionally, so a stray patch adds a spurious label rather
+    than shifting the others — but a `pp.barplot` on the same axes still gets
+    its bars labelled as bins. Defaults to scanning ``ax.patches``.
     """
     orient = "v" if x is not None else "h"
 
@@ -672,7 +679,8 @@ def build_from_histplot_call(
     value_extent = (
         (lambda p: p.get_height()) if orient == "v" else (lambda p: p.get_width())
     )
-    rects = [p for p in ax.patches if _is_bar_rect(p) and value_extent(p) != 0]
+    candidates = ax.patches if drawn_artists is None else drawn_artists
+    rects = [p for p in candidates if _is_bar_rect(p) and value_extent(p) != 0]
 
     bars: List[BarRecord] = []
     for rect in rects:
@@ -901,15 +909,26 @@ def build_from_boxplot_call(
     whis: float,
     *,
     source_frame,
+    drawn_artists: Optional[List] = None,
 ) -> BoxStatsMeta:
     """Build a BoxStatsMeta paired with the boxplot's PathPatches.
 
     ``source_frame`` is required keyword-only; see ``_build_box_stats_meta``.
+
+    ``drawn_artists`` should be the patches this call drew
+    (``ArtistTracker(ax).get_new_patches()``). Boxes are paired to groups by
+    position, so any other artist on the axes matching the type filter takes
+    a box's slot: a *rounded* ``pp.barplot`` emits ``_RoundedBarPatch`` and
+    supplied the box geometry, and a second ``pp.boxplot`` call paired its
+    groups against the first call's boxes (issue #241). Defaults to scanning
+    ``ax.patches``, which only holds for an axes nothing else has drawn on.
     """
     # Lazy import to avoid a cycle through utils.rounding.
     from publiplots.utils.rounding import _RoundedBarPatch
 
-    patches = [p for p in ax.patches if isinstance(p, (PathPatch, _RoundedBarPatch))]
+    candidates = ax.patches if drawn_artists is None else drawn_artists
+    patches = [p for p in candidates
+               if isinstance(p, (PathPatch, _RoundedBarPatch))]
     return _build_box_stats_meta(
         ax, data, x, y, hue, categorical_axis, palette, whis, patches,
         source_frame=source_frame,
@@ -927,6 +946,7 @@ def build_from_violinplot_call(
     whis: float = 1.5,
     *,
     source_frame,
+    drawn_artists: Optional[List] = None,
 ) -> BoxStatsMeta:
     """Build a BoxStatsMeta paired with the violinplot's fill collections.
 
@@ -934,9 +954,17 @@ def build_from_violinplot_call(
     same as for boxplot (computed from raw data with matching whis rule).
 
     ``source_frame`` is required keyword-only; see ``_build_box_stats_meta``.
+
+    ``drawn_artists`` should be the collections this call drew
+    (``ArtistTracker(ax).get_new_collections()``); see the same parameter on
+    `build_from_boxplot_call`. The type filter here is broad — a filled
+    ``pp.kdeplot`` emits a ``FillBetweenPolyCollection``, which is a
+    ``PolyCollection`` subclass and took a violin's slot (issue #241).
+    Defaults to scanning ``ax.collections``.
     """
     from matplotlib.collections import PolyCollection
-    artists = [c for c in ax.collections if isinstance(c, PolyCollection)]
+    candidates = ax.collections if drawn_artists is None else drawn_artists
+    artists = [c for c in candidates if isinstance(c, PolyCollection)]
     return _build_box_stats_meta(
         ax, data, x, y, hue, categorical_axis, palette, whis, artists,
         source_frame=source_frame,

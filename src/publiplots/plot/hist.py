@@ -581,6 +581,9 @@ def histplot(
         ax._publiplots_bar_meta = build_from_histplot_call(
             ax=ax, data=data, x=x, y=y, hue=hue,
             palette=palette_map, stat=stat, hue_order=hue_order,
+            # Only this call's bars, so a plot already on the axes does not
+            # get its patches labelled as bins.
+            drawn_artists=tracker.get_new_patches(),
         )
         from publiplots.annotate import annotate as _annotate_fn
         opts = annotate if isinstance(annotate, dict) else {}
