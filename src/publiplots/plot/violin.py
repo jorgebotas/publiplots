@@ -347,6 +347,9 @@ def violinplot(
         categorical_axis=categorical_axis,
         palette=palette if isinstance(palette, dict) else None,
         source_frame=_source_data,
+        # Only this call's collections: the PolyCollection filter is broad
+        # enough to catch a filled kdeplot's fill.
+        drawn_artists=tracker.get_new_collections(),
     )
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn
