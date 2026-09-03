@@ -14,6 +14,7 @@ pp.subplots()) and therefore fires first, so LayoutReactor sees the
 repositioned axes and re-anchors legends correctly.
 """
 
+import warnings
 from typing import Dict, FrozenSet, Optional, Set, Tuple
 
 import matplotlib as mpl
@@ -30,6 +31,41 @@ _ALL_SIDES = {
 }
 # Cap on settle() draws; 1-3 is typical.
 _MAX_CONVERGENCE_ITERS = 5
+
+# Floor on the residual settle() reports as a non-convergence, in the same
+# millimetres _needs_update compares. Well above the tolerance, because a
+# residual just over the tolerance is not necessarily a bug and a bug is not
+# a residual just over the tolerance:
+#
+#   * settle() runs inside the print_figure wrapper BEFORE matplotlib swaps
+#     fig.dpi to savefig's, and the reactor is frozen for the render, so the
+#     check always evaluates at figure.dpi. Across 25 layouts saved three
+#     times each at 72/100/150/300/600 dpi, the residual the next settle()
+#     saw was 0.00 mm every time (375/375) — a render at another dpi leaves
+#     no hysteresis behind. Were the check ever to run at the render's own
+#     dpi, though, text metrics are not dpi-invariant and the same corpus
+#     measured up to 0.76 mm of purely dpi-induced drift (0.1 mm is roughly
+#     one 600-dpi pixel, so the tolerance alone has no margin at all). This
+#     floor clears that ceiling.
+#   * The layouts that actually ship broken clear it by two orders of
+#     magnitude: 67.24 mm/draw for the #230 inner-anchor band, 44-74 mm/draw
+#     for the #244 inset_axes scope.
+_NONCONVERGENCE_WARN_MM = 1.0
+
+
+class LayoutConvergenceWarning(UserWarning):
+    """A figure's layout never settled, so its saved size is not reproducible.
+
+    Emitted at most once per figure by :meth:`SubplotsAutoLayout.settle`.
+    Subclasses ``UserWarning`` deliberately: every filter a user already has
+    for publiplots' other warnings keeps catching it, while a known-benign
+    case can be silenced on its own with
+
+    >>> warnings.filterwarnings("ignore", category=pp.LayoutConvergenceWarning)
+
+    without also muting the plot-level warnings that share ``UserWarning``.
+    """
+
 
 # side_name -> (axis_kind, bbox_fn)
 #   axis_kind: "row" (result length == nrows) or "col" (length == ncols)
@@ -75,6 +111,10 @@ class SubplotsAutoLayout:
             side: frozenset(idxs) for side, idxs in (locked_positions or {}).items() if idxs
         }
         self._updating = False
+        # One SubplotsAutoLayout per figure, so this flag makes the
+        # non-convergence warning once-per-figure rather than once-per-save:
+        # saving the same broken figure in a loop reports it once.
+        self._nonconvergence_warned = False
 
         fig._publiplots_layout = layout
         fig._publiplots_auto_layout = self
@@ -143,12 +183,124 @@ class SubplotsAutoLayout:
         settlement primitive — unlike in-event iteration, each draw is
         a complete matplotlib pass with its own renderer, avoiding the
         reentrancy hazards of draw_without_rendering inside draw_event.
+
+        Exhausting the cap used to return silently, which is how #230
+        (a band anchored to an inner axes, +67.24 mm on every draw) and
+        the twinx runaway (+115.56 mm) reached published releases: the
+        layout knew it had given up and told nobody, and the only
+        symptom the user saw was ``savefig`` producing a different size
+        each time it was called. On exhaustion we now warn once per
+        figure — see :meth:`_warn_not_converged`.
+
+        Scope: the warning reaches a user wherever ``settle()`` runs,
+        which is the ``print_figure`` wrapper — so on ``pp.savefig`` and
+        on inline display, the two paths where a non-convergent layout
+        actually produces a wrong file. Driving ``fig.canvas.draw()`` in
+        a loop by hand never calls ``settle()`` and so never warns
+        (measured: six draws of the #244 runaway, zero warnings). That
+        is deliberate — a single draw is not a convergence claim — but
+        it does mean the check is on the output path, not on every
+        draw.
         """
         fig = self._fig
+        sizes = []
+        measured: Dict[str, Tuple[float, ...]] = {}
         for _ in range(_MAX_CONVERGENCE_ITERS):
             fig.canvas.draw()
-            if not self._needs_update(self._measure()):
+            sizes.append(tuple(fig.get_size_inches()))
+            measured = self._measure()
+            if not self._needs_update(measured):
                 return
+        self._warn_not_converged(measured, sizes)
+
+    def _worst_residual(
+        self, measured: Dict[str, Tuple[float, ...]]
+    ) -> Tuple[Optional[str], float]:
+        """The largest deviation ``_needs_update`` sees, as ``(field, mm)``.
+
+        Expressed in exactly the terms ``_needs_update`` compares: the
+        absolute millimetre difference between a freshly measured
+        reservation and the one ``self._layout`` currently holds, taken
+        per position for the per-row / per-column tuple sides so the
+        label can name the offending cell (``right[1]``) and not just the
+        side. A length mismatch — the grid itself changed shape — has no
+        finite residual and reports as ``inf``.
+        """
+        field: Optional[str] = None
+        residual = 0.0
+        for side, new_val in measured.items():
+            current = getattr(self._layout, side)
+            if side in self._SCALAR_SIDES:
+                pairs = ((None, new_val, current),)
+            else:
+                if len(new_val) != len(current):
+                    return (
+                        f"{side} (length {len(current)} -> {len(new_val)})",
+                        float("inf"),
+                    )
+                pairs = tuple(
+                    (i, nv, cv) for i, (nv, cv) in enumerate(zip(new_val, current))
+                )
+            for idx, nv, cv in pairs:
+                delta = abs(nv - cv)
+                if delta > residual:
+                    residual = delta
+                    field = side if idx is None else f"{side}[{idx}]"
+        return field, residual
+
+    def _warn_not_converged(self, measured, sizes) -> None:
+        """Report an exhausted convergence budget, once per figure.
+
+        Gated on the residual's *magnitude*, not on its growth. That is a
+        measurement, not a preference: the two layouts known to diverge
+        hold a residual that is flat (#230 reports 67.2372 mm on
+        ``right[0]`` on every single draw, to the fourth decimal) or
+        non-monotonic (#244's inset_axes scope runs 44.3 → 68.9 → 74.3 →
+        68.5 → 61.8 → 57.5 mm) while the *figure* grows without bound
+        underneath them. A "residual is growing" test would catch neither.
+        What separates them from noise is scale — see
+        ``_NONCONVERGENCE_WARN_MM``.
+
+        The message names the field and the residual because "layout did
+        not converge" is not something a user can act on, and quotes the
+        figure's growth over the capped draws because that is the symptom
+        they actually hit: a figure whose saved size is not reproducible.
+        """
+        if self._nonconvergence_warned:
+            return
+        field, residual = self._worst_residual(measured)
+        if field is None or residual < _NONCONVERGENCE_WARN_MM:
+            return
+        self._nonconvergence_warned = True
+
+        (w0, h0), (w1, h1) = sizes[0], sizes[-1]
+        dw, dh = (w1 - w0) * 25.4, (h1 - h0) * 25.4
+        if abs(dw) >= _UPDATE_THRESHOLD_MM or abs(dh) >= _UPDATE_THRESHOLD_MM:
+            growth = (
+                f"over those draws the figure went from {w0 * 25.4:.2f} x "
+                f"{h0 * 25.4:.2f} mm to {w1 * 25.4:.2f} x {h1 * 25.4:.2f} mm "
+                f"({dw:+.2f} x {dh:+.2f} mm) and had not stopped"
+            )
+        else:
+            growth = (
+                f"the figure size held at {w1 * 25.4:.2f} x {h1 * 25.4:.2f} mm, "
+                f"so the reservation is oscillating rather than running away"
+            )
+        warnings.warn(
+            f"publiplots: this figure's layout did not converge after "
+            f"{_MAX_CONVERGENCE_ITERS} draws. The reservation furthest from "
+            f"settling is {field}, still moving {residual:.2f} mm per draw "
+            f"(tolerance {_UPDATE_THRESHOLD_MM} mm); {growth}. The size this "
+            f"figure saves at is therefore not reproducible — saving it again "
+            f"may give a different one. Please report it at "
+            f"https://github.com/jorgebotas/publiplots/issues, quoting this "
+            f"message and the pp.subplots() / pp.legend() calls that built the "
+            f"figure. To silence a case you know to be harmless: "
+            f"warnings.filterwarnings('ignore', "
+            f"category=pp.LayoutConvergenceWarning).",
+            LayoutConvergenceWarning,
+            stacklevel=2,
+        )
 
     def _on_draw(self, event) -> None:
         if self._updating:

@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A layout that never settles now says so, once per figure.**
+  `SubplotsAutoLayout.settle()` draws up to `_MAX_CONVERGENCE_ITERS` (5) times
+  and used to `return` whether or not the layout had converged. Three runaways
+  shipped behind that silence: the #230 inner-anchor band (+67.24mm on every
+  draw, 33 of 94 configurations non-convergent, `savefig` giving a different
+  size each call), the same feedback for a `twinx` scope (+115.56mm), and the
+  `ax.inset_axes` scope of #244, which grows tens of millimetres per draw until
+  matplotlib raises `ValueError: Image size ... is too large`. In each case the
+  layout knew it had given up and told nobody, and the only symptom reaching
+  the user was a figure whose saved size was not reproducible. Exhausting the
+  budget now raises a `pp.LayoutConvergenceWarning`.
+
+  **The message is specific enough to file a bug from.** It names the single
+  reservation furthest from settling, down to the cell (`right[0]`, not
+  `right`), quotes its residual and the 0.1mm tolerance that residual is
+  measured against, and reports what the figure's own size did over the capped
+  draws — because *that* is the symptom the user hit. On #230 it reads
+  `right[0], still moving 67.24 mm per draw (tolerance 0.1 mm); over those
+  draws the figure went from 190.22 x 39.61 mm to 459.17 x 39.61 mm (+268.95 x
+  +0.00 mm) and had not stopped`.
+
+  **Gated on the residual's magnitude, not on its growth.** That is a
+  measurement, not a preference. #230's residual is *exactly constant* —
+  67.2372mm on `right[0]` on every draw, to four decimals — and #244's is
+  non-monotonic (44.30 → 68.97 → 74.31 → 68.45 → 61.79 → 57.50mm), while the
+  figure diverges underneath both. A "residual is growing" test would catch
+  neither. What separates a real divergence from noise is scale, so the gate is
+  a floor of **1.0mm**, an order of magnitude above measured dpi drift and two
+  orders below either real divergence.
+
+  **The false-positive basis is measured, not assumed.** The plausible
+  false positive is a figure that warns only on save, at a dpi the test suite
+  never exercises: text metrics are not dpi-invariant, and #221 spends an extra
+  measuring draw per unlabelled colorbar band out of the same 5-draw budget.
+  Two numbers bound it. First, `settle()` runs inside the `print_figure`
+  wrapper *before* matplotlib swaps `fig.dpi` to the render's, and the reactor
+  is frozen for the render itself, so the check always evaluates at
+  `figure.dpi` — across 25 layouts saved three times each at 72 / 100 / 150 /
+  300 / 600 dpi, the residual the next `settle()` saw was **0.00mm** in all
+  375 cases; a render at another dpi leaves no hysteresis behind. Second, were
+  the check ever to run at the render's own dpi, the same corpus measures up
+  to **0.76mm** of purely dpi-induced drift (`xlabel_space[1]` on a 2x2 bottom
+  band at 72 dpi) — 7.6x the tolerance, and the ceiling the 1.0mm floor is set
+  to clear. Instrumenting the cap across the full suite recorded **0 hits in
+  146 `settle()` calls** (131 converged in one draw, 15 in two, none needing
+  more than two of the five), so the warning is silent on today's corpus; and
+  113 healthy configurations — the whole `tests/test_band_convergence.py`
+  matrix plus `JointGrid`, a figure with no legend, and a 4x4 grid with
+  colorbar bands on all four sides — stay silent across 1356 saves spanning
+  those five dpis, PNG, PDF and SVG.
+
+  **Once per figure, not once per save**, on a per-`SubplotsAutoLayout` flag
+  (the `LayoutReactor._warned` precedent), so saving a broken figure in a loop
+  reports it once. `LayoutConvergenceWarning` subclasses `UserWarning`, so
+  every filter a user already has for publiplots' other warnings keeps catching
+  it, while a case known to be harmless can be silenced on its own with
+  `warnings.filterwarnings("ignore", category=pp.LayoutConvergenceWarning)`
+  without also muting the plot-level warnings that share `UserWarning`. The
+  message says so.
+
 ## [0.17.2] - 2026-09-02
 
 ### Fixed
