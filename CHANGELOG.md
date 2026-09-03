@@ -81,6 +81,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   figure it was previously saving. Silence that one case with the
   `filterwarnings` line above.
 
+## [0.17.3] - 2026-09-02
+
+### Fixed
+
+- **`border_radius` no longer mislabels a box plot that contains a
+  zero-IQR group** (#236). `apply_border_radius` swaps each patch for a
+  rounded replacement with `remove()` + `add_patch()`, which *appends*, so
+  any patch it skipped — a degenerate box, or a kind it does not round —
+  kept its original slot while its converted siblings moved to the end.
+  The resulting permutation of `ax.patches` desynced the annotate meta
+  builders, which pair records to patches by draw order: a three-group box
+  plot with one constant group labelled `A` at `B`'s position and vice
+  versa, and under a hue split all four boxes were misattributed. A
+  constant group is ordinary data — a control arm with no variance, a
+  saturated measure — and nothing raised. Replacements are now restored to
+  the original patch's index. Same root cause as #199, in the rounding pass
+  rather than the annotate filters.
+- **Rounding a patch no longer moves it above artists drawn after it.**
+  The same append behaviour inverted the paint order of overlapping artists
+  sharing a `zorder`, since matplotlib breaks zorder ties by child order. A
+  rounded rectangle drawn *before* an overlapping circle rendered on top of
+  it; it now matches the un-rounded baseline exactly.
+
+### Docs
+
+- **`pp.annotate` documents that it consumes one plot call's cache** (#235).
+  When several plot calls layer onto one axes, annotate inside the loop (or
+  pass `annotate=` per call); a single trailing `pp.annotate(ax, ...)`
+  labels only the last call's marks, and two calls after the same plot call
+  draw every label twice.
+
 ## [0.17.2] - 2026-09-02
 
 ### Fixed
