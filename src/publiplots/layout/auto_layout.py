@@ -370,39 +370,78 @@ class SubplotsAutoLayout:
         return measured
 
     def _side_extent(self, ax, calc, managed_artist_ids) -> float:
-        """Measure ax's tight-vs-window extent for one side, excluding managed overlays.
+        """Measure the cell's tight-vs-window extent for one side, excluding
+        managed overlays.
 
-        Also accounts for reactor-managed artists that are NOT children of
-        ``ax`` but are pinned to it — e.g. colorbar titles added via
-        ``fig.text`` which live under the Figure, not the Axes.
-        ``ax.get_tightbbox()`` misses those, so we manually union their
-        window extents into the tight bbox before computing the side extent.
+        Also accounts for artists that are NOT children of ``ax`` but
+        nevertheless draw inside ``ax``'s grid cell and must be reserved for:
+
+        * reactor-managed artists pinned to ``ax`` — e.g. colorbar titles
+          added via ``fig.text``, which live under the Figure, not the Axes;
+        * twinned axes built by ``ax.twinx()`` / ``ax.twiny()``, which occupy
+          exactly ``ax``'s cell but are absent from ``fig._publiplots_axes``
+          and so are never visited by :meth:`_measure`.
+
+        ``ax.get_tightbbox()`` misses both, so we union their extents into the
+        tight bbox before computing the side extent. The anchor stays
+        ``ax.get_window_extent()`` — the cell rectangle — so every overhang is
+        measured from the same edge regardless of which axes drew it, and the
+        union means a cell is sized by whichever of its axes needs the most
+        room. A twin whose decorations sit inside the parent's own extent
+        therefore changes nothing (#243).
         """
         ax_bbox = ax.get_window_extent()
-        # Temporarily drop managed overlay artists (legend_group's legends)
-        # from layout consideration so they don't inflate the per-axis
-        # reservations.
+        tight = self._cell_tight_bbox(ax, managed_artist_ids)
+        if tight is None:
+            return 0.0
+        return calc(ax_bbox, tight)
+
+    def _cell_tight_bbox(self, ax, managed_artist_ids):
+        """Union of the tight bboxes of every axes drawn in ``ax``'s cell.
+
+        That is ``ax`` itself plus its twins (:meth:`_cell_siblings`), each
+        with its pinned reactor artists folded in. Returns ``None`` when
+        nothing measurable is present.
+        """
+        from matplotlib.transforms import Bbox
+
+        boxes = []
+        for sibling in self._cell_siblings(ax):
+            tight = self._tight_bbox_excluding_managed(sibling, managed_artist_ids)
+            if tight is None:
+                continue
+            # Pinned-but-not-child artists (per-axis colorbar titles are
+            # fig.text artists registered to this axes via the reactor).
+            # These sit inside the reserved side but are invisible to
+            # ax.get_tightbbox() — without this union, the reservation
+            # shrinks below what the title actually needs and the title
+            # gets clipped on save.
+            boxes.append(
+                self._union_pinned_artists(sibling, tight, managed_artist_ids)
+            )
+        if not boxes:
+            return None
+        if len(boxes) == 1:
+            return boxes[0]
+        return Bbox.union(boxes)
+
+    def _tight_bbox_excluding_managed(self, ax, managed_artist_ids):
+        """``ax.get_tightbbox()`` with managed overlay children ignored.
+
+        Managed overlays are ``legend_group``'s legends: they are measured by
+        :meth:`_measure_one_group` against the band they belong to, so
+        counting them here as well would double-reserve their width.
+        """
         toggled = []
         for child in ax.get_children():
             if id(child) in managed_artist_ids and child.get_in_layout():
                 child.set_in_layout(False)
                 toggled.append(child)
         try:
-            tight = ax.get_tightbbox()
+            return ax.get_tightbbox()
         finally:
             for child in toggled:
                 child.set_in_layout(True)
-        if tight is None:
-            return 0.0
-
-        # Union with pinned-but-not-child artists (per-axis colorbar
-        # titles are fig.text artists registered to this axes via the
-        # reactor). These sit inside the reserved side but are invisible
-        # to ax.get_tightbbox() — without this union, the reservation
-        # shrinks below what the title actually needs and the title gets
-        # clipped on save.
-        tight = self._union_pinned_artists(ax, tight, managed_artist_ids)
-        return calc(ax_bbox, tight)
 
     def _union_pinned_artists(self, ax, tight, managed_artist_ids):
         """Union `tight` with extents of reactor-managed artists pinned to `ax`

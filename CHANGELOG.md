@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A twin axes is now measured with the cell it occupies** (#243).
+  `SubplotsAutoLayout._measure` visits `fig._publiplots_axes`, which never
+  contains an axes built by `ax.twinx()` / `ax.twiny()` — so a twin's tick
+  labels and axis label reserved no space at all and were cropped, because
+  `savefig.bbox` is deliberately `"standard"`. On a 1x3 grid the `right`
+  reservation stayed `(0.0, 0.0, 0.0)` while the rightmost twin's labels hung
+  2.05mm past the canvas; `twiny` did the same on the top side with
+  `title_space` at 1.61mm. No legend is involved anywhere — it reproduces on a
+  bare grid with no `pp.legend` call.
+
+  It scaled with the label, which is what made it more than cosmetic: 2.05mm
+  at the default labels, 4.04mm at four characters, 15.72mm at twelve and
+  **48.76mm at thirty**, all with the reservation still reading `0.0`. Note
+  that large tick *values* do not widen a label — matplotlib switches to
+  offset notation — so `y * 1e6` leaves the overflow at 2.05mm and is the
+  wrong way to probe this.
+
+  `_side_extent` now measures the **cell** rather than one axes: it unions the
+  tight bboxes of `ax` and its twins, each with its pinned reactor artists
+  folded in, and keeps `ax.get_window_extent()` as the anchor so every
+  overhang is measured from the same cell edge whichever axes drew it. That
+  fits the shape the method already had — its docstring described unioning
+  colorbar titles added via `fig.text`, which `ax.get_tightbbox()` also
+  misses — and reuses `_cell_siblings` from #242, which resolves a twin to its
+  parent's cell through matplotlib's twinned-axes grouper.
+
+  The union is a **max, not a sum**, so a twin that fits inside its parent's
+  extent changes nothing. Worth recording how that reads in practice, because
+  it looks wrong at first: `ax.twinx()` calls `ax.yaxis.tick_left()` on the
+  parent, so a parent with wide right-side labels has them moved to the left
+  and reserved as `ylabel_space` (34.78mm measured), leaving `right` carrying
+  only the twin's narrow ones (2.61mm). The same total, on the sides that
+  actually hold the ink, with zero overflow either way. A grid with no twins
+  keeps `right = (0.0, 0.0, 0.0)` exactly.
+
+  Reservations are per cell, not per figure: a twin on one column of three
+  reserves that column and leaves the other two at 0.0mm. Verified alongside
+  #242, whose fix made a band's reservation resolve a twin to its parent's
+  cell — both changes touch the same cell's geometry from different
+  directions, and all 151 of that fix's convergence tests still pass. Twinned
+  layouts settle after the first draw across 1x1, 1x3, 3x1 and 2x2 and raise
+  no `LayoutConvergenceWarning`.
+
 ## [0.18.0] - 2026-09-03
 
 ### Added
