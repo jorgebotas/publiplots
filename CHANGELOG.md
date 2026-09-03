@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A second plot call on an axes no longer re-renders the first call's
+  legend entries** (#227). The stash on an axes is cumulative and
+  `render_entries` drew *all* of it on every call, filtered only by kind flag
+  and group claim, so N calls produced ~N(N+1)/2 legends: on a 40x35mm panel,
+  three `pp.scatterplot` calls with a continuous hue drew **6 colorbars**
+  labelled `['nc', 'nc', 'nd', 'nc', 'nd', 'ne']` instead of 3, and five drew
+  **15**. Every duplicate reserved its own layout space, so the figure grew
+  quadratically too — 104.66mm wide at three calls and 190.16mm at five,
+  against 76.16 and 95.16mm now. Categorical hues were affected identically
+  (15 legends at five calls, now 5; 167.18mm, now 90.85mm), as were the
+  `legend_kws={'inside': True}` path (6 in-axes colorbars at three calls, now
+  3) and two `pp.heatmap` calls on one axes (3 strips and 67.66mm, now 2 and
+  58.16mm).
+
+  `LegendEntry` had no record of having been drawn and `stash_entry` only
+  appended to a list, so the state the filter needed did not exist. An axes now
+  keeps one, and `entries_owed_render` is the single predicate that answers
+  "should this axes draw this entry itself?" — kind flag, group claim and
+  render record in one place, rather than a second filter downstream of the
+  first. The record is keyed by **entry identity**, not by name: two calls
+  passing the same column (`hue='c'` twice) stash two entries and each is still
+  owed one render.
+
+  Only the per-axes path records anything, so the two paths that deliberately
+  render entries later than they were stashed are untouched and measured
+  unchanged: a legend group created *before* the plot calls (which materializes
+  the stash on a later pass) and `pp.legend(ax)`'s adopt rebuild (which drains
+  its builder and must re-render what it drained). A band built *after* the
+  plots still evicts the per-axes artists it claims and renders them itself —
+  its own render path never consults the record, so an evicted entry cannot
+  become un-renderable — and that figure narrows from 140.16 to 109.63mm.
+
+  Space is reclaimed to the *correct* size, not merely a smaller one: two plot
+  calls now produce a figure and a panel rect bit-identical to a control that
+  draws the same data and renders the same two entries in a single pass
+  (68.73 x 42.61mm, panel 40 x 35mm at the same origin) — it was 78.23mm before.
+  Figure size and every colorbar strip and legend rect are unchanged across
+  eight successive draws, `settle()`, and a save to PNG and to PDF.
+
+- **A legend re-parented by `LegendBuilder` is no longer listed twice in the
+  axes' child list.** `ax.legend()` drops only the axes' own `legend_`, but
+  `add_legend` re-added *every* legend it had built there, so an artist still
+  attached gained a duplicate reference on each call — 1, 2, 4, 7 references
+  for 1-4 legends on one builder. This is what made the two-call categorical
+  case in #227 report **4** legends where the triangular re-render alone
+  accounts for 3 (3 distinct `Legend` objects, one of them referenced twice),
+  and it compounded: five plot calls left 15 legends under **106** child
+  references. Independent of the re-render, so it still bites 3+ legends on one
+  axes after that fix; the re-parent now skips whatever is still attached.
+
 ## [0.17.3] - 2026-09-02
 
 ### Fixed

@@ -90,6 +90,55 @@ def get_entries(ax) -> list:
     return list(getattr(ax, "_publiplots_legend_entries", []))
 
 
+def mark_entry_rendered(ax, entry: LegendEntry) -> None:
+    """Record that ``entry`` has been drawn into ``ax``'s own legend.
+
+    The stash is cumulative and every plot call renders from it, so
+    without this record the second call on an axes re-renders the first
+    call's entries alongside its own — N calls producing ~N(N+1)/2
+    legends, each reserving its own layout space (#227).
+
+    Keyed by object identity, not by name: two calls that pass the same
+    column (``hue='c'`` twice) stash two distinct entries and each is
+    still owed one render. The entry is kept as the dict value so the
+    key cannot be recycled onto a later object by ``id`` reuse.
+
+    Only the per-axes render path records here. A figure-level group's
+    ``_materialize`` and ``pp.legend(ax)``'s adopt rebuild deliberately
+    render entries later than they were stashed, and neither consults
+    this record.
+    """
+    rendered = getattr(ax, "_publiplots_rendered_entries", None)
+    if rendered is None:
+        rendered = {}
+        ax._publiplots_rendered_entries = rendered
+    rendered[id(entry)] = entry
+
+
+def entry_is_rendered(ax, entry: LegendEntry) -> bool:
+    """True if ``entry`` has already been drawn into ``ax``'s own legend."""
+    rendered = getattr(ax, "_publiplots_rendered_entries", None)
+    if not rendered:
+        return False
+    return id(entry) in rendered
+
+
+def entries_owed_render(fig, ax, flags: dict) -> list:
+    """The stashed entries ``ax`` still owes its own per-axes legend.
+
+    The single answer to "should this axes draw this entry itself?".
+    An entry is owed a render when its kind is enabled by ``legend=``,
+    no figure-level group has claimed it, and it has not been rendered
+    on this axes already.
+    """
+    return [
+        entry for entry in get_entries(ax)
+        if flags[entry.kind]
+        and not entry_is_in_group(fig, entry, ax=ax)
+        and not entry_is_rendered(ax, entry)
+    ]
+
+
 def resolve_legend_flags(legend) -> dict:
     """Convert ``legend=`` (bool | dict) to a per-kind include map.
 

@@ -1521,6 +1521,23 @@ class LegendBuilder:
     # Main Methods
     # =========================================================================
 
+    def _reattach_prior_legends(self, prior: List, legend: Legend) -> None:
+        """Re-parent the legends ``ax.legend()`` just detached, once each.
+
+        ``ax.legend()`` only drops the axes' own ``legend_``; a legend
+        this builder re-parented earlier stays in ``ax._children``.
+        Re-adding it unconditionally left the *same* Legend listed twice
+        in the axes' child list (and three times on the next call), so
+        the artist was drawn once per reference and every child-based
+        count over-reported. Skip whatever is still attached.
+        """
+        attached = {id(child) for child in self.ax.get_children()}
+        for p in prior:
+            if p is legend or id(p) in attached:
+                continue
+            self.ax.add_artist(p)
+            attached.add(id(p))
+
     def add_legend(
         self,
         handles: List,
@@ -1602,9 +1619,7 @@ class LegendBuilder:
             # cell, displacing siblings in the same row/column. Matches
             # matplotlib's own loc=... legend semantics. (Fixes #180.)
             legend.set_in_layout(False)
-            for p in prior:
-                if p is not legend:
-                    self.ax.add_artist(p)
+            self._reattach_prior_legends(prior, legend)
             self.elements.append(("legend", legend))
             return legend
 
@@ -1686,9 +1701,7 @@ class LegendBuilder:
             prior.append(self.ax.legend_)
         legend = self.ax.legend(handles=handles, **legend_kwargs)
         legend.set_clip_on(False)
-        for p in prior:
-            if p is not legend:
-                self.ax.add_artist(p)
+        self._reattach_prior_legends(prior, legend)
 
         # Measure actual dimensions
         width, height = self._measure_object_dimensions(legend)
