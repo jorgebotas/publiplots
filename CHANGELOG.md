@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Box and violin value labels no longer pair against another plot's
+  artists on a shared axes** (#241). `build_from_boxplot_call` filtered all
+  of `ax.patches` for `(PathPatch, _RoundedBarPatch)` and
+  `build_from_violinplot_call` filtered all of `ax.collections` for
+  `PolyCollection`, so anything else on the axes matching those types took a
+  box's slot in the positional pairing. Four reachable cases, three of them
+  worse than the reported one:
+  a *rounded* `pp.barplot` before a `pp.boxplot` supplied the box geometry
+  (`cat_half_width` 0.36, the bar's, instead of 0.4); a filled `pp.kdeplot`
+  before a `pp.violinplot` took the first violin's slot outright (centre 3.5
+  and half-extent 5.76 in place of -0.0 and 0.4), because
+  `FillBetweenPolyCollection` is a `PolyCollection` subclass; and a second
+  `pp.boxplot` or `pp.violinplot` call paired its groups against the *first*
+  call's artists — categorical units accumulate, so its boxes are drawn at
+  2.0 and 3.0 while the meta reported 0.0 and 1.0, putting every label on
+  the wrong box. A user-drawn `PathPatch` was a fifth way in. Both builders
+  now receive the artists the call itself drew.
+- **`pp.histplot` no longer labels another plot's bars as bins** (#241).
+  `build_from_histplot_call` had the same whole-axes scan, so a `pp.barplot`
+  already on the axes contributed its bars: three bins over an axes holding
+  two bars produced five records, the bars labelled with their own values.
+  That builder enumerates rather than pairing positionally, so the effect
+  was spurious extra labels rather than shifted ones. Found while reviewing
+  the box/violin fix, which had claimed to complete this sweep while this
+  case was still open. With it, every meta builder pairs against artists its
+  own call produced.
+
 ## [0.18.0] - 2026-09-03
 
 ### Added
