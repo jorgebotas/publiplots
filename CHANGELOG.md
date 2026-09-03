@@ -69,6 +69,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without also muting the plot-level warnings that share `UserWarning`. The
   message says so.
 
+  **One behaviour change to be aware of.** Under warnings-as-errors — `python
+  -W error`, `-W error::UserWarning`, pytest's `filterwarnings = error`, or
+  `warnings.simplefilter("error")` — a non-convergent layout now makes
+  `pp.savefig` *raise* where it previously wrote a file at a size that was not
+  reproducible. Measured: the #244 inset case raises under both `-W error` and
+  `-W error::UserWarning` and saves normally by default; a healthy figure saves
+  under all three. That is the intended consequence, since a figure whose saved
+  size changes between identical calls is a defect rather than a style issue,
+  but it does mean a project running warnings as errors can newly fail on a
+  figure it was previously saving. Silence that one case with the
+  `filterwarnings` line above.
+
 ## [0.17.2] - 2026-09-02
 
 ### Fixed
