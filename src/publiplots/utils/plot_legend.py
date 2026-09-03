@@ -21,9 +21,9 @@ from publiplots.utils import create_legend_handles
 from publiplots.utils.legend_entries import (
     LegendEntry,
     stash_entry,
-    get_entries,
+    entries_owed_render,
+    mark_entry_rendered,
     resolve_legend_flags,
-    entry_is_in_group,
     is_continuous_hue,
 )
 
@@ -449,12 +449,15 @@ def render_entries(
     flags: Dict[str, bool],
     legend_kws: Optional[Dict] = None,
 ) -> None:
-    """Render all stashed entries on ``ax`` not claimed by a figure-level group.
+    """Render the stashed entries ``ax`` still owes its own legend.
 
-    For each stashed entry whose kind flag is True and that isn't claimed by
-    the figure's legend_group, the handle is routed through the publiplots
-    legend builder — continuous-hue (ScalarMappable) handles become a
-    colorbar, everything else becomes a standard legend entry.
+    For each stashed entry whose kind flag is True, that isn't claimed by
+    the figure's legend_group, and that this axes has not already drawn,
+    the handle is routed through the publiplots legend builder —
+    continuous-hue (ScalarMappable) handles become a colorbar, everything
+    else becomes a standard legend entry. Each rendered entry is recorded
+    via :func:`mark_entry_rendered`, so the next plot call on the same
+    axes renders only what it added rather than the whole stash (#227).
 
     If nothing remains to render, no builder is instantiated.
 
@@ -463,10 +466,7 @@ def render_entries(
     keys in :data:`_BUILDER_FORWARD_KEYS` are forwarded to the builder.
     """
     fig = ax.get_figure()
-    to_render = [
-        e for e in get_entries(ax)
-        if flags[e.kind] and not entry_is_in_group(fig, e, ax=ax)
-    ]
+    to_render = entries_owed_render(fig, ax, flags)
     if not to_render:
         return
     builder_kws = _builder_kwargs(legend_kws)
@@ -513,3 +513,4 @@ def render_entries(
                 label=entry.name,
                 **builder_kws,
             )
+        mark_entry_rendered(ax, entry)
