@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.3] - 2026-09-02
+
 ### Fixed
 
 - **`border_radius` no longer mislabels a box plot that contains a
@@ -28,14 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rounded rectangle drawn *before* an overlapping circle rendered on top of
   it; it now matches the un-rounded baseline exactly.
 
-### Documentation
+### Docs
 
 - **`pp.annotate` documents that it consumes one plot call's cache** (#235).
   When several plot calls layer onto one axes, annotate inside the loop (or
   pass `annotate=` per call); a single trailing `pp.annotate(ax, ...)`
   labels only the last call's marks, and two calls after the same plot call
   draw every label twice.
-
 
 ## [0.17.2] - 2026-09-02
 
