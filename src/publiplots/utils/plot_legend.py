@@ -462,14 +462,41 @@ def _colorbar_kwargs(legend_kws: Optional[Dict]) -> Dict:
     ``inside=True`` mode, where it names the in-axes corner (outside
     bands derive their own placement from the mm cursor).
 
-    ``orientation`` is passed through as given, ABSENT included: an
-    explicit value wins and an omitted one leaves ``add_colorbar`` to
-    derive the strip's axis from the band it lands in (#213).
+    ``orientation`` is TRANSLATED, not forwarded verbatim — see below.
+    An explicit ``'vertical'``/``'horizontal'`` wins; every spelling of
+    "derive it for me" leaves the key absent so ``add_colorbar`` picks
+    the strip's axis from the band it lands in (#213).
     """
     kws = {k: v for k, v in (legend_kws or {}).items()
            if k in _COLORBAR_FORWARD_KEYS}
     if not kws.get("inside"):
         kws.pop("loc", None)
+    # ``height``/``width`` are NOT clamped on the inside path.
+    # ``_add_colorbar_inside`` sizes the strip against the axes rectangle
+    # and marks the inset ``in_layout=False``, so nothing grows the figure
+    # around it and nothing pulls it back: measured, ``width=45`` on a
+    # 40mm axes puts 9.05mm of strip past the figure edge, and
+    # ``width=200`` puts 164mm past it — cropped, since ``savefig.bbox``
+    # is "standard". An OUTSIDE band grows the figure instead and
+    # overflows 0.00mm even at ``width=200``. This is deliberate rather
+    # than an oversight: the whole point of ``in_layout=False`` is that an
+    # inside strip claims no layout space, so clamping it here would
+    # fight that contract and silently disagree with the identical
+    # ``g.add_colorbar(inside=True, width=45)`` call, which has always
+    # behaved this way. Sizing an inside strip past its axes is the
+    # caller's to get right.
+    # ``orientation`` is the one key this set shares with
+    # _GROUP_PLACEMENT_KEYS, and the two consumers spell "derive it for
+    # me" differently: the placement family's signature default is
+    # ``'auto'`` (MultiAxesLegendGroup), while ``add_colorbar`` wants the
+    # key absent and rejects ``'auto'`` with a ValueError. Forwarding it
+    # verbatim made ``legend_kws={'orientation': 'auto'}`` — the
+    # documented placement route, carrying the family's OWN default —
+    # raise for a continuous hue while a categorical one was fine.
+    # Translate to the colorbar vocabulary instead of leaking the
+    # group's.
+    if kws.get("orientation") in (None, "auto"):
+        kws.pop("orientation", None)
     return kws
 
 

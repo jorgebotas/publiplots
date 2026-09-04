@@ -405,3 +405,74 @@ def test_geometry_converges_and_saves(legend_kws, tmp_path, recwarn):
         f"{len(convergence)} convergence warning(s): "
         f"{[str(w.message) for w in convergence]}"
     )
+
+
+# --- what adoption does NOT carry over -------------------------------------
+
+
+def test_pp_legend_adoption_discards_the_plot_calls_geometry():
+    """``pp.legend(ax)`` re-renders from the stash and drops ``legend_kws``.
+
+    Pinning current behaviour, not asserting it is right. A claimed entry
+    is re-rendered by ``MultiAxesLegendGroup._render_entry`` as
+    ``add_colorbar(mappable=..., label=entry.name)`` with no geometry, so
+    the strip this change sized is destroyed and replaced by a default.
+
+    Deliberately NOT fixed here, because it is not specific to colorbars:
+    the categorical branch of that same method passes no ``ncol`` either,
+    and a legend built with ``legend_kws={'ncol': 3}`` comes back with
+    ``ncol`` reset to the label count through the same call — measured 3
+    before, 6 after. The adopt path discards every forwarded key for both
+    entry kinds, so it is one general defect rather than a hole in this
+    one, and it is filed separately.
+
+    If it is ever fixed this test will fail on the second assertion. The
+    right response then is to delete the test, not to restore the
+    behaviour.
+    """
+    fig, ax = _render({"side": "top", "width": 30, "height": 8})
+    r = _only_strip(ax).ax.get_window_extent()
+    before = (_mm(fig, r.width), _mm(fig, r.height))
+    assert before == pytest.approx((30.0, 8.0), abs=1e-6), (
+        f"setup: the plot call should have sized the strip, got {before}"
+    )
+
+    pp.legend(ax, side="top")
+    fig.canvas.draw()
+    fig.canvas.draw()
+    r = _only_strip(ax).ax.get_window_extent()
+    after = (_mm(fig, r.width), _mm(fig, r.height))
+    assert after == pytest.approx(_DEFAULT_HORIZONTAL, abs=1e-6), (
+        "adoption is expected to drop the geometry and re-render a default "
+        f"strip; got {after}. If this now preserves 30 x 8, the adopt path "
+        "was fixed — delete this test rather than reverting that."
+    )
+
+
+def test_categorical_adoption_drops_its_kwargs_too():
+    """The companion measurement that makes the above a general defect.
+
+    Recorded because the asymmetry it rules out was the reason to consider
+    fixing the adopt path inside this change: if only the colorbar branch
+    lost its arguments, that would be a gap in #231. Both branches lose
+    them, so it is not.
+    """
+    frame = _df(n=60)
+    frame["g"] = np.tile(list("ABCDEF"), 10)
+    fig, ax = pp.subplots(1, 1, axes_size=AXES_SIZE)
+    pp.scatterplot(data=frame, x="x", y="y", hue="g", ax=ax,
+                   legend_kws={"side": "top", "ncol": 3})
+    fig.canvas.draw()
+    legends = [c for a in fig.get_axes() for c in a.get_children()
+               if type(c).__name__ == "Legend"]
+    assert len(legends) == 1 and legends[0]._ncols == 3
+
+    pp.legend(ax, side="top")
+    fig.canvas.draw()
+    legends = [c for a in fig.get_axes() for c in a.get_children()
+               if type(c).__name__ == "Legend"]
+    assert len(legends) == 1
+    assert legends[0]._ncols != 3, (
+        "if categorical adoption now preserves ncol, the two entry kinds no "
+        "longer agree and the colorbar branch of _render_entry is a real gap"
+    )

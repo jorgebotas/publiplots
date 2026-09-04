@@ -41,12 +41,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failure class behind #221, #230 and #243. `title_position` is excluded as
   a judgment call rather than an oversight.
 
-  #213's per-side orientation derivation is unchanged: `orientation` is
-  passed through as given, *absent included*, so an omitted value still
-  derives horizontal on a `top`/`bottom` band and vertical on
-  `left`/`right`, while an explicit `{"orientation": "vertical"}` on a top
-  band gives a vertical strip and `{"orientation": "horizontal"}` on a
-  right band a horizontal one. Forwarding it also makes `orientation`
+  **What this does not cover.** `pp.legend(ax)` re-renders a claimed entry
+  from the stash and drops the plot call's `legend_kws`, so a strip sized
+  by `legend_kws={'width': 30, 'height': 8}` comes back at the default
+  15 x 4.5mm through that call. Not fixed here because it is not specific
+  to colorbars — the categorical branch of the same method passes no
+  `ncol` either, and a legend built with `{'ncol': 3}` returns with `ncol`
+  reset to the label count (measured 3 before, 6 after). Both entry kinds
+  lose every forwarded key, so it is one general defect, filed as #258 and
+  pinned by two tests here so that fixing it surfaces as those failing.
+
+  #213's per-side orientation derivation is unchanged, but `orientation`
+  is **translated rather than forwarded verbatim**, and getting that wrong
+  is worth recording. It is the one key this set shares with
+  `_GROUP_PLACEMENT_KEYS`, and the two consumers spell "derive it for me"
+  differently: the placement family's signature default is `'auto'`
+  (`MultiAxesLegendGroup`), while `add_colorbar` wants the key absent and
+  rejects `'auto'` with a `ValueError`. Forwarding it as given therefore
+  made `legend_kws={'orientation': 'auto'}` — the documented placement
+  route, carrying the family's *own* default — raise on a continuous hue
+  on all four sides and under `inside=True`, while a categorical hue was
+  fine. Both `'auto'` and `None` now leave the key absent, so an omitted,
+  `'auto'` or `None` value derives horizontal on a `top`/`bottom` band and
+  vertical on `left`/`right` (measured identical across all three), while
+  an explicit `{"orientation": "vertical"}` on a top band gives a vertical
+  strip and `{"orientation": "horizontal"}` on a right band a horizontal
+  one. Forwarding it also makes `orientation`
   effective in `inside=True` mode, which builds no band and so never saw
   the placement-key route.
 
