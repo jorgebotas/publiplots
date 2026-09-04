@@ -403,14 +403,33 @@ _GROUP_PLACEMENT_KEYS = frozenset({
     "side", "orientation", "align", "x_offset", "y_offset", "gap",
 })
 
-# The subset of _BUILDER_FORWARD_KEYS that means anything to
-# ``add_colorbar``. Everything else in that set configures ``ax.legend()``
-# (ncol, frameon, markerscale, handletextpad, ...) and reaches
-# ``Colorbar.__init__`` as an unexpected keyword — a continuous hue used
-# to raise ``TypeError`` for *every* one of those keys, ``inside``
-# included (#215). Placement is the part a colorbar can honour: ``inside``
-# picks the in-axes strip, ``loc`` picks its corner.
-_COLORBAR_FORWARD_KEYS = frozenset({"inside", "loc"})
+# What ``add_colorbar`` can honour, read straight off ``legend_kws``.
+#
+# This set is deliberately INDEPENDENT of _BUILDER_FORWARD_KEYS rather
+# than a subset of it. The two paths take disjoint keys and neither can
+# tolerate the other's: _BUILDER_FORWARD_KEYS is forwarded verbatim to
+# ``add_legend`` -> ``ax.legend()``, so a geometry key added there would
+# raise ``Legend.__init__() got an unexpected keyword argument 'height'``
+# on every categorical legend — the mirror image of #215, where
+# legend-only keys (ncol, frameon, markerscale, ...) reaching
+# ``Colorbar.__init__`` raised for every continuous hue. A colorbar-only
+# key like ``height`` therefore has no room in the shared set, and was
+# dropped by ``_builder_kwargs`` before it ever reached this filter
+# (#231).
+#
+# Placement: ``inside`` picks the in-axes strip, ``loc`` its corner.
+#
+# Geometry: ``height``/``width``/``orientation``/``ticks`` are the
+# presentation choices a caller plausibly makes at the plot call.
+# ``vmin``/``vmax``/``center``/``cmap``/``label`` are deliberately NOT
+# forwarded even though ``add_colorbar`` accepts them: the plot call
+# derives each from the data it just drew, so honouring a second value
+# from ``legend_kws`` would put two sources of truth behind one strip —
+# the failure class behind #221, #230 and #243. ``title_position`` is
+# excluded as a judgment call, not an oversight.
+_COLORBAR_FORWARD_KEYS = frozenset({
+    "inside", "loc", "height", "width", "orientation", "ticks",
+})
 
 
 def _builder_kwargs(legend_kws: Optional[Dict]) -> Dict:
@@ -427,8 +446,14 @@ def _builder_kwargs(legend_kws: Optional[Dict]) -> Dict:
     return {k: v for k, v in legend_kws.items() if k in _BUILDER_FORWARD_KEYS}
 
 
-def _colorbar_kwargs(builder_kws: Dict) -> Dict:
-    """Narrow ``builder_kws`` to what ``add_colorbar`` can accept.
+def _colorbar_kwargs(legend_kws: Optional[Dict]) -> Dict:
+    """Narrow ``legend_kws`` to what ``add_colorbar`` can accept.
+
+    Applied to ``legend_kws`` DIRECTLY, not to the output of
+    :func:`_builder_kwargs`, because the colorbar keys are not a subset
+    of the ``ax.legend()`` passthrough set — see
+    :data:`_COLORBAR_FORWARD_KEYS`. Routing through the legend set is
+    what dropped ``height``/``width`` silently (#231).
 
     ``add_colorbar`` forwards its leftover kwargs to ``fig.colorbar()``,
     so any ``ax.legend()``-only key would surface as
@@ -436,8 +461,13 @@ def _colorbar_kwargs(builder_kws: Dict) -> Dict:
     Legend-only keys are dropped instead; ``loc`` only survives in
     ``inside=True`` mode, where it names the in-axes corner (outside
     bands derive their own placement from the mm cursor).
+
+    ``orientation`` is passed through as given, ABSENT included: an
+    explicit value wins and an omitted one leaves ``add_colorbar`` to
+    derive the strip's axis from the band it lands in (#213).
     """
-    kws = {k: v for k, v in builder_kws.items() if k in _COLORBAR_FORWARD_KEYS}
+    kws = {k: v for k, v in (legend_kws or {}).items()
+           if k in _COLORBAR_FORWARD_KEYS}
     if not kws.get("inside"):
         kws.pop("loc", None)
     return kws
@@ -463,7 +493,10 @@ def render_entries(
 
     ``legend_kws`` is the plot-function argument; kind-specific keys like
     ``hue_label`` should already have been popped by the caller. Remaining
-    keys in :data:`_BUILDER_FORWARD_KEYS` are forwarded to the builder.
+    keys in :data:`_BUILDER_FORWARD_KEYS` are forwarded to ``add_legend``;
+    a continuous hue instead takes the disjoint
+    :data:`_COLORBAR_FORWARD_KEYS` off ``legend_kws`` directly (#231).
+    Anything in neither set is dropped, as it always has been.
     """
     fig = ax.get_figure()
     to_render = entries_owed_render(fig, ax, flags)
@@ -505,7 +538,7 @@ def render_entries(
             builder.add_colorbar(
                 mappable=entry.handles[0],
                 label=entry.name,
-                **_colorbar_kwargs(builder_kws),
+                **_colorbar_kwargs(legend_kws),
             )
         else:
             builder.add_legend(

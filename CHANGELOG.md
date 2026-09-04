@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`legend_kws` now reaches a colorbar's geometry instead of dropping it
+  silently** (#231). `pp.scatterplot(..., hue=<continuous>,
+  legend_kws={"side": "top", "width": 30, "height": 8})` rendered the
+  default 15.00 x 4.50mm strip and discarded both arguments without a
+  warning, while the same arguments through the group API
+  (`g.add_colorbar(mappable=sm, width=30, height=20)`) worked. Now
+  30.00 x 8.00mm, and likewise on `side` `top`/`bottom`/`left`/`right`, in
+  `inside=True` mode, and for `pp.heatmap`.
+
+  The keys were dropped one filter earlier than the issue first reported:
+  not by `_colorbar_kwargs`, but by `_builder_kwargs`, because `height` and
+  `width` are not in `_BUILDER_FORWARD_KEYS` at all. That set could not
+  simply be widened. It is forwarded verbatim to `add_legend` and on to
+  `ax.legend()`, which takes no `height`/`width` but does take `**kwargs`,
+  so a geometry key added there raises `Legend.__init__() got an unexpected
+  keyword argument 'height'` on every *categorical* legend — the mirror
+  image of #215, where legend-only keys (`ncol`, `frameon`, `markerscale`,
+  ...) reaching `Colorbar.__init__` raised on every continuous one. The two
+  paths take disjoint keys and neither tolerates the other's, so
+  `_COLORBAR_FORWARD_KEYS` is now applied to `legend_kws` **directly** and
+  is deliberately independent of the legend passthrough set rather than a
+  subset of it.
+
+  Four keys are forwarded — `height`, `width`, `orientation`, `ticks` —
+  the presentation choices a caller plausibly makes at the plot call.
+  `vmin`, `vmax`, `center`, `cmap` and `label` are deliberately **not**
+  forwarded even though `add_colorbar` accepts them: the plot call derives
+  each from the data it just drew, so honouring a second value from
+  `legend_kws` would put two sources of truth behind one strip — the
+  failure class behind #221, #230 and #243. `title_position` is excluded as
+  a judgment call rather than an oversight.
+
+  #213's per-side orientation derivation is unchanged: `orientation` is
+  passed through as given, *absent included*, so an omitted value still
+  derives horizontal on a `top`/`bottom` band and vertical on
+  `left`/`right`, while an explicit `{"orientation": "vertical"}` on a top
+  band gives a vertical strip and `{"orientation": "horizontal"}` on a
+  right band a horizontal one. Forwarding it also makes `orientation`
+  effective in `inside=True` mode, which builds no band and so never saw
+  the placement-key route.
+
+  An unrecognised `legend_kws` key is still dropped silently — unchanged
+  behaviour, not an endorsement. Nothing in the package warns or raises on
+  one today, so adding a raise here would have been both a behaviour change
+  for anyone passing a stray key and inconsistent with every other key. A
+  single warning covering the whole of `legend_kws`, legends included, is
+  the coherent fix and wants its own issue.
+
 ## [0.18.1] - 2026-09-04
 
 ### Fixed
