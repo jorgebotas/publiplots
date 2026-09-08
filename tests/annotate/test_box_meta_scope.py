@@ -205,12 +205,14 @@ def test_histplot_alone_is_unchanged():
 
 # ---- the drawn_artists=None fallback ----
 
-def test_drawn_artists_none_still_scans_the_whole_axes():
-    """Pin the fallback branch, so it cannot rot uncovered.
+def test_box_drawn_artists_none_still_scans_the_whole_axes():
+    """Pin the box builder's fallback branch, so it cannot rot uncovered.
 
-    Every caller passes ``drawn_artists`` now. Without a test, a future
-    caller that forgets the argument would silently reinstate the bug this
-    module is about and nothing would fail.
+    Every call site passes a scoping argument now — ``drawn_artists`` for
+    box, violin and hist, ``bar_patches``/``err_artists`` for the bar
+    builders, ``marker_lines`` for point. Without a test, a future caller
+    that forgets it would silently reinstate the bug this module is about
+    and nothing would fail.
     """
     from publiplots.annotate._builders import build_from_boxplot_call
 
@@ -237,3 +239,72 @@ def test_drawn_artists_none_still_scans_the_whole_axes():
         palette=None, whis=1.5, source_frame=df, drawn_artists=own,
     )
     assert [round(b.cat_half_width, 4) for b in scoped.boxes] == [0.4, 0.4]
+
+
+def test_violin_drawn_artists_none_still_scans_the_whole_axes():
+    """Same fallback pin for the violin builder.
+
+    Reviewing #241 showed only the box builder's fallback was covered:
+    mutating violin's to ``[]`` left the whole annotate suite green.
+    """
+    from publiplots.annotate._builders import build_from_violinplot_call
+
+    df = _ab()
+    fig, ax = pp.subplots()
+    pp.kdeplot(data=df, x="v", fill=True, legend=False, ax=ax)
+    n_before = len(ax.collections)
+    pp.violinplot(data=df, x="cat", y="v", legend=False, ax=ax)
+
+    # Note a type filter could never have fixed this: a violin body is a
+    # `FillBetweenPolyCollection` too, exactly like the kdeplot's fill, so
+    # the two are indistinguishable by class. Scoping to the call's own
+    # artists is the only thing that separates them.
+    from matplotlib.collections import FillBetweenPolyCollection
+    assert all(isinstance(c, FillBetweenPolyCollection)
+               for c in ax.collections), "premise: kde fill and violins share a type"
+
+    # Omitting drawn_artists reproduces the pre-fix contamination: the
+    # kdeplot's fill takes the first violin's slot.
+    meta = build_from_violinplot_call(
+        ax=ax, data=df, x="cat", y="v", hue=None, categorical_axis="cat",
+        palette=None, source_frame=df,
+    )
+    assert round(meta.boxes[0].cat_half_width, 4) != 0.4, (
+        "fallback no longer scans the whole axes — this pin is now vacuous"
+    )
+
+    own = list(ax.collections)[n_before:]
+    scoped = build_from_violinplot_call(
+        ax=ax, data=df, x="cat", y="v", hue=None, categorical_axis="cat",
+        palette=None, source_frame=df, drawn_artists=own,
+    )
+    assert [round(b.cat_half_width, 4) for b in scoped.boxes] == [0.4, 0.4]
+
+
+def test_hist_drawn_artists_none_still_scans_the_whole_axes():
+    """Same fallback pin for the hist builder."""
+    from publiplots.annotate._builders import build_from_histplot_call
+    from matplotlib.patches import Rectangle
+
+    hist_df = pd.DataFrame({"v": [1, 2, 3, 4, 5, 6]})
+    bars = pd.DataFrame({"cat": list("AB"), "v": [3.5, 4.0]})
+    fig, ax = pp.subplots()
+    pp.barplot(data=bars, x="cat", y="v", legend=False, ax=ax)
+    n_bars = len(ax.patches)
+    pp.histplot(data=hist_df, x="v", bins=3, legend=False, ax=ax)
+
+    # Omitting drawn_artists picks the barplot's bars up as bins.
+    meta = build_from_histplot_call(
+        ax=ax, data=hist_df, x="v", y=None, hue=None,
+        palette=None, stat="count", hue_order=None,
+    )
+    assert len(meta.bars) == 3 + n_bars, (
+        "fallback no longer scans the whole axes — this pin is now vacuous"
+    )
+
+    own = [p for p in ax.patches if isinstance(p, Rectangle)][n_bars:]
+    scoped = build_from_histplot_call(
+        ax=ax, data=hist_df, x="v", y=None, hue=None,
+        palette=None, stat="count", hue_order=None, drawn_artists=own,
+    )
+    assert len(scoped.bars) == 3
