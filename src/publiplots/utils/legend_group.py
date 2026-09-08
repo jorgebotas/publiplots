@@ -25,7 +25,10 @@ from matplotlib.transforms import Bbox
 from publiplots.utils.legend import LegendBuilder
 from publiplots.utils.legend_entries import (
     LegendEntry,
+    axes_entry_kwargs,
+    entry_is_in_group,
     get_entries,
+    get_entry_kwargs,
     is_continuous_hue,
 )
 
@@ -728,6 +731,19 @@ class MultiAxesLegendGroup:
         self._warned_mismatch = False
         self._align_connected = False
         self._aligning = False  # re-entrancy guard for _on_draw_align
+        # True only for the per-axes form (``pp.legend(ax)`` / the cached
+        # plot-created group), set by the :func:`legend` factory. Two
+        # behaviours key off it, both of which would be wrong for a band:
+        #
+        # - it re-applies the plot call's ``legend_kws`` when re-rendering
+        #   a stashed entry (#258). A band is a separate object with its
+        #   own arguments, and an unrelated panel's ``height=8`` has no
+        #   business sizing a strip shared by the whole grid.
+        # - it declines to render an entry another group already claims
+        #   for that axes (#233) — a per-axes legend is the lowest-ranked
+        #   claimant, never the one that wins an overlap.
+        self._per_axes = False
+        self._warned_scope_overlap = False
         # Mm the band overhangs past the anchor's axes edge on the chosen
         # side — written by SubplotsAutoLayout._measure_one_group on each
         # settle iteration. We keep a local copy so the measurement pass
@@ -798,6 +814,7 @@ class MultiAxesLegendGroup:
                     UserWarning,
                     stacklevel=3,
                 )
+                self._warned_scope_overlap = True
                 break
         groups.append(self)
 
@@ -1078,22 +1095,69 @@ class MultiAxesLegendGroup:
             return
 
         # Gather all entries per (name, kind) across the group's scope.
-        by_key = {}   # (name, kind) -> list[LegendEntry]
+        by_key = {}   # (name, kind) -> list[(LegendEntry, Axes)]
         order = []    # (name, kind) in collection order (first-seen)
+        skipped_claimed = False
         for ax in self._iter_scope_axes():
             for entry in get_entries(ax):
                 if self._collect is not None and entry.name not in self._collect:
+                    continue
+                if self._per_axes and entry_is_in_group(
+                    ax.get_figure(), entry, ax=ax, exclude=self
+                ):
+                    # Another group — a band covering this cell, or a
+                    # figure-level legend — already owns this entry.
+                    # ``entries_owed_render`` asks exactly this question
+                    # on the plot path, and the plot path is right to
+                    # skip: rendering it here too is the duplicate #233
+                    # reports. Ordering does not enter into it. In the
+                    # opposite order the band wins as well, by evicting
+                    # the per-axes artists it found (#217), so declining
+                    # is what makes the two orderings agree; and evicting
+                    # the band's copy instead would let a call naming one
+                    # axes silently strip a legend shared with panels the
+                    # caller never mentioned.
+                    skipped_claimed = True
                     continue
                 key = (entry.name, entry.kind)
                 if key not in by_key:
                     by_key[key] = []
                     order.append(key)
-                by_key[key].append(entry)
+                by_key[key].append((entry, ax))
+
+        if skipped_claimed and not self._warned_scope_overlap:
+            # The warning #233 asks for. It fires on a measured
+            # collision — an entry this group would have rendered that
+            # someone else already claims — rather than on the scope
+            # heuristic, which cannot see it: ``_scope_overlap``'s mixed
+            # explicit/implicit branch compares an explicit scope against
+            # the implicit group's *anchor*, and a band anchored to
+            # ``axes[1]`` collects from ``axes[0]`` too. Widening that
+            # comparison to "an axes-anchored scope=None group covers the
+            # whole grid" would warn on the entry-free coexistence
+            # ``test_per_axes_legend_and_external_band_coexist`` pins, so
+            # the check lives where the entries are.
+            self._warned_scope_overlap = True
+            warnings.warn(
+                "pp.legend scope overlaps with an existing legend group on "
+                "this figure; the existing group keeps the shared entries "
+                "and this per-axes legend renders only what is left. Pass "
+                "disjoint ``collect=`` if both should render.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         if not by_key:
             # Nothing to render yet — the plot functions haven't stashed
             # anything in this group's scope. Leave _materialized=False so
             # a future draw (after the stashing) can try again.
+            #
+            # Unless everything found was claimed elsewhere: that is a
+            # decided outcome, not a not-yet-stashed one, so mark it
+            # materialized rather than re-scanning (and re-deciding) on
+            # every draw for the life of the figure.
+            if skipped_claimed:
+                self._materialized = True
             return
         self._materialized = True
 
@@ -1103,10 +1167,10 @@ class MultiAxesLegendGroup:
             order.sort(key=lambda k: (self._collect.index(k[0]), 0))
 
         for key in order:
-            merged = self._merge_entries(key, by_key[key])
-            self._render_entry(merged)
+            merged, merged_kws = self._merge_entries(key, by_key[key])
+            self._render_entry(merged, merged_kws)
 
-    def _merge_entries(self, key, entries):
+    def _merge_entries(self, key, sources):
         """Merge a list of same-(name, kind) entries into one.
 
         For categorical entries, the union of labels across axes is
@@ -1119,9 +1183,36 @@ class MultiAxesLegendGroup:
         Continuous-hue entries (ScalarMappable) cannot be meaningfully
         merged; first-occurrence wins and we warn if subsequent
         entries differ.
+
+        ``sources`` is a list of ``(entry, axes)`` pairs — the axes is
+        needed to look up the ``legend_kws`` recorded for each entry
+        (#258). Returns ``(entry, kwargs)``.
+
+        **Conflicting kwargs across axes: first wins, silently.** Three
+        reasons. (a) It is the rule this method already applies to the
+        handles themselves and the rule ``entry_is_in_group`` applies to
+        overlapping scopes, so there is one precedence story rather than
+        three. (b) The keys are per-artist, and the only consumer that
+        re-applies them is a single-axes per-axes group (see
+        ``_per_axes``) — so a genuine cross-axes disagreement is
+        collected by a band, which ignores the record entirely and
+        renders identically either way; warning about a difference that
+        cannot change a pixel is noise. (c) Two calls on the *same* axes
+        do not collide at all: each entry keeps its own record, so
+        ``ncol=3`` on the first and ``ncol=2`` on the second render as
+        asked. What is genuinely shared is the placement family, and
+        first-wins there matches ``_get_or_create_per_axes_group``,
+        whose placement already "takes effect only when the group is
+        FIRST created".
         """
+        entries = [entry for entry, _ax in sources]
+        merged_kws = {}
+        for entry, ax in sources:
+            for k, v in get_entry_kwargs(ax, entry).items():
+                merged_kws.setdefault(k, v)
+
         if len(entries) == 1:
-            return entries[0]
+            return entries[0], merged_kws
 
         first = entries[0]
         # Continuous hue: merging a ScalarMappable is ill-defined
@@ -1138,7 +1229,7 @@ class MultiAxesLegendGroup:
                     )
                     self._warned_mismatch = True
                     break
-            return first
+            return first, merged_kws
 
         # Categorical: union of (label, handle) pairs, first-seen wins
         # for each label. Track whether any axes had a different handle
@@ -1182,7 +1273,7 @@ class MultiAxesLegendGroup:
             kind=first.kind,
             handles=merged_handles,
             labels=merged_labels,
-        )
+        ), merged_kws
 
     def _on_draw_align_cb(self) -> None:
         """Post-reactor-refresh alignment hook. Runs inside each draw
@@ -1440,15 +1531,45 @@ class MultiAxesLegendGroup:
             if id(reg.artist) in element_ids:
                 reg.mm_outward_decoration_offset = mm
 
-    def _render_entry(self, entry: LegendEntry) -> None:
-        """Route to add_legend (categorical) or add_colorbar (continuous)."""
+    def _render_entry(self, entry: LegendEntry, legend_kws=None) -> None:
+        """Route to add_legend (categorical) or add_colorbar (continuous).
+
+        ``legend_kws`` is what the plot call that stashed the entry was
+        given, recorded by ``record_entry_kwargs``. It is re-applied only
+        for the per-axes form (``self._per_axes``), and only through the
+        SAME two filters the plot path uses — ``_builder_kwargs`` for a
+        categorical legend, the disjoint ``_colorbar_kwargs`` for a
+        continuous one. Reusing the filters rather than a new key list is
+        the point: the re-render honours exactly the keys the original
+        render honoured, so ``pp.legend(ax)`` cannot start forwarding
+        ``height`` to ``ax.legend()`` (#231's trap) or ``ncol`` to
+        ``Colorbar.__init__`` (#215's).
+
+        ``inside``/``loc`` are dropped. ``pp.legend`` has its own
+        ``inside=`` parameter (which requires ``anchor=``), so the mode
+        is the caller's explicit choice; injecting a stashed
+        ``inside=True`` into a band-mode group would drop an
+        ``in_layout=False`` inset inside a group that has already
+        reserved outward layout space for a strip.
+        """
+        from publiplots.utils.plot_legend import (
+            _builder_kwargs, _colorbar_kwargs,
+        )
+        kws = {}
+        if self._per_axes and legend_kws:
+            kws = {k: v for k, v in legend_kws.items()
+                   if k not in ("inside", "loc")}
         if entry.kind == "hue" and is_continuous_hue(entry.handles):
             mappable = entry.handles[0]
-            self.add_colorbar(mappable=mappable, label=entry.name)
+            self.add_colorbar(
+                mappable=mappable, label=entry.name,
+                **_colorbar_kwargs(kws),
+            )
         else:
             self.add_legend(
                 handles=list(entry.handles),
                 label=entry.name,
+                **_builder_kwargs(kws),
             )
 
     def _default_target_ax(self) -> Axes:
@@ -1691,6 +1812,52 @@ class MultiAxesLegendGroup:
 
 _SIDE_SENTINEL = object()
 
+# Documented defaults of the placement-family parameters of :func:`legend`.
+# A parameter still sitting on its default means "the caller did not
+# choose", which is what lets a stashed value fill it in.
+_PLACEMENT_DEFAULTS = {
+    "orientation": "auto",
+    "align": "auto",
+    "x_offset": None,
+    "y_offset": None,
+    "gap": 2,
+}
+
+
+def _merge_stashed_placement(ax, *, side, side_explicit, **placement):
+    """Fill unset placement parameters from ``ax``'s recorded ``legend_kws``.
+
+    ``pp.scatterplot(..., legend_kws={'side': 'top'})`` configures the
+    plot-created per-axes group; a later ``pp.legend(ax)`` used to reset
+    it to the ``side='right'`` default, because the factory cannot tell
+    "the caller wants right" from "the caller said nothing" once the
+    signature default has been applied (#258).
+
+    **An explicit argument always wins.** That ordering is not optional:
+    ``pp.legend(ax, side='left')`` overriding
+    ``legend_kws={'side': 'top'}`` is the whole reason the adopt path
+    takes arguments, so the stash may only supply a value the caller
+    left at its default. ``side`` carries a sentinel and is therefore
+    exact; the rest are distinguished from their documented defaults in
+    :data:`_PLACEMENT_DEFAULTS`, so passing a value equal to the default
+    is indistinguishable from passing nothing — harmless, since the
+    outcome is that default either way unless the stash overrides it.
+    """
+    from publiplots.utils.plot_legend import _GROUP_PLACEMENT_KEYS
+
+    stashed = {
+        k: v for k, v in axes_entry_kwargs(ax).items()
+        if k in _GROUP_PLACEMENT_KEYS
+    }
+    if not stashed:
+        return side, placement
+    if not side_explicit and "side" in stashed:
+        side = stashed["side"]
+    for key, value in placement.items():
+        if key in stashed and value == _PLACEMENT_DEFAULTS[key]:
+            placement[key] = stashed[key]
+    return side, placement
+
 
 def legend(
     axes=None,
@@ -1793,6 +1960,10 @@ def legend(
     # ``side='right', align='start'`` recipe (legend hugs the inner-left
     # edge of the legend tile, against the divide between plots and
     # legend).
+    # Captured before the sentinel is resolved: once ``side`` holds
+    # "right", an explicit ``side='right'`` and an omitted ``side`` are
+    # indistinguishable, and only the former may beat a stashed value.
+    side_was_explicit = side is not _SIDE_SENTINEL
     if inside:
         if anchor is None:
             raise ValueError(
@@ -1911,6 +2082,26 @@ def legend(
         resolved_anchor = axes
         resolved_axes = [axes]
         axes_triggered_single_scope = True
+        # The per-axes form is the one that inherits the plot call's
+        # placement keys (#258). Applies to both branches below: the
+        # adopt, and the fresh construct taken when the entries were
+        # claimed before any plot call could cache a group.
+        if not inside:
+            side, _placement = _merge_stashed_placement(
+                axes,
+                side=side,
+                side_explicit=side_was_explicit,
+                orientation=orientation,
+                align=align,
+                x_offset=x_offset,
+                y_offset=y_offset,
+                gap=gap,
+            )
+            orientation = _placement["orientation"]
+            align = _placement["align"]
+            x_offset = _placement["x_offset"]
+            y_offset = _placement["y_offset"]
+            gap = _placement["gap"]
         # Adopt the plot-created cached per-axes group instead of building
         # a second competing one. Every plot call funnels its legend
         # output through ``ax._legend_group`` (a collect=[] group whose
@@ -1937,6 +2128,7 @@ def legend(
             and cached._scope_axes is not None
             and len(cached._scope_axes) == 1
         ):
+            cached._per_axes = True
             cached._reconfigure_for_adopt(
                 collect=collect,
                 side=side,
@@ -1998,6 +2190,12 @@ def legend(
     if axes_triggered_single_scope:
         group._external_to_axis = False
         group._builder._external_to_axis = False
+        # Same condition, second consequence: single-axes scope IS the
+        # per-axes form, so it re-applies the plot call's legend_kws
+        # (#258) and yields shared entries to any other claiming group
+        # (#233). Set here rather than in __init__ because the class
+        # default must stay band semantics for every other spelling.
+        group._per_axes = True
 
     return group
 

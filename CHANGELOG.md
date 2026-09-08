@@ -7,7 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> This branch was cut before the current release. Merge `main` in before
+> landing it, so the entries below sit under the right heading.
+
 ### Fixed
+
+- **`pp.legend(ax)` keeps the plot call's `legend_kws`, and no longer
+  duplicates an entry a band already owns** (#258, #233). Both defects
+  live on the adopt path, where a claimed entry is re-rendered from the
+  stash, and one record fixes both.
+
+  *#258 — the discarded arguments.* `pp.scatterplot(..., hue=<continuous>,
+  legend_kws={"side": "top", "width": 30, "height": 8})` drew a
+  30.00 x 8.00mm strip; a following `pp.legend(ax, side="top")` replaced
+  it with the 15.00 x 4.50mm default. The categorical branch lost its keys
+  the same way — `legend_kws={"ncol": 3}` came back with `ncol` reset to
+  the label count (3 before, 6 after) — so this was one general defect
+  rather than a hole in #231. `MultiAxesLegendGroup._render_entry` could
+  only re-render what a `LegendEntry` carries (name, kind, handles,
+  labels, signature); the presentation kwargs were consumed at render time
+  and never stored, so by the time adoption ran the information did not
+  exist.
+
+  A plot call now records the `legend_kws` it was given against the
+  entries it stashed, in a side table keyed by entry identity
+  (`record_entry_kwargs`) — the same shape as #227's render record. The
+  entry stays frozen and its `signature` keeps hashing visual identity
+  only, so two axes that stash the same handles with different
+  `legend_kws` still merge into one entry. The re-render passes the record
+  through the *same* two disjoint filters the plot path uses,
+  `_builder_kwargs` for a legend and `_colorbar_kwargs` for a colorbar, so
+  it honours exactly the keys the original render honoured and cannot
+  start forwarding `height` to `ax.legend()` (#231's trap) or `ncol` to
+  `Colorbar.__init__` (#215's). `inside`/`loc` are dropped: `pp.legend`
+  has its own `inside=` parameter, so the mode is the caller's explicit
+  choice.
+
+  **An explicit argument always wins.** `pp.legend(ax, side="left")` still
+  overrides `legend_kws={"side": "top"}` — the stash may only fill a
+  parameter the caller left at its documented default. `side` is the one
+  placement key whose default is a real value ("right"), so it is
+  distinguished by sentinel, which is what lets a bare `pp.legend(ax)`
+  keep a `side="top"` from the plot call instead of dragging the legend
+  back to the right.
+
+  **Only the per-axes form inherits the record.** A band is a separate
+  object with its own arguments; an unrelated panel's `height=8` has no
+  business sizing a strip shared by the whole grid. That also settles what
+  `_merge_entries` should do when the same entry is stashed from several
+  axes with conflicting kwargs: **first wins, silently.** It is the rule
+  that method already applies to the handles themselves and the rule
+  `entry_is_in_group` applies to overlapping scopes; two calls on the same
+  axes do not collide at all (each entry keeps its own record, so `ncol=3`
+  on one and `ncol=2` on the other both render as asked); and a genuine
+  cross-axes disagreement is collected by a band, which ignores the record
+  and renders identically either way — warning about a difference that
+  cannot change a pixel is noise.
+
+  *#233 — the duplicate and the missing warning.* Creating a band and
+  *then* adopting on one of its panels left the entry rendered twice
+  (2 colorbars, labels `['c', 'c']`; the categorical equivalent `['g',
+  'g']`) with no warning. The adopt re-collected straight from the stash
+  without asking whether anyone else already owned the entry — the
+  question `entries_owed_render` asks on the plot path, where the answer
+  is to skip. A per-axes group now asks it too and declines: the band
+  keeps the shared entries and the per-axes legend renders only what is
+  left. It is the ordering-symmetric choice — in the opposite order the
+  band wins as well, by evicting the per-axes artists it finds (#217) —
+  and evicting the band's copy instead would let a call naming one axes
+  silently strip a legend shared with panels the caller never mentioned.
+  Entries the band does *not* claim are untouched: with
+  `pp.legend(anchor=axes[1], collect=["g"])`, `g` renders once in the band
+  and a per-panel `c` still renders on each axes.
+
+  The warning fires on the measured collision rather than on the scope
+  heuristic. `_scope_overlap`'s mixed explicit/implicit branch cannot see
+  this case — it compares an explicit scope against the implicit group's
+  *anchor*, and a band anchored to `axes[1]` collects from `axes[0]` too —
+  but widening that comparison to "an axes-anchored `scope=None` group
+  covers the whole grid" would warn on the entry-free coexistence of
+  `pp.legend(axes[0])` and `pp.legend(anchor=axes[1])`, which is pinned as
+  deliberate. So the check lives where the entries are, and a plain
+  `pp.legend(ax)` next to nothing still says nothing.
+
+  Band-vs-band precedence is deliberately unchanged: two figure-level
+  groups that both claim the same name still render twice and still emit
+  the existing construction-time warning.
 
 - **`legend_kws` now reaches a colorbar's geometry instead of dropping it
   silently** (#231). `pp.scatterplot(..., hue=<continuous>,
@@ -41,15 +126,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failure class behind #221, #230 and #243. `title_position` is excluded as
   a judgment call rather than an oversight.
 
-  **What this does not cover.** `pp.legend(ax)` re-renders a claimed entry
-  from the stash and drops the plot call's `legend_kws`, so a strip sized
-  by `legend_kws={'width': 30, 'height': 8}` comes back at the default
-  15 x 4.5mm through that call. Not fixed here because it is not specific
-  to colorbars — the categorical branch of the same method passes no
-  `ncol` either, and a legend built with `{'ncol': 3}` returns with `ncol`
-  reset to the label count (measured 3 before, 6 after). Both entry kinds
-  lose every forwarded key, so it is one general defect, filed as #258 and
-  pinned by two tests here so that fixing it surfaces as those failing.
+  **What this did not cover**, filed as #258 and since fixed by the entry
+  above: `pp.legend(ax)` re-rendered a claimed entry from the stash and
+  dropped the plot call's `legend_kws` for both entry kinds. The two tests
+  pinning that behaviour here were written to fail when it was fixed, and
+  have been deleted rather than reverted, as their docstrings instructed.
 
   #213's per-side orientation derivation is unchanged, but `orientation`
   is **translated rather than forwarded verbatim**, and getting that wrong

@@ -157,6 +157,8 @@ pp.scatterplot(..., ax=ax, legend_kws={"side": "top", "align": "center"})
 
 `legend_kws` forwards the placement family — `side`, `orientation`, `align`, `x_offset`, `y_offset`, `gap` — to the per-axes group (alongside the matplotlib passthrough keys like `loc`, `ncol`). `legend_kws={'inside': True, ...}` is a different mechanism (see "Two `inside=True` flavors") and ignores these placement keys.
 
+The two ways compose: a later `pp.legend(ax)` **keeps** the keys the plot call forwarded, so `legend_kws={"side": "top", "ncol": 3}` followed by a bare `pp.legend(ax)` stays on top with 3 columns, and a colorbar sized by `legend_kws={"width": 30, "height": 8}` keeps that size. An argument you pass explicitly always wins — `pp.legend(ax, side="left")` overrides a stashed `side="top"` — and only the per-axes form inherits them: a band (`pp.legend()`, `pp.legend(anchor=ax)`, a multi-axes scope) renders with its own arguments.
+
 Edge behaviour for per-axes legends:
 - `side='top'` lifts the axes **title above** the legend band (stacking, outward: axes → legend → title); the title's font/color/pad are preserved.
 - `side='left'` offsets the legend past the y-tick labels dynamically (no fixed gap).
@@ -189,6 +191,8 @@ pp.legend(anchor=axes[1])       # EXTERNAL — overhangs past axes[1]'s right ed
 ```
 
 The internal form (`pp.legend(ax)`) adopts the plot-created group in place (since 0.14.0) — one group per axes, so it never warns or double-renders. The external form (`pp.legend(anchor=ax)`) preserves the pre-0.10 `pp.legend_group(anchor=ax)` band semantics.
+
+One case does warn: a per-axes legend on an axes a **band already covers**. The band keeps the shared entries and the per-axes call renders only what is left — order-independent, since a band created afterwards evicts the per-axes artists instead. Entries the band does not claim (`collect=[...]`) still render per axes.
 
 Migration from the old name: a plain `sed -i 's/pp\.legend_group(/pp.legend(/g'` over your code is sufficient — every kwarg carries over and semantics are preserved.
 
