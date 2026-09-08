@@ -745,6 +745,49 @@ def _compute_box_stats(values: np.ndarray, whis: float) -> Dict[str, float]:
     }
 
 
+def _iter_box_group_keys(spec, data, hue_outer: bool):
+    """Yield ``(category, hue_value)`` in a plotter's dodge draw order.
+
+    The two libraries disagree, and the shared builder pairs groups to drawn
+    artists by index, so getting this wrong misplaces every label from the
+    first divergence on (issue #254):
+
+    - seaborn's *boxplot* is effectively **hue-outer, cat-inner**: its
+      ``plot_boxes`` loops over hue only and issues one
+      ``matplotlib.Axes.bxp`` call per hue level, each covering every
+      category. (``bxp`` itself has no notion of hue; the nesting is
+      seaborn's loop.)
+    - seaborn's *violinplot* draws **cat-outer, hue-inner** — its
+      ``plot_violins`` iterates the categorical variable and hue together,
+      so category ``A``'s violins come first for every hue, then ``B``'s.
+
+    Combinations with no rows are skipped, matching
+    `BarSplitSpec.iter_draw_order`, because the plotters draw nothing for
+    them. Hatch does not participate: boxes and violins never dodge on it.
+    """
+    cats = _categories_in_draw_order(data[spec.categorical_axis])
+    if spec.split_hue is None:
+        for cat in cats:
+            # Guard the no-hue branch too: a pandas Categorical keeps an
+            # unused level in `.cat.categories` and the plotters draw
+            # nothing for it. `_aggregate_box_stats` also drops empty
+            # groups, so this is belt-and-braces — but the equivalent
+            # check in `BarSplitSpec.iter_draw_order` exists because its
+            # absence was a live bug, so do not rely on the downstream one.
+            if (data[spec.categorical_axis] == cat).any():
+                yield cat, None
+        return
+
+    hues = _categories_in_draw_order(data[spec.split_hue])
+    pairs = (((cat, h) for h in hues for cat in cats) if hue_outer
+             else ((cat, h) for cat in cats for h in hues))
+    for cat, h_val in pairs:
+        mask = ((data[spec.categorical_axis] == cat)
+                & (data[spec.split_hue] == h_val))
+        if mask.any():
+            yield cat, h_val
+
+
 def _aggregate_box_stats(
     data,
     x: str,
@@ -754,10 +797,14 @@ def _aggregate_box_stats(
     whis: float,
     *,
     source_frame,
+    hue_outer: bool = True,
 ) -> List[Dict]:
     """Group by (categorical_axis [, hue]) and compute box stats per group.
 
-    Row ordering matches seaborn's dodge draw order: hue-outer, cat-inner.
+    Row ordering matches the *plotter's* dodge draw order, which differs
+    between boxplot and violinplot — ``hue_outer=True`` for boxplot
+    (matplotlib ``bxp``), ``False`` for violinplot (seaborn). See
+    `_iter_box_group_keys`; getting it wrong misplaces labels (issue #254).
 
     Each row carries its draw-order ``category`` / ``hue_value`` /
     ``hatch_value`` (boxes don't dodge on hatch, always ``None``) plus
@@ -773,7 +820,7 @@ def _aggregate_box_stats(
     )
 
     rows: List[Dict] = []
-    for cat, h_val, _ht_val in spec.iter_draw_order(data):
+    for cat, h_val in _iter_box_group_keys(spec, data, hue_outer):
         mask = data[categorical_axis] == cat
         if spec.split_hue is not None:
             mask = mask & (data[spec.split_hue] == h_val)
@@ -834,12 +881,16 @@ def _build_box_stats_meta(
     artists: List,
     *,
     source_frame,
+    hue_outer: bool = True,
 ) -> BoxStatsMeta:
     """Shared builder for pp.boxplot / pp.violinplot.
 
     Stats are computed from raw data (exact, matching seaborn's whis rule
     for boxplot; violinplot shows the same underlying stats). Categorical
-    positions come from the drawn artists so dodge groupings are honored.
+    positions come from the drawn artists so dodge groupings are honored —
+    which makes the group order load-bearing, since groups are paired to
+    artists by index. ``hue_outer`` selects the caller's plotter order:
+    ``True`` for boxplot, ``False`` for violinplot (issue #254).
 
     ``source_frame`` is required keyword-only: the caller's pre-copy
     DataFrame. The returned meta carries it so downstream annotate
@@ -849,7 +900,7 @@ def _build_box_stats_meta(
     agg = _aggregate_box_stats(
         data, x=x, y=y, hue=hue,
         categorical_axis=categorical_axis, whis=whis,
-        source_frame=source_frame,
+        source_frame=source_frame, hue_outer=hue_outer,
     )
     if len(artists) != len(agg):
         n = min(len(artists), len(agg))
@@ -968,4 +1019,7 @@ def build_from_violinplot_call(
     return _build_box_stats_meta(
         ax, data, x, y, hue, categorical_axis, palette, whis, artists,
         source_frame=source_frame,
+        # Seaborn draws violins cat-outer, hue-inner — unlike matplotlib's
+        # `bxp`, which boxplot delegates to. See issue #254.
+        hue_outer=False,
     )

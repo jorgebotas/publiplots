@@ -94,6 +94,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   groups that both claim the same name still render twice and still emit
   the existing construction-time warning.
 
+- **A hue-split `pp.violinplot`'s value labels now sit on their own violin**
+  (#254), for default level ordering. Seaborn's violinplot draws
+  **cat-outer, hue-inner**; its boxplot is effectively **hue-outer,
+  cat-inner**, looping over hue and issuing one `bxp` call per level.
+  `_aggregate_box_stats` used the boxplot nesting for both, and the shared
+  builder pairs groups to drawn artists by index, so violin records
+  *between the first and the last* took a neighbour's position — the first
+  and last always agreed, since both orderings start and end on the same
+  group. With two categories and two hues, `B/x`'s median rendered on the
+  `A/y` violin and vice versa; with three categories and four hues, ten of
+  twelve were wrong. The *stats* were always right — computed from the
+  group key, not the artist — so only the placement was, which is the bad
+  combination: plausible numbers on the wrong mark, nothing raised.
+  `split=True` and both orientations were affected identically;
+  `pp.boxplot` never was and its order is unchanged. Invisible with a
+  single category or a single hue level, which is why it survived.
+  `pp.raincloudplot` is unaffected by default (its meta comes from the
+  inner `pp.boxplot`) and fixed under `box=False`.
+
+  **Not fixed, tracked as #262:** the *level* order within each dimension
+  is still wrong for both plotters when `order=` / `hue_order=` is passed
+  in a non-default sequence, or when levels are numeric — seaborn honours
+  the explicit order and sorts numerics, `_categories_in_draw_order` does
+  neither. Labels are misplaced on those inputs regardless of this fix.
+
 - **`legend_kws` now reaches a colorbar's geometry instead of dropping it
   silently** (#231). `pp.scatterplot(..., hue=<continuous>,
   legend_kws={"side": "top", "width": 30, "height": 8})` rendered the
