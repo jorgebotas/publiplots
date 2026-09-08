@@ -660,8 +660,8 @@ def build_from_histplot_call(
     ``drawn_artists`` should be the patches this call drew
     (``ArtistTracker(ax).get_new_patches()``). This builder enumerates rather
     than pairing positionally, so a stray patch adds a spurious label rather
-    than shifting the others — but a `pp.barplot` on the same axes still gets
-    its bars labelled as bins. Defaults to scanning ``ax.patches``.
+    than shifting the others — but a ``pp.barplot`` on the same axes still
+    gets its bars labelled as bins. Defaults to scanning ``ax.patches``.
     """
     orient = "v" if x is not None else "h"
 
