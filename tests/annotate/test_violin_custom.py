@@ -59,7 +59,15 @@ def test_column_labels_hue_split():
     })
     ax = pp.violinplot(data=df, x="cat", y="value", hue="hue")
     texts = pp.annotate(ax, kind="violin_custom", labels="n")
-    assert [t.get_text() for t in texts] == ["11", "33", "22", "44"]
+    # Seaborn draws violins cat-outer, hue-inner: A/x, A/y, B/x, B/y.
+    # This expectation was ["11", "33", "22", "44"] until #254 — the
+    # boxplot order, which put B/x's label on the A/y violin. Assert the
+    # positions too, since order alone did not catch that.
+    assert [t.get_text() for t in texts] == ["11", "22", "33", "44"]
+    expected_x = {"11": -0.2, "22": 0.2, "33": 0.8, "44": 1.2}
+    for t in texts:
+        assert t.get_position()[0] == pytest.approx(
+            expected_x[t.get_text()], abs=1e-6)
 
 
 def test_column_labels_intra_group_variance_warns_and_uses_first():
