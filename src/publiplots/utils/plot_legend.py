@@ -22,7 +22,9 @@ from publiplots.utils.legend_entries import (
     LegendEntry,
     stash_entry,
     entries_owed_render,
+    get_entries,
     mark_entry_rendered,
+    record_entry_kwargs,
     resolve_legend_flags,
     is_continuous_hue,
 )
@@ -526,6 +528,16 @@ def render_entries(
     Anything in neither set is dropped, as it always has been.
     """
     fig = ax.get_figure()
+    # Record this call's kwargs against the entries it stashed BEFORE the
+    # early return. An entry claimed by a figure-level group is owed no
+    # per-axes render at all, so ``to_render`` is empty and this function
+    # returns immediately — but a later ``pp.legend(ax)`` may still have
+    # to re-render that entry, and it can only honour the plot call's
+    # keys if they were recorded regardless of whether anything drew
+    # here (#258). First writer wins, so the entries without a record
+    # are exactly the ones this call added.
+    for entry in get_entries(ax):
+        record_entry_kwargs(ax, entry, legend_kws)
     to_render = entries_owed_render(fig, ax, flags)
     if not to_render:
         return

@@ -123,6 +123,71 @@ def entry_is_rendered(ax, entry: LegendEntry) -> bool:
     return id(entry) in rendered
 
 
+def record_entry_kwargs(ax, entry: LegendEntry, legend_kws) -> None:
+    """Record the ``legend_kws`` the plot call gave ``entry``.
+
+    A ``LegendEntry`` carries only what a legend needs to be *drawn*
+    (name, kind, handles, labels); the presentation choices — ``ncol``,
+    ``height``/``width``, ``ticks``, the placement family — were consumed
+    at render time and then lost. ``pp.legend(ax)`` re-renders a claimed
+    entry from the stash, so with nothing recorded it could only rebuild
+    a default artist and every forwarded key silently vanished (#258).
+
+    Kept in a side table rather than on the frozen dataclass, the same
+    shape as the render record (#227): the entry stays immutable and its
+    ``signature`` — which feeds cross-axes dedup — keeps hashing only
+    visual identity, so two axes that stash the same handles with
+    different ``legend_kws`` still merge as one entry.
+
+    Keyed by object identity with the entry retained in the value, so an
+    ``id`` freed by garbage collection cannot be recycled onto a later
+    object and hand it the wrong kwargs.
+
+    First writer wins. Every plot call stashes its entries and then calls
+    ``render_entries`` once, so the un-recorded entries at that point are
+    exactly the ones this call stashed; a repeat pass over an entry that
+    already has a record must not overwrite it with a later call's keys.
+    """
+    recorded = getattr(ax, "_publiplots_entry_kwargs", None)
+    if recorded is None:
+        recorded = {}
+        ax._publiplots_entry_kwargs = recorded
+    if id(entry) in recorded:
+        return
+    recorded[id(entry)] = (entry, dict(legend_kws or {}))
+
+
+def get_entry_kwargs(ax, entry: LegendEntry) -> dict:
+    """The ``legend_kws`` recorded for ``entry`` on ``ax`` (``{}`` if none)."""
+    recorded = getattr(ax, "_publiplots_entry_kwargs", None)
+    if not recorded:
+        return {}
+    found = recorded.get(id(entry))
+    if found is None or found[0] is not entry:
+        return {}
+    return dict(found[1])
+
+
+def axes_entry_kwargs(ax) -> dict:
+    """Union of the ``legend_kws`` recorded for every entry on ``ax``.
+
+    Used for the group-level (placement) half of the record, which has
+    one value per group rather than one per artist. First writer wins on
+    a conflict — the same rule :func:`record_entry_kwargs` applies per
+    entry, and the same rule ``_get_or_create_per_axes_group`` already
+    applies to the placement of a plot-created group ("they take effect
+    only when the group is FIRST created").
+    """
+    recorded = getattr(ax, "_publiplots_entry_kwargs", None)
+    if not recorded:
+        return {}
+    merged = {}
+    for _entry, kws in recorded.values():
+        for key, value in kws.items():
+            merged.setdefault(key, value)
+    return merged
+
+
 def entries_owed_render(fig, ax, flags: dict) -> list:
     """The stashed entries ``ax`` still owes its own per-axes legend.
 
@@ -157,17 +222,23 @@ def resolve_legend_flags(legend) -> dict:
     )
 
 
-def entry_is_in_group(fig, entry: LegendEntry, ax=None) -> bool:
+def entry_is_in_group(fig, entry: LegendEntry, ax=None, exclude=None) -> bool:
     """True if any legend_group on ``fig`` claims this entry.
 
     When ``ax`` is provided, the check is scoped: a group claims the
     entry only if the entry name matches AND ``ax`` falls within the
     group's ``axes=`` scope. First-registered wins on scope overlap.
+
+    ``exclude`` skips one group — used by a per-axes group asking "does
+    anyone *else* already own this?", which is the same question the
+    plot path asks through :func:`entries_owed_render` (#233).
     """
     groups = getattr(fig, "_publiplots_legend_groups", None)
     if not groups:
         return False
     for group in groups:
+        if exclude is not None and group is exclude:
+            continue
         if not group.claims(entry.name):
             continue
         if ax is None or group._scope_contains(ax):
