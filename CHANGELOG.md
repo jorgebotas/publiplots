@@ -7,8 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> This branch was cut before the current release. Merge `main` in before
-> landing it, so the entries below sit under the right heading.
+## [0.18.2] - 2026-09-08
 
 ### Fixed
 
