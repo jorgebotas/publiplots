@@ -354,6 +354,9 @@ def boxplot(
         palette=palette if isinstance(palette, dict) else None,
         whis=whis,
         source_frame=_source_data,
+        # Level order must be seaborn's, which honours these and sorts
+        # numeric levels; without them the pairing desyncs (#262).
+        order=order, hue_order=hue_order,
         # Only this call's patches. Re-read here because apply_border_radius
         # swaps in new objects; get_new_patches() recomputes against the
         # live axes.
