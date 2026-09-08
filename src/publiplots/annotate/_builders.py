@@ -12,6 +12,7 @@ inputs (data, column names, palette map, errorbar spec) and returns a
 from __future__ import annotations
 
 import warnings
+from numbers import Number
 from typing import Dict, List, Literal, Optional, Tuple
 
 import numpy as np
@@ -166,10 +167,20 @@ def _categorical_order(series, order: Optional[List] = None) -> List:
 
     Mirrors ``seaborn._base.categorical_order`` without importing a seaborn
     private: an explicit ``order`` wins; else a pandas Categorical's declared
-    categories; else the unique values, **sorted for numeric/bool dtypes**
-    (seaborn sorts numerics) and in first-occurrence order otherwise. Nulls
-    are dropped. This must match seaborn's draw order because the pointplot
-    builder pairs drawn marker series to these levels by position.
+    categories; else the unique values, **sorted when seaborn considers the
+    vector numeric** and in first-occurrence order otherwise. Nulls are
+    dropped. This must match seaborn's draw order because the builders pair
+    drawn artists to these levels by position.
+
+    "Numeric" follows seaborn's ``variable_type``, which is broader than
+    ``pandas.api.types.is_numeric_dtype``: its ``all_numeric`` fallback
+    treats an **object-dtype** column whose every entry is a
+    ``numbers.Number`` as numeric. So ``pd.Series([3, 1, 2], dtype=object)``
+    and a column of ``Decimal`` sort, where the dtype test alone would leave
+    them in first-occurrence order and mispair every artist (issue #262).
+    Datetimes deliberately do *not* sort — seaborn leaves them in
+    first-occurrence order, and matching that matters more than being
+    tidier than it.
     """
     if order is not None:
         return list(order)
@@ -177,9 +188,24 @@ def _categorical_order(series, order: Optional[List] = None) -> List:
         return list(series.cat.categories)
     values = pd.Series(series)
     uniques = values.dropna().unique()
-    if pd.api.types.is_numeric_dtype(values):
+    if _is_seaborn_numeric(values, uniques):
         uniques = np.sort(uniques)
     return list(uniques)
+
+
+def _is_seaborn_numeric(values, uniques) -> bool:
+    """Whether seaborn's ``variable_type`` would call this vector numeric.
+
+    The dtype test covers the typed columns; the ``Number`` scan mirrors
+    seaborn's ``all_numeric`` fallback for object dtype. Booleans are
+    ``Number`` subclasses, which is why ``[True, False]`` sorts to
+    ``[False, True]`` in both libraries.
+    """
+    if pd.api.types.is_numeric_dtype(values):
+        return True
+    if len(uniques) == 0:
+        return False
+    return all(isinstance(v, Number) for v in uniques)
 
 
 def _iter_point_marker_series(ax: Axes, candidates: Optional[List] = None) -> List:
@@ -745,7 +771,8 @@ def _compute_box_stats(values: np.ndarray, whis: float) -> Dict[str, float]:
     }
 
 
-def _iter_box_group_keys(spec, data, hue_outer: bool):
+def _iter_box_group_keys(spec, data, hue_outer: bool,
+                         order=None, hue_order=None):
     """Yield ``(category, hue_value)`` in a plotter's dodge draw order.
 
     The two libraries disagree, and the shared builder pairs groups to drawn
@@ -764,8 +791,18 @@ def _iter_box_group_keys(spec, data, hue_outer: bool):
     Combinations with no rows are skipped, matching
     `BarSplitSpec.iter_draw_order`, because the plotters draw nothing for
     them. Hatch does not participate: boxes and violins never dodge on it.
+
+    Levels *within* each dimension are resolved by `_categorical_order`,
+    which mirrors seaborn's own rule: an explicit ``order`` / ``hue_order``
+    wins, then a pandas Categorical's declared categories, else the uniques
+    with numeric and bool dtypes **sorted**. `_categories_in_draw_order`
+    does neither of the first and last of those, which misplaced every
+    label under a reordered ``order=`` and — needing no arguments at all —
+    whenever numeric levels arrived unsorted (issue #262). An ``order``
+    naming a subset also filters the groups here, so the pairing stays 1:1
+    with what the plotter drew rather than being truncated to length.
     """
-    cats = _categories_in_draw_order(data[spec.categorical_axis])
+    cats = _categorical_order(data[spec.categorical_axis], order)
     if spec.split_hue is None:
         for cat in cats:
             # Guard the no-hue branch too: a pandas Categorical keeps an
@@ -778,7 +815,7 @@ def _iter_box_group_keys(spec, data, hue_outer: bool):
                 yield cat, None
         return
 
-    hues = _categories_in_draw_order(data[spec.split_hue])
+    hues = _categorical_order(data[spec.split_hue], hue_order)
     pairs = (((cat, h) for h in hues for cat in cats) if hue_outer
              else ((cat, h) for cat in cats for h in hues))
     for cat, h_val in pairs:
@@ -798,6 +835,8 @@ def _aggregate_box_stats(
     *,
     source_frame,
     hue_outer: bool = True,
+    order: Optional[List] = None,
+    hue_order: Optional[List] = None,
 ) -> List[Dict]:
     """Group by (categorical_axis [, hue]) and compute box stats per group.
 
@@ -820,7 +859,8 @@ def _aggregate_box_stats(
     )
 
     rows: List[Dict] = []
-    for cat, h_val in _iter_box_group_keys(spec, data, hue_outer):
+    for cat, h_val in _iter_box_group_keys(spec, data, hue_outer,
+                                           order, hue_order):
         mask = data[categorical_axis] == cat
         if spec.split_hue is not None:
             mask = mask & (data[spec.split_hue] == h_val)
@@ -882,6 +922,8 @@ def _build_box_stats_meta(
     *,
     source_frame,
     hue_outer: bool = True,
+    order: Optional[List] = None,
+    hue_order: Optional[List] = None,
 ) -> BoxStatsMeta:
     """Shared builder for pp.boxplot / pp.violinplot.
 
@@ -901,6 +943,7 @@ def _build_box_stats_meta(
         data, x=x, y=y, hue=hue,
         categorical_axis=categorical_axis, whis=whis,
         source_frame=source_frame, hue_outer=hue_outer,
+        order=order, hue_order=hue_order,
     )
     if len(artists) != len(agg):
         n = min(len(artists), len(agg))
@@ -961,6 +1004,8 @@ def build_from_boxplot_call(
     *,
     source_frame,
     drawn_artists: Optional[List] = None,
+    order: Optional[List] = None,
+    hue_order: Optional[List] = None,
 ) -> BoxStatsMeta:
     """Build a BoxStatsMeta paired with the boxplot's PathPatches.
 
@@ -983,6 +1028,7 @@ def build_from_boxplot_call(
     return _build_box_stats_meta(
         ax, data, x, y, hue, categorical_axis, palette, whis, patches,
         source_frame=source_frame,
+        order=order, hue_order=hue_order,
     )
 
 
@@ -998,6 +1044,8 @@ def build_from_violinplot_call(
     *,
     source_frame,
     drawn_artists: Optional[List] = None,
+    order: Optional[List] = None,
+    hue_order: Optional[List] = None,
 ) -> BoxStatsMeta:
     """Build a BoxStatsMeta paired with the violinplot's fill collections.
 
@@ -1022,4 +1070,5 @@ def build_from_violinplot_call(
         # Seaborn draws violins cat-outer, hue-inner — unlike matplotlib's
         # `bxp`, which boxplot delegates to. See issue #254.
         hue_outer=False,
+        order=order, hue_order=hue_order,
     )
