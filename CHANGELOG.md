@@ -104,6 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than just its top quarter — with a message quoting accumulated
   millimetres, which is more actionable than a maybe.
 
+## [0.18.3] - 2026-09-25
+
 ### Fixed
 
 - **`pp.boxplot` and `pp.violinplot` value labels now follow seaborn's level
@@ -150,7 +152,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   This is the level order *within* each dodge dimension; #254 fixed the
   nesting order *between* them.
-
 
 ## [0.18.2] - 2026-09-08
 
