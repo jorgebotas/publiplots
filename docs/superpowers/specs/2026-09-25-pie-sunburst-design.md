@@ -288,7 +288,7 @@ class WedgeRecord:
     r_inner: float
     r_outer: float
     depth: int                       # 0 = innermost ring
-    color: tuple
+    hue_color: tuple                 # named to match BarRecord: resolve_color reads it
     hatch: Optional[str]
     pull: float
 ```
