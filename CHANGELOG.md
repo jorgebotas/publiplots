@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`pp.boxplot` and `pp.violinplot` value labels now follow seaborn's level
+  order, so a reordered `order=` / `hue_order=` or a numeric level no longer
+  misplaces them** (#262). `_iter_box_group_keys` resolved levels through
+  `_categories_in_draw_order`, which reads a pandas Categorical's declared
+  categories and otherwise takes first-occurrence order. Seaborn's
+  `categorical_order` instead lets an explicit `order=` / `hue_order=` win
+  and **sorts numeric and bool levels**. The shared builder pairs groups to
+  drawn artists by index, so any disagreement put every label on a
+  neighbouring mark. Every one of these mispaired, on both plotters: a
+  reversed `order=`, a reversed `hue_order=`, a three-level `hue_order=`,
+  an `order=` naming a subset, numeric categories, numeric hue levels,
+  bool levels, and — narrower than the dtype test suggests — object-dtype
+  columns holding plain `int`s or `Decimal`s.
+
+  The numeric case is the one to note, because it needs **no arguments at
+  all** — only a frame whose rows do not happen to arrive sorted. A dose, a
+  timepoint or a cluster id read in file order was enough to mislabel every
+  box.
+
+  An `order=` naming a subset now filters the groups rather than being
+  truncated to length: previously the aggregation produced six rows against
+  four drawn boxes and the builder kept the first four, so the meta
+  described `A` and `B` while the axes showed `B` and `C`.
+
+  Levels are now resolved by `_categorical_order`, which the pointplot
+  builder already used — most of the correct behaviour existed in the same
+  module and simply was not reached from here. It needed widening too:
+  seaborn decides "numeric" via `variable_type`, whose `all_numeric`
+  fallback treats an **object-dtype** column of `numbers.Number` entries as
+  numeric, where `pandas.api.types.is_numeric_dtype` returns `False`. So a
+  column of plain `int`s or `Decimal`s held as `object` still sorted in
+  seaborn and not here. The resolver now mirrors that fallback, which also
+  closes the same latent gap for `pp.pointplot`, and a test pins the
+  equivalence against seaborn's own `categorical_order` so a future
+  divergence surfaces as a test failure rather than a mispaired figure.
+
+  `pp.barplot` was never affected, and two tests (four cases) guard that.
+  Its immunity has two sources: with an explicit order,
+  `_prepare_split_data` rewrites the frame as an ordered Categorical; by
+  default it rejects a non-categorical-dtype axis outright and runs
+  `as_categorical` over the categorical axis and the hue.
+
+  This is the level order *within* each dodge dimension; #254 fixed the
+  nesting order *between* them.
+
 ## [0.18.2] - 2026-09-08
 
 ### Fixed
