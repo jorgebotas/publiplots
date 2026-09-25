@@ -52,6 +52,63 @@ _MAX_CONVERGENCE_ITERS = 5
 #     for the #244 inset_axes scope.
 _NONCONVERGENCE_WARN_MM = 1.0
 
+# Second, independent trigger for the same warning: how far the figure may
+# drift from the size it settled at before a still-unsettled layout is
+# reported, regardless of the per-draw residual.
+#
+# The floor above is deliberately high, and that leaves a gap: a layout that
+# never settles but drifts LESS than the floor per draw is silent while the
+# drift compounds across saves. Measured on a 1x2 grid with a constant
+# per-measure drift injected on ``right``, one ``pp.savefig`` each: 0.99
+# mm/draw never warned and took the figure from 95.10 mm to 336.70 mm over 20
+# saves — a 3.5x runaway one notch under the floor (#251).
+#
+# Per-draw magnitude cannot close that gap, because at 0.99 mm it cannot tell
+# a leak from dpi noise. Cumulative growth can, because the two differ in kind
+# rather than degree: dpi jitter is bounded and does not accumulate across
+# saves, while a leak accumulates — that is what makes it a leak.
+#
+# The budget is small because of WHERE the growth is accumulated, not because
+# the number was chosen tightly. Growth is only ever measured from the size
+# the figure settled at, and only on settles that exhausted their draws; a
+# converging layout returns early from settle() and never reaches the
+# accumulator at all. Measured across 88 healthy layouts (the whole
+# tests/test_band_convergence.py matrix plus JointGrid, a no-legend figure and
+# a 4x4 with bands on all four sides), each saved 45 times cycling
+# 72/100/150/300/600 dpi and PNG/PDF/SVG: 3960 saves, zero exhausted settles,
+# and the cumulative post-settle size change was 0.0000 mm — exactly zero, not
+# merely small. So the budget has only to clear a hypothetical: were the check
+# ever to run at the render's own dpi, the 0.76 mm ceiling above could appear
+# in one draw, so two settles' worth is 1.52 mm. 2.0 mm rounds that up.
+#
+# NOT derived from cumulative growth since figure CREATION, which would be
+# unusable: the legitimate one-time first settle is worth up to 68.00 mm on
+# this corpus, and a budget clearing that would let #251's own reproducer
+# through untouched.
+_GROWTH_BUDGET_MM = 2.0
+
+# Exhausted settles required before the growth trigger fires, when the layout
+# has never settled once and so has no converged size to measure growth from.
+#
+# Healthy layouts do not come close to the cap: on the corpus above the worst
+# needs 2 of the 5 draws, and an independent sweep that saved from figure
+# creation rather than after a settle measured 3. But the headroom is two
+# draws, not twenty, so a layout marginally more complex than anything
+# measured could plausibly exhaust once while still terminating. A single
+# exhausted settle with no converged baseline is therefore not evidence: the
+# growth it shows is indistinguishable from a legitimate first settle that
+# ran long. Requiring
+# the growth to span two exhausted settles — two separate saves — makes a
+# one-off marginal exhaustion silent while a real per-save leak trips on the
+# second save. It does not weaken the magnitude trigger, which still fires on
+# the first exhausted settle so #230 and #244 are reported as promptly as
+# before.
+#
+# Growth measured from a size the figure actually settled at needs no such
+# repeat: a layout that converged and then moved is non-reproducible by
+# definition, and the measurement above puts the healthy value at 0.0000 mm.
+_GROWTH_MIN_EXHAUSTED_SETTLES = 2
+
 
 class LayoutConvergenceWarning(UserWarning):
     """A figure's layout never settled, so its saved size is not reproducible.
@@ -115,6 +172,38 @@ class SubplotsAutoLayout:
         # non-convergence warning once-per-figure rather than once-per-save:
         # saving the same broken figure in a loop reports it once.
         self._nonconvergence_warned = False
+        # Figure size (inches) at the FIRST settle that actually converged,
+        # and the origin the growth trigger measures from when there has
+        # never been one. See _GROWTH_BUDGET_MM.
+        #
+        # Pinned to the first convergence and deliberately never refreshed,
+        # which is a choice between two low-probability failures — both of
+        # them behind an exhausted settle, which no layout in either measured
+        # corpus produces at all:
+        #
+        #   * Pinned (this): a layout that alternates converging and
+        #     exhausting across saves while growing monotonically still
+        #     accumulates from its original settled size, so it eventually
+        #     trips. Refreshing the origin on every convergence would mask
+        #     that leak completely — each convergence would reset the origin
+        #     to the already-grown size, and the growth measured would only
+        #     ever be one save's worth.
+        #   * The cost: if a user legitimately changes the figure (adds an
+        #     entry, a longer label) so it re-converges at a genuinely larger
+        #     size, this origin is stale, and because a settled origin carries
+        #     no repeat requirement a single later exhausted settle is
+        #     measured against it and can report growth that was legitimate.
+        #
+        # Pinned wins because the bias of this warning is settled: #249 and
+        # #251 both exist because silence let real bugs ship, so over- rather
+        # than under-reporting is the correct error to make. Pinned by
+        # tests/test_settle_growth_warning.py — do not "tidy" this into a
+        # refresh without reading that test first.
+        self._settled_size: Optional[Tuple[float, float]] = None
+        self._growth_origin: Optional[Tuple[float, float]] = None
+        # Settles that exhausted _MAX_CONVERGENCE_ITERS, counted only while
+        # the warning has not yet fired.
+        self._exhausted_settles = 0
 
         fig._publiplots_layout = layout
         fig._publiplots_auto_layout = self
@@ -192,6 +281,12 @@ class SubplotsAutoLayout:
         each time it was called. On exhaustion we now warn once per
         figure — see :meth:`_warn_not_converged`.
 
+        A convergent settle is not silent either, internally: it records
+        the size it converged at (the first one only), which is the
+        origin the growth trigger measures drift from. That is the whole
+        reason a converging layout cannot produce a false positive — it
+        returns from here without ever reaching the accumulator.
+
         Scope: the warning reaches a user wherever ``settle()`` runs,
         which is the ``print_figure`` wrapper — so on ``pp.savefig`` and
         on inline display, the two paths where a non-convergent layout
@@ -210,6 +305,8 @@ class SubplotsAutoLayout:
             sizes.append(tuple(fig.get_size_inches()))
             measured = self._measure()
             if not self._needs_update(measured):
+                if self._settled_size is None:
+                    self._settled_size = sizes[-1]
                 return
         self._warn_not_converged(measured, sizes)
 
@@ -248,28 +345,102 @@ class SubplotsAutoLayout:
                     field = side if idx is None else f"{side}[{idx}]"
         return field, residual
 
+    def _cumulative_growth(self, sizes) -> Tuple[float, float, float, str]:
+        """Figure drift from the settled size, as ``(mm, dw_mm, dh_mm, origin)``.
+
+        The origin is the size recorded by the first settle that actually
+        converged. A layout that has never converged has no such size, so
+        it falls back to the size the FIRST exhausted settle started from
+        — pinned once and never moved, or growth would only ever be
+        measured within a single save and could not accumulate.
+
+        The two origins are not equally trustworthy, which is why the
+        caller treats them differently: drift from a converged size is
+        already a defect (the figure moved after settling), while drift
+        from a never-converged start includes whatever legitimate
+        first-settle growth the layout was still doing. Hence the last
+        element of the tuple, and ``_GROWTH_MIN_EXHAUSTED_SETTLES``.
+        """
+        if self._settled_size is not None:
+            origin, kind = self._settled_size, "settled"
+        else:
+            if self._growth_origin is None:
+                self._growth_origin = sizes[0]
+            origin, kind = self._growth_origin, "unsettled"
+        w1, h1 = sizes[-1]
+        dw, dh = (w1 - origin[0]) * 25.4, (h1 - origin[1]) * 25.4
+        return max(abs(dw), abs(dh)), dw, dh, kind
+
     def _warn_not_converged(self, measured, sizes) -> None:
         """Report an exhausted convergence budget, once per figure.
 
-        Gated on the residual's *magnitude*, not on its growth. That is a
-        measurement, not a preference: the two layouts known to diverge
-        hold a residual that is flat (#230 reports 67.2372 mm on
+        Two independent triggers, because a fast runaway and a slow leak
+        leave different evidence and no single quantity catches both.
+
+        **Per-draw magnitude.** The original trigger, and still the one
+        that fires first: it needs only one exhausted settle, so #230 and
+        #244 are reported on the first save. It is gated on the
+        residual's magnitude and not on its growth, which is a
+        measurement rather than a preference — the layouts known to
+        diverge hold a residual that is flat (#230 reports 67.2372 mm on
         ``right[0]`` on every single draw, to the fourth decimal) or
         non-monotonic (#244's inset_axes scope runs 44.3 → 68.9 → 74.3 →
         68.5 → 61.8 → 57.5 mm) while the *figure* grows without bound
-        underneath them. A "residual is growing" test would catch neither.
-        What separates them from noise is scale — see
+        underneath them. A "residual is growing" test would catch
+        neither. What separates them from noise is scale — see
         ``_NONCONVERGENCE_WARN_MM``.
 
+        **Cumulative figure growth.** What the magnitude gate cannot see
+        (#251): a layout that never settles but drifts by less than the
+        floor per draw is silent while the drift compounds, and 0.99
+        mm/draw took a measured figure from 95.10 mm to 336.70 mm over 20
+        saves without a word. The residual does not grow in any of these
+        cases; the figure does. So this trigger ignores the residual
+        entirely and asks only how far the figure has moved from the size
+        it settled at — see ``_GROWTH_BUDGET_MM`` for the budget and
+        ``_GROWTH_MIN_EXHAUSTED_SETTLES`` for why a never-settled layout
+        must show that drift across two saves rather than one.
+
+        Deliberately NOT added: a lower-severity report for a residual in
+        the ambiguous 0.762-1.0 mm band, between the largest drift dpi
+        alone could hypothetically produce and the floor. A second
+        severity would split one actionable signal in two and double the
+        filter surface, for a band no layout has ever been observed in
+        (healthy layouts measure 0.000 mm; real divergences 44-116 mm).
+        The growth trigger covers that band's actual risk anyway, and
+        covers all of ``(tolerance, floor)`` rather than just its top
+        quarter — with a message quoting accumulated millimetres, which is
+        more actionable than a maybe.
+
         The message names the field and the residual because "layout did
-        not converge" is not something a user can act on, and quotes the
-        figure's growth over the capped draws because that is the symptom
-        they actually hit: a figure whose saved size is not reproducible.
+        not converge" is not something a user can act on, quotes the
+        figure's change over the capped draws because that is the symptom
+        they actually hit, and when growth is what tripped the report says
+        so with the accumulated millimetres — a user told only about a
+        sub-floor residual would reasonably conclude it was noise.
         """
         if self._nonconvergence_warned:
             return
+        self._exhausted_settles += 1
         field, residual = self._worst_residual(measured)
-        if field is None or residual < _NONCONVERGENCE_WARN_MM:
+
+        # ``field is None`` means _worst_residual found no deviation at all,
+        # which cannot reach here: settle() only calls this after
+        # _needs_update returned True, and that requires some deviation
+        # >= _UPDATE_THRESHOLD_MM. So the message below can interpolate
+        # ``field`` unconditionally without reading "is None, still moving
+        # 0.00 mm per draw" — the guard here is for _worst_residual's
+        # contract, not for a state the growth trigger could arrive in.
+        by_magnitude = field is not None and residual >= _NONCONVERGENCE_WARN_MM
+
+        grown, gw, gh, origin_kind = self._cumulative_growth(sizes)
+        enough_settles = (
+            origin_kind == "settled"
+            or self._exhausted_settles >= _GROWTH_MIN_EXHAUSTED_SETTLES
+        )
+        by_growth = grown >= _GROWTH_BUDGET_MM and enough_settles
+
+        if not (by_magnitude or by_growth):
             return
         self._nonconvergence_warned = True
 
@@ -286,13 +457,28 @@ class SubplotsAutoLayout:
                 f"the figure size held at {w1 * 25.4:.2f} x {h1 * 25.4:.2f} mm, "
                 f"so the reservation is oscillating rather than running away"
             )
+        if by_growth:
+            n = self._exhausted_settles
+            since = (
+                "since it first settled" if origin_kind == "settled"
+                else f"across {n} save{'' if n == 1 else 's'}"
+            )
+            cause = (
+                f" What tripped this report is cumulative growth, not the "
+                f"per-draw residual: the figure has grown {grown:.2f} mm "
+                f"({gw:+.2f} x {gh:+.2f} mm) {since}, past the "
+                f"{_GROWTH_BUDGET_MM} mm budget, and a drift that accumulates "
+                f"does not stop on its own."
+            )
+        else:
+            cause = ""
         warnings.warn(
             f"publiplots: this figure's layout did not converge after "
             f"{_MAX_CONVERGENCE_ITERS} draws. The reservation furthest from "
             f"settling is {field}, still moving {residual:.2f} mm per draw "
-            f"(tolerance {_UPDATE_THRESHOLD_MM} mm); {growth}. The size this "
-            f"figure saves at is therefore not reproducible — saving it again "
-            f"may give a different one. Please report it at "
+            f"(tolerance {_UPDATE_THRESHOLD_MM} mm); {growth}.{cause} The size "
+            f"this figure saves at is therefore not reproducible — saving it "
+            f"again may give a different one. Please report it at "
             f"https://github.com/jorgebotas/publiplots/issues, quoting this "
             f"message and the pp.subplots() / pp.legend() calls that built the "
             f"figure. To silence a case you know to be harmless: "

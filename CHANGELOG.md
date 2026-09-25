@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A layout that leaks *under* the non-convergence floor is now reported
+  too, by its cumulative growth** (#251). `_warn_not_converged` gated only
+  on the worst per-draw residual's magnitude against a 1.0mm floor, so a
+  layout that never settles but drifts by less than that per draw was never
+  reported while the drift compounded across saves. Measured on a 1x2 grid
+  with a constant per-measure drift injected on `right`, one `pp.savefig`
+  each: at **0.99mm/draw** — one notch under the floor — the figure went
+  from 95.10mm to 158.50mm over 5 saves and **336.70mm over 20**, a 3.5x
+  runaway, in complete silence. 0.20, 0.50 and 0.90mm/draw behaved the same
+  way; 1.01mm/draw warned. The user-visible symptom is #230's, at a slower
+  rate, and *silence* is the property that let #230, its `twinx` variant and
+  #244 all reach published releases.
+
+  **The floor stays at 1.0mm and the magnitude gate stays as the first
+  trigger.** Both were measured, not guessed: the floor clears the 0.76mm of
+  purely dpi-induced drift a healthy corpus shows, and the magnitude gate is
+  what reports #230 and #244 on their *first* exhausted settle, before any
+  growth has accumulated. Losing that fast path would be a regression, so
+  cumulative growth is a second, independent trigger rather than a
+  replacement.
+
+  **Cumulative figure growth is the right discriminator for a slow leak,
+  and the residual is not.** dpi jitter is bounded and does not accumulate
+  across saves; a leak accumulates — that is what makes it a leak. Growth of
+  the *residual* would catch nothing, which is why #249 rejected it: #230's
+  residual is exactly constant (67.2372mm every draw, to four decimals) and
+  #244's is non-monotonic (44.30 → 68.97 → 74.31 → 68.45 → 61.79mm). The
+  residual does not grow; the figure does. So the new trigger ignores the
+  residual entirely and asks how far the figure has moved from the size it
+  settled at, warning past a budget of **2.0mm**.
+
+  **The budget is small because of where the growth is accumulated, not
+  because the number was chosen tightly.** Growth is measured only from a
+  size the figure settled at, and only on settles that exhausted their
+  draws — a converging layout returns early from `settle()` and never
+  reaches the accumulator, so no-false-positives is structural rather than
+  statistical. Measured across **88 healthy layouts** (the whole
+  `tests/test_band_convergence.py` matrix plus `JointGrid`, a figure with no
+  legend, and a 4x4 with bands on all four sides), each saved 45 times
+  cycling 72 / 100 / 150 / 300 / 600 dpi and PNG, PDF and SVG: **3960 saves,
+  zero exhausted settles, and cumulative post-settle size change of exactly
+  0.0000mm** — not merely small. The budget therefore has only a hypothetical
+  to clear: were the check ever to run at the render's own dpi, the 0.76mm
+  ceiling could appear in one draw, so two settles' worth is 1.52mm, and
+  2.0mm rounds that up. It is deliberately *not* derived from growth since
+  figure *creation*, which would be unusable — the legitimate one-time first
+  settle is worth up to 68.00mm on the same corpus, and a budget clearing
+  that would let #251's own reproducer through untouched.
+
+  **A layout that has never settled must show the drift across two saves.**
+  Healthy layouts do not come near the 5-draw cap — the worst on the corpus
+  needs 2 of the 5 draws, and 3 on an independent sweep that saved from
+  figure creation rather than after a settle — but the headroom is two
+  draws, not twenty, so a layout marginally more complex than anything
+  measured could plausibly exhaust once while still terminating, and the growth a single exhausted settle
+  shows is indistinguishable from a legitimate first settle running long. A
+  one-off marginal exhaustion is therefore silent, while a real per-save
+  leak trips on the second save: every sub-floor drift measured above
+  (0.20, 0.50, 0.90, 0.99mm/draw) is now reported on **save 2** — the
+  0.50mm case at 9.00mm of accumulated growth, rather than the 124mm it
+  used to reach unremarked by save 20. Growth measured from a size the
+  figure *did* settle at needs no such repeat — a layout that converged and then moved is
+  non-reproducible by definition — so a leak that only starts after a clean
+  settle is reported on its first exhausted settle. That origin is **pinned
+  to the first convergence and never refreshed**, which is a deliberate
+  choice between two low-probability failures, both of them behind an
+  exhausted settle that no layout in either corpus produces. Refreshing it
+  on every convergent settle would remove one false positive — a figure
+  legitimately re-converging larger is then measured from its new size —
+  but would mask a whole class of leak, because a layout alternating
+  convergence and exhaustion while growing monotonically would have its
+  origin reset to the already-grown size every time. Over-reporting is the
+  correct error for this warning to make, given that #249 and #251 both
+  exist because silence let real bugs ship.
+
+  **The message says growth is what tripped it, with the millimetres.**
+  Without that a user told only about a 0.50mm residual would reasonably
+  conclude it was noise. It reads `What tripped this report is cumulative
+  growth, not the per-draw residual: the figure has grown 9.00 mm (+9.00 x
+  +0.00 mm) across 2 saves, past the 2.0 mm budget, and a drift that
+  accumulates does not stop on its own`, and keeps every diagnostic the
+  existing message carries — the offending cell, its residual, the 0.1mm
+  tolerance and the figure's size change over the capped draws. Still once
+  per figure, on the same per-`SubplotsAutoLayout` flag.
+
+  **Deliberately not added: a lower-severity report for the ambiguous
+  0.762–1.0mm band**, between the largest drift dpi alone could
+  hypothetically produce and the floor. A second severity would split one
+  actionable signal in two and double the filter surface a user has to
+  manage, for a band no layout has ever been observed in (healthy layouts
+  measure 0.000mm, real divergences 44–116mm). The growth trigger covers
+  that band's actual risk anyway, and covers all of `(tolerance, floor)`
+  rather than just its top quarter — with a message quoting accumulated
+  millimetres, which is more actionable than a maybe.
+
 ## [0.18.2] - 2026-09-08
 
 ### Fixed
