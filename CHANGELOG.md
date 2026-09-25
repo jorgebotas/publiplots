@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.3] - 2026-09-25
+
 ### Fixed
 
 - **`pp.boxplot` and `pp.violinplot` value labels now follow seaborn's level
