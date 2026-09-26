@@ -314,6 +314,11 @@ def histplot(
             "At least one of `x` or `y` must be provided to pp.histplot."
         )
     is_2d = x is not None and y is not None
+    if multiple == "fill" and hue is None and not is_2d:
+        raise ValueError(
+            "histplot: multiple='fill' requires hue= — with no hue there is "
+            "nothing to normalise across and every bin would fill to 1.0."
+    )
 
     linewidth = resolve_param("edgewidth", linewidth)
     color = resolve_param("color", color)

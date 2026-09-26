@@ -213,6 +213,15 @@ def test_multiple_fill(hist_df):
     assert len(by_x) > 0
     for total in by_x.values():
         assert total == pytest.approx(1.0, abs=1e-6)
+def test_multiple_fill_without_hue_raises(hist_df):
+    with pytest.raises(
+        ValueError,
+        match="multiple='fill' requires hue",
+    ):
+        pp.histplot(data=hist_df, x="value", multiple="fill")
+
+def test_multiple_fill_2d_works(df_2d):
+    pp.histplot(data=df_2d, x="x", y="y", multiple="fill")
 
 
 # ---- Element modes ----
