@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+
+- **`pp.histplot(multiple="fill")` now raises a clear `ValueError` when
+  `hue` is not provided for 1D histograms** instead of failing inside
+  seaborn (#259).
 
 ## [0.18.2] - 2026-09-08
 
