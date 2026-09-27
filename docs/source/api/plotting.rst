@@ -51,6 +51,15 @@ Matrix
    publiplots.complex_heatmap
    publiplots.dendrogram
 
+Composition
+-----------
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   publiplots.pieplot
+
 Set
 ---
 

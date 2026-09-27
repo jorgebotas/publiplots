@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`pp.pieplot` — pie and donut charts in the publiplots visual
+  language** (#268). `matplotlib.axes.Axes.pie` ignores the palette, the
+  theme edge and `pp.legend`, so a composition panel could not be drawn to
+  match its siblings; the legend in particular could not be worked around,
+  because wedges were never stashed and so could not join a shared band.
+
+  `x` names the category column, `y` the value (omitted, rows are
+  counted), and `hue` what determines colour — defaulting to `x`, which is
+  what every pie does. A pie is a one-level sunburst, and `hue` means
+  colour and nothing else: unlike `barplot`, where `hue` also controls how
+  marks group, a wedge chart keeps its structure in `x`.
+
+  `donut=` opens a hole and `center_label=` fills it, only when `donut` is
+  non-zero. `pull=` offsets a wedge and is keyed by category rather than
+  positional. `min_share=` collapses the long tail into one `"Other"`
+  wedge, but only when at least two categories fall below the threshold,
+  so a single small category is never relabelled on its own; it cannot be
+  combined with `order=`, since the `"Other"` bucket is not a category of
+  the data and so cannot be named in an explicit order. `order=` and
+  `sort=` are themselves mutually exclusive, and `sort` is **off** by
+  default so a pie keeps the category order of a bar panel drawn from the
+  same frame — the correspondence #268 is about.
+
+  Labels come from `pp.annotate(ax, "wedge_values")` or `annotate=True`,
+  defaulting to the wedge's share as a percentage rather than its raw
+  value, with `anchor="auto"` (the default) measuring each label against
+  the room its own wedge has and moving it out with a leader line when it
+  does not fit.
+
+  The chart is circular without losing cell width. `ax.set_aspect("equal")`
+  shrinks the drawn box to exactly `min(w, h) / max(w, h)` of its
+  allocated width — two sevenths lost on a 70x50mm cell, over half on a
+  90x40 one — and that holds for every cell shape (#101). Because the
+  renderer draws its own wedges, `ax.get_position()` reports exact
+  millimetres before any draw, so the limits are matched to the cell
+  instead by default, which renders a disc square to within a pixel and
+  keeps the full allocation. `aspect="equal"` selects the matplotlib
+  behaviour for anyone who needs the circle to survive an interactive
+  resize instead.
+
+  Each annotate record holds its artist from construction: there is no
+  step that recovers artists from the axes by scanning and pairing them
+  positionally, which is where issues #103, #199, #236, #241, #254 and
+  #262 all lived. For the same reason there is no introspection fallback
+  — `wedge_values` on an axes publiplots did not draw raises and says so.
+
+  Two known gaps. Outside labels do not de-collide, so adjacent thin
+  wedges can overlap under the default `anchor="auto"`. And
+  `aspect="equal"` on a cell taller than wide can place a label slightly
+  outside the frame, because the axes' x and y data-per-pixel scales
+  differ by the cell's own ratio there and the labelling geometry reads
+  only one of them.
+
 ## [0.19.0] - 2026-09-25
 
 ### Added
