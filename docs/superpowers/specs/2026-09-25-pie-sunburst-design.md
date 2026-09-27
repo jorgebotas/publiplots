@@ -88,25 +88,31 @@ Consequences:
 
 ### Roundness without losing the cell
 
-`set_aspect("equal")` — what `plot/venn/draw.py:164` does — shrinks the drawn
-box to `min(w, h) / max(w, h)` of its allocated width and abandons the rest as
-whitespace. That is #101, reproduced in one line. The ratio is exact and holds
-for every cell shape:
+`set_aspect("equal")` — what `plot/venn/draw.py:164` does — collapses the cell
+to a square of side `min(w, h)`, cutting whichever dimension is longer and
+abandoning the rest as whitespace. That is #101, reproduced in one line.
 
 ```
-cell (70, 50): drawn/alloc = 0.714286   min/max = 0.714286
-cell (60, 60): drawn/alloc = 1.000000   min/max = 1.000000
-cell (90, 40): drawn/alloc = 0.444444   min/max = 0.444444
+requested    drawn mm      width kept   height kept   area kept   min/max
+ (70, 50)   50.00x50.00       0.7143        1.0000      0.7143     0.7143
+ (90, 40)   40.00x40.00       0.4444        1.0000      0.4444     0.4444
+ (40, 70)   40.00x40.00       1.0000        0.5714      0.5714     0.5714
+ (50, 70)   50.00x50.00       1.0000        0.7143      0.7143     0.7143
+ (60, 60)   60.00x60.00       1.0000        1.0000      1.0000     1.0000
 ```
 
-So a 70x50 cell loses two sevenths of its width, and a 90x40 panel loses over
-half. Matching the cell instead keeps the whole allocation and still renders a
-disc square to within a rendering pixel.
+What holds for every cell shape is the **area**: the square keeps
+`min(w, h) / max(w, h)` of the allocation. A 70x50 cell loses two sevenths of
+its width; a 40x70 cell keeps its width in full and loses the same fraction of
+its height instead. Matching the cell keeps the whole allocation either way,
+and still renders a disc square to within a rendering pixel.
 
-An earlier draft of this document quoted two absolute position values for the
-70x50 case. Those were measured on a figure whose decoration reservations
-differed, and they do not reproduce; the ratio above is the stable fact and is
-what the implementation is tested against.
+Two earlier drafts of this paragraph were wrong, and the second failure is the
+more instructive one. The first quoted absolute position values measured on a
+figure with different decoration reservations, which did not reproduce. The
+correction replaced them with a ratio — but said the ratio applied to the
+allocated *width*, and verified it against a table containing only wide and
+square cells. The table above is the one that would have caught it.
 
 Because the renderer draws its own wedges and `ax.get_position()` returns exact
 millimetres *before any draw*, the pie can match the cell instead of fighting
