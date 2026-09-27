@@ -1,10 +1,10 @@
 """Tree construction and angular layout for wedge charts.
 
-Pure data: this module imports no matplotlib and creates no artists. A
-frame becomes a list of :class:`WedgeNode`, and nodes become a list of
-:class:`WedgePlacement` carrying angles in degrees and radii in axes
-units. Keeping the layout free of artists is what lets the tree be
-tested as data rather than by measuring a rendered figure.
+Pure data: this module creates no artists and its layout is plain
+arithmetic. A frame becomes a list of :class:`WedgeNode`, and nodes
+become a list of :class:`WedgePlacement` carrying angles in degrees and
+radii in axes units. Keeping the layout free of artists is what lets the
+tree be tested as data rather than by measuring a rendered figure.
 """
 from __future__ import annotations
 

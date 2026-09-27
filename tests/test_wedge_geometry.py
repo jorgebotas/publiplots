@@ -156,6 +156,15 @@ def test_layout_starts_at_twelve_oclock_going_clockwise():
     assert a.theta0 == pytest.approx(-90.0)
 
 
+def test_layout_respects_a_non_default_start_angle():
+    nodes = build_nodes(_flat(), ["kind"], "n")
+    places = layout(nodes, start_angle=0.0, direction="clockwise", n_levels=1)
+    # A is 50% of 100, so it runs from 0 degrees clockwise to -180 degrees.
+    a = places[0]
+    assert a.theta1 == pytest.approx(0.0)
+    assert a.theta0 == pytest.approx(-180.0)
+
+
 def test_layout_counterclockwise_reverses_the_sweep():
     nodes = build_nodes(_flat(), ["kind"], "n")
     places = layout(nodes, start_angle=90.0, direction="counterclockwise",
@@ -190,9 +199,10 @@ def test_rings_divide_the_radial_span_evenly():
 def test_child_angles_nest_inside_the_parent():
     nodes = build_nodes(_nested(), ["k", "s"], "n")
     places = {p.node.path: p for p in layout(nodes, n_levels=2)}
-    parent = places[("A",)]
-    for child_path in (("A", "x"), ("A", "y")):
-        child = places[child_path]
+    for path, child in places.items():
+        if child.node.parent is None:
+            continue
+        parent = places[child.node.parent]
         assert child.theta0 >= parent.theta0 - 1e-9
         assert child.theta1 <= parent.theta1 + 1e-9
 
