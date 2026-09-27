@@ -88,17 +88,25 @@ Consequences:
 
 ### Roundness without losing the cell
 
-Measured on a `pp.subplots` cell of 70x50mm:
-
-```
-(a) set_aspect("equal") : px/unit (206.7, 147.6)  width drawn/alloc 0.6008 / 0.8411
-(b) mm-matched limits   : px/unit (147.6, 147.6)  width drawn/alloc 0.8589 / 0.8589
-    rendered disc bbox  : 295.28 x 295.28 px -> round
-```
-
 `set_aspect("equal")` — what `plot/venn/draw.py:164` does — shrinks the drawn
-box to 71% of its allocated width and abandons the rest as whitespace. That is
-#101, reproduced in one line.
+box to `min(w, h) / max(w, h)` of its allocated width and abandons the rest as
+whitespace. That is #101, reproduced in one line. The ratio is exact and holds
+for every cell shape:
+
+```
+cell (70, 50): drawn/alloc = 0.714286   min/max = 0.714286
+cell (60, 60): drawn/alloc = 1.000000   min/max = 1.000000
+cell (90, 40): drawn/alloc = 0.444444   min/max = 0.444444
+```
+
+So a 70x50 cell loses two sevenths of its width, and a 90x40 panel loses over
+half. Matching the cell instead keeps the whole allocation and still renders a
+disc square to within a rendering pixel.
+
+An earlier draft of this document quoted two absolute position values for the
+70x50 case. Those were measured on a figure whose decoration reservations
+differed, and they do not reproduce; the ratio above is the stable fact and is
+what the implementation is tested against.
 
 Because the renderer draws its own wedges and `ax.get_position()` returns exact
 millimetres *before any draw*, the pie can match the cell instead of fighting
