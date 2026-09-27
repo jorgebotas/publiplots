@@ -83,8 +83,17 @@ def build_wedge_meta(
     records = []
     for place, patch in zip(placements, patches):
         node = place.node
-        parent_total = parent_values.get(node.parent, total) if node.parent \
-            else total
+        if node.parent is None:
+            parent_total = total
+        elif node.parent in parent_values:
+            parent_total = parent_values[node.parent]
+        else:
+            raise ValueError(
+                f"wedge meta: node {node.path!r} has parent "
+                f"{node.parent!r}, which is not among the placements "
+                "passed in -- fraction_of_parent cannot be computed "
+                "without it"
+            )
         records.append(WedgeRecord(
             patch=patch,
             path=node.path,
@@ -117,13 +126,14 @@ def apply_cell_limits(ax: Axes, *, radius: float, aspect: str) -> None:
     """Frame the axes so the chart is circular.
 
     ``aspect="cell"`` leaves the aspect unconstrained and sets the data
-    limits to the axes' own millimetre ratio. Measured on a 70x50mm cell,
-    ``set_aspect("equal")`` shrinks the drawn box to 0.6008 of the figure
-    against an allocated 0.8411 -- issue #101 -- while matching the cell
-    keeps the full allocation and still renders a disc square to within a
-    pixel. The tradeoff is that the limits are computed once, so an
-    interactive resize would distort the circle; ``aspect="equal"`` is
-    available for that case.
+    limits to the axes' own millimetre ratio, so the full allocated cell
+    is kept and the disc still renders round to within a pixel.
+    ``set_aspect("equal")`` instead has matplotlib shrink the drawn box
+    to fit a square within the allocated one -- issue #101 -- keeping
+    only ``min(w, h) / max(w, h)`` of the allocation on a non-square
+    cell (5/7 on a 70x50mm cell). The tradeoff for ``"cell"`` is that the
+    limits are computed once, so an interactive resize would distort the
+    circle; ``aspect="equal"`` is available for that case.
     """
     if aspect not in ("cell", "equal"):
         raise ValueError(
@@ -140,6 +150,6 @@ def apply_cell_limits(ax: Axes, *, radius: float, aspect: str) -> None:
     box = ax.get_position()
     w_mm = box.width * fig.get_figwidth() * MM_PER_INCH
     h_mm = box.height * fig.get_figheight() * MM_PER_INCH
-    ratio = (w_mm / h_mm) if h_mm else 1.0
+    ratio = (w_mm / h_mm) if (w_mm and h_mm) else 1.0
     ax.set_ylim(-radius, radius)
     ax.set_xlim(-radius * ratio, radius * ratio)
