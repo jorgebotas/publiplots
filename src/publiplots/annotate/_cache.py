@@ -359,3 +359,60 @@ def _introspect(ax: Axes) -> BarValueMeta:
         group_keys=None,
         group_dims=None,
     )
+
+
+@dataclass(frozen=True)
+class WedgeRecord:
+    """One drawn wedge plus the metadata annotate strategies need.
+
+    Unlike BarRecord, `patch` is held from construction rather than
+    recovered: publiplots draws every Wedge itself, so there is no step
+    that scans the axes and pairs records to artists by index. That step
+    is where #103, #199, #236, #241, #254 and #262 all lived.
+
+    Fields:
+        patch: the matplotlib Wedge drawn for this node.
+        path: keys from the root ring to this node.
+        value: aggregated value; for an internal node, the sum of children.
+        fraction_of_total: share of the whole chart.
+        fraction_of_parent: share of this node's parent; equal to
+            fraction_of_total at depth 0.
+        theta0, theta1: angular extent in degrees, theta0 < theta1.
+        r_inner, r_outer: radial band in axes data units.
+        depth: 0 for the innermost ring.
+        hue_color: the RGB the wedge was filled with. Named to match
+            BarRecord/PointRecord so `_color.resolve_color` accepts a
+            WedgeRecord unchanged -- it reads `.patch` and `.hue_color`,
+            and its `anchor in ("inside", "center", "base")` branch already
+            covers the wedge anchor vocabulary.
+        hatch: the hatch pattern, or None.
+        pull: radial offset as a fraction of the radius.
+    """
+
+    patch: Any
+    path: Tuple[Any, ...]
+    value: float
+    fraction_of_total: float
+    fraction_of_parent: float
+    theta0: float
+    theta1: float
+    r_inner: float
+    r_outer: float
+    depth: int
+    hue_color: Tuple[float, float, float]
+    hatch: Optional[str]
+    pull: float
+
+
+@dataclass
+class WedgeMeta:
+    """Everything the wedge_values strategy needs about one plot call."""
+
+    wedges: List[WedgeRecord]
+    total: float
+    donut: float
+    center: Tuple[float, float]
+    hue_active: bool
+    hue_continuous: bool
+    levels: Tuple[str, ...]
+    source_frame: Optional[Any] = None
