@@ -50,6 +50,7 @@ from publiplots.plot.raincloud import raincloudplot
 from publiplots.plot.venn import venn
 from publiplots.plot.upset import upsetplot
 from publiplots.plot.heatmap import heatmap, complex_heatmap, dendrogram
+from publiplots.plot.wedge import pieplot
 
 # Utilities
 from publiplots.utils.io import savefig, save_multiple, close_all
@@ -132,6 +133,7 @@ __all__ = [
     "heatmap",
     "complex_heatmap",
     "dendrogram",
+    "pieplot",
     "jointplot",
     "JointGrid",
     # I/O utilities
