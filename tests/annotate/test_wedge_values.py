@@ -363,6 +363,34 @@ def test_outside_labels_are_framed_inside_the_axes(df):
         assert y0 < ty < y1
 
 
+def test_offset_is_honoured_before_pad_when_both_cannot_fit(df):
+    """On a chart too small for gap plus label plus pad, `pad` gives.
+
+    25x25mm with `offset=3` (so `pad` defaults to 3) has no framing that
+    satisfies both. The gap renders at exactly the requested 3mm and the
+    margin falls short; the reverse -- a label at some unpredictable
+    distance from its wedge so the margin can be met -- is the thing this
+    pins against. Pushed harder the margin goes negative and the labels
+    leave the axes entirely, which with `savefig.bbox = "standard"`
+    overprints rather than crops, so it is a documented degradation.
+    """
+    tight = _pie(df, size=(25.0, 25.0))
+    pp.annotate(tight, "wedge_values", anchor="outside", offset=3.0)
+    for gap in _rim_gaps_mm(tight):
+        assert gap == pytest.approx(3.0, abs=0.05)
+    margin = _closest_label_margin_mm(tight)
+    assert margin == pytest.approx(1.006, abs=0.1)
+    assert margin < 3.0 - 0.5, "pad is what gives, not offset"
+
+    # The same priority holds once the margin goes negative outright.
+    tighter = _pie(df, size=(25.0, 25.0))
+    pp.annotate(tighter, "wedge_values", anchor="outside", offset=10.0,
+                fmt=",.2f")
+    for gap in _rim_gaps_mm(tighter):
+        assert gap == pytest.approx(10.0, abs=0.05)
+    assert _closest_label_margin_mm(tighter) < 0.0
+
+
 def test_an_impossible_offset_cannot_run_the_framing_away(df):
     """Growing the framing moves the labels it was growing to fit.
 
@@ -435,14 +463,52 @@ def test_a_pulled_wedge_is_labelled_at_its_pulled_centre(df):
 # aspect="equal"
 # -----------------------------------------------------------------------------
 
+def test_the_framing_geometry_reads_the_vertical_scale(df):
+    """Pin *which* axis the one scalar comes from, by its consequences.
+
+    ``aspect='equal'`` leaves the limits square and has matplotlib shrink
+    the drawn box, so on a non-square cell the x and y scales differ by
+    the cell's ratio and the single scalar the geometry reads is the y
+    one. That is visible only in the label *box*, never in its anchor:
+    on a cell wider than tall the y scale overestimates horizontal reach
+    and the framing grows further than needed, while on a cell taller
+    than wide it underestimates and a label box ends up slightly outside
+    the frame. Reading the x axis instead would swap those two, so the
+    asymmetry is what tells the axes apart.
+
+    The negative margin is a known, pre-existing limitation of
+    ``aspect='equal'`` on a tall cell -- see ``_data_per_pixel`` -- not
+    a property worth having. It is asserted because it is the
+    discriminating signal, and so that changing it is a deliberate act.
+    """
+    wide = _pie(df, size=(70.0, 40.0), aspect="equal")
+    pp.annotate(wide, "wedge_values", anchor="outside", offset=2.0)
+    wide_margin = _closest_label_margin_mm(wide)
+
+    tall = _pie(df, size=(40.0, 70.0), aspect="equal")
+    pp.annotate(tall, "wedge_values", anchor="outside", offset=2.0)
+    tall_margin = _closest_label_margin_mm(tall)
+
+    assert wide_margin > 4.0, wide_margin
+    assert tall_margin < -0.5, tall_margin
+    assert wide_margin > tall_margin
+
+
+def test_aspect_cell_is_isotropic_in_both_orientations(df):
+    """The other framing has no such asymmetry: `cell` equalises by
+    construction, so both orientations honour `pad` exactly."""
+    for size in [(70.0, 40.0), (40.0, 70.0)]:
+        ax = _pie(df, size=size, aspect="cell")
+        pp.annotate(ax, "wedge_values", anchor="outside", offset=2.0)
+        assert _closest_label_margin_mm(ax) == pytest.approx(2.0, abs=0.05)
+
+
 def test_aspect_equal_is_labelled_like_a_cell_framed_pie(df):
     """The other framing gets labelled too, and lands in the same places.
 
-    ``aspect='equal'`` leaves the limits square and has matplotlib shrink
-    the drawn box, so on a non-square cell the x and y scales differ and
-    the single scalar the fit test reads is the y one. That makes the
-    horizontal reach an overestimate rather than an error: labels may be
-    pushed out sooner than strictly needed, never left overflowing.
+    A square chart only: there the two scales are equal by construction,
+    so this is a smoke test of the framing, not of the geometry.
+    ``test_the_framing_geometry_reads_the_vertical_scale`` covers that.
     """
     equal = _pie(df, aspect="equal")
     pp.annotate(equal, "wedge_values", anchor="inside")

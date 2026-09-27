@@ -48,9 +48,20 @@ _WEDGE_DEFAULT_FMT = "__wedge_percent__"
 # every outside label -- its gap is `offset` MILLIMETRES, so it has to be
 # reconverted against the new framing. Each of those moves is monotone --
 # a label never comes back inside and the limits never shrink -- and the
-# growth they feed each other is geometric with a ratio well under one,
-# so the cycle settles. The loop runs until it does; this only bounds the
-# work.
+# growth they feed each other is geometric with a ratio under one, so the
+# cycle does converge.
+#
+# It does NOT always converge within this cap, and the cap is reached for
+# ordinary inputs, not just pathological ones: 40x40mm at `offset=5.0`
+# exhausts all 12 passes while still growing (raising the cap, it settles
+# at 19). What comes out at the cap is under-grown rather than wrong --
+# the framing stopped one notch short, so the gap lands slightly UNDER
+# the requested millimetres: 4.9909mm against a requested 5.0, and a
+# measured worst case of 0.079mm across a 320-case sweep of sizes,
+# offsets and pads. That is two orders of magnitude below anything
+# visible in print, and well below the 0.25mm the fit test itself is
+# approximate by, so the cap stays where it is rather than spending
+# another seven passes chasing it.
 _MAX_FIT_PASSES = 12
 
 # Relative slack below which a framing factor counts as "no change". One
@@ -88,15 +99,33 @@ def _data_per_pixel(ax: Axes) -> float:
 
     ``aspect="equal"`` does not. It leaves the limits square and has
     matplotlib shrink the *drawn box* instead, so on a non-square cell
-    the two scales differ by the cell's own ratio -- a 70x40mm cell
-    measures 0.571 data units per pixel horizontally for every 1.0
-    vertically. Using the y scale for both therefore overestimates how
-    far a label reaches sideways on a cell wider than it is tall. That
-    error is one-directional: it can push a label outside that would
-    have fitted, or grow the framing further than strictly needed, and
-    never the reverse. Conservative, so it is left rather than split
-    into two scalars that the rest of the geometry would then have to
-    carry.
+    the two scales differ by the cell's own ratio, and **the sign of the
+    resulting error depends on which way round the cell is**. Measured
+    with ``anchor="outside", offset=2.0``, reading the closest label box
+    to the axes frame once the loop has settled:
+
+    ===================  ===============  ==========================
+    cell                 ``dpp_x/dpp_y``  closest label box to frame
+    ===================  ===============  ==========================
+    70x40mm (``cell``)   1.000            +2.000mm
+    70x40mm (``equal``)  0.571            +8.358mm
+    40x70mm (``equal``)  1.750            -1.860mm
+    ===================  ===============  ==========================
+
+    On a cell **wider than tall** the y scale overestimates horizontal
+    reach, so labels are pushed out sooner and the framing grows further
+    than strictly needed -- wasteful but safe. On a cell **taller than
+    wide** it underestimates, and a label box can end up slightly
+    outside the axes frame, as the -1.860mm above. With this project's
+    ``savefig.bbox = "standard"`` that overprints whatever is next to
+    the axes rather than being cropped away.
+
+    So this is conservative only in one orientation, not in general. It
+    is left as one scalar anyway: the behaviour predates this strategy
+    -- a ``pieplot`` with no annotation measures the same 1.750 -- and
+    splitting it into two would push an anisotropic scale through every
+    piece of geometry here, which is a change to ``aspect="equal"``
+    itself rather than to labelling.
     """
     inverse = ax.transData.inverted()
     y0 = inverse.transform((0.0, 0.0))[1]
@@ -225,6 +254,25 @@ def _expand_limits(
 
     ``ceiling`` caps this call's factor. Returns the factor applied, or
     1.0 when the framing was left alone.
+
+    **When the chart cannot hold both, ``offset`` wins and ``pad``
+    gives.** The gap is re-placed to exactly ``offset`` millimetres on
+    every pass and this function only ever grows the framing around it,
+    so a chart with no room for gap plus label plus pad ends up short of
+    ``pad``, never short of ``offset``. Measured on 25x25mm with
+    ``offset=3`` (so ``pad`` defaults to 3 as well), the gap renders at
+    exactly 3.000mm and the margin at 1.006mm rather than 3; push it
+    further, to ``offset=10`` with a long ``fmt``, and the gap is still
+    exactly 10.000mm while the labels sit 5.169mm OUTSIDE the axes
+    frame. That request is genuinely unsatisfiable -- raising the
+    ceiling diverges, with the margin asymptoting near 2.5mm and never
+    reaching 3 -- so something has to give, and a label at a predictable
+    distance from its wedge is worth more than a margin that was only
+    ever a guard against overprinting. It is a degradation, though, not
+    a free choice: with this project's ``savefig.bbox = "standard"``
+    those outside labels really do overprint their neighbours, so a
+    chart this small wants ``anchor="inside"``, a shorter ``fmt``, or
+    more millimetres.
     """
     if not texts or ceiling <= 1.0:
         return 1.0
