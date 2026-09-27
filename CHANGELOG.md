@@ -38,16 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the room its own wedge has and moving it out with a leader line when it
   does not fit.
 
-  The chart is circular without losing cell width. `ax.set_aspect("equal")`
-  shrinks the drawn box to exactly `min(w, h) / max(w, h)` of its
-  allocated width — two sevenths lost on a 70x50mm cell, over half on a
-  90x40 one — and that holds for every cell shape (#101). Because the
-  renderer draws its own wedges, `ax.get_position()` reports exact
-  millimetres before any draw, so the limits are matched to the cell
-  instead by default, which renders a disc square to within a pixel and
-  keeps the full allocation. `aspect="equal"` selects the matplotlib
-  behaviour for anyone who needs the circle to survive an interactive
-  resize instead.
+  The chart is circular without losing cell area. `ax.set_aspect("equal")`
+  collapses the drawn box to a square of side `min(w, h)`, keeping exactly
+  `min(w, h) / max(w, h)` of the allocated *area* and cutting whichever
+  dimension is longer — on a cell **wider than tall** the width is cut
+  (two sevenths lost on a 70x50mm cell, over half on a 90x40 one); on a
+  cell **taller than wide** the width is kept in full and the height is
+  cut by that same ratio instead (#101). publiplots' own layout fixes the
+  axes box in millimetres, so `ax.get_position()` reports the cell's exact
+  millimetres before any draw; by default the limits are matched to that
+  cell rather than left to `set_aspect`, which renders a disc square to
+  within a pixel and keeps the full allocation on either axis.
+  `aspect="equal"` selects the matplotlib behaviour instead, for anyone
+  who needs the circle to survive an interactive resize.
 
   Each annotate record holds its artist from construction: there is no
   step that recovers artists from the axes by scanning and pairing them
@@ -60,7 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `aspect="equal"` on a cell taller than wide can place a label slightly
   outside the frame, because the axes' x and y data-per-pixel scales
   differ by the cell's own ratio there and the labelling geometry reads
-  only one of them.
+  only one of them — with this project's `savefig.bbox = "standard"`
+  that label overprints whatever is next to the axes rather than being
+  cropped away.
 
 ## [0.19.0] - 2026-09-25
 

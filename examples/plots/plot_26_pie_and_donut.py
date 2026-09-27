@@ -4,9 +4,9 @@ Pie and Donut Charts
 
 Part-of-whole composition, in the same visual language as the rest of a
 figure set: the publiplots palette, the theme edge, and a legend that can
-join a shared band. ``pp.pieplot`` is a one-level ``pp.sunburstplot`` —
-``x`` names the wedge, ``y`` the value (omitted, rows are counted), and
-``hue`` means colour and nothing else.
+join a shared band. A pie is a one-level sunburst — ``x`` names the
+wedge, ``y`` the value (omitted, rows are counted), and ``hue`` means
+colour and nothing else.
 """
 
 import pandas as pd
