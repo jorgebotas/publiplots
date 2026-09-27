@@ -278,7 +278,11 @@ def pieplot(
     # Hatch is resolved from its own column, the same way hue is, rather
     # than being keyed off the hue value -- the two are independent
     # parameters and only coincide in the common hatch=x case.
-    hatch_shares_hue = hatch is not None and hatch == hue_column
+    # A continuous hue renders as a colorbar, which folds in no
+    # patterns -- so even when hatch names that same column the hatch
+    # needs a key of its own.
+    hatch_shares_hue = (hatch is not None and hatch == hue_column
+                        and not hue_continuous)
     if hatch is not None:
         hatch_values, _ = resolve_hue_values(frame, levels, hatch, nodes)
         hatch_levels = list(dict.fromkeys(

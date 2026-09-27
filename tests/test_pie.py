@@ -506,6 +506,31 @@ def test_a_colliding_hatch_value_does_not_leak_into_a_hue_swatch():
     assert [h.get_hatch() for h in entries["hatch"].handles] == ["", "//"]
 
 
+def test_a_continuous_hue_on_the_hatch_column_still_gets_a_hatch_key():
+    """A numeric hue renders as a colorbar, which folds in no patterns.
+    Sharing the column with hatch= must therefore still stash a hatch
+    entry, or the drawn patterns have no key at all."""
+    from publiplots.utils.legend_entries import get_entries, is_continuous_hue
+    raw = pd.DataFrame({
+        "dept": list("abc"),
+        "score": [1.0, 2.0, 3.0],
+        "n": [1.0, 1.0, 1.0],
+    })
+    fig, ax = pp.subplots()
+    pp.pieplot(data=raw, x="dept", y="n", hue="score", hatch="score",
+               legend=False, ax=ax)
+
+    entries = {e.kind: e for e in get_entries(ax)}
+    assert set(entries) == {"hue", "hatch"}
+    assert is_continuous_hue(entries["hue"].handles)
+
+    drawn = {r.patch.get_hatch()
+             for r in ax._publiplots_wedge_meta.wedges}
+    assert len(drawn) == 3, "three distinct patterns are drawn"
+    keyed = {h.get_hatch() for h in entries["hatch"].handles}
+    assert keyed == drawn, "every drawn pattern is in the key"
+
+
 def test_a_shared_hatch_column_keeps_one_combined_entry(df):
     from publiplots.utils.legend_entries import get_entries
     fig, ax = pp.subplots()
@@ -552,8 +577,8 @@ def test_the_min_share_value_selects_which_categories_bucket():
 
 
 def test_legend_swatch_matches_the_mark_it_stands_for(df):
-    """CLAUDE.md's swatch/mark parity rule: the key must carry the same
-    stroke width and fill the wedge is drawn with."""
+    """The house rule that a legend swatch carries the same width the
+    mark is drawn with: the key must match the wedge's stroke and fill."""
     from publiplots.utils.legend_entries import get_entries
     fig, ax = pp.subplots()
     pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax)
