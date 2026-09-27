@@ -4,8 +4,9 @@ Colour derives from the ``hue`` level, with descendants shaded from their
 parent. Two scalars control it, both expressed as a **total span** rather
 than a per-ring step: the outermost ring lands at ``depth_range``, and
 siblings spread over ``sibling_range`` within their parent. Spans are
-depth-independent; a per-ring step puts the rim 72% toward white at five
-rings and needs retuning every time a level is added.
+depth-independent; a per-ring step of 0.18, by contrast, compounds to
+4 x 0.18 = 72% toward white by the rim of a five-ring chart, and so
+needs retuning every time a level is added.
 """
 from __future__ import annotations
 
@@ -58,6 +59,9 @@ def resolve_hue_values(
     levels: List[str],
     hue: Optional[str],
     nodes: List[WedgeNode],
+    *,
+    param_name: str = "hue",
+    bucket_label: Optional[str] = None,
 ) -> Tuple[Dict[Tuple[Any, ...], Any], bool]:
     """Map each node path to its hue value.
 
@@ -67,24 +71,42 @@ def resolve_hue_values(
     a level other than the root is undefined -- every node shallower than
     that level would have no resolved value -- so it raises rather than
     silently half-colouring the chart.
+
+    ``param_name`` is the caller's own parameter name, used in every
+    message raised here. The same resolution serves ``hatch=``, and a
+    ``hatch`` typo reported as ``hue='zzz' is not a column of data``
+    sends the reader to the wrong keyword.
+
+    ``bucket_label``, when given, names a root key that is **not** a
+    category of the data -- ``min_share``'s ``"Other"``. Several real
+    categories were merged into it, so a categorical column is
+    genuinely not constant across its rows; that is the merge's doing,
+    not an ambiguous column, so the bucket takes its own label as its
+    value instead of raising. Continuous columns are unaffected: a mean
+    over the merged rows is well defined.
     """
     column = hue if hue is not None else levels[0]
     if column in levels:
         if column != levels[0]:
             raise ValueError(
-                f"hue={column!r} names level {levels.index(column)} of "
-                f"{levels!r}; hue must be the outermost level "
-                f"({levels[0]!r}) or a column outside the path, not a "
-                f"level in between."
+                f"{param_name}={column!r} names level "
+                f"{levels.index(column)} of {levels!r}; {param_name} must "
+                f"be the outermost level ({levels[0]!r}) or a column "
+                f"outside the path, not a level in between."
             )
         return {n.path: n.path[0] for n in nodes}, False
 
     if column not in data.columns:
-        raise ValueError(f"hue={column!r} is not a column of data")
+        raise ValueError(
+            f"{param_name}={column!r} is not a column of data")
 
     continuous = _is_numeric(data[column])
     values: Dict[Tuple[Any, ...], Any] = {}
     for node in nodes:
+        if (bucket_label is not None and not continuous
+                and node.path[0] == bucket_label):
+            values[node.path] = bucket_label
+            continue
         mask = pd.Series(True, index=data.index)
         for i, key in enumerate(node.path):
             mask &= data[levels[i]] == key
@@ -97,10 +119,10 @@ def resolve_hue_values(
         distinct = list(dict.fromkeys(present.tolist()))
         if len(distinct) > 1:
             raise ValueError(
-                f"hue={column!r} is not constant within the wedge "
-                f"{node.path!r}: found {distinct!r}. A wedge can only take "
-                f"one colour; aggregate the column or pick a hue that is "
-                f"constant within each group."
+                f"{param_name}={column!r} is not constant within the "
+                f"wedge {node.path!r}: found {distinct!r}. A wedge can "
+                f"only take one colour; aggregate the column or pick a "
+                f"{param_name} that is constant within each group."
             )
         values[node.path] = distinct[0]
     return values, continuous

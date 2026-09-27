@@ -33,9 +33,13 @@ publiplots-specific keys (not in matplotlib) include:
   :func:`publiplots.set_hatch_mode` to mutate it.
 - ``scatter.size_min`` / ``scatter.size_max`` — size mapping bounds
   for :func:`publiplots.scatterplot` (points^2).
-- ``sunburst.depth_range`` / ``sunburst.sibling_range`` — colour
-  derivation spans for :func:`publiplots.sunburstplot` (``0.45`` /
-  ``0.14``). Inert for a single-ring chart.
+- ``sunburst.depth_range`` / ``sunburst.sibling_range`` — **reserved,
+  and read by nothing today** (``0.45`` / ``0.14``). They are the colour
+  derivation spans for a future multi-ring part-of-whole chart; the
+  derivation itself already takes them, but the only caller there is,
+  :func:`publiplots.pieplot`, passes ``0.0`` for both because a
+  single-ring chart has no descendants to shade. Changing either has no
+  effect on any chart publiplots currently draws.
 - ``subplots.axes_size`` — default ``(width_mm, height_mm)`` for
   :func:`publiplots.subplots`.
 - ``subplots.title_space`` / ``xlabel_space`` / ``ylabel_space`` /

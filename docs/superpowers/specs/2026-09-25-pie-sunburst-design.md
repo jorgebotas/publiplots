@@ -114,15 +114,40 @@ correction replaced them with a ratio — but said the ratio applied to the
 allocated *width*, and verified it against a table containing only wide and
 square cells. The table above is the one that would have caught it.
 
+It then happened a third time, immediately below, and for the same reason: the
+corrected table covered only the `set_aspect("equal")` branch, so the
+`aspect="cell"` rule written underneath it — "size the disc to the cell height"
+— went out with no tall cell ever measured against it, and shipped clipping
+13.33mm off each side of a 40x70mm cell.
+
 Because the renderer draws its own wedges and `ax.get_position()` returns exact
 millimetres *before any draw*, the pie can match the cell instead of fighting
 it: leave the aspect unconstrained and set the data limits to the cell's own mm
-ratio. For a 70x50 cell, `ylim=(-1, 1)` and `xlim=(-1.4, 1.4)`.
+ratio — sizing the disc to the **shorter** side and stretching the longer
+side's limits by the cell ratio. For a 70x50 cell, `ylim=(-1, 1)` and
+`xlim=(-1.4, 1.4)`; for a 40x70 cell, `xlim=(-1, 1)` and `ylim=(-1.75, 1.75)`.
+Sizing to the height unconditionally, as an earlier draft of this paragraph
+said to, puts the disc wider than the axes whenever `h > w` and matplotlib
+clips the overhang.
 
-This is measurably better on both axes: the disc is circular to within a
-rendering pixel, and no allocated width is lost. The pie sizes to the cell
-height, leaving the surplus width where outside labels and leader lines want to
-be.
+This is measurably better on both axes. Rendering a pie to an Agg buffer and
+reading the ink bounding box:
+
+```
+  cell    aspect="cell" ink    w/h      box kept    "equal" box kept
+ 70x50     47.92 x 47.92     1.0000   1.0000x1.0000   0.7143x1.0000
+ 90x40     38.44 x 38.61     0.9956   1.0000x1.0000   0.4444x1.0000
+ 40x70     38.61 x 38.44     1.0044   1.0000x1.0000   1.0000x0.5714
+ 30x80     28.96 x 29.13     0.9942   1.0000x1.0000   1.0000x0.3750
+ 60x60     57.57 x 57.57     1.0000   1.0000x1.0000   1.0000x1.0000
+```
+
+The disc is circular to within a rendering pixel on every shape, and the axes
+box keeps the whole allocation on both axes where `set_aspect("equal")` gives
+up `min(w, h) / max(w, h)` of the longer one. The pie sizes to the shorter side
+of the cell, leaving the surplus on the longer side where outside labels and
+leader lines want to be — the surplus width on a wide cell, the surplus height
+on a tall one.
 
 **Tradeoff, stated because it is real:** the limits are computed once at draw
 time, so an interactive figure resize distorts the circle, where matplotlib's

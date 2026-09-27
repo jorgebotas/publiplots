@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 from publiplots.plot.wedge.geometry import (
-    WedgeNode,
     build_nodes,
     layout,
     total_value,

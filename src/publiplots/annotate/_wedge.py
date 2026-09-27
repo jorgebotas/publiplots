@@ -6,7 +6,7 @@ span. A fixed degree threshold is the wrong shape for this problem: the
 room a label needs depends on the chart's physical size, on how long the
 label string is, and on where the wedge points. At the themed 7pt font
 with the default ``.1f`` percentage, the span a label needs to sit
-inside runs from roughly 19 degrees to 134 degrees across ordinary
+inside runs from roughly 14 degrees to 134 degrees across ordinary
 inputs -- see :func:`_label_fits` for the numbers and the geometry.
 """
 from __future__ import annotations
@@ -56,12 +56,18 @@ _WEDGE_DEFAULT_FMT = "__wedge_percent__"
 # exhausts all 12 passes while still growing (raising the cap, it settles
 # at 19). What comes out at the cap is under-grown rather than wrong --
 # the framing stopped one notch short, so the gap lands slightly UNDER
-# the requested millimetres: 4.9909mm against a requested 5.0, and a
-# measured worst case of 0.079mm across a 320-case sweep of sizes,
-# offsets and pads. That is two orders of magnitude below anything
-# visible in print, and well below the 0.25mm the fit test itself is
-# approximate by, so the cap stays where it is rather than spending
-# another seven passes chasing it.
+# the requested millimetres.
+#
+# Measured on the frame `tests/annotate/test_wedge_values.py::df` uses
+# (`kind=ABCD`, `n=[50, 25, 15, 10]`), drawn with `legend=False` and
+# `annotate={"anchor": "outside", "offset": 5.0}` on a 40x40mm cell: the
+# gap renders at 4.9909mm against a requested 5.0. Sweeping the same
+# frame over cell sides 25..90mm in eight steps each way and offsets
+# 1, 2, 3, 5 and 8mm -- 320 cases, 1280 labels -- the worst shortfall is
+# 0.062mm. That is two orders of magnitude below anything visible in
+# print, and well below the 0.25mm the fit test itself is approximate
+# by, so the cap stays where it is rather than spending another seven
+# passes chasing it.
 _MAX_FIT_PASSES = 12
 
 # Relative slack below which a framing factor counts as "no change". One
@@ -97,35 +103,47 @@ def _data_per_pixel(ax: Axes) -> float:
     makes the disc render round there, so one scalar describes both
     directions exactly.
 
-    ``aspect="equal"`` does not. It leaves the limits square and has
-    matplotlib shrink the *drawn box* instead, so on a non-square cell
-    the two scales differ by the cell's own ratio, and **the sign of the
-    resulting error depends on which way round the cell is**. Measured
-    with ``anchor="outside", offset=2.0``, reading the closest label box
-    to the axes frame once the loop has settled:
+    ``aspect="equal"`` does not, **at the moment this runs**. It leaves
+    the limits square and asks matplotlib to shrink the *drawn box*
+    instead -- but that shrinking happens in ``apply_aspect`` on the
+    first draw, which is after the labelling loop. So while this
+    strategy is placing labels the box is still the full cell against
+    square limits, the two scales differ by the cell's own ratio, and
+    **the sign of the resulting error depends on which way round the
+    cell is**.
 
-    ===================  ===============  ==========================
-    cell                 ``dpp_x/dpp_y``  closest label box to frame
-    ===================  ===============  ==========================
-    70x40mm (``cell``)   1.000            +2.000mm
-    70x40mm (``equal``)  0.571            +8.358mm
-    40x70mm (``equal``)  1.750            -1.860mm
-    ===================  ===============  ==========================
+    Measured on the frame ``tests/annotate/test_wedge_values.py::df``
+    uses (``kind=ABCD``, ``n=[50, 25, 15, 10]``), drawn with
+    ``legend=False`` and ``annotate={"anchor": "outside",
+    "offset": 2.0}``; "closest label box to frame" is the smallest
+    signed distance from any label's ``get_window_extent`` to the axes
+    frame, positive meaning inside:
+
+    ===================  ===============  =============  =============
+    cell                 ``dpp_x/dpp_y``  closest, when  closest, once
+                         when this runs   this runs      drawn
+    ===================  ===============  =============  =============
+    70x40mm (``cell``)   1.000            +2.000mm       +2.000mm
+    70x40mm (``equal``)  0.571            +8.358mm       +1.999mm
+    40x70mm (``equal``)  1.750            -1.860mm       -1.860mm
+    40x70mm (``cell``)   1.000            +1.999mm       +1.999mm
+    ===================  ===============  =============  =============
 
     On a cell **wider than tall** the y scale overestimates horizontal
     reach, so labels are pushed out sooner and the framing grows further
-    than strictly needed -- wasteful but safe. On a cell **taller than
-    wide** it underestimates, and a label box can end up slightly
-    outside the axes frame, as the -1.860mm above. With this project's
-    ``savefig.bbox = "standard"`` that overprints whatever is next to
-    the axes rather than being cropped away.
+    than strictly needed -- wasteful but safe, and ``apply_aspect``
+    reclaims it at draw time (+8.358 becomes +1.999). On a cell **taller
+    than wide** it underestimates, and a label box ends up outside the
+    axes frame, the -1.860mm above -- and that one survives the draw.
+    With this project's ``savefig.bbox = "standard"`` it overprints
+    whatever is next to the axes rather than being cropped away.
 
     So this is conservative only in one orientation, not in general. It
     is left as one scalar anyway: the behaviour predates this strategy
-    -- a ``pieplot`` with no annotation measures the same 1.750 -- and
-    splitting it into two would push an anisotropic scale through every
-    piece of geometry here, which is a change to ``aspect="equal"``
-    itself rather than to labelling.
+    -- a ``pieplot`` with no annotation measures the same 1.750 before
+    its first draw -- and splitting it into two would push an
+    anisotropic scale through every piece of geometry here, which is a
+    change to ``aspect="equal"`` itself rather than to labelling.
     """
     inverse = ax.transData.inverted()
     y0 = inverse.transform((0.0, 0.0))[1]
@@ -203,10 +221,12 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
 
     What the span a label needs is *not* is a single number. Against
     this test at the themed 7pt font, ``"50.0%"`` on the default 40x40mm
-    axes needs 43 degrees at twelve o'clock and around 19 at three
-    o'clock, where the label lies along the radius rather than across
-    it; the same label needs 72 degrees on a 25mm chart and 21 on an
-    80mm one; and ``"1,234,567"`` on that 25mm chart needs 134 degrees.
+    axes needs 43 degrees at twelve o'clock and 14 at three o'clock,
+    where the label lies along the radius rather than across it; the
+    same label needs 72 degrees on a 25mm chart and 21 on an 80mm one;
+    and ``"1,234,567"`` on that 25mm chart needs 134 degrees. The 14 is
+    this test's threshold, which the paragraph above says is optimistic
+    -- the true geometric one at three o'clock is nearer 19-22.
     That is the range a single constant would have had to stand for,
     which is why this measures instead.
     """
@@ -259,14 +279,16 @@ def _expand_limits(
     gives.** The gap is re-placed to exactly ``offset`` millimetres on
     every pass and this function only ever grows the framing around it,
     so a chart with no room for gap plus label plus pad ends up short of
-    ``pad``, never short of ``offset``. Measured on 25x25mm with
-    ``offset=3`` (so ``pad`` defaults to 3 as well), the gap renders at
-    exactly 3.000mm and the margin at 1.006mm rather than 3; push it
-    further, to ``offset=10`` with a long ``fmt``, and the gap is still
-    exactly 10.000mm while the labels sit 5.169mm OUTSIDE the axes
-    frame. That request is genuinely unsatisfiable -- raising the
-    ceiling diverges, with the margin asymptoting near 2.5mm and never
-    reaching 3 -- so something has to give, and a label at a predictable
+    ``pad``, never short of ``offset``. Measured on the frame
+    ``tests/annotate/test_wedge_values.py::df`` uses (``kind=ABCD``,
+    ``n=[50, 25, 15, 10]``) with ``legend=False``, on a 25x25mm cell at
+    ``offset=3`` (so ``pad`` defaults to 3 as well): the gap renders at
+    exactly 3.000mm and the margin at 1.006mm rather than 3. Push it
+    further -- ``offset=10`` and ``fmt=",.0f"`` over seven-digit values,
+    so every label is nine characters wide -- and the gap is still
+    exactly 10.000mm while the labels sit 9.95mm OUTSIDE the axes
+    frame. That request is genuinely unsatisfiable, so something has to
+    give, and a label at a predictable
     distance from its wedge is worth more than a margin that was only
     ever a guard against overprinting. It is a degradation, though, not
     a free choice: with this project's ``savefig.bbox = "standard"``
@@ -337,7 +359,11 @@ def _wedge_values_strategy(
             f"rotation must be a finite number of degrees or one of "
             f"{sorted(_VALID_ROTATIONS)}; got {rotation!r}"
         )
-    # Top-level `rotation` wins over one smuggled via text_kws; pop silently.
+    # Defensive: the dispatcher always passes `rotation=` explicitly, so
+    # text_kws cannot currently carry one and this pop never fires. It
+    # stays because the top-level parameter must win if a future caller
+    # reaches this function directly -- `ax.text` would raise on the
+    # duplicate keyword rather than pick one.
     text_kws.pop("rotation", None)
 
     if not meta.wedges:

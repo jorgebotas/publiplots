@@ -1,6 +1,7 @@
 """Pie and donut charts."""
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import pandas as pd
@@ -64,7 +65,21 @@ def _bucket_small(
     if len(small) < 2:
         return frame
     out = frame.copy()
-    out[level] = out[level].astype(object)
+    column = out[level]
+    if isinstance(column.dtype, pd.CategoricalDtype):
+        # Casting a Categorical to object here would throw away its
+        # declared category order, which build_nodes reads as the draw
+        # order -- min_share would silently reorder the pie away from
+        # the bar panel drawn from the same frame, which is the exact
+        # correspondence #268 exists for. Append the bucket to the
+        # categories instead and leave the rest where they were.
+        if OTHER_LABEL not in column.cat.categories:
+            column = column.cat.add_categories([OTHER_LABEL])
+        out[level] = column
+        out.loc[out[level].isin(small), level] = OTHER_LABEL
+        out[level] = out[level].cat.remove_unused_categories()
+        return out
+    out[level] = column.astype(object)
     out.loc[out[level].isin(small), level] = OTHER_LABEL
     return out
 
@@ -102,10 +117,12 @@ def pieplot(
 ) -> Axes:
     """Draw a pie or donut chart.
 
-    A pie is a one-level sunburst. ``x`` names the category column, ``y``
-    the value (omitted, rows are counted), and ``hue`` what determines
-    colour -- defaulting to ``x`` itself, which is what every pie does.
-    For more than one level use :func:`publiplots.sunburstplot`.
+    A pie is the one-level case of a nested part-of-whole chart. ``x``
+    names the category column, ``y`` the value (omitted, rows are
+    counted), and ``hue`` what determines colour -- defaulting to ``x``
+    itself, which is what every pie does. Only one level is supported:
+    the machinery underneath is written for a tree, but this function
+    draws a single ring.
 
     Parameters
     ----------
@@ -114,13 +131,23 @@ def pieplot(
         pre-aggregated.
     x : str
         Column naming each wedge. A sequence of length 1 is accepted;
-        anything longer raises, naming ``sunburstplot``.
+        anything longer raises, because only one ring is drawn. Rows
+        whose ``x`` is ``NaN`` are dropped and the remaining wedges
+        renormalise to fill the circle, silently -- a pie cannot show a
+        missing category, so drop or fill them yourself if the share
+        they represent matters.
     y : str, optional
         Value column, summed within each category. When omitted, rows are
         counted.
     hue : str, optional
         Column determining colour. Defaults to ``x``. A categorical hue
         must be constant within a wedge.
+    ax : Axes, optional
+        Matplotlib axes to draw on. If ``None``, creates a new figure
+        via :func:`publiplots.layout.subplots` so the publiplots layout
+        manager can keep geometry stable. To control axes dimensions,
+        pre-create with ``pp.subplots(axes_size=(w_mm, h_mm))`` and
+        pass ``ax=``.
     donut : float, default 0.0
         Inner radius as a fraction of the outer radius. ``0.5`` leaves a
         hole of half the radius, which is where ``center_label`` goes.
@@ -130,9 +157,13 @@ def pieplot(
     direction : {'clockwise', 'counterclockwise'}, default 'clockwise'
     order : sequence, optional
         Explicit wedge order. Categories absent from the data are dropped;
-        categories absent from ``order`` are filtered out. Cannot be
-        combined with ``min_share``, whose ``"Other"`` bucket is not a
-        category of the data and so cannot be named in an order.
+        categories absent from ``order`` are **filtered out, and the
+        wedges that remain renormalise to a full circle** -- the chart
+        then reads as 100% of a whole it is not showing all of. A
+        :class:`UserWarning` names the dropped categories when that
+        happens. Cannot be combined with ``min_share``, whose
+        ``"Other"`` bucket is not a category of the data and so cannot
+        be named in an order.
     hue_order : sequence, optional
         Running order of the legend's colour entries. Levels omitted from
         it keep their colour and are appended after the listed ones --
@@ -152,12 +183,87 @@ def pieplot(
         threshold is kept. Applies only when at least two categories fall
         below it. Cannot be combined with ``order``.
     center_label : str or callable, optional
-        Text for the donut hole. A callable receives the total.
+        Text for the donut hole. A callable receives the total. Ignored
+        when ``donut=0``: a full pie has no hole to write in.
     aspect : {'cell', 'equal'}, default 'cell'
-        ``'cell'`` matches the data limits to the axes' millimetre ratio,
-        keeping the full cell width; ``'equal'`` uses matplotlib's aspect
-        constraint, which survives an interactive resize but abandons part
-        of the cell.
+        ``'cell'`` matches the data limits to the axes' millimetre
+        ratio: the disc is sized to the shorter side of the cell and the
+        longer side's limits are stretched to match, so the axes box
+        keeps the whole allocation on both axes and the surplus stays
+        free for outside labels. ``'equal'`` uses matplotlib's aspect
+        constraint, which survives an interactive resize but shrinks the
+        drawn box to a square, keeping only ``min(w, h) / max(w, h)`` of
+        the allocation on whichever axis is longer. Both render a disc
+        round to within a rendering pixel; measured ink ratios across
+        70x50, 90x40, 40x70, 30x80 and 60x60mm cells run 0.9942 to
+        1.0044.
+    palette : str, dict, or list, optional
+        Colour palette. Can be:
+
+        - ``str``: seaborn palette name or publiplots palette name
+        - ``dict``: explicit ``{hue_level: color}`` mapping, overlaid on
+          the resolved defaults, so a partial dict recolours only the
+          levels it names
+        - ``list``: list of colours assigned in hue-level order
+    hatch : str, optional
+        Column name driving a **second categorical dimension** encoded
+        via hatch textures -- the texture-based analogue of ``hue``.
+        Independent of ``hue``: pass the same column to both
+        (``hatch=x``) to pattern each wedge by its own colour level, or
+        a different column for a second key. Must be constant within a
+        wedge, as ``hue`` must.
+
+        Patterns are drawn from :data:`publiplots.HATCH_PATTERNS` by
+        default; density is controlled globally via
+        :func:`publiplots.set_hatch_mode` or overridden per-plot with
+        ``hatch_map``.
+    hatch_map : dict, optional
+        Mapping from hatch-column values to matplotlib hatch-pattern
+        strings, overriding the per-``hatch_mode`` defaults, e.g.
+        ``hatch_map={"control": "", "treated": "///"}``.
+    hatch_order : list, optional
+        Running order of the legend's hatch entries. Like ``hue_order``
+        it reorders the key and never decides which wedges are drawn;
+        levels omitted from it are appended after the listed ones.
+    color : str, optional
+        Fixed colour used where no hue level supplies one: the colormap
+        anchor for a continuous ``hue``, and the swatch colour for a
+        standalone hatch key. Falls back to ``rcParams["color"]``.
+    edgecolor : str, optional
+        Explicit edge colour override. When ``None`` (the default, also
+        the default of ``rcParams["edgecolor"]``), each wedge's edge
+        matches its own face colour -- publiplots' double-layer
+        transparent-fill styling. Set to a specific colour (``"black"``)
+        to outline every wedge the same way regardless of fill.
+    linewidth : float, optional
+        Width of the wedge outlines and hatch strokes. Defaults to
+        ``rcParams["edgewidth"]``.
+    alpha : float, optional
+        Transparency of the wedge *fill* (outlines stay fully opaque).
+        ``0`` = outlined wedges only; ``1`` = solid fill. Defaults to
+        ``rcParams["alpha"]``.
+    legend : bool or dict, default=True
+        Whether to render the legend. Accepts ``bool`` or
+        ``dict[kind, bool]`` for per-kind control (e.g.
+        ``legend={"hatch": False}`` hides just the hatch entry).
+        Unlike ``barplot``, ``False`` suppresses only the rendering:
+        entries are stashed either way, so a later figure-level
+        :func:`publiplots.legend` group can still claim them.
+    legend_kws : dict, optional
+        Extra kwargs forwarded to the legend builder. Notable keys:
+        ``inside=True`` with ``loc=...`` places the legend inside the
+        axes using matplotlib's corner-based placement; ``hue_label`` /
+        ``hatch_label`` override the title shown above each entry.
+    annotate : bool or dict, optional
+        If truthy, label each wedge with its share of the total as a
+        percentage. Pass a ``dict`` to forward options to
+        :func:`publiplots.annotate`: ``fmt`` (a format spec labels the
+        raw value instead of the share), ``anchor``
+        (``"auto"``/``"inside"``/``"outside"``), ``offset`` (mm),
+        ``color``, ``rotation`` (degrees, or ``"tangential"`` /
+        ``"radial"``), ``basis`` (``"total"``/``"parent"``).
+    title : str or None, default=""
+        Plot title. Pass ``None`` to leave the existing title unchanged.
 
     Returns
     -------
@@ -188,8 +294,8 @@ def pieplot(
     levels = [x] if isinstance(x, str) else list(x)
     if len(levels) > 1:
         raise ValueError(
-            "pieplot: x= must name a single column; for a nested "
-            "composition use pp.sunburstplot(x=[...])."
+            "pieplot: x= must name a single column; it draws one ring, "
+            "and a nested composition is not supported."
         )
     if order is not None and min_share:
         # build_nodes filters against `order`, and the bucket label is not
@@ -216,14 +322,36 @@ def pieplot(
         _, ax = _pp_subplots()
 
     frame = _bucket_small(data, levels[0], y, min_share) if min_share else data
-    order_map = {levels[0]: list(order)} if order is not None else None
+    order_map = None
+    if order is not None:
+        order_map = {levels[0]: list(order)}
+        listed = set(order_map[levels[0]])
+        dropped = [k for k in dict.fromkeys(frame[levels[0]].dropna().tolist())
+                   if k not in listed]
+        if dropped:
+            # The same hazard the min_share refusal above cites: the
+            # wedges that survive renormalise to a full circle, so the
+            # chart reads as 100% of a whole it is not showing. Dropping
+            # a category is a legitimate thing to want, so this warns
+            # rather than raising -- but it does not do it silently,
+            # because annotate= would print the renormalised share.
+            warnings.warn(
+                f"pieplot: order= omits {len(dropped)} categor"
+                f"{'y' if len(dropped) == 1 else 'ies'} present in the "
+                f"data: {dropped!r}. They are dropped and the remaining "
+                f"wedges renormalise to a full circle, so the chart -- "
+                f"and any annotate= percentage -- reads as 100% of a "
+                f"whole it is not showing all of.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     nodes = build_nodes(frame, levels, y, order=order_map, sort=sort)
     if min_share and any(n.path[0] == OTHER_LABEL for n in nodes):
         # The bucket sorts last whatever the resolver decided, then the
         # sibling indices are renumbered so the colour derivation sees a
         # consistent run. (Inert on one ring, but wrong indices here would
-        # become wrong colours the moment the sunburst reuses this path.)
+        # become wrong colours the moment a nested ring reuses this path.)
         ordered = ([n for n in nodes if n.path[0] != OTHER_LABEL]
                    + [n for n in nodes if n.path[0] == OTHER_LABEL])
         nodes = [
@@ -236,11 +364,28 @@ def pieplot(
     places = layout(nodes, start_angle=start_angle, direction=direction,
                     donut=donut, n_levels=1)
 
-    hue_values, hue_continuous = resolve_hue_values(frame, levels, hue, nodes)
+    hue_values, hue_continuous = resolve_hue_values(
+        frame, levels, hue, nodes, param_name="hue",
+        bucket_label=OTHER_LABEL if min_share else None)
     hue_levels = list(dict.fromkeys(
         hue_values[n.path] for n in nodes if n.path in hue_values))
     hue_norm = None
-    if hue_continuous:
+    if hue_continuous and not hue_levels:
+        # Every value in the column was NaN, so no wedge resolved one.
+        # min()/max() over that raises "min() iterable argument is
+        # empty", which names neither the column nor the cause. The
+        # categorical path degrades to the fallback grey instead, so do
+        # the same here and say which column it was.
+        warnings.warn(
+            f"pieplot: hue={hue_column!r} is numeric but has no non-NaN "
+            f"value in any wedge, so there is no range to build a "
+            f"colormap over. The wedges fall back to a neutral grey and "
+            f"no colorbar is drawn.",
+            UserWarning,
+            stacklevel=2,
+        )
+        palette_map = {}
+    elif hue_continuous:
         # A numeric hue maps through a colormap rather than a palette. Build
         # a value -> colour dict so derive_colors' lookup is unchanged.
         cmap = resolve_continuous_cmap(None, color=color)
@@ -284,7 +429,9 @@ def pieplot(
     hatch_shares_hue = (hatch is not None and hatch == hue_column
                         and not hue_continuous)
     if hatch is not None:
-        hatch_values, _ = resolve_hue_values(frame, levels, hatch, nodes)
+        hatch_values, _ = resolve_hue_values(
+            frame, levels, hatch, nodes, param_name="hatch",
+            bucket_label=OTHER_LABEL if min_share else None)
         hatch_levels = list(dict.fromkeys(
             hatch_values[n.path] for n in nodes if n.path in hatch_values))
         if hatch_order is not None:
@@ -326,7 +473,9 @@ def pieplot(
         text = center_label(total) if callable(center_label) else center_label
         ax.text(0.0, 0.0, text, ha="center", va="center")
 
-    if title:
+    # `is not None`, the house form (bar.py:639, box.py): title="" must
+    # CLEAR a pre-existing title, and only title=None leaves it alone.
+    if title is not None:
         ax.set_title(title)
 
     # Entries are stashed whether or not this call renders them: legend=

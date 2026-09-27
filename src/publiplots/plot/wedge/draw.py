@@ -30,7 +30,7 @@ def draw_wedges(
     center: Tuple[float, float],
     pull: Dict[Tuple[Any, ...], float],
     alpha: float,
-    edgecolor,
+    edgecolor: Optional[Any],
     linewidth: float,
 ) -> List[Wedge]:
     """Add one Wedge per placement, in draw order, and return them."""
@@ -126,14 +126,35 @@ def apply_cell_limits(ax: Axes, *, radius: float, aspect: str) -> None:
     """Frame the axes so the chart is circular.
 
     ``aspect="cell"`` leaves the aspect unconstrained and sets the data
-    limits to the axes' own millimetre ratio, so the full allocated cell
-    is kept and the disc still renders round to within a pixel.
-    ``set_aspect("equal")`` instead has matplotlib shrink the drawn box
-    to fit a square within the allocated one -- issue #101 -- keeping
-    only ``min(w, h) / max(w, h)`` of the allocation on a non-square
-    cell (5/7 on a 70x50mm cell). The tradeoff for ``"cell"`` is that the
-    limits are computed once, so an interactive resize would distort the
-    circle; ``aspect="equal"`` is available for that case.
+    limits to the axes' own millimetre ratio: the disc is sized to the
+    **shorter** side of the cell and the limits on the longer side are
+    stretched to the cell's ratio, so the axes box keeps the whole
+    allocation on both axes and the surplus on the longer side stays
+    free (which is where outside labels and leader lines go).
+    ``set_aspect("equal")`` draws the same disc, but has matplotlib
+    shrink the drawn *box* to a square inside the allocated one -- issue
+    #101 -- keeping only ``min(w, h) / max(w, h)`` of the allocation on
+    whichever axis is longer.
+
+    Measured by rendering a pie to an Agg buffer and reading the ink
+    bounding box; "box kept" is ``get_position()`` over
+    ``get_position(original=True)``:
+
+    ======  =====================  =======  ==============  ===============
+    cell    ``"cell"`` ink (mm)    ink w/h  ``"cell"`` box  ``"equal"`` box
+    ======  =====================  =======  ==============  ===============
+    70x50   47.92 x 47.92           1.0000  1.0000x1.0000   0.7143x1.0000
+    90x40   38.44 x 38.61           0.9956  1.0000x1.0000   0.4444x1.0000
+    40x70   38.61 x 38.44           1.0044  1.0000x1.0000   1.0000x0.5714
+    30x80   28.96 x 29.13           0.9942  1.0000x1.0000   1.0000x0.3750
+    60x60   57.57 x 57.57           1.0000  1.0000x1.0000   1.0000x1.0000
+    ======  =====================  =======  ==============  ===============
+
+    The ink ratios away from 1 are one rendering pixel on a disc a few
+    hundred pixels across; the disc itself is round by construction in
+    both modes. The tradeoff for ``"cell"`` is that the limits are
+    computed once, so an interactive resize would distort the circle;
+    ``aspect="equal"`` is available for that case.
     """
     if aspect not in ("cell", "equal"):
         raise ValueError(
@@ -151,5 +172,13 @@ def apply_cell_limits(ax: Axes, *, radius: float, aspect: str) -> None:
     w_mm = box.width * fig.get_figwidth() * MM_PER_INCH
     h_mm = box.height * fig.get_figheight() * MM_PER_INCH
     ratio = (w_mm / h_mm) if (w_mm and h_mm) else 1.0
-    ax.set_ylim(-radius, radius)
-    ax.set_xlim(-radius * ratio, radius * ratio)
+    # Size the disc to the SHORTER side and stretch the other axis' limits
+    # to the cell ratio. Sizing unconditionally to the height put the disc
+    # wider than the axes on any cell taller than wide, and matplotlib
+    # clipped it (13.33mm off each side of a 40x70mm cell).
+    if ratio >= 1.0:
+        ax.set_ylim(-radius, radius)
+        ax.set_xlim(-radius * ratio, radius * ratio)
+    else:
+        ax.set_xlim(-radius, radius)
+        ax.set_ylim(-radius / ratio, radius / ratio)

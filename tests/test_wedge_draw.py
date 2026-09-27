@@ -7,9 +7,10 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.patches import Wedge
+from matplotlib.patches import Circle, Wedge
 
 import publiplots as pp
 from publiplots.plot.wedge.draw import (
@@ -61,6 +62,27 @@ def _style(nodes):
     colors = {n.path: (0.5, 0.5, 0.5) for n in nodes}
     hatches = {n.path: None for n in nodes}
     return colors, hatches
+
+
+def _ink_extent(fig):
+    """Bounding box of every non-background pixel, in display pixels.
+
+    Rendered ink, not artist geometry: a disc wider than its axes is
+    clipped by matplotlib, and clipping is invisible to the data limits
+    the artist was built from. Returns ``(x0, x1, y0, y1)`` with y in
+    display orientation (origin at the bottom), so it is directly
+    comparable with ``ax.transAxes``.
+    """
+    # The layout reactor resizes the figure on its first draw, so the
+    # buffer from a single draw predates the geometry transAxes reports.
+    fig.canvas.draw()
+    fig.canvas.draw()
+    buf = np.asarray(fig.canvas.buffer_rgba())
+    ink = np.any(buf != buf[0, 0], axis=-1)
+    rows, cols = np.nonzero(ink)
+    height = buf.shape[0]
+    return (cols.min(), cols.max(),
+            height - 1 - rows.max(), height - 1 - rows.min())
 
 
 def test_pull_offset_is_zero_without_pull():
@@ -197,6 +219,43 @@ def test_build_meta_reports_fractions():
         [0.75, 0.25])
 
 
+def test_build_meta_reports_fractions_of_the_parent_not_the_total():
+    """At depth 0 the two denominators coincide, so a fixture with one
+    level cannot tell `value / parent_total` from `value / total`. This
+    one has two: A holds 1.0 of a 6.0 chart, so A1 is 30% of A and 5% of
+    the whole."""
+    nodes, places, total = _places_multilevel()
+    colors, hatches = _style(nodes)
+    fig, ax = pp.subplots()
+    patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
+                          pull={}, alpha=1.0, edgecolor="black",
+                          linewidth=0.75)
+    meta = build_wedge_meta(places, patches, colors, hatches, {},
+                            total=total, donut=0.0, center=(0.0, 0.0),
+                            levels=["level1", "level2"], hue_active=True,
+                            hue_continuous=False, source_frame=None)
+    assert total == pytest.approx(6.0)
+    by_path = {r.path: r for r in meta.wedges}
+
+    # Depth 0: the parent is the whole chart.
+    assert by_path[("A",)].fraction_of_parent == pytest.approx(1.0 / 6.0)
+    assert by_path[("B",)].fraction_of_parent == pytest.approx(5.0 / 6.0)
+
+    # Depth 1: against the PARENT's value, not the chart total.
+    assert by_path[("A", "A1")].fraction_of_parent == pytest.approx(0.3)
+    assert by_path[("A", "A2")].fraction_of_parent == pytest.approx(0.7)
+    assert by_path[("B", "B1")].fraction_of_parent == pytest.approx(0.4)
+    assert by_path[("B", "B2")].fraction_of_parent == pytest.approx(0.6)
+
+    # ... and the two denominators genuinely differ there.
+    assert by_path[("A", "A1")].fraction_of_total == pytest.approx(0.05)
+    assert by_path[("B", "B2")].fraction_of_total == pytest.approx(0.5)
+    for path in [("A", "A1"), ("A", "A2"), ("B", "B1"), ("B", "B2")]:
+        record = by_path[path]
+        assert record.fraction_of_parent != pytest.approx(
+            record.fraction_of_total)
+
+
 def test_build_meta_refuses_a_length_mismatch():
     nodes, places, total = _places()
     colors, hatches = _style(nodes)
@@ -217,6 +276,45 @@ def test_apply_cell_limits_makes_a_non_square_cell_render_round():
     fig.canvas.draw()
     (x0, y0), (x1, y1) = ax.transData.transform([(0.0, 0.0), (1.0, 1.0)])
     assert (x1 - x0) == pytest.approx(y1 - y0, rel=1e-6)
+
+
+@pytest.mark.parametrize("w_mm,h_mm", [(70, 50), (40, 70)])
+def test_apply_cell_limits_renders_a_round_disc_on_either_orientation(
+        w_mm, h_mm):
+    """The disc must be round AND wholly drawn, on a tall cell too.
+
+    Sizing the disc to the cell height unconditionally made it wider than
+    the axes whenever h > w, and matplotlib clipped the overhang: a 40x70
+    cell rendered 39.96 x 67.06mm of ink with 13.33mm cut off each side.
+    A scale-equality assertion cannot see that -- the per-data-unit scales
+    stay equal while the artist is clipped -- so this measures the ink.
+    """
+    fig, ax = pp.subplots(axes_size=(w_mm, h_mm))
+    ax.add_patch(Circle((0.0, 0.0), 1.0, facecolor="black"))
+    apply_cell_limits(ax, radius=1.05, aspect="cell")
+
+    x0, x1, y0, y1 = _ink_extent(fig)
+    ink_w, ink_h = x1 - x0, y1 - y0
+    assert ink_w == pytest.approx(ink_h, rel=0.01)
+
+    # Clipping shows up as ink flush against the axes frame. The 1.05
+    # framing leaves the disc ~4.8% of the short half-axis clear of it.
+    ax_x0, ax_y0 = ax.transAxes.transform((0.0, 0.0))
+    ax_x1, ax_y1 = ax.transAxes.transform((1.0, 1.0))
+    margin = 0.02 * min(ax_x1 - ax_x0, ax_y1 - ax_y0)
+    assert x0 > ax_x0 + margin
+    assert x1 < ax_x1 - margin
+    assert y0 > ax_y0 + margin
+    assert y1 < ax_y1 - margin
+
+
+def test_apply_cell_limits_stretches_the_long_axis_either_way():
+    """A tall cell stretches y; a wide cell stretches x. Same rule."""
+    fig, ax = pp.subplots(axes_size=(40, 70))
+    apply_cell_limits(ax, radius=1.0, aspect="cell")
+    assert ax.get_xlim() == pytest.approx((-1.0, 1.0))
+    y0, y1 = ax.get_ylim()
+    assert (y1 - y0) / 2.0 == pytest.approx(70.0 / 40.0, rel=1e-3)
 
 
 def test_apply_cell_limits_keeps_the_allocated_width():

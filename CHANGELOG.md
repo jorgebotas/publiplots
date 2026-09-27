@@ -46,11 +46,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cell **taller than wide** the width is kept in full and the height is
   cut by that same ratio instead (#101). publiplots' own layout fixes the
   axes box in millimetres, so `ax.get_position()` reports the cell's exact
-  millimetres before any draw; by default the limits are matched to that
-  cell rather than left to `set_aspect`, which renders a disc square to
-  within a pixel and keeps the full allocation on either axis.
-  `aspect="equal"` selects the matplotlib behaviour instead, for anyone
-  who needs the circle to survive an interactive resize.
+  millimetres before any draw; by default (`aspect="cell"`) the limits are
+  matched to that cell rather than left to `set_aspect` — the disc sized
+  to the **shorter** side and the longer side's limits stretched to the
+  cell's ratio, so the axes box keeps its whole allocation on both axes
+  and the surplus on the longer side stays free, which is where outside
+  labels and leader lines want to be.
+
+  Measured by rendering a pie to an Agg buffer and reading the ink
+  bounding box, over 70x50, 90x40, 40x70, 30x80 and 60x60mm cells: the
+  ink is round to within a rendering pixel every time (width/height
+  0.9942 to 1.0044) and the drawn box is 1.0000 x 1.0000 of the
+  allocation every time. Under `aspect="equal"` the same discs are drawn
+  but the box keeps only 0.7143, 0.4444, 0.5714, 0.3750 and 1.0000 of
+  the allocation on whichever axis is longer. `aspect="equal"` selects
+  that matplotlib behaviour, for anyone who needs the circle to survive
+  an interactive resize.
 
   Each annotate record holds its artist from construction: there is no
   step that recovers artists from the axes by scanning and pairing them

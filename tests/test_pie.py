@@ -155,10 +155,37 @@ def test_aspect_equal_is_available(df):
 
 def test_order_wins(df):
     fig, ax = pp.subplots()
-    pp.pieplot(data=df, x="kind", y="n", order=["none", "admin"],
-               legend=False, ax=ax)
+    with pytest.warns(UserWarning, match="renormalise"):
+        pp.pieplot(data=df, x="kind", y="n", order=["none", "admin"],
+                   legend=False, ax=ax)
     assert [r.path[0] for r in ax._publiplots_wedge_meta.wedges] == [
         "none", "admin"]
+
+
+def test_order_that_drops_a_category_warns_and_names_it(df):
+    """order= alone renormalises the pie to a false 100%: `none` is 4 of
+    104 in the frame but 8.7% of the two-wedge chart, and annotate=True
+    would print that number. The branch refuses order= + min_share for
+    exactly this hazard, so order= alone must at least say so."""
+    fig, ax = pp.subplots()
+    with pytest.warns(UserWarning) as rec:
+        pp.pieplot(data=df, x="kind", y="n", order=["none", "admin"],
+                   legend=False, ax=ax)
+    message = str(rec[0].message)
+    assert "symptom" in message and "lay_dx" in message
+    assert "renormalise" in message
+    shares = [r.fraction_of_total for r in ax._publiplots_wedge_meta.wedges]
+    assert sum(shares) == pytest.approx(1.0)
+    assert shares[0] == pytest.approx(4.0 / 45.8)      # not 4.0 / 104.0
+
+
+def test_an_order_naming_every_category_does_not_warn(df):
+    fig, ax = pp.subplots()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        pp.pieplot(data=df, x="kind", y="n",
+                   order=["none", "admin", "lay_dx", "symptom"],
+                   legend=False, ax=ax)
 
 
 @pytest.fixture
@@ -235,6 +262,89 @@ def test_the_other_bucket_sorts_last_whatever_the_frame_order():
         "symptom", "admin", "Other"]
 
 
+def test_min_share_keeps_a_categoricals_declared_order():
+    """The correspondence with a bar panel is the point of the feature.
+
+    Bucketing used to cast the column to object, which threw the declared
+    category order away: barplot drew e, d, c, b, a and the pie drew
+    a, b, c, Other.
+    """
+    raw = pd.DataFrame({
+        "kind": pd.Categorical(list("abcde") * 4,
+                               categories=list("edcba"), ordered=True),
+        "n": [10.0, 9.0, 8.0, 0.4, 0.3] * 4,
+    })
+    fig, ax = pp.subplots()
+    pp.barplot(data=raw, x="kind", y="n", legend=False, ax=ax)
+    bar_order = [t.get_text() for t in ax.get_xticklabels()]
+    assert bar_order == ["e", "d", "c", "b", "a"]
+
+    fig2, ax2 = pp.subplots()
+    pp.pieplot(data=raw, x="kind", y="n", min_share=0.05, legend=False,
+               ax=ax2)
+    paths = [r.path[0] for r in ax2._publiplots_wedge_meta.wedges]
+    # d and e bucket; the survivors keep the declared order, not the
+    # alphabetical one an object cast would have produced.
+    assert paths == ["c", "b", "a", "Other"]
+
+
+def test_a_hatch_column_typo_names_hatch_not_hue(df):
+    """hatch= resolves through the same code as hue=; the message must
+    still name the keyword the caller actually passed."""
+    fig, ax = pp.subplots()
+    with pytest.raises(ValueError, match=r"hatch='zzz'"):
+        pp.pieplot(data=df, x="kind", y="n", hatch="zzz", legend=False, ax=ax)
+
+
+def test_a_non_constant_hatch_column_names_hatch_not_hue():
+    raw = pd.DataFrame({
+        "kind": list("aabb"),
+        "n": [1.0, 2.0, 3.0, 4.0],
+        "g": list("wxyz"),
+    })
+    fig, ax = pp.subplots()
+    with pytest.raises(ValueError, match=r"hatch='g' is not constant"):
+        pp.pieplot(data=raw, x="kind", y="n", hatch="g", legend=False, ax=ax)
+
+
+def test_min_share_does_not_make_an_outside_hue_column_look_ambiguous():
+    """The user's column IS constant within every real category; it was
+    min_share that merged them, so the bucket must not be blamed on it."""
+    raw = pd.DataFrame({
+        "kind": list("abcd"),
+        "n": [52.0, 42.0, 6.0, 4.0],
+        "g": list("wxyz"),
+    })
+    fig, ax = pp.subplots()
+    pp.pieplot(data=raw, x="kind", y="n", hue="g", min_share=0.1,
+               legend=False, ax=ax)
+    records = ax._publiplots_wedge_meta.wedges
+    assert [r.path[0] for r in records] == ["a", "b", "Other"]
+    # The bucket takes its own neutral entry, not a real category's colour.
+    assert records[-1].hue_color == pytest.approx(
+        mcolors.to_rgb("#b4b4b4"))
+
+
+def test_min_share_does_not_make_an_outside_hatch_column_look_ambiguous():
+    raw = pd.DataFrame({
+        "kind": list("abcd"),
+        "n": [52.0, 42.0, 6.0, 4.0],
+        "g": list("wxyz"),
+    })
+    fig, ax = pp.subplots()
+    pp.pieplot(data=raw, x="kind", y="n", hatch="g", min_share=0.1,
+               legend=False, ax=ax)
+    assert len(ax._publiplots_wedge_meta.wedges) == 3
+
+
+def test_min_share_leaves_a_plain_object_column_alone(df):
+    """The Categorical branch must not change the non-categorical path."""
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", min_share=0.1, legend=False, ax=ax)
+    assert [r.path[0] for r in ax._publiplots_wedge_meta.wedges] == [
+        "symptom", "admin", "Other"]
+
+
 def test_meta_holds_the_callers_own_frame(df):
     """Annotate builders look rows up in it, so it must not be the
     internally bucketed copy."""
@@ -270,9 +380,11 @@ def test_a_partial_palette_dict_leaves_the_rest_on_the_default_palette(df):
     assert len({tuple(c) for c in by_path.values()}) == 4
 
 
-def test_multi_column_x_points_at_sunburstplot(df):
+def test_multi_column_x_is_refused(df):
+    """One ring only -- and the message must not name a function that
+    does not exist, which is where a reader would go looking next."""
     fig, ax = pp.subplots()
-    with pytest.raises(ValueError, match="sunburstplot"):
+    with pytest.raises(ValueError, match="single column"):
         pp.pieplot(data=df, x=["kind", "kind"], y="n", ax=ax)
 
 
@@ -425,8 +537,9 @@ def test_order_with_min_share_is_refused(df):
 def test_order_and_min_share_are_each_fine_alone(df):
     """The refusal above must not have made either parameter unusable."""
     fig, axes = pp.subplots(ncols=2)
-    pp.pieplot(data=df, x="kind", y="n", order=["none", "admin"],
-               legend=False, ax=axes[0])
+    with pytest.warns(UserWarning, match="renormalise"):
+        pp.pieplot(data=df, x="kind", y="n", order=["none", "admin"],
+                   legend=False, ax=axes[0])
     pp.pieplot(data=df, x="kind", y="n", min_share=0.1, legend=False,
                ax=axes[1])
     assert [r.path[0] for r in axes[0]._publiplots_wedge_meta.wedges] == [
@@ -613,6 +726,65 @@ def test_a_deferred_pp_legend_renders_the_categories(df):
         "symptom", "admin", "lay_dx", "none"]
 
 
+def test_the_default_legend_true_path_renders_a_legend(df):
+    """Every other legend test passes legend=False, so the default path
+    -- resolve_legend_flags(legend) with legend=True -- was never run end
+    to end: replacing it with resolve_legend_flags(False) survived."""
+    from matplotlib.legend import Legend
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", ax=ax)          # no legend=
+    fig.canvas.draw()
+    legends = [a for a in list(fig.get_children()) + list(ax.get_children())
+               if isinstance(a, Legend)]
+    assert len(legends) == 1, "exactly one legend artist"
+    assert [t.get_text() for t in legends[0].get_texts()] == [
+        "symptom", "admin", "lay_dx", "none"]
+
+
+def test_start_angle_and_direction_reach_the_layout():
+    """Both were hardcoded at the layout() call; unwiring either from the
+    public signature changed nothing that any test looked at."""
+    raw = pd.DataFrame({"kind": list("ab"), "n": [3.0, 1.0]})
+
+    fig, ax = pp.subplots()
+    pp.pieplot(data=raw, x="kind", y="n", legend=False, ax=ax)
+    first = ax._publiplots_wedge_meta.wedges[0]
+    # Default: 90 degrees, clockwise -- the first wedge runs from twelve
+    # o'clock backwards through 3/4 of the circle to 90 - 270 = -180.
+    assert (first.theta1, first.theta0) == pytest.approx((90.0, -180.0))
+
+    fig2, ax2 = pp.subplots()
+    pp.pieplot(data=raw, x="kind", y="n", start_angle=0.0,
+               direction="counterclockwise", legend=False, ax=ax2)
+    first2 = ax2._publiplots_wedge_meta.wedges[0]
+    assert (first2.theta0, first2.theta1) == pytest.approx((0.0, 270.0))
+    second2 = ax2._publiplots_wedge_meta.wedges[1]
+    assert (second2.theta0, second2.theta1) == pytest.approx((270.0, 360.0))
+
+
+def test_the_framing_makes_room_for_the_pulled_extent():
+    """radius = 1.0 + max_pull + 0.05: dropping max_pull survived,
+    because nothing asserted the pulled rim was inside the limits."""
+    raw = pd.DataFrame({"kind": list("ab"), "n": [3.0, 1.0]})
+    fig, ax = pp.subplots(axes_size=(60, 60))
+    pp.pieplot(data=raw, x="kind", y="n", pull=0.3, legend=False, ax=ax)
+
+    records = ax._publiplots_wedge_meta.wedges
+    radial = max((r.patch.center[0] ** 2 + r.patch.center[1] ** 2) ** 0.5
+                 + r.r_outer for r in records)
+    assert radial == pytest.approx(1.30, abs=1e-9), "pull 0.3 past rim 1.0"
+
+    # The square cell frames both axes at the same radius, so the
+    # reconciliation is visible directly in the limits.
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    assert (x1, y1) == pytest.approx((1.35, 1.35))
+    per_axis = max(max(abs(r.patch.center[0]), abs(r.patch.center[1]))
+                   + r.r_outer for r in records)
+    assert per_axis < min(x1, y1)
+    assert -per_axis > max(x0, y0)
+
+
 def test_the_entry_is_named_for_the_column_pp_legend_collects_on(df):
     """pp.legend(collect=[...]) selects on the entry name."""
     from publiplots.utils.legend_entries import get_entries
@@ -632,6 +804,41 @@ def test_title_is_set(df):
     pp.pieplot(data=df, x="kind", y="n", title="Referral source",
                legend=False, ax=ax)
     assert ax.get_title() == "Referral source"
+
+
+def test_an_empty_title_clears_a_pre_existing_one(df):
+    """The house form is `title is not None` (bar.py:639, box.py): ""
+    means "no title", and only None means "leave whatever is there"."""
+    fig, ax = pp.subplots()
+    ax.set_title("previously set")
+    pp.pieplot(data=df, x="kind", y="n", title="", legend=False, ax=ax)
+    assert ax.get_title() == ""
+
+
+def test_title_none_leaves_a_pre_existing_one_alone(df):
+    fig, ax = pp.subplots()
+    ax.set_title("previously set")
+    pp.pieplot(data=df, x="kind", y="n", title=None, legend=False, ax=ax)
+    assert ax.get_title() == "previously set"
+
+
+def test_an_all_nan_numeric_hue_names_the_column_instead_of_min():
+    """min()/max() over an empty level list raised a bare "min() iterable
+    argument is empty" that named neither the column nor the cause."""
+    import numpy as np
+    raw = pd.DataFrame({
+        "kind": list("abc"),
+        "n": [3.0, 2.0, 1.0],
+        "score": [np.nan, np.nan, np.nan],
+    })
+    fig, ax = pp.subplots()
+    with pytest.warns(UserWarning) as rec:
+        pp.pieplot(data=raw, x="kind", y="n", hue="score", legend=False,
+                   ax=ax)
+    messages = [str(r.message) for r in rec]
+    assert any("score" in m and "no non-NaN value" in m for m in messages)
+    # Degrades the way the categorical path does: grey wedges, no crash.
+    assert len(ax._publiplots_wedge_meta.wedges) == 3
 
 
 def test_an_unknown_keyword_is_refused(df):

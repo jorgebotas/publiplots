@@ -184,6 +184,11 @@ def annotate(
     ValueError
         If ``kind`` is not one of the registered strategies, or if
         ``offset`` / ``pad`` is negative.
+    TypeError
+        If an option belonging to one strategy is passed with a
+        ``kind`` that does not take it: ``basis=`` outside the wedge
+        kinds, or ``labels=`` / ``data=`` outside the custom-label
+        kinds.
 
     Notes
     -----
