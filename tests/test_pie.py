@@ -1,9 +1,12 @@
 """Tests for pp.pieplot."""
 from __future__ import annotations
 
+import warnings
+
 import matplotlib
 matplotlib.use("Agg")
 
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
@@ -400,5 +403,214 @@ def test_numeric_hue_orders_colours_by_value():
 
 
 def test_figsize_is_rejected(df):
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="axes_size"):
         pp.pieplot(data=df, x="kind", y="n", figsize=(4, 3))
+
+
+# --- review round 1 ------------------------------------------------------
+
+
+def test_order_with_min_share_is_refused(df):
+    """A bucketed category cannot be named in an explicit order, so the
+    combination used to drop it and renormalise the pie to a false 100%."""
+    fig, ax = pp.subplots()
+    with pytest.raises(ValueError, match="min_share"):
+        pp.pieplot(data=df, x="kind", y="n", min_share=0.1,
+                   order=["symptom", "admin", "lay_dx", "none"], ax=ax)
+    with pytest.raises(ValueError, match="order"):
+        pp.pieplot(data=df, x="kind", y="n", min_share=0.1,
+                   order=["symptom", "admin", "lay_dx", "none"], ax=ax)
+
+
+def test_order_and_min_share_are_each_fine_alone(df):
+    """The refusal above must not have made either parameter unusable."""
+    fig, axes = pp.subplots(ncols=2)
+    pp.pieplot(data=df, x="kind", y="n", order=["none", "admin"],
+               legend=False, ax=axes[0])
+    pp.pieplot(data=df, x="kind", y="n", min_share=0.1, legend=False,
+               ax=axes[1])
+    assert [r.path[0] for r in axes[0]._publiplots_wedge_meta.wedges] == [
+        "none", "admin"]
+    assert [r.path[0] for r in axes[1]._publiplots_wedge_meta.wedges] == [
+        "symptom", "admin", "Other"]
+
+
+def test_hue_order_reorders_the_legend_without_dropping_wedges(df):
+    """hue_order narrows the legend's running order, never the palette:
+    an omitted level must keep a real colour, not the grey fallback."""
+    from publiplots.utils.legend_entries import get_entries
+    fig, ax = pp.subplots()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        pp.pieplot(data=df, x="kind", y="n", hue_order=["none", "admin"],
+                   legend=False, ax=ax)
+
+    records = ax._publiplots_wedge_meta.wedges
+    assert [r.path[0] for r in records] == [
+        "symptom", "admin", "lay_dx", "none"], "wedges are unaffected"
+
+    grey = mcolors.to_rgb("#cccccc")
+    for record in records:
+        assert record.hue_color != pytest.approx(grey), (
+            f"{record.path[0]} fell through to the missing-entry default"
+        )
+    assert len({tuple(r.hue_color) for r in records}) == 4
+
+    # Listed levels lead; the rest keep their place behind them.
+    assert list(get_entries(ax)[0].labels) == [
+        "none", "admin", "symptom", "lay_dx"]
+
+
+def test_an_independent_hatch_column_gets_its_own_legend_entry():
+    """Folding hatch patterns into the hue swatches looks them up in the
+    wrong key space, so the drawn patterns end up with no key at all."""
+    from publiplots.utils.legend_entries import get_entries
+    raw = pd.DataFrame({
+        "dept": list("abcd"),
+        "team": ["x", "x", "y", "y"],
+        "n": [1.0, 1.0, 1.0, 1.0],
+    })
+    fig, ax = pp.subplots()
+    pp.pieplot(data=raw, x="dept", y="n", hatch="team", legend=False, ax=ax)
+
+    entries = {e.kind: e for e in get_entries(ax)}
+    assert set(entries) == {"hue", "hatch"}
+    assert entries["hatch"].name == "team"
+    assert list(entries["hatch"].labels) == ["x", "y"]
+
+    drawn = {r.patch.get_hatch()
+             for r in ax._publiplots_wedge_meta.wedges}
+    keyed = {h.get_hatch() for h in entries["hatch"].handles}
+    assert keyed == drawn, "every drawn pattern is in the key"
+
+    # The colour swatches stand for the hue alone.
+    assert all(not h.get_hatch() for h in entries["hue"].handles)
+
+
+def test_a_colliding_hatch_value_does_not_leak_into_a_hue_swatch():
+    """The two columns have separate value spaces. Looking a hatch map up
+    with hue keys can still *hit* when the spaces overlap, hatching a
+    colour swatch for a pattern its wedge does not carry."""
+    from publiplots.utils.legend_entries import get_entries
+    raw = pd.DataFrame({
+        "dept": ["x", "y", "z"],
+        "team": ["z", "z", "x"],
+        "n": [1.0, 1.0, 1.0],
+    })
+    fig, ax = pp.subplots()
+    pp.pieplot(data=raw, x="dept", y="n", hatch="team", legend=False, ax=ax)
+    entries = {e.kind: e for e in get_entries(ax)}
+    assert all(not h.get_hatch() for h in entries["hue"].handles), (
+        "a colour swatch must never borrow a pattern from the hatch map"
+    )
+    assert [h.get_hatch() for h in entries["hatch"].handles] == ["", "//"]
+
+
+def test_a_shared_hatch_column_keeps_one_combined_entry(df):
+    from publiplots.utils.legend_entries import get_entries
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", hatch="kind", legend=False, ax=ax)
+    entries = get_entries(ax)
+    assert [e.kind for e in entries] == ["hue"]
+    assert [h.get_hatch() for h in entries[0].handles] == [
+        r.patch.get_hatch() for r in ax._publiplots_wedge_meta.wedges]
+
+
+def test_hatch_order_leads_without_dropping_levels(df):
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", hatch="kind",
+               hatch_order=["none", "lay_dx"], legend=False, ax=ax)
+    patterns = {r.path[0]: r.patch.get_hatch()
+                for r in ax._publiplots_wedge_meta.wedges}
+    # The house cycle starts plain, so the first listed level is the plain
+    # one and the unlisted levels take the later patterns.
+    assert patterns["none"] == ""
+    assert patterns["lay_dx"] == "//"
+    assert len(set(patterns.values())) == 4, "no level lost its pattern"
+
+
+def test_min_share_is_strictly_below_the_threshold():
+    """The docstring says "below this fraction": a category sitting
+    exactly on the threshold is kept."""
+    raw = pd.DataFrame({"kind": list("abcd"), "n": [82.0, 10.0, 5.0, 3.0]})
+    fig, ax = pp.subplots()
+    pp.pieplot(data=raw, x="kind", y="n", min_share=0.1, legend=False, ax=ax)
+    records = ax._publiplots_wedge_meta.wedges
+    assert [r.path[0] for r in records] == ["a", "b", "Other"], (
+        "b is exactly 10% of 100 and must survive min_share=0.1"
+    )
+    assert records[-1].value == pytest.approx(8.0)   # 5.0 + 3.0
+
+
+def test_the_min_share_value_selects_which_categories_bucket():
+    raw = pd.DataFrame({"kind": list("abcd"), "n": [82.0, 10.0, 5.0, 3.0]})
+    fig, ax = pp.subplots()
+    pp.pieplot(data=raw, x="kind", y="n", min_share=0.2, legend=False, ax=ax)
+    records = ax._publiplots_wedge_meta.wedges
+    assert [r.path[0] for r in records] == ["a", "Other"]
+    assert records[-1].value == pytest.approx(18.0)  # 10.0 + 5.0 + 3.0
+
+
+def test_legend_swatch_matches_the_mark_it_stands_for(df):
+    """CLAUDE.md's swatch/mark parity rule: the key must carry the same
+    stroke width and fill the wedge is drawn with."""
+    from publiplots.utils.legend_entries import get_entries
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax)
+    entry = get_entries(ax)[0]
+    records = ax._publiplots_wedge_meta.wedges
+    assert list(entry.labels) == [r.path[0] for r in records]
+    for handle, record in zip(entry.handles, records):
+        assert handle.get_linewidth() == pytest.approx(
+            record.patch.get_linewidth())
+        assert handle.get_linewidth() == pytest.approx(
+            pp.rcParams["edgewidth"])
+        assert tuple(handle.get_facecolor()) == pytest.approx(
+            tuple(record.patch.get_facecolor()))
+
+
+def test_a_deferred_pp_legend_renders_the_categories(df):
+    """#268: pp.legend(ax) on a pie ran without error and drew nothing.
+    The entry is stashed even under legend=False so the later call finds
+    it, and the group materialises the artist at draw time."""
+    from matplotlib.legend import Legend
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax)
+    assert not [a for a in fig.get_children() if isinstance(a, Legend)]
+
+    pp.legend(ax)
+    fig.canvas.draw()
+
+    legends = [a for a in list(fig.get_children()) + list(ax.get_children())
+               if isinstance(a, Legend)]
+    assert len(legends) == 1, "exactly one legend artist"
+    assert [t.get_text() for t in legends[0].get_texts()] == [
+        "symptom", "admin", "lay_dx", "none"]
+
+
+def test_the_entry_is_named_for_the_column_pp_legend_collects_on(df):
+    """pp.legend(collect=[...]) selects on the entry name."""
+    from publiplots.utils.legend_entries import get_entries
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax)
+    assert get_entries(ax)[0].name == "kind", "defaults to the x column"
+
+    raw = pd.DataFrame({"dept": list("abc"), "region": ["n", "n", "s"],
+                        "n": [1.0, 1.0, 2.0]})
+    fig2, ax2 = pp.subplots()
+    pp.pieplot(data=raw, x="dept", y="n", hue="region", legend=False, ax=ax2)
+    assert get_entries(ax2)[0].name == "region", "an explicit hue wins"
+
+
+def test_title_is_set(df):
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", title="Referral source",
+               legend=False, ax=ax)
+    assert ax.get_title() == "Referral source"
+
+
+def test_an_unknown_keyword_is_refused(df):
+    """Nothing is forwarded on, so a leftover keyword is a typo."""
+    fig, ax = pp.subplots()
+    with pytest.raises(TypeError, match="donu"):
+        pp.pieplot(data=df, x="kind", y="n", donu=0.5, ax=ax)
