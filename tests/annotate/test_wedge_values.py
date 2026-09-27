@@ -41,6 +41,39 @@ def _radius(text):
     return math.hypot(*text.get_position())
 
 
+MM_PER_INCH = 25.4
+
+
+def _mm_per_data(ax):
+    """Millimetres on the page per data unit, read off the y axis."""
+    height_mm = ax.get_window_extent().height * MM_PER_INCH / ax.figure.dpi
+    y0, y1 = ax.get_ylim()
+    return height_mm / (y1 - y0)
+
+
+def _rim_gaps_mm(ax):
+    """Rendered rim-to-label gap, in millimetres, for every outside label."""
+    ax.figure.canvas.draw()
+    scale = _mm_per_data(ax)
+    return [(_radius(text) - record.r_outer) * scale
+            for record, text in zip(ax._publiplots_wedge_meta.wedges, ax.texts)]
+
+
+def _closest_label_margin_mm(ax):
+    """Smallest gap in mm between any label's drawn box and the axis edge."""
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    frame = ax.get_window_extent()
+    px_to_mm = MM_PER_INCH / fig.dpi
+    margins = []
+    for text in ax.texts:
+        box = text.get_window_extent(renderer)
+        margins.append(min(box.x0 - frame.x0, frame.x1 - box.x1,
+                           box.y0 - frame.y0, frame.y1 - box.y1) * px_to_mm)
+    return min(margins) * 1.0
+
+
 # -----------------------------------------------------------------------------
 # Label text
 # -----------------------------------------------------------------------------
@@ -133,6 +166,50 @@ def test_outside_labels_sit_on_the_wedge_mid_ray(df):
         assert math.degrees(math.atan2(ty, tx)) % 360.0 == pytest.approx(
             mid % 360.0, abs=1e-6)
         assert math.hypot(tx, ty) > record.r_outer
+
+
+def test_the_outside_gap_is_the_requested_millimetres_at_any_chart_size(df):
+    """`offset` is millimetres on the page, not data units, and not a
+    fraction that drifts with the chart.
+
+    The framing grows after placement to make room for the labels, which
+    shrinks the disc; a gap converted once and left alone comes out at
+    1.1mm on a 25mm chart against 2.3mm on an 80mm one for the same
+    requested 3mm. That 2.1x spread is exactly what the millimetre
+    convention exists to remove, so pin the rendered figure, not the
+    argument.
+    """
+    for size in [(40.0, 40.0), (60.0, 60.0), (80.0, 80.0)]:
+        ax = _pie(df, size=size)
+        pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0)
+        for gap in _rim_gaps_mm(ax):
+            assert gap == pytest.approx(3.0, abs=0.05), size
+
+
+def test_the_outside_gap_tracks_the_requested_millimetres(df):
+    for offset in [0.5, 2.0, 5.0]:
+        ax = _pie(df)
+        pp.annotate(ax, "wedge_values", anchor="outside", offset=offset)
+        for gap in _rim_gaps_mm(ax):
+            assert gap == pytest.approx(offset, abs=0.05)
+
+
+def test_pad_is_the_millimetre_margin_from_the_label_box_to_the_axis_edge(df):
+    """`pad` is measured from the label's drawn box, not from its anchor.
+
+    A test that only checks the anchor point cannot tell ``pad=0`` from
+    ``pad=6``, because the anchor clears the edge either way.
+    """
+    for pad in [0.0, 2.0, 6.0]:
+        ax = _pie(df)
+        pp.annotate(ax, "wedge_values", anchor="outside", offset=1.0, pad=pad)
+        assert _closest_label_margin_mm(ax) == pytest.approx(pad, abs=0.05)
+
+
+def test_pad_defaults_to_offset(df):
+    ax = _pie(df)
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=4.0)
+    assert _closest_label_margin_mm(ax) == pytest.approx(4.0, abs=0.05)
 
 
 def test_a_bigger_offset_pushes_outside_labels_further(df):
@@ -286,6 +363,27 @@ def test_outside_labels_are_framed_inside_the_axes(df):
         assert y0 < ty < y1
 
 
+def test_an_impossible_offset_cannot_run_the_framing_away(df):
+    """Growing the framing moves the labels it was growing to fit.
+
+    Their gap is millimetres, so it is reconverted against the bigger
+    framing and comes back bigger in data units -- which asks for more
+    growth. That loop converges whenever the gap, the labels and the pad
+    fit inside the cell, and does not when they cannot: a 10mm gap plus a
+    long label on a 25mm chart runs the limits to 5e10 unchecked. The
+    ceiling stops it at a small disc with clipped labels, which is the
+    honest way for an impossible request to degrade.
+    """
+    from publiplots.annotate._wedge import _MAX_FRAMING_GROWTH
+
+    ax = _pie(df, size=(25.0, 25.0))
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=10.0, fmt=",.2f")
+    half_span = (ax.get_ylim()[1] - ax.get_ylim()[0]) / 2.0
+    assert math.isfinite(half_span)
+    assert 1.0 < half_span <= 1.05 * _MAX_FRAMING_GROWTH + 1e-6
+    assert len(ax.texts) == len(ax._publiplots_wedge_meta.wedges)
+
+
 def test_the_framing_stays_square_when_it_grows(df):
     """Growing the limits must not squash the disc into an ellipse."""
     ax = _pie(df)
@@ -295,6 +393,25 @@ def test_the_framing_stays_square_when_it_grows(df):
     after = ((ax.get_xlim()[1] - ax.get_xlim()[0])
              / (ax.get_ylim()[1] - ax.get_ylim()[0]))
     assert after == pytest.approx(before)
+
+
+def test_a_narrow_ring_cannot_hold_its_labels(df):
+    """The radial half of the fit test carries its own weight.
+
+    A wide ring holds every label; a ring thinner than the label is tall
+    holds none -- including the 50% wedge, which has all the angular room
+    in the world and is rejected on ring width alone. Nothing in the
+    tangential half of the test can tell these two charts apart.
+    """
+    wide = _pie(df, donut=0.6)
+    pp.annotate(wide, "wedge_values", anchor="auto")
+    assert all(_radius(t) < 1.0 for t in wide.texts)
+    assert len(wide.lines) == 0
+
+    narrow = _pie(df, donut=0.9)
+    pp.annotate(narrow, "wedge_values", anchor="auto")
+    assert all(_radius(t) > 1.0 for t in narrow.texts)
+    assert len(narrow.lines) == len(narrow.texts)
 
 
 def test_a_donut_labels_the_middle_of_its_ring(df):
@@ -312,6 +429,55 @@ def test_a_pulled_wedge_is_labelled_at_its_pulled_centre(df):
     cx, cy = record.patch.center
     expected = (cx + 0.5 * math.cos(mid), cy + 0.5 * math.sin(mid))
     assert ax.texts[0].get_position() == pytest.approx(expected)
+
+
+# -----------------------------------------------------------------------------
+# aspect="equal"
+# -----------------------------------------------------------------------------
+
+def test_aspect_equal_is_labelled_like_a_cell_framed_pie(df):
+    """The other framing gets labelled too, and lands in the same places.
+
+    ``aspect='equal'`` leaves the limits square and has matplotlib shrink
+    the drawn box, so on a non-square cell the x and y scales differ and
+    the single scalar the fit test reads is the y one. That makes the
+    horizontal reach an overestimate rather than an error: labels may be
+    pushed out sooner than strictly needed, never left overflowing.
+    """
+    equal = _pie(df, aspect="equal")
+    pp.annotate(equal, "wedge_values", anchor="inside")
+    cell = _pie(df, aspect="cell")
+    pp.annotate(cell, "wedge_values", anchor="inside")
+    assert [t.get_text() for t in equal.texts] == [t.get_text()
+                                                   for t in cell.texts]
+    for a, b in zip(equal.texts, cell.texts):
+        assert a.get_position() == pytest.approx(b.get_position())
+
+
+def test_aspect_equal_outside_labels_clear_the_rim_and_get_leaders(df):
+    ax = _pie(df, aspect="equal")
+    pp.annotate(ax, "wedge_values", anchor="outside")
+    assert all(_radius(t) > 1.0 for t in ax.texts)
+    assert len(ax.lines) == len(ax.texts)
+
+
+def test_aspect_equal_on_a_wide_cell_keeps_its_labels_framed(df):
+    """The overestimate is conservative, so nothing escapes the frame."""
+    ax = _pie(df, size=(70.0, 40.0), aspect="equal")
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=2.0)
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    for text in ax.texts:
+        tx, ty = text.get_position()
+        assert x0 < tx < x1
+        assert y0 < ty < y1
+
+
+def test_aspect_equal_keeps_its_square_limits_when_the_framing_grows(df):
+    ax = _pie(df, size=(70.0, 40.0), aspect="equal")
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=4.0)
+    assert (ax.get_xlim()[1] - ax.get_xlim()[0]) == pytest.approx(
+        ax.get_ylim()[1] - ax.get_ylim()[0])
 
 
 # -----------------------------------------------------------------------------

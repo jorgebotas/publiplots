@@ -4,10 +4,10 @@ Placement here is decided by *measuring* the rendered label against the
 room its wedge actually has, not by a threshold on the wedge's angular
 span. A fixed degree threshold is the wrong shape for this problem: the
 room a label needs depends on the chart's physical size, on how long the
-label string is, and on where the wedge points. Measured at the themed
-7pt font with the default ``.1f`` percentage, the span a label needs to
-sit inside runs from 14 degrees to 134 degrees across ordinary inputs --
-see :func:`_label_fits` for the numbers and the geometry.
+label string is, and on where the wedge points. At the themed 7pt font
+with the default ``.1f`` percentage, the span a label needs to sit
+inside runs from roughly 19 degrees to 134 degrees across ordinary
+inputs -- see :func:`_label_fits` for the numbers and the geometry.
 """
 from __future__ import annotations
 
@@ -44,10 +44,26 @@ _WEDGE_DEFAULT_FMT = "__wedge_percent__"
 
 # How many times the place -> measure -> expand cycle may run. Pushing a
 # label outside grows the axis limits, which shrinks the disc, which can
-# in turn stop a label that had fitted from fitting. Both moves are
-# monotone -- a label never comes back inside and the limits never
-# shrink -- so the cycle settles; this only bounds the work.
-_MAX_FIT_PASSES = 3
+# in turn stop a label that had fitted from fitting, and which also moves
+# every outside label -- its gap is `offset` MILLIMETRES, so it has to be
+# reconverted against the new framing. Each of those moves is monotone --
+# a label never comes back inside and the limits never shrink -- and the
+# growth they feed each other is geometric with a ratio well under one,
+# so the cycle settles. The loop runs until it does; this only bounds the
+# work.
+_MAX_FIT_PASSES = 12
+
+# Relative slack below which a framing factor counts as "no change". One
+# part in ten thousand is about two microns on a 40mm chart, so settling
+# to it costs a pass or two and buys an exactly-honoured `offset`.
+_FRAMING_TOLERANCE = 1e-4
+
+# Ceiling on how far the framing may grow in total. Labels wider than the
+# cell they sit in have no finite framing that fits them, and without a
+# ceiling the cycle above would chase one forever. Degrading to a small
+# disc with clipped labels is the honest outcome there; running away is
+# not.
+_MAX_FRAMING_GROWTH = 8.0
 
 
 def _meta(ax: Axes) -> WedgeMeta:
@@ -63,12 +79,24 @@ def _meta(ax: Axes) -> WedgeMeta:
 
 
 def _data_per_pixel(ax: Axes) -> float:
-    """Data units spanned by one display pixel.
+    """Data units spanned by one display pixel, read off the y axis.
 
-    Both wedge framings -- ``aspect="cell"``, which matches the data
-    limits to the axes' millimetre ratio, and ``aspect="equal"`` -- leave
-    the x and y scales equal, which is what makes the disc render round.
-    One scalar therefore describes both directions.
+    ``aspect="cell"`` equalises the x and y scales by construction: it
+    matches the data limits to the axes' millimetre ratio, which is what
+    makes the disc render round there, so one scalar describes both
+    directions exactly.
+
+    ``aspect="equal"`` does not. It leaves the limits square and has
+    matplotlib shrink the *drawn box* instead, so on a non-square cell
+    the two scales differ by the cell's own ratio -- a 70x40mm cell
+    measures 0.571 data units per pixel horizontally for every 1.0
+    vertically. Using the y scale for both therefore overestimates how
+    far a label reaches sideways on a cell wider than it is tall. That
+    error is one-directional: it can push a label outside that would
+    have fitted, or grow the framing further than strictly needed, and
+    never the reverse. Conservative, so it is left rather than split
+    into two scalars that the rest of the geometry would then have to
+    carry.
     """
     inverse = ax.transData.inverted()
     y0 = inverse.transform((0.0, 0.0))[1]
@@ -131,14 +159,27 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
     degrees the wedge stops being convex about its mid-ray and the edges
     no longer bound the label at all, so the disc itself is the limit.
 
-    Measured against this test at the themed 7pt font, the span a label
-    needs to sit inside a pie wedge is not one number: ``"50.0%"`` on the
-    default 40x40mm axes needs 43 degrees at twelve o'clock but only 14
-    degrees at three o'clock, because the label lies along the radius
-    there; the same label needs 72 degrees on a 25mm chart and 21 on an
+    The tangential bound is **approximate, and optimistic by a bounded
+    amount**. It resolves the label's reach along the mid-ray's tangent,
+    whereas the half-planes that actually contain the wedge have normals
+    perpendicular to its two *edge* rays, which the tangent only matches
+    as the span goes to zero. So a label can be accepted with a corner
+    slightly proud of an edge: at three o'clock on a 40x40mm chart,
+    ``"50.0%"`` is accepted at a 15-degree span with its corner 0.25mm
+    outside the wedge, and at 18 degrees with 0.06mm outside, against a
+    true threshold nearer 19-22 degrees. The error only ever runs that
+    way -- it never rejects a label that would have fitted -- and 0.25mm
+    of overhang on a chart whose wedges are outlined anyway is not worth
+    the exact half-plane test.
+
+    What the span a label needs is *not* is a single number. Against
+    this test at the themed 7pt font, ``"50.0%"`` on the default 40x40mm
+    axes needs 43 degrees at twelve o'clock and around 19 at three
+    o'clock, where the label lies along the radius rather than across
+    it; the same label needs 72 degrees on a 25mm chart and 21 on an
     80mm one; and ``"1,234,567"`` on that 25mm chart needs 134 degrees.
-    That is the span of values a single constant would have had to stand
-    for, which is why this measures instead.
+    That is the range a single constant would have had to stand for,
+    which is why this measures instead.
     """
     box = text.get_window_extent(renderer)
     half_w = box.width * scale / 2.0
@@ -160,7 +201,13 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
     return 2.0 * reach_r <= (record.r_outer - record.r_inner)
 
 
-def _expand_limits(ax: Axes, texts: List[Text], renderer, pad_mm: float) -> bool:
+def _expand_limits(
+    ax: Axes,
+    texts: List[Text],
+    renderer,
+    pad_mm: float,
+    ceiling: float,
+) -> float:
     """Grow the framing until every label clears the axis edge by ``pad``.
 
     Both limits scale by the same factor about the chart's centre, so the
@@ -172,12 +219,15 @@ def _expand_limits(ax: Axes, texts: List[Text], renderer, pad_mm: float) -> bool
     reaches a fixed *pixel* distance from that anchor, so after scaling
     the limit radius ``r`` by ``f`` the label reaches
     ``|a| + reach_px * scale * f`` and must clear ``r * f``. Solving for
-    ``f`` gives the factor below in closed form; no iteration is needed.
+    ``f`` gives the factor below in closed form for the anchors as they
+    stand. The caller then re-places its outside labels against the new
+    framing and asks again, because moving them changes ``a``.
 
-    Returns True when the limits changed.
+    ``ceiling`` caps this call's factor. Returns the factor applied, or
+    1.0 when the framing was left alone.
     """
-    if not texts:
-        return False
+    if not texts or ceiling <= 1.0:
+        return 1.0
     pad_px = pad_mm * ax.figure.dpi / MM_PER_INCH
     scale = _data_per_pixel(ax)
     x0, x1 = ax.get_xlim()
@@ -202,11 +252,12 @@ def _expand_limits(ax: Axes, texts: List[Text], renderer, pad_mm: float) -> bool
         if room_y > 0.0:
             factor = max(factor, abs(ax_y - cy) / room_y)
 
-    if factor <= 1.0:
-        return False
+    if factor <= 1.0 + _FRAMING_TOLERANCE:
+        return 1.0
+    factor = min(factor, ceiling)
     ax.set_xlim(cx - rx * factor, cx + rx * factor)
     ax.set_ylim(cy - ry * factor, cy + ry * factor)
-    return True
+    return factor
 
 
 def _wedge_values_strategy(
@@ -245,7 +296,6 @@ def _wedge_values_strategy(
         return []
 
     renderer = _ensure_renderer(ax)
-    gap = mm_to_data(offset, ax, "y")
 
     texts: List[Text] = []
     mids: List[float] = []
@@ -262,10 +312,12 @@ def _wedge_values_strategy(
 
         mid = math.radians((record.theta0 + record.theta1) / 2.0)
         place_outside = anchor == "outside"
-        if place_outside:
-            x, y, ha = _outside_point(record, mid, gap)
-        else:
-            x, y, ha = _inside_point(record, mid)
+        # Every label is born at its inside point, even one destined for
+        # the rim: the settle loop below places every outside label on
+        # each pass, so a second placement here would be overwritten
+        # before it could be drawn -- and would be the one place where
+        # `offset` was converted against a framing that later changed.
+        x, y, ha = _inside_point(record, mid)
 
         texts.append(ax.text(
             x, y, label,
@@ -290,8 +342,11 @@ def _wedge_values_strategy(
         outside.append(place_outside)
 
     # Settle placement and framing together: a label that does not fit is
-    # pushed out, which widens the limits, which shrinks the disc and can
-    # unseat another label.
+    # pushed out, which widens the limits, which shrinks the disc -- which
+    # can unseat another label, and which moves every label already
+    # outside, since their gap is `offset` millimetres and a millimetre is
+    # worth fewer data units once the framing has grown.
+    growth = 1.0
     for _ in range(_MAX_FIT_PASSES):
         scale = _data_per_pixel(ax)
         moved = False
@@ -302,17 +357,32 @@ def _wedge_values_strategy(
                 if _label_fits(texts[index], record, renderer, scale,
                                mids[index]):
                     continue
-                x, y, ha = _outside_point(record, mids[index],
-                                          mm_to_data(offset, ax, "y"))
-                texts[index].set_position((x, y))
-                texts[index].set_ha(ha)
                 texts[index].set_color(resolve_color(
                     record, color, "outside", ax, hue_active=meta.hue_active,
                 ))
                 outside[index] = True
                 moved = True
-        grew = _expand_limits(ax, texts, renderer, pad)
-        if not moved and not grew:
+
+        # Re-place *every* outside label, not only the ones just moved.
+        # Converting `offset` once at the start and leaving it would hand
+        # back a gap that shrinks with the disc: a requested 3mm renders
+        # as 1.1mm on a 25mm chart and 2.3mm on an 80mm one, which is the
+        # spread the millimetre convention exists to remove.
+        gap = mm_to_data(offset, ax, "y")
+        for index, record in enumerate(meta.wedges):
+            if not outside[index]:
+                continue
+            x, y, ha = _outside_point(record, mids[index], gap)
+            texts[index].set_position((x, y))
+            texts[index].set_ha(ha)
+
+        factor = _expand_limits(ax, texts, renderer, pad,
+                                ceiling=_MAX_FRAMING_GROWTH / growth)
+        growth *= factor
+        # Leaving on this condition is what makes the gap exact: the
+        # placement above was computed against a framing that this pass
+        # then left alone.
+        if not moved and factor == 1.0:
             break
 
     # Leader lines last, so they are drawn against the settled framing.
