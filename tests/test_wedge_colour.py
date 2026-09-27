@@ -4,6 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+import publiplots as pp
 from publiplots.plot.wedge.colour import blend, derive_colors, resolve_hue_values
 from publiplots.plot.wedge.geometry import build_nodes
 
@@ -130,3 +131,62 @@ def test_an_only_child_takes_no_sibling_offset():
     colors = derive_colors(nodes, values, {"A": "#000000"},
                            depth_range=0.0, sibling_range=0.5, n_levels=2)
     assert colors[("A", "x")] == pytest.approx((0.0, 0.0, 0.0))
+
+
+def test_object_dtype_numeric_hue_is_continuous():
+    """An object-dtype column of plain numbers is still a continuous hue --
+    seaborn's ``all_numeric`` fallback (#262), not a dtype check alone."""
+    df = pd.DataFrame({
+        "k": list("ABC"),
+        "score": pd.Series([1, 2, 3], dtype=object),
+        "n": [1.0, 1.0, 1.0],
+    })
+    nodes = build_nodes(df, ["k"], "n")
+    values, continuous = resolve_hue_values(df, ["k"], "score", nodes)
+    assert continuous is True
+    assert values[("A",)] == pytest.approx(1.0)
+
+
+def test_bool_hue_is_categorical():
+    """Unlike seaborn's own numeric rule, a boolean hue stays categorical
+    here -- a colorbar over {False, True} would be nonsense."""
+    df = pd.DataFrame({
+        "k": list("ABC"),
+        "flag": [True, False, True],
+        "n": [1.0, 1.0, 1.0],
+    })
+    nodes = build_nodes(df, ["k"], "n")
+    values, continuous = resolve_hue_values(df, ["k"], "flag", nodes)
+    assert continuous is False
+    assert values[("A",)] is True
+
+
+def test_hue_naming_a_non_root_level_raises():
+    df, levels = _nested(), ["k", "s"]
+    nodes = build_nodes(df, levels, "n")
+    with pytest.raises(ValueError, match=r"hue=.*outermost"):
+        resolve_hue_values(df, levels, "s", nodes)
+
+
+def test_missing_hue_value_warns_and_falls_back_to_grey():
+    """A NaN in the hue column drops that node from resolve_hue_values;
+    derive_colors must still colour it, but say so once per call."""
+    df = pd.DataFrame({
+        "a": ["A", "A"], "b": ["x", "y"],
+        "region": [None, "north"], "n": [1.0, 1.0],
+    })
+    nodes = build_nodes(df, ["a", "b"], "n")
+    values, _ = resolve_hue_values(df, ["a", "b"], "region", nodes)
+    assert ("A", "x") not in values
+
+    with pytest.warns(UserWarning, match=r"region"):
+        colors = derive_colors(nodes, values, {"north": "#000000"},
+                               depth_range=0.0, sibling_range=0.0,
+                               n_levels=2, hue_column="region")
+    import matplotlib.colors as mcolors
+    assert colors[("A", "x")] == pytest.approx(mcolors.to_rgb("#cccccc"))
+
+
+def test_sunburst_rcparams_defaults():
+    assert pp.rcParams["sunburst.depth_range"] == 0.45
+    assert pp.rcParams["sunburst.sibling_range"] == 0.14
