@@ -33,6 +33,9 @@ publiplots-specific keys (not in matplotlib) include:
   :func:`publiplots.set_hatch_mode` to mutate it.
 - ``scatter.size_min`` / ``scatter.size_max`` — size mapping bounds
   for :func:`publiplots.scatterplot` (points^2).
+- ``sunburst.depth_range`` / ``sunburst.sibling_range`` — colour
+  derivation spans for :func:`publiplots.sunburstplot` (``0.45`` /
+  ``0.14``). Inert for a single-ring chart.
 - ``subplots.axes_size`` — default ``(width_mm, height_mm)`` for
   :func:`publiplots.subplots`.
 - ``subplots.title_space`` / ``xlabel_space`` / ``ylabel_space`` /
@@ -198,6 +201,14 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     # Scatter plot sizes
     "scatter.size_min": 50,  # Minimum marker size for size mapping
     "scatter.size_max": 1000,  # Maximum marker size for size mapping
+
+    # Sunburst colour derivation. Both are total spans, not per-ring steps:
+    # the outermost ring lands at `depth_range`, intermediate rings
+    # interpolate. A per-ring step degrades silently as a tree deepens.
+    # Positive blends toward white, negative toward black. Both are inert
+    # for a single-ring chart, so pieplot pays nothing for them.
+    "sunburst.depth_range": 0.45,
+    "sunburst.sibling_range": 0.14,
 
     # Bar plot styling
     "bar.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.barplot
