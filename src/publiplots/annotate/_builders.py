@@ -825,6 +825,17 @@ def _iter_box_group_keys(spec, data, hue_outer: bool,
             yield cat, h_val
 
 
+def _is_singular(vals: np.ndarray) -> bool:
+    """True when seaborn's violin KDE cannot fit ``vals``.
+
+    seaborn then draws the group as a bare line instead of a body
+    (``_fit_and_evaluate`` in ``seaborn/_stats/density.py``): fewer than two
+    finite observations, or zero spread.
+    """
+    finite = vals[np.isfinite(vals)]
+    return finite.size < 2 or float(np.ptp(finite)) == 0.0
+
+
 def _aggregate_box_stats(
     data,
     x: str,
@@ -837,6 +848,7 @@ def _aggregate_box_stats(
     hue_outer: bool = True,
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
+    skip_singular: bool = False,
 ) -> List[Dict]:
     """Group by (categorical_axis [, hue]) and compute box stats per group.
 
@@ -852,6 +864,9 @@ def _aggregate_box_stats(
     ``source_frame.iloc[frame_row_index]`` resolves the caller's row for
     any index kind. When ``source_frame`` is ``None`` or the label does
     not map (rare), ``frame_row_index`` is ``None``.
+
+    ``skip_singular`` drops groups seaborn's violin plotter draws without a
+    body; see `_is_singular`.
     """
     value_col = y if categorical_axis == x else x
     spec = BarSplitSpec.resolve(
@@ -866,6 +881,8 @@ def _aggregate_box_stats(
             mask = mask & (data[spec.split_hue] == h_val)
         vals = data.loc[mask, value_col].to_numpy()
         if len(vals) == 0:
+            continue
+        if skip_singular and _is_singular(vals):
             continue
         stats = _compute_box_stats(vals, whis)
         # Position within source_frame of the first row matching this group.
@@ -924,6 +941,7 @@ def _build_box_stats_meta(
     hue_outer: bool = True,
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
+    skip_singular: bool = False,
 ) -> BoxStatsMeta:
     """Shared builder for pp.boxplot / pp.violinplot.
 
@@ -943,7 +961,7 @@ def _build_box_stats_meta(
         data, x=x, y=y, hue=hue,
         categorical_axis=categorical_axis, whis=whis,
         source_frame=source_frame, hue_outer=hue_outer,
-        order=order, hue_order=hue_order,
+        order=order, hue_order=hue_order, skip_singular=skip_singular,
     )
     if len(artists) != len(agg):
         n = min(len(artists), len(agg))
@@ -1071,4 +1089,7 @@ def build_from_violinplot_call(
         # `bxp`, which boxplot delegates to. See issue #254.
         hue_outer=False,
         order=order, hue_order=hue_order,
+        # seaborn draws a singular group as a bare line, not a body, so a
+        # record for it would take the next group's body.
+        skip_singular=True,
     )

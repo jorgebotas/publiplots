@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Violin labels no longer shift onto the next violin after a group seaborn
+  could not draw.** seaborn draws a group with fewer than two observations,
+  or zero spread, as a bare line rather than a body, but the box-stats builder
+  paired records to bodies by index. With groups A (n=1), B and C, A's median
+  was printed on B's violin and B's on C's, and C's label was dropped.
+  Such groups are now skipped, so every other group labels its own body.
+  `pp.boxplot` is unchanged: matplotlib draws a box for n=1.
+
 ## [0.19.0] - 2026-09-25
 
 ### Added
