@@ -207,7 +207,7 @@ packages = ["src/publiplots"]
 ### Testing specific Python versions
 Use `uv` to test with different Python versions:
 ```bash
-uv venv --python 3.9
+uv venv --python 3.10
 source .venv/bin/activate
 uv pip install -e .
 pytest
