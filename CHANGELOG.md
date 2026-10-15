@@ -35,12 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The new floor was verified by running it, not inferred: on Python 3.10
   with `matplotlib==3.10.0` and every other dependency at the latest
   release available for Python 3.10 (numpy 2.2.6, pandas 2.3.3, scipy
-  1.15.3, seaborn 0.13.2), `import publiplots` succeeds and the full suite passes (2229
-  tests). The 3.9 classifier is dropped, the `black`, `ruff` and `mypy`
-  targets move to 3.10, and the installation page, the Python badge, the
-  docs requirements file and the publishing guide's version example are
-  brought into line; the installation page also gains the `scipy` floor it
-  omitted.
+  1.15.3, seaborn 0.13.2), `import publiplots` succeeds and the full suite
+  passes (2229 tests). The 3.9 classifier is dropped, the `black`, `ruff`
+  and `mypy` targets move to 3.10, and the installation page, the Python
+  badge, the docs requirements file and the publishing guide's version
+  example are brought into line; the installation page also gains the
+  `scipy` floor it omitted.
 
   Note for Python 3.9 users: resolvers will now stop at 0.19.0, the last
   release that claims 3.9 support. It does not import there either; use
@@ -68,7 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AttributeError: 'NoneType' object has no attribute 'index'` inside
   seaborn's `plot_violins` when `pp.raincloudplot` draws its violins, and
   one a pandas `FutureWarning` from seaborn's `get_group` call that a
-  `pp.violinplot` test treats as an error.
+  `pp.violinplot` test treats as an error. That warning is not fixed by
+  0.13.1: with a current pandas, seaborn 0.13.1 still emits it (a warning,
+  not a functional failure) and 0.13.2 does not.
   seaborn 0.13.1 passes all 2229 with every other direct dependency at its
   floor, as below.
 
