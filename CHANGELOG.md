@@ -36,7 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   defaulting to the wedge's share as a percentage rather than its raw
   value, with `anchor="auto"` (the default) measuring each label against
   the room its own wedge has and moving it out with a leader line when it
-  does not fit.
+  does not fit. Labels that leave the disc are decorations, like a title
+  or tick labels: the axis limits stay as `pieplot` framed them, so the
+  disc is the same size whichever anchor is used, and the labels and their
+  leaders extend past the axes while the layout grows the figure to hold
+  them — the axes keeps its `axes_size`. On the gallery's three-anchor
+  comparison (38x38mm cells) the disc renders at 36.19mm under `inside`,
+  `outside` and `auto` alike. `offset` is exact in millimetres — 3.000mm
+  rendered for `offset=3` on 25, 40 and 80mm charts and on 70x40 and
+  40x70mm cells, under either `aspect` — and `pad` has no effect for this
+  kind.
 
   The chart is circular without losing cell area. `ax.set_aspect("equal")`
   collapses the drawn box to a square of side `min(w, h)`, keeping exactly
@@ -69,14 +78,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   #262 all lived. For the same reason there is no introspection fallback
   — `wedge_values` on an axes publiplots did not draw raises and says so.
 
-  Two known gaps. Outside labels do not de-collide, so adjacent thin
-  wedges can overlap under the default `anchor="auto"`. And
-  `aspect="equal"` on a cell taller than wide can place a label slightly
-  outside the frame, because the axes' x and y data-per-pixel scales
-  differ by the cell's own ratio there and the labelling geometry reads
-  only one of them — with this project's `savefig.bbox = "standard"`
-  that label overprints whatever is next to the axes rather than being
-  cropped away.
+  Four known gaps. Outside labels do not de-collide, so adjacent thin
+  wedges can overlap under the default `anchor="auto"`. The per-axes
+  legend that `legend=True` draws is placed 2mm from the axes frame, not
+  past the labels on that side, so a label pointing at one to two o'clock
+  can overprint it: on a 40x40mm cell, `"30.0%"` does on a 30/70 pie with
+  `annotate={"anchor": "outside"}`, and `"3.0%"` does on a 15/3/82 pie
+  with `annotate=True`. And matplotlib places an axes title against the
+  axes frame rather than above the labels, so a label near twelve o'clock
+  can run into it: on the gallery's 38x38mm comparison the top label
+  clears the title by 0.37mm at the default `offset`, and overlaps it by
+  1.63mm at `offset=3`. Finally, under `aspect="equal"` on a cell wider
+  than tall the layout measures a label's overhang from the drawn square
+  rather than from the cell, so it reserves room the cell already had
+  and the figure over-grows: `anchor="outside"` on a 70x40mm cell gives
+  an 85.92mm-wide figure against 74.00mm under `aspect="cell"`, for the
+  same data. That is how the layout treats any decoration on an
+  `aspect="equal"` axes, not something particular to these labels.
 
 ## [0.19.0] - 2026-09-25
 

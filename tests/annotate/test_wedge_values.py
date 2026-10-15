@@ -44,34 +44,60 @@ def _radius(text):
 MM_PER_INCH = 25.4
 
 
-def _mm_per_data(ax):
-    """Millimetres on the page per data unit, read off the y axis."""
-    height_mm = ax.get_window_extent().height * MM_PER_INCH / ax.figure.dpi
-    y0, y1 = ax.get_ylim()
-    return height_mm / (y1 - y0)
+def _settle(fig):
+    """Draw, so the layout has sized the figure, and return the renderer.
+
+    ``apply_aspect`` afterwards because the layout repositions each axes
+    from a draw callback, which resets an ``aspect="equal"`` axes to its
+    full cell until the next draw; matplotlib re-applies the aspect at the
+    start of every draw, so this reads the box that is actually rendered.
+    """
+    fig.canvas.draw()
+    for ax in fig.axes:
+        ax.apply_aspect()
+    return fig.canvas.get_renderer()
+
+
+def _px_to_mm(fig):
+    return MM_PER_INCH / fig.dpi
 
 
 def _rim_gaps_mm(ax):
-    """Rendered rim-to-label gap, in millimetres, for every outside label."""
-    ax.figure.canvas.draw()
-    scale = _mm_per_data(ax)
-    return [(_radius(text) - record.r_outer) * scale
-            for record, text in zip(ax._publiplots_wedge_meta.wedges, ax.texts)]
+    """Rendered rim-to-label gap, in millimetres, for every outside label.
+
+    Measured in display space, so it reads what is drawn under either
+    framing rather than assuming the two data scales agree.
+    """
+    _settle(ax.figure)
+    gaps = []
+    for record, text in zip(ax._publiplots_wedge_meta.wedges, ax.texts):
+        if _radius(text) <= record.r_outer:
+            continue
+        cx, cy = record.patch.center
+        mid = math.radians((record.theta0 + record.theta1) / 2.0)
+        rim = ax.transData.transform(
+            (cx + record.r_outer * math.cos(mid),
+             cy + record.r_outer * math.sin(mid)))
+        anchor = ax.transData.transform(text.get_position())
+        gaps.append(math.hypot(*(anchor - rim)) * _px_to_mm(ax.figure))
+    return gaps
 
 
-def _closest_label_margin_mm(ax):
-    """Smallest gap in mm between any label's drawn box and the axis edge."""
-    fig = ax.figure
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    frame = ax.get_window_extent()
-    px_to_mm = MM_PER_INCH / fig.dpi
-    margins = []
-    for text in ax.texts:
-        box = text.get_window_extent(renderer)
-        margins.append(min(box.x0 - frame.x0, frame.x1 - box.x1,
-                           box.y0 - frame.y0, frame.y1 - box.y1) * px_to_mm)
-    return min(margins) * 1.0
+def _disc_diameter_mm(ax):
+    """Rendered diameter of the chart's disc, read off the y axis."""
+    _settle(ax.figure)
+    r_outer = max(w.r_outer for w in ax._publiplots_wedge_meta.wedges)
+    (_, y0), (_, y1) = ax.transData.transform([(0.0, 0.0), (0.0, r_outer)])
+    return 2.0 * abs(y1 - y0) * _px_to_mm(ax.figure)
+
+
+def _decorations(ax):
+    """Every label and leader line the strategy added to ``ax``."""
+    return list(ax.texts) + list(ax.lines)
+
+
+def _boxes_overlap(a, b):
+    return a.x0 < b.x1 and b.x0 < a.x1 and a.y0 < b.y1 and b.y0 < a.y1
 
 
 # -----------------------------------------------------------------------------
@@ -159,7 +185,7 @@ def test_outside_anchor_places_labels_beyond_the_rim(df):
 def test_outside_labels_sit_on_the_wedge_mid_ray(df):
     """The label leaves the disc along its own wedge's mid-ray."""
     ax = _pie(df)
-    pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0, pad=0.0)
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0)
     for record, text in zip(ax._publiplots_wedge_meta.wedges, ax.texts):
         mid = (record.theta0 + record.theta1) / 2.0
         tx, ty = text.get_position()
@@ -172,18 +198,19 @@ def test_the_outside_gap_is_the_requested_millimetres_at_any_chart_size(df):
     """`offset` is millimetres on the page, not data units, and not a
     fraction that drifts with the chart.
 
-    The framing grows after placement to make room for the labels, which
-    shrinks the disc; a gap converted once and left alone comes out at
-    1.1mm on a 25mm chart against 2.3mm on an 80mm one for the same
-    requested 3mm. That 2.1x spread is exactly what the millimetre
-    convention exists to remove, so pin the rendered figure, not the
-    argument.
+    A data unit is worth a different number of millimetres on every chart
+    size and on every cell shape, so a gap converted any other way would
+    come out right on at most one of these. The non-square cells matter
+    because ``aspect="cell"`` stretches the limits on the longer side.
     """
-    for size in [(40.0, 40.0), (60.0, 60.0), (80.0, 80.0)]:
+    for size in [(25.0, 25.0), (40.0, 40.0), (80.0, 80.0),
+                 (70.0, 40.0), (40.0, 70.0)]:
         ax = _pie(df, size=size)
         pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0)
-        for gap in _rim_gaps_mm(ax):
-            assert gap == pytest.approx(3.0, abs=0.05), size
+        gaps = _rim_gaps_mm(ax)
+        assert len(gaps) == 4, size
+        for gap in gaps:
+            assert gap == pytest.approx(3.0, abs=1e-3), size
 
 
 def test_the_outside_gap_tracks_the_requested_millimetres(df):
@@ -191,33 +218,15 @@ def test_the_outside_gap_tracks_the_requested_millimetres(df):
         ax = _pie(df)
         pp.annotate(ax, "wedge_values", anchor="outside", offset=offset)
         for gap in _rim_gaps_mm(ax):
-            assert gap == pytest.approx(offset, abs=0.05)
-
-
-def test_pad_is_the_millimetre_margin_from_the_label_box_to_the_axis_edge(df):
-    """`pad` is measured from the label's drawn box, not from its anchor.
-
-    A test that only checks the anchor point cannot tell ``pad=0`` from
-    ``pad=6``, because the anchor clears the edge either way.
-    """
-    for pad in [0.0, 2.0, 6.0]:
-        ax = _pie(df)
-        pp.annotate(ax, "wedge_values", anchor="outside", offset=1.0, pad=pad)
-        assert _closest_label_margin_mm(ax) == pytest.approx(pad, abs=0.05)
-
-
-def test_pad_defaults_to_offset(df):
-    ax = _pie(df)
-    pp.annotate(ax, "wedge_values", anchor="outside", offset=4.0)
-    assert _closest_label_margin_mm(ax) == pytest.approx(4.0, abs=0.05)
+            assert gap == pytest.approx(offset, abs=1e-3)
 
 
 def test_a_bigger_offset_pushes_outside_labels_further(df):
     ax = _pie(df)
-    pp.annotate(ax, "wedge_values", anchor="outside", offset=1.0, pad=0.0)
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=1.0)
     near = [_radius(t) for t in ax.texts]
     ax2 = _pie(df)
-    pp.annotate(ax2, "wedge_values", anchor="outside", offset=6.0, pad=0.0)
+    pp.annotate(ax2, "wedge_values", anchor="outside", offset=6.0)
     far = [_radius(t) for t in ax2.texts]
     assert all(f > n for f, n in zip(far, near))
 
@@ -310,9 +319,9 @@ def test_offset_reaches_a_label_auto_pushed_out():
     """The flip path must honour `offset`, not a constant of its own."""
     thin = pd.DataFrame({"kind": list("AB"), "n": [99.5, 0.5]})
     near = _pie(thin)
-    pp.annotate(near, "wedge_values", anchor="auto", offset=1.0, pad=0.0)
+    pp.annotate(near, "wedge_values", anchor="auto", offset=1.0)
     far = _pie(thin)
-    pp.annotate(far, "wedge_values", anchor="auto", offset=6.0, pad=0.0)
+    pp.annotate(far, "wedge_values", anchor="auto", offset=6.0)
     assert _radius(far.texts[1]) > _radius(near.texts[1])
 
 
@@ -351,76 +360,212 @@ def test_auto_keeps_a_short_label_inside_a_wedge_a_long_one_leaves():
     assert _radius(long.texts[-1]) > 1.0
 
 
-def test_outside_labels_are_framed_inside_the_axes(df):
-    """`pad` earns its name: the framing grows to keep labels on-canvas."""
-    ax = _pie(df)
-    pp.annotate(ax, "wedge_values", anchor="outside", offset=2.0, pad=1.0)
-    x0, x1 = ax.get_xlim()
-    y0, y1 = ax.get_ylim()
-    for text in ax.texts:
-        tx, ty = text.get_position()
-        assert x0 < tx < x1
-        assert y0 < ty < y1
+# -----------------------------------------------------------------------------
+# Outside labels are decorations
+# -----------------------------------------------------------------------------
 
+@pytest.mark.parametrize("size", [(38.0, 38.0), (40.0, 70.0), (70.0, 40.0)])
+def test_the_disc_is_the_same_size_whichever_anchor_its_labels_take(size):
+    """The same data draws the same pie, wherever its labels went.
 
-def test_offset_is_honoured_before_pad_when_both_cannot_fit(df):
-    """On a chart too small for gap plus label plus pad, `pad` gives.
-
-    25x25mm with `offset=3` (so `pad` defaults to 3) has no framing that
-    satisfies both. The gap renders at exactly the requested 3mm and the
-    margin falls short; the reverse -- a label at some unpredictable
-    distance from its wedge so the margin can be met -- is the thing this
-    pins against. Pushed harder the margin goes negative and the labels
-    leave the axes entirely, which with `savefig.bbox = "standard"`
-    overprints rather than crops, so it is a documented degradation.
+    The gallery's comparison: one figure, the same frame labelled
+    ``inside``, ``outside`` and ``auto`` beside a bare copy. Labels that
+    leave the disc are decorations the layout makes room for, so none of
+    them may shrink the chart to keep itself inside the frame. Tall and
+    wide cells too, since ``aspect="cell"`` frames those by stretching
+    the limits on the longer side.
     """
-    tight = _pie(df, size=(25.0, 25.0))
-    pp.annotate(tight, "wedge_values", anchor="outside", offset=3.0)
-    for gap in _rim_gaps_mm(tight):
-        assert gap == pytest.approx(3.0, abs=0.05)
-    margin = _closest_label_margin_mm(tight)
-    assert margin == pytest.approx(1.006, abs=0.1)
-    assert margin < 3.0 - 0.5, "pad is what gives, not offset"
+    thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
+    fig, axes = pp.subplots(ncols=4, axes_size=size)
+    for ax in axes:
+        pp.pieplot(data=thin, x="kind", y="n", legend=False, ax=ax)
+    for ax, anchor in zip(axes[1:], ["inside", "outside", "auto"]):
+        pp.annotate(ax, "wedge_values", anchor=anchor)
 
-    # The same priority holds once the margin goes negative outright.
-    tighter = _pie(df, size=(25.0, 25.0))
-    pp.annotate(tighter, "wedge_values", anchor="outside", offset=10.0,
+    inside, outside, auto = [sum(_radius(t) > 1.0 for t in ax.texts)
+                             for ax in axes[1:]]
+    assert (inside, outside) == (0, 4)
+    assert 0 < auto < 4, "auto must move some labels, not all"
+
+    bare = axes[0]
+    for ax in axes[1:]:
+        assert ax.get_xlim() == pytest.approx(bare.get_xlim(), abs=1e-12)
+        assert ax.get_ylim() == pytest.approx(bare.get_ylim(), abs=1e-12)
+    diameters = [_disc_diameter_mm(ax) for ax in axes]
+    for diameter in diameters[1:]:
+        assert diameter == pytest.approx(diameters[0], abs=1e-6)
+
+
+def test_aspect_equal_limits_are_left_alone_too(df):
+    fig, axes = pp.subplots(ncols=2, axes_size=(70.0, 40.0))
+    for ax in axes:
+        pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax,
+                   aspect="equal")
+    pp.annotate(axes[1], "wedge_values", anchor="outside", offset=4.0)
+    assert axes[1].get_xlim() == pytest.approx(axes[0].get_xlim(), abs=1e-12)
+    assert axes[1].get_ylim() == pytest.approx(axes[0].get_ylim(), abs=1e-12)
+
+
+def test_the_axes_keeps_its_size_and_the_figure_holds_every_label(df):
+    """The layout grows the figure, never the axes, to fit the labels.
+
+    A non-square cell as well as a square one, since ``aspect="cell"``
+    frames those two differently.
+    """
+    for size in [(40.0, 40.0), (60.0, 40.0)]:
+        fig, ax = pp.subplots(axes_size=size)
+        pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax)
+        pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0)
+        renderer = _settle(fig)
+        frame = ax.get_window_extent()
+        to_mm = _px_to_mm(fig)
+        assert (frame.width * to_mm, frame.height * to_mm) == pytest.approx(
+            size, abs=1e-6)
+        page = fig.bbox
+        reaching_out = 0
+        for artist in _decorations(ax):
+            box = artist.get_window_extent(renderer)
+            assert page.x0 <= box.x0 and box.x1 <= page.x1, (size, artist)
+            assert page.y0 <= box.y0 and box.y1 <= page.y1, (size, artist)
+            reaching_out += not (frame.x0 <= box.x0 and box.x1 <= frame.x1
+                                 and frame.y0 <= box.y0 and box.y1 <= frame.y1)
+        assert reaching_out > 0, "nothing reached past the frame to test"
+
+
+def test_an_extreme_offset_leaves_the_limits_alone(df):
+    """A gap and labels far wider than the chart grow the figure instead.
+
+    Under limit-growing framing this request had no finite answer -- a
+    10mm gap plus nine-character labels on a 25mm chart -- and needed a
+    ceiling to stop it. As decorations it is just a wider figure: the
+    limits are what ``pieplot`` set, the gap is exact, and every label is
+    on the page.
+    """
+    fig, axes = pp.subplots(ncols=2, axes_size=(25.0, 25.0))
+    for ax in axes:
+        pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax)
+    ax = axes[1]
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=10.0,
                 fmt=",.2f")
-    for gap in _rim_gaps_mm(tighter):
-        assert gap == pytest.approx(10.0, abs=0.05)
-    assert _closest_label_margin_mm(tighter) < 0.0
+    # Each cell frames itself from its own millimetre ratio, so two cells
+    # of one size can disagree in the last bit or two.
+    assert ax.get_xlim() == pytest.approx(axes[0].get_xlim(), abs=1e-12)
+    assert ax.get_ylim() == pytest.approx(axes[0].get_ylim(), abs=1e-12)
+    for gap in _rim_gaps_mm(ax):
+        assert gap == pytest.approx(10.0, abs=1e-3)
+    renderer = _settle(fig)
+    page = fig.bbox
+    for artist in _decorations(ax):
+        box = artist.get_window_extent(renderer)
+        assert page.x0 <= box.x0 and box.x1 <= page.x1
+        assert page.y0 <= box.y0 and box.y1 <= page.y1
 
 
-def test_an_impossible_offset_cannot_run_the_framing_away(df):
-    """Growing the framing moves the labels it was growing to fit.
+def test_leader_lines_and_labels_are_not_clipped_at_the_frame():
+    """A leader runs from the rim, inside the frame, to a label beyond it.
 
-    Their gap is millimetres, so it is reconverted against the bigger
-    framing and comes back bigger in data units -- which asks for more
-    growth. That loop converges whenever the gap, the labels and the pad
-    fit inside the cell, and does not when they cannot: a 10mm gap plus a
-    long label on a 25mm chart runs the limits to 5e10 unchecked. The
-    ceiling stops it at a small disc with clipped labels, which is the
-    honest way for an impossible request to degrade.
+    ``Line2D`` clips to the axes by default, which would cut every leader
+    off at the frame. Checked on the rendered pixels: with the leader in
+    pure red, red ink must appear between the frame and the label.
     """
-    from publiplots.annotate._wedge import _MAX_FRAMING_GROWTH
+    import numpy as np
 
-    ax = _pie(df, size=(25.0, 25.0))
-    pp.annotate(ax, "wedge_values", anchor="outside", offset=10.0, fmt=",.2f")
-    half_span = (ax.get_ylim()[1] - ax.get_ylim()[0]) / 2.0
-    assert math.isfinite(half_span)
-    assert 1.0 < half_span <= 1.05 * _MAX_FRAMING_GROWTH + 1e-6
-    assert len(ax.texts) == len(ax._publiplots_wedge_meta.wedges)
+    halves = pd.DataFrame({"kind": list("AB"), "n": [50.0, 50.0]})
+    fig, ax = pp.subplots(axes_size=(40.0, 40.0))
+    pp.pieplot(data=halves, x="kind", y="n", legend=False, ax=ax,
+               edgecolor="#ff0000")
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0)
+    for artist in _decorations(ax):
+        assert artist.get_clip_on() is False, artist
+
+    renderer = _settle(fig)
+    # The first draw renders before the layout resizes the figure, so its
+    # buffer does not match the settled positions; the second one does.
+    fig.canvas.draw()
+    frame = ax.get_window_extent()
+    label = ax.texts[0].get_window_extent(renderer)   # A, at three o'clock
+    assert label.x0 > frame.x1 + 2, "the label must sit past the frame"
+    pixels = np.asarray(fig.canvas.buffer_rgba())
+    height = pixels.shape[0]
+    row = height - int(round((label.y0 + label.y1) / 2.0))
+    strip = pixels[row - 2:row + 3,
+                   int(math.ceil(frame.x1)) + 1:int(math.floor(label.x0)) - 1]
+    red = ((strip[..., 0] > 200) & (strip[..., 1] < 80)
+           & (strip[..., 2] < 80))
+    assert red.any(), "the leader was cut off at the axes frame"
 
 
-def test_the_framing_stays_square_when_it_grows(df):
-    """Growing the limits must not squash the disc into an ellipse."""
-    ax = _pie(df)
-    before = ((ax.get_xlim()[1] - ax.get_xlim()[0])
-              / (ax.get_ylim()[1] - ax.get_ylim()[0]))
-    pp.annotate(ax, "wedge_values", anchor="outside", offset=6.0)
-    after = ((ax.get_xlim()[1] - ax.get_xlim()[0])
-             / (ax.get_ylim()[1] - ax.get_ylim()[0]))
-    assert after == pytest.approx(before)
+def test_a_row_of_pies_keeps_outside_labels_off_their_neighbours():
+    """The layout reserves the room between cells, not just at the edges.
+
+    Every outside label and leader in a 1x3 row must stay clear of every
+    *other* axes -- and of the other cells' labels. ``offset=4`` so the
+    labels reach sideways further than the 3mm the layout leaves between
+    cells that have no decorations; at the default 1mm the widest reach
+    is 2.74mm past the label's own frame, inside that 3mm, and the row
+    would pass with no reservation at all.
+    """
+    thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
+    fig, axes = pp.subplots(ncols=3, axes_size=(38.0, 38.0))
+    for ax in axes:
+        pp.pieplot(data=thin, x="kind", y="n", legend=False, ax=ax)
+        pp.annotate(ax, "wedge_values", anchor="outside", offset=4.0)
+    renderer = _settle(fig)
+    to_mm = _px_to_mm(fig)
+    overhang = max(
+        max(own.x0 - box.x0, box.x1 - own.x1) * to_mm
+        for ax in axes
+        for own in [ax.get_window_extent()]
+        for box in (a.get_window_extent(renderer) for a in _decorations(ax))
+    )
+    assert overhang > 3.0, "labels must reach past the bare inter-cell gap"
+    for i, ax in enumerate(axes):
+        mine = [a.get_window_extent(renderer) for a in _decorations(ax)]
+        for j, other in enumerate(axes):
+            if i == j:
+                continue
+            frame = other.get_window_extent()
+            theirs = [a.get_window_extent(renderer)
+                      for a in _decorations(other)]
+            for box in mine:
+                assert not _boxes_overlap(box, frame), (i, j)
+                for their in theirs:
+                    assert not _boxes_overlap(box, their), (i, j)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="The per-axes legend is pinned 2mm from the axes frame rather "
+           "than past the decorations on that side, so an outside label "
+           "at one to two o'clock overprints it.",
+)
+def test_outside_labels_do_not_overlap_the_default_legend():
+    """`legend=True` puts the legend to the right of the axes, where the
+    labels of wedges pointing right now are.
+
+    Measured after a full ``savefig``, which settles the layout, so a fix
+    that needs more than one draw to place the legend is still seen. The
+    setup check uses ``pytest.fail`` rather than ``assert`` so that only
+    the overlap assertion can be the expected failure.
+    """
+    import io
+
+    import matplotlib.legend
+
+    frame = pd.DataFrame({"kind": list("AB"), "n": [30.0, 70.0]})
+    fig, ax = pp.subplots(axes_size=(40.0, 40.0))
+    pp.pieplot(data=frame, x="kind", y="n", ax=ax,
+               annotate={"anchor": "outside"})
+    fig.savefig(io.BytesIO(), format="png")
+    renderer = fig.canvas.get_renderer()
+    legends = fig.findobj(matplotlib.legend.Legend)
+    if len(legends) != 1:
+        pytest.fail(f"expected one legend, found {len(legends)}")
+    legend = legends[0].get_window_extent(renderer)
+    for artist in _decorations(ax):
+        assert not _boxes_overlap(artist.get_window_extent(renderer),
+                                  legend), artist
 
 
 def test_a_narrow_ring_cannot_hold_its_labels(df):
@@ -463,44 +608,46 @@ def test_a_pulled_wedge_is_labelled_at_its_pulled_centre(df):
 # aspect="equal"
 # -----------------------------------------------------------------------------
 
-def test_the_framing_geometry_reads_the_vertical_scale(df):
-    """Pin *which* axis the one scalar comes from, by its consequences.
+def test_aspect_equal_honours_offset_in_both_orientations(df):
+    """Under ``aspect="equal"`` the drawn box is a square inside the cell.
 
-    ``aspect='equal'`` leaves the limits square and has matplotlib shrink
-    the drawn box, so on a non-square cell the x and y scales differ by
-    the cell's ratio and the single scalar the geometry reads is the y
-    one. That is visible only in the label *box*, never in its anchor:
-    on a cell wider than tall the y scale overestimates horizontal reach
-    and the framing grows further than needed, while on a cell taller
-    than wide it underestimates and a label box ends up slightly outside
-    the frame. Reading the x axis instead would swap those two, so the
-    asymmetry is what tells the axes apart.
-
-    The negative margin is a known, pre-existing limitation of
-    ``aspect='equal'`` on a tall cell -- see ``_data_per_pixel`` -- not
-    a property worth having. It is asserted because it is the
-    discriminating signal, and so that changing it is a deliberate act.
+    matplotlib only shrinks it on the first draw, so a scale read before
+    then is the full cell's -- right on a cell wider than tall, and off by
+    the cell's own ratio on one taller than wide, where a 3mm gap would
+    render at 3 * 40/70mm. The strategy applies the aspect before it
+    converts, so both orientations come out exact.
     """
-    wide = _pie(df, size=(70.0, 40.0), aspect="equal")
-    pp.annotate(wide, "wedge_values", anchor="outside", offset=2.0)
-    wide_margin = _closest_label_margin_mm(wide)
-
-    tall = _pie(df, size=(40.0, 70.0), aspect="equal")
-    pp.annotate(tall, "wedge_values", anchor="outside", offset=2.0)
-    tall_margin = _closest_label_margin_mm(tall)
-
-    assert wide_margin > 4.0, wide_margin
-    assert tall_margin < -0.5, tall_margin
-    assert wide_margin > tall_margin
-
-
-def test_aspect_cell_is_isotropic_in_both_orientations(df):
-    """The other framing has no such asymmetry: `cell` equalises by
-    construction, so both orientations honour `pad` exactly."""
     for size in [(70.0, 40.0), (40.0, 70.0)]:
-        ax = _pie(df, size=size, aspect="cell")
+        ax = _pie(df, size=size, aspect="equal")
+        pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0)
+        gaps = _rim_gaps_mm(ax)
+        assert len(gaps) == 4, size
+        for gap in gaps:
+            assert gap == pytest.approx(3.0, abs=1e-3), size
+
+
+def test_aspect_equal_on_a_tall_cell_keeps_labels_on_the_page_and_off_neighbours(
+    df,
+):
+    """The tall ``aspect="equal"`` cell used to put a label box outside
+    the frame and over whatever sat beside it. As decorations, those
+    labels are reserved for like any other, in a row of such cells too.
+    """
+    fig, axes = pp.subplots(ncols=3, axes_size=(40.0, 70.0))
+    for ax in axes:
+        pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax,
+                   aspect="equal")
         pp.annotate(ax, "wedge_values", anchor="outside", offset=2.0)
-        assert _closest_label_margin_mm(ax) == pytest.approx(2.0, abs=0.05)
+    renderer = _settle(fig)
+    page = fig.bbox
+    for i, ax in enumerate(axes):
+        for artist in _decorations(ax):
+            box = artist.get_window_extent(renderer)
+            assert page.x0 <= box.x0 and box.x1 <= page.x1
+            assert page.y0 <= box.y0 and box.y1 <= page.y1
+            for j, other in enumerate(axes):
+                if i != j:
+                    assert not _boxes_overlap(box, other.get_window_extent())
 
 
 def test_aspect_equal_is_labelled_like_a_cell_framed_pie(df):
@@ -508,7 +655,7 @@ def test_aspect_equal_is_labelled_like_a_cell_framed_pie(df):
 
     A square chart only: there the two scales are equal by construction,
     so this is a smoke test of the framing, not of the geometry.
-    ``test_the_framing_geometry_reads_the_vertical_scale`` covers that.
+    ``test_aspect_equal_honours_offset_in_both_orientations`` covers that.
     """
     equal = _pie(df, aspect="equal")
     pp.annotate(equal, "wedge_values", anchor="inside")
@@ -525,25 +672,6 @@ def test_aspect_equal_outside_labels_clear_the_rim_and_get_leaders(df):
     pp.annotate(ax, "wedge_values", anchor="outside")
     assert all(_radius(t) > 1.0 for t in ax.texts)
     assert len(ax.lines) == len(ax.texts)
-
-
-def test_aspect_equal_on_a_wide_cell_keeps_its_labels_framed(df):
-    """The overestimate is conservative, so nothing escapes the frame."""
-    ax = _pie(df, size=(70.0, 40.0), aspect="equal")
-    pp.annotate(ax, "wedge_values", anchor="outside", offset=2.0)
-    x0, x1 = ax.get_xlim()
-    y0, y1 = ax.get_ylim()
-    for text in ax.texts:
-        tx, ty = text.get_position()
-        assert x0 < tx < x1
-        assert y0 < ty < y1
-
-
-def test_aspect_equal_keeps_its_square_limits_when_the_framing_grows(df):
-    ax = _pie(df, size=(70.0, 40.0), aspect="equal")
-    pp.annotate(ax, "wedge_values", anchor="outside", offset=4.0)
-    assert (ax.get_xlim()[1] - ax.get_xlim()[0]) == pytest.approx(
-        ax.get_ylim()[1] - ax.get_ylim()[0])
 
 
 # -----------------------------------------------------------------------------
@@ -715,6 +843,26 @@ def test_a_label_auto_pushed_out_stops_taking_the_fills_contrast():
     assert inside.get_color() != pushed_out.get_color()
 
 
+def test_outside_labels_take_the_outside_colour():
+    """`anchor="outside"` labels sit on the page, not on a fill.
+
+    Same dark opaque fill as above, so the inside contrast colour would be
+    white; an outside label drawn white on the page would be invisible.
+    """
+    from matplotlib.colors import to_rgba
+
+    frame = pd.DataFrame({"kind": list("AB"), "n": [60.0, 40.0]})
+    ax = _pie(frame, alpha=1.0, palette={"A": "#101010", "B": "#101010"})
+    pp.annotate(ax, "wedge_values", anchor="outside", color="auto")
+    for text in ax.texts:
+        assert text.get_color() == to_rgba(plt.rcParams["text.color"])
+
+    inside = _pie(frame, alpha=1.0, palette={"A": "#101010", "B": "#101010"})
+    pp.annotate(inside, "wedge_values", anchor="inside", color="auto")
+    for text in inside.texts:
+        assert text.get_color() == to_rgba("#ffffff"), "the fill must matter"
+
+
 # -----------------------------------------------------------------------------
 # Wiring
 # -----------------------------------------------------------------------------
@@ -743,6 +891,24 @@ def test_annotate_dict_on_the_plot_call_is_forwarded(df):
     pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax,
                annotate={"fmt": ",.0f"})
     assert [t.get_text() for t in ax.texts] == ["50", "25", "15", "10"]
+
+
+def test_a_negative_pad_is_not_rejected_for_wedge_values(df):
+    """`pad` has no effect here, so it is not validated here either."""
+    ax = _pie(df)
+    labels = pp.annotate(ax, "wedge_values", anchor="outside", pad=-2.0)
+    assert len(labels) == 4
+
+
+def test_a_negative_pad_is_still_rejected_for_every_other_kind():
+    from publiplots.annotate._dispatcher import _STRATEGIES, _WEDGE_KINDS
+
+    others = sorted(set(_STRATEGIES) - _WEDGE_KINDS)
+    assert others, "nothing to check"
+    for kind in others:
+        fig, ax = pp.subplots()
+        with pytest.raises(ValueError, match="pad must be >= 0"):
+            pp.annotate(ax, kind, pad=-0.5)
 
 
 def test_text_kws_reach_the_artists(df):
