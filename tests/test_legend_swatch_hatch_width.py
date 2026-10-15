@@ -46,9 +46,15 @@ def _hatched_swatches(fig):
 
 
 def test_a_barplot_hatch_swatch_is_unchanged_outside_an_rc_context(df):
-    """Regression guard for every non-pie plotter: with no rc_context in
-    play, a barplot swatch's hatch stays at rcParams["hatch.linewidth"] --
-    not the bars' linewidth=, which barplot never puts on its handles."""
+    """With no rc_context in play, a barplot swatch's hatch stays at
+    rcParams["hatch.linewidth"] (1.0), not the bars' linewidth= (2.0).
+
+    What this catches is the handler forwarding the wrong SOURCE onto every
+    plotter's swatches -- the outline width, say, or a pie-style linewidth=.
+    It cannot fail under a plain revert of the handler change: outside an
+    rc_context the old and new code agree. The creation-time versus
+    build-time behaviour is pinned by the deferred-band test below, not
+    this one."""
     fig, ax = pp.subplots(axes_size=(50, 40))
     pp.barplot(data=df, x="g", y="v", hue="h", hatch="h", linewidth=2.0,
                ax=ax)
@@ -62,8 +68,9 @@ def test_a_barplot_hatch_swatch_is_unchanged_outside_an_rc_context(df):
 
 def test_a_deferred_band_keeps_the_hatch_width_the_handle_was_made_with(df):
     """The handle records rcParams["hatch.linewidth"] when barplot builds it.
-    A band declared inside the context renders after it has exited, and the
-    swatch keeps the creation-time 3.0 rather than the render-time 1.0."""
+    A band declared inside the context builds its Legend at draw, after the
+    context has exited, and the swatch keeps the creation-time 3.0 rather
+    than the build-time 1.0."""
     with matplotlib.rc_context({"hatch.linewidth": 3.0}):
         fig, ax = pp.subplots(axes_size=(50, 40))
         pp.barplot(data=df, x="g", y="v", hue="h", hatch="h", ax=ax)
