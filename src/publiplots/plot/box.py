@@ -331,12 +331,14 @@ def boxplot(
 
     # Stash legend entries and optionally render per-axis legend.
     # legend may be bool or dict[str, bool]; False short-circuits both.
+    # Unfilled boxes have no face, so their swatches are outlines only:
+    # alpha=0 hides the swatch's fill layer and leaves its edge opaque.
     _stash_legend(
         ax=ax,
         hue=hue,
         palette=palette,
         edgecolor=resolved_edgecolor,
-        alpha=alpha,
+        alpha=alpha if boxplot_kwargs["fill"] else 0,
         linewidth=linewidth,
         legend=legend,
         legend_kws=legend_kws,

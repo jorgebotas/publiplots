@@ -15,6 +15,7 @@ import pytest
 from matplotlib.colors import to_rgba
 
 import publiplots as pp
+from publiplots.utils.legend_entries import get_entries
 
 
 @pytest.fixture(autouse=True)
@@ -109,3 +110,24 @@ def test_unfilled_overlapping_boxes_keep_their_own_colours():
                dodge=False, fill=False, ax=ax)
     colours = {to_rgba(l.get_color()) for l in _structural_lines(ax)}
     assert colours == {to_rgba(c) for c in palette.values()}
+
+
+def test_unfilled_legend_swatches_are_outlines_only(df):
+    # Unfilled boxes have no face, so the swatch's fill layer must be
+    # invisible; the edge layer stays opaque in the palette colour.
+    _, ax = pp.subplots(axes_size=(40, 40))
+    pp.boxplot(data=df, x="c", y="v", hue="c", palette=PALETTE,
+               fill=False, ax=ax)
+    (entry,) = get_entries(ax)
+    assert list(entry.labels) == list(PALETTE)
+    for handle, colour in zip(entry.handles, PALETTE.values()):
+        assert handle.get_alpha() == 0
+        assert to_rgba(handle.get_edgecolor())[:3] == to_rgba(colour)[:3]
+
+
+def test_filled_legend_swatches_keep_translucent_fill(df):
+    _, ax = pp.subplots(axes_size=(40, 40))
+    pp.boxplot(data=df, x="c", y="v", hue="c", palette=PALETTE, ax=ax)
+    (entry,) = get_entries(ax)
+    for handle in entry.handles:
+        assert handle.get_alpha() == pytest.approx(pp.rcParams["alpha"])

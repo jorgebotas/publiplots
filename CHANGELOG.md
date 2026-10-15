@@ -14,13 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colour up in a position → colour map built only from the box
   `PathPatch`es, but unfilled, seaborn draws no patches: each box outline is
   a closed `Line2D`, stroked — along with its whiskers, median, caps and
-  flier edges — in that box's palette colour. With no patches, each line now takes its base colour from
-  itself (stroke colour, or marker edge colour for fliers), so every box
-  keeps its palette colour on its outline, whiskers and fliers (or the
-  explicit `edgecolor`, when one is given), with `edgewidth` applied as for
-  filled boxes. Reading the colour off the line rather than looking it up by
-  position also keeps boxes that share a position (`dodge=False` with a hue
-  other than the categorical axis) in their own colours.
+  flier edges — in that box's palette colour. With no patches, each line
+  now takes its base colour from itself (stroke colour, or marker edge
+  colour for fliers), so every box keeps its palette colour on its outline,
+  whiskers and fliers (or the explicit `edgecolor`, when one is given), with
+  `edgewidth` applied as for filled boxes. Reading the colour off the line
+  rather than looking it up by position also keeps boxes that share a
+  position (`dodge=False` with a hue other than the categorical axis) in
+  their own colours.
+
+- **Unfilled `pp.boxplot` legend swatches are now outlines only.** With
+  `fill=False` the hue legend still drew each swatch with the translucent
+  `alpha` fill of a filled box, a face the plot itself does not have. The
+  swatch's fill layer is now hidden (`alpha=0`), leaving the opaque
+  palette-coloured outline (or the explicit `edgecolor`) to match the boxes.
 
 ## [0.19.0] - 2026-09-25
 
