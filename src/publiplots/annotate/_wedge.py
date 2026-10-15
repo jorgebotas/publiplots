@@ -155,16 +155,19 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
     every whole-degree direction, for a pie with no hole at the default
     rotation, the worst overhang is 0.63mm for ``"50.0%"`` on a 40x40mm
     chart, 1.35mm for ``"1,234,567"`` on that chart, and 1.98mm for
-    ``"1,234,567"`` on a 25x25mm one -- just below three o'clock, at a
-    64-degree span. That last is the largest over ``"5.0%"``,
-    ``"50.0%"``, ``"1,234.57"`` and ``"1,234,567"`` on 25, 40 and 80mm
-    charts. At three o'clock exactly, the same label on the same chart
+    ``"1,234,567"`` on a 25x25mm one, at a 64-degree span on a mid-ray
+    22 degrees off horizontal (22, 158, 202 or 338 degrees, measured
+    anticlockwise from three o'clock). That last is the largest over
+    ``"5.0%"``, ``"50.0%"``, ``"1,234.57"`` and ``"1,234,567"`` on 25,
+    40 and 80mm charts. At three o'clock exactly, the same label on the same chart
     is accepted from a 23.0-degree span and only fits from 136.8; and
     ``"50.0%"`` on 40mm is accepted from 14.3 against a geometric 22.3.
-    Only near twelve o'clock does a long label err the other way:
-    ``"1,234,567"`` on 25mm is rejected there below 134.2 degrees
-    although it fits from 98.0. So an ``auto`` label left inside can
-    visibly cross its wedge's edge -- by up to about two millimetres
+    Only on mid-rays within about 30 degrees of vertical -- 59 to 121
+    degrees and 239 to 301 for that label on 25mm, so around twelve and
+    six o'clock -- does a long label err the other way: ``"1,234,567"``
+    on 25mm is rejected at both twelve and six o'clock below 134.2
+    degrees although it fits from 98.0. So an ``auto`` label left inside
+    can visibly cross its wedge's edge -- by up to about two millimetres
     with long labels on a small chart -- and ``anchor="outside"`` or a
     shorter ``fmt`` is the remedy there.
 
