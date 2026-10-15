@@ -829,11 +829,29 @@ def _is_singular(vals: np.ndarray) -> bool:
     """True when seaborn's violin KDE cannot fit ``vals``.
 
     seaborn then draws the group as a bare line instead of a body
-    (``_fit_and_evaluate`` in ``seaborn/_stats/density.py``): fewer than two
-    finite observations, or zero spread.
+    (``KDE._transform`` in ``seaborn/_stats/density.py``): fewer than two
+    finite observations, or values whose density estimate cannot be fitted
+    (in practice, identical values whose covariance comes out exactly zero).
+    The fit is repeated here rather than approximated, because a constant
+    group's weighted covariance is often a tiny nonzero float, and seaborn
+    then draws a body.
+
+    Bandwidth cannot change the outcome: ``gaussian_kde`` raises only from
+    the Cholesky factor of the raw data covariance, and ``bw_method`` /
+    ``bw_adjust`` merely rescale that factor afterwards.
     """
+    # The same symbol seaborn fits with: scipy's, or seaborn's own fallback.
+    from seaborn._stats.density import gaussian_kde
+
     finite = vals[np.isfinite(vals)]
-    return finite.size < 2 or float(np.ptp(finite)) == 0.0
+    if finite.size < 2:
+        return True
+    try:
+        # seaborn's violin path fits with a unit "weight" column.
+        gaussian_kde(finite, weights=np.ones(finite.size))
+    except np.linalg.LinAlgError:
+        return True
+    return False
 
 
 def _aggregate_box_stats(
