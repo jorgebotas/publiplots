@@ -74,16 +74,28 @@ def test_shares_a_palette_dict_with_barplot(df):
     palette = {"symptom": "#75b375", "admin": "#8e8ec1",
                "lay_dx": "#eeaa58", "none": "#e67e7e"}
     fig, axes = pp.subplots(ncols=2)
-    pp.barplot(data=df, x="kind", y="n", palette=palette, legend=False,
-               ax=axes[0])
+    # barplot only maps a palette through hue; without hue="kind" every
+    # bar takes the single theme colour and the panels stop matching.
+    pp.barplot(data=df, x="kind", y="n", hue="kind", palette=palette,
+               legend=False, ax=axes[0])
     pp.pieplot(data=df, x="kind", y="n", palette=palette, legend=False,
                ax=axes[1])
 
-    import matplotlib.colors as mcolors
     pie_colors = {r.path[0]: tuple(r.hue_color)
                   for r in axes[1]._publiplots_wedge_meta.wedges}
     for category, spec in palette.items():
         assert pie_colors[category] == pytest.approx(mcolors.to_rgb(spec))
+
+    # Pair each bar with its category through the tick it sits on, and
+    # compare RGB only: the fill carries the themed alpha.
+    ticks = {round(float(pos)): label.get_text() for pos, label in zip(
+        axes[0].get_xticks(), axes[0].get_xticklabels())}
+    bars = [p for p in axes[0].patches if p.get_height() > 0]
+    assert len(bars) == len(palette)
+    for bar in bars:
+        category = ticks[round(bar.get_x() + bar.get_width() / 2)]
+        assert tuple(bar.get_facecolor()[:3]) == pytest.approx(
+            mcolors.to_rgb(palette[category])), category
 
 
 def test_wedges_inherit_the_theme_edge(df):
