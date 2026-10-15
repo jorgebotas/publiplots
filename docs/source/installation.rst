@@ -7,8 +7,8 @@ Requirements
 PubliPlots requires Python 3.10 or later and the following packages:
 
 * matplotlib >= 3.10.0
-* seaborn >= 0.12.0
-* numpy >= 1.21.0
+* seaborn >= 0.13.1
+* numpy >= 1.23.0
 * pandas >= 1.3.0
 * scipy >= 1.10.0
 
