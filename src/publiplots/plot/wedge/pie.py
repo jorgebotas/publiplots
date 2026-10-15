@@ -6,7 +6,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 from matplotlib.axes import Axes
-from matplotlib.colors import Normalize, to_rgba
+from matplotlib import colormaps
+from matplotlib.colors import Colormap, Normalize, to_rgba
 
 from publiplots.annotate import annotate as _annotate
 from publiplots.plot.wedge.colour import derive_colors, resolve_hue_values
@@ -14,6 +15,7 @@ from publiplots.plot.wedge.draw import (
     apply_cell_limits,
     build_wedge_meta,
     draw_wedges,
+    set_hatch_linewidth,
 )
 from publiplots.plot.wedge.geometry import (
     WedgeNode,
@@ -84,6 +86,56 @@ def _bucket_small(
     return out
 
 
+def _numeric_hue_cmap(
+    palette: Union[str, Colormap, Dict, List, None],
+    *,
+    color: Any,
+    hue: str,
+) -> Colormap:
+    """Resolve ``palette=`` to the colormap a numeric hue maps through.
+
+    The semantics are ``scatterplot``'s: a matplotlib colormap name or a
+    :class:`~matplotlib.colors.Colormap` is used as given, and ``None``
+    falls back to the light ramp anchored on ``color``. A name has to
+    become a Colormap here, because the wedge colours are read by calling
+    it (``cmap(norm(v))``), which a string cannot do.
+
+    A dict or list assigns colours to discrete levels, which a numeric
+    hue does not have. ``scatterplot`` raises ``TypeError`` on both too,
+    from its dependencies (matplotlib's colormap lookup for a dict,
+    seaborn's hue mapping for a list), with a message that names neither
+    the parameter nor the cause; this raises the same type with one that
+    does.
+    """
+    if palette is None:
+        return resolve_continuous_cmap(None, color=color)
+    if isinstance(palette, Colormap):
+        return palette
+    if isinstance(palette, (dict, list, tuple)):
+        raise TypeError(
+            f"pieplot: hue={hue!r} is numeric, so it maps through a "
+            f"colormap and palette= must be a colormap name or a "
+            f"matplotlib Colormap; got a {type(palette).__name__}. A "
+            f"{type(palette).__name__} assigns colours to discrete levels "
+            f"-- convert the column to strings or a Categorical to colour "
+            f"it categorically."
+        )
+    if isinstance(palette, str):
+        try:
+            return colormaps[palette]
+        except KeyError:
+            raise ValueError(
+                f"pieplot: hue={hue!r} is numeric, so palette= must name a "
+                f"registered matplotlib colormap (e.g. 'viridis'); "
+                f"{palette!r} is not one."
+            ) from None
+    raise TypeError(
+        f"pieplot: palette= must be a colormap name, a matplotlib "
+        f"Colormap or None for a numeric hue; got "
+        f"{type(palette).__name__}."
+    )
+
+
 def pieplot(
     data: pd.DataFrame,
     x: Union[str, Sequence[str]],
@@ -101,7 +153,7 @@ def pieplot(
     min_share: float = 0.0,
     center_label: Union[str, Callable[[float], str], None] = None,
     aspect: str = "cell",
-    palette: Optional[Union[str, Dict, List]] = None,
+    palette: Optional[Union[str, Dict, List, Colormap]] = None,
     hatch: Optional[str] = None,
     hatch_map: Optional[Dict[str, str]] = None,
     hatch_order: Optional[List[str]] = None,
@@ -197,14 +249,21 @@ def pieplot(
         round to within a rendering pixel; measured ink ratios across
         70x50, 90x40, 40x70, 30x80 and 60x60mm cells run 0.9942 to
         1.0044.
-    palette : str, dict, or list, optional
-        Colour palette. Can be:
+    palette : str, dict, list, or Colormap, optional
+        Colour palette. For a categorical ``hue``, can be:
 
         - ``str``: seaborn palette name or publiplots palette name
         - ``dict``: explicit ``{hue_level: color}`` mapping, overlaid on
           the resolved defaults, so a partial dict recolours only the
           levels it names
         - ``list``: list of colours assigned in hue-level order
+
+        For a numeric ``hue``, as in ``scatterplot``: a matplotlib
+        colormap name (``"viridis"``) or a
+        :class:`~matplotlib.colors.Colormap`, used for the wedges and the
+        colorbar alike. ``None`` builds a light ramp from ``color``. A
+        dict or list raises ``TypeError``, since a numeric hue has no
+        discrete levels to assign colours to.
     hatch : str, optional
         Column name driving a **second categorical dimension** encoded
         via hatch textures -- the texture-based analogue of ``hue``.
@@ -227,7 +286,8 @@ def pieplot(
         levels omitted from it are appended after the listed ones.
     color : str, optional
         Fixed colour used where no hue level supplies one: the colormap
-        anchor for a continuous ``hue``, and the swatch colour for a
+        anchor for a continuous ``hue`` when ``palette`` is ``None``, and
+        the swatch colour for a
         standalone hatch key. Falls back to ``rcParams["color"]``.
     edgecolor : str, optional
         Explicit edge colour override. When ``None`` (the default, also
@@ -370,6 +430,12 @@ def pieplot(
     hue_levels = list(dict.fromkeys(
         hue_values[n.path] for n in nodes if n.path in hue_values))
     hue_norm = None
+    # Resolved once, here, and read by both the wedge colours and the
+    # colorbar below, so the two cannot drift onto different colormaps.
+    # Resolved before the all-NaN check so a bad palette= is reported
+    # whatever the data holds.
+    hue_cmap = (_numeric_hue_cmap(palette, color=color, hue=hue_column)
+                if hue_continuous else None)
     if hue_continuous and not hue_levels:
         # Every value in the column was NaN, so no wedge resolved one.
         # min()/max() over that raises "min() iterable argument is
@@ -388,10 +454,9 @@ def pieplot(
     elif hue_continuous:
         # A numeric hue maps through a colormap rather than a palette. Build
         # a value -> colour dict so derive_colors' lookup is unchanged.
-        cmap = resolve_continuous_cmap(None, color=color)
         lo, hi = min(hue_levels), max(hue_levels)
         hue_norm = Normalize(vmin=lo, vmax=hi if hi > lo else lo + 1.0)
-        palette_map = {v: cmap(hue_norm(v)) for v in hue_levels}
+        palette_map = {v: hue_cmap(hue_norm(v)) for v in hue_levels}
     else:
         # resolve_palette_map returns a dict palette VERBATIM, so a partial
         # dict would leave every unnamed level without a colour. Resolve
@@ -487,7 +552,7 @@ def pieplot(
         stash_continuous_hue(
             ax,
             name=hue_column,
-            palette=resolve_continuous_cmap(None, color=color),
+            palette=hue_cmap,
             hue_norm=hue_norm,
         )
     elif hue_levels:
@@ -503,6 +568,9 @@ def pieplot(
             alpha=alpha,
             linewidth=linewidth,
         )
+        # The swatch carries the width the wedge's hatch is drawn with.
+        for handle in handles:
+            set_hatch_linewidth(handle, linewidth)
         stash_entry(ax, LegendEntry.build(
             name=hue_column,
             kind="hue",
@@ -524,6 +592,8 @@ def pieplot(
             alpha=alpha,
             linewidth=linewidth,
         )
+        for handle in hatch_handles:
+            set_hatch_linewidth(handle, linewidth)
         stash_entry(ax, LegendEntry.build(
             name=hatch,
             kind="hatch",

@@ -846,3 +846,187 @@ def test_an_unknown_keyword_is_refused(df):
     fig, ax = pp.subplots()
     with pytest.raises(TypeError, match="donu"):
         pp.pieplot(data=df, x="kind", y="n", donu=0.5, ax=ax)
+
+
+# --- hatch strokes follow linewidth=, on the wedge and on its swatch ------
+
+_HAS_HATCH_LINEWIDTH = hasattr(Wedge, "set_hatch_linewidth")
+_needs_hatch_linewidth = pytest.mark.skipif(
+    not _HAS_HATCH_LINEWIDTH,
+    reason="Patch.set_hatch_linewidth needs matplotlib>=3.10")
+
+
+def _hatched_wedges(ax):
+    return [r.patch for r in ax._publiplots_wedge_meta.wedges
+            if r.patch.get_hatch()]
+
+
+def _hatched_legend_swatches(fig):
+    """The stroked swatch rectangles a rendered legend actually draws."""
+    from matplotlib.legend import Legend
+    from matplotlib.patches import Rectangle
+    fig.canvas.draw()
+    return [r for leg in fig.findobj(Legend) for r in leg.findobj(Rectangle)
+            if r.get_hatch()]
+
+
+@_needs_hatch_linewidth
+def test_hatch_strokes_default_to_the_themed_edgewidth(df):
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.pieplot(data=df, x="kind", y="n", hatch="kind", legend=False, ax=ax)
+    hatched = _hatched_wedges(ax)
+    assert hatched, "the hatch cycle should pattern at least one wedge"
+    expected = pp.rcParams["edgewidth"]
+    assert expected == pytest.approx(0.75)
+    for patch in hatched:
+        assert patch.get_hatch_linewidth() == pytest.approx(expected)
+        assert patch.get_linewidth() == pytest.approx(expected)
+
+
+@_needs_hatch_linewidth
+def test_hatch_strokes_follow_an_explicit_linewidth(df):
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.pieplot(data=df, x="kind", y="n", hatch="kind", linewidth=2.0,
+               legend=False, ax=ax)
+    hatched = _hatched_wedges(ax)
+    assert hatched
+    for patch in hatched:
+        assert patch.get_hatch_linewidth() == pytest.approx(2.0)
+        assert patch.get_linewidth() == pytest.approx(2.0)
+
+
+@_needs_hatch_linewidth
+@pytest.mark.parametrize("linewidth", [None, 2.0])
+def test_a_hatched_hue_swatch_carries_the_wedges_hatch_width(df, linewidth):
+    """hatch=x folds the patterns into the hue swatches; the swatch's hatch
+    must be drawn at the width the wedge's hatch is."""
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.pieplot(data=df, x="kind", y="n", hatch="kind", linewidth=linewidth,
+               ax=ax)
+    expected = pp.rcParams["edgewidth"] if linewidth is None else linewidth
+    hatched = _hatched_wedges(ax)
+    assert hatched
+    assert all(p.get_hatch_linewidth() == pytest.approx(expected)
+               for p in hatched)
+    swatches = _hatched_legend_swatches(fig)
+    assert swatches, "the legend should draw hatched swatches"
+    # Without the fix the swatch sits at rcParams["hatch.linewidth"], 1.0,
+    # which neither 0.75 nor 2.0 is.
+    assert all(s.get_hatch_linewidth() == pytest.approx(expected)
+               for s in swatches)
+
+
+@_needs_hatch_linewidth
+def test_an_independent_hatch_swatch_carries_the_wedges_hatch_width():
+    """The second, hatch-only key is built separately from the hue key and
+    needs the same width."""
+    raw = pd.DataFrame({
+        "dept": list("abcd"),
+        "team": ["x", "y", "x", "y"],
+        "n": [1.0, 2.0, 3.0, 4.0],
+    })
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.pieplot(data=raw, x="dept", y="n", hatch="team", linewidth=1.6, ax=ax)
+    hatched = _hatched_wedges(ax)
+    assert hatched
+    assert all(p.get_hatch_linewidth() == pytest.approx(1.6)
+               for p in hatched)
+    swatches = _hatched_legend_swatches(fig)
+    assert swatches
+    assert all(s.get_hatch_linewidth() == pytest.approx(1.6)
+               for s in swatches)
+
+
+# --- a numeric hue honours palette= ---------------------------------------
+
+@pytest.fixture
+def scored():
+    return pd.DataFrame({
+        "dept": list("abcd"),
+        "score": [4.0, 1.0, 3.0, 2.0],
+        "n": [1.0, 2.0, 3.0, 4.0],
+    })
+
+
+def _colorbar_mappable(ax):
+    from publiplots.utils.legend_entries import get_entries, is_continuous_hue
+    entries = get_entries(ax)
+    assert len(entries) == 1
+    assert is_continuous_hue(entries[0].handles)
+    return entries[0].handles[0]
+
+
+def _assert_wedges_follow(ax, raw, cmap):
+    """Every wedge's fill RGB is cmap(norm(score)), and the stashed colorbar
+    maps each score to that same RGB. Fills are drawn at the themed alpha
+    (``_split_face_and_edge_alpha``), so only the RGB channels compare."""
+    from matplotlib.colors import Normalize
+    norm = Normalize(vmin=raw["score"].min(), vmax=raw["score"].max())
+    score = dict(zip(raw["dept"], raw["score"]))
+    mappable = _colorbar_mappable(ax)
+    for record in ax._publiplots_wedge_meta.wedges:
+        value = score[record.path[0]]
+        expected = cmap(norm(value))[:3]
+        assert tuple(record.patch.get_facecolor()[:3]) == pytest.approx(
+            expected)
+        assert tuple(record.hue_color) == pytest.approx(expected)
+        assert tuple(mappable.to_rgba(value)[:3]) == pytest.approx(expected)
+    return mappable
+
+
+def test_a_numeric_hue_maps_through_a_named_palette(scored):
+    from matplotlib import colormaps
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.pieplot(data=scored, x="dept", y="n", hue="score", palette="viridis",
+               legend=False, ax=ax)
+    mappable = _assert_wedges_follow(ax, scored, colormaps["viridis"])
+    assert mappable.get_cmap().name == "viridis"
+
+
+def test_a_numeric_hue_maps_through_a_colormap_instance(scored):
+    from matplotlib.colors import LinearSegmentedColormap
+    cmap = LinearSegmentedColormap.from_list("red_to_blue", ["red", "blue"])
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.pieplot(data=scored, x="dept", y="n", hue="score", palette=cmap,
+               legend=False, ax=ax)
+    mappable = _assert_wedges_follow(ax, scored, cmap)
+    assert mappable.get_cmap().name == "red_to_blue"
+
+
+def test_a_numeric_hue_without_a_palette_keeps_the_light_ramp(scored):
+    """palette=None is today's behaviour: a light ramp on rcParams color."""
+    from publiplots.themes.colors import resolve_continuous_cmap
+    ramp = resolve_continuous_cmap(None, color=pp.rcParams["color"])
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.pieplot(data=scored, x="dept", y="n", hue="score", legend=False, ax=ax)
+    mappable = _assert_wedges_follow(ax, scored, ramp)
+    assert mappable.get_cmap().name == ramp.name
+
+
+def test_a_numeric_hue_without_a_palette_anchors_on_color(scored):
+    from publiplots.themes.colors import resolve_continuous_cmap
+    ramp = resolve_continuous_cmap(None, color="#c0392b")
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    pp.pieplot(data=scored, x="dept", y="n", hue="score", color="#c0392b",
+               legend=False, ax=ax)
+    _assert_wedges_follow(ax, scored, ramp)
+
+
+@pytest.mark.parametrize("palette", [
+    {1.0: "red", 2.0: "blue", 3.0: "green", 4.0: "black"},
+    ["red", "blue"],
+])
+def test_a_numeric_hue_refuses_a_discrete_palette(scored, palette):
+    """scatterplot raises TypeError on both; this does too, but names the
+    parameter."""
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    with pytest.raises(TypeError, match=r"hue='score' is numeric"):
+        pp.pieplot(data=scored, x="dept", y="n", hue="score",
+                   palette=palette, legend=False, ax=ax)
+
+
+def test_a_numeric_hue_refuses_an_unknown_colormap_name(scored):
+    fig, ax = pp.subplots(axes_size=(50, 40))
+    with pytest.raises(ValueError, match=r"'not_a_cmap' is not one"):
+        pp.pieplot(data=scored, x="dept", y="n", hue="score",
+                   palette="not_a_cmap", legend=False, ax=ax)
