@@ -258,12 +258,14 @@ def pieplot(
           levels it names
         - ``list``: list of colours assigned in hue-level order
 
-        For a numeric ``hue``, as in ``scatterplot``: a matplotlib
-        colormap name (``"viridis"``) or a
-        :class:`~matplotlib.colors.Colormap`, used for the wedges and the
-        colorbar alike. ``None`` builds a light ramp from ``color``. A
-        dict or list raises ``TypeError``, since a numeric hue has no
-        discrete levels to assign colours to.
+        For a numeric ``hue``: a matplotlib colormap name
+        (``"viridis"``) or a :class:`~matplotlib.colors.Colormap`, used
+        for the wedges and the colorbar alike, as in ``scatterplot``; a
+        dict or list raises ``TypeError``, as it does there, since a
+        numeric hue has no discrete levels to assign colours to. Left as
+        ``None``, ``pieplot`` builds its own light ramp running from
+        near-white up to ``color`` -- unlike ``scatterplot``, whose
+        ``None`` gives seaborn's default ramp whatever ``color`` is.
     hatch : str, optional
         Column name driving a **second categorical dimension** encoded
         via hatch textures -- the texture-based analogue of ``hue``.

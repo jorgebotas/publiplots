@@ -207,7 +207,9 @@ pp.show()
 # does not fit — the thin slivers below. ``"inside"`` and ``"outside"``
 # force every label to one placement regardless of fit. The disc is the
 # same size under all three: a label that leaves it extends past the
-# axes rather than shrinking the pie.
+# axes rather than shrinking the pie. Outside labels are not moved apart
+# from one another, so those of adjacent thin wedges — ``"6.0%"`` and
+# ``"2.0%"`` here — can overlap.
 
 thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
 fig, axes = pp.subplots(ncols=3, axes_size=(38, 38))
@@ -345,16 +347,18 @@ pp.show()
 # full-strength outline in the wedge's own colour. ``alpha`` sets the
 # fill alone (``0`` leaves outlines only, ``1`` a solid fill);
 # ``edgecolor`` outlines every wedge the same way regardless of fill;
-# ``linewidth`` sets the outline width, and on matplotlib 3.10 or later
-# the width of the pattern strokes too, in the wedges and their legend
-# swatches alike.
+# ``linewidth`` sets the outline width and the width of the pattern
+# strokes too, in the wedges and their legend swatches alike: the key
+# beside the hatched panel draws its patterns at 1.5.
 
 fig, axes = pp.subplots(ncols=4, axes_size=(36, 36))
-# The panels draw their keys in different styles, so only the first
-# panel's is collected; the band still sits past the last panel.
-pp.legend(axes=[axes[0]], anchor=axes[-1], side="right")
-pp.pieplot(data=df, x="kind", y="n", palette=palette, ax=axes[0],
-           title="default")
+# The key is the hatched panel's, beside it, with its patterns at its
+# stroke width. The colours are the same in every panel; only the
+# hatched panel's key is collected because the panels draw their
+# swatches in different styles.
+pp.legend(axes=[axes[3]], anchor=axes[-1], side="right")
+pp.pieplot(data=df, x="kind", y="n", palette=palette, legend=False,
+           ax=axes[0], title="default")
 pp.pieplot(data=df, x="kind", y="n", palette=palette, alpha=0,
            linewidth=1.5, legend=False, ax=axes[1],
            title="alpha=0, linewidth=1.5")
@@ -362,6 +366,6 @@ pp.pieplot(data=df, x="kind", y="n", palette=palette, alpha=1,
            edgecolor="white", linewidth=1.5, legend=False, ax=axes[2],
            title='alpha=1, linewidth=1.5\nedgecolor="white"')
 pp.pieplot(data=df, x="kind", y="n", palette=palette, hatch="kind",
-           hatch_map=hatches, linewidth=1.5, legend=False, ax=axes[3],
+           hatch_map=hatches, linewidth=1.5, ax=axes[3],
            title="hatch, linewidth=1.5")
 pp.show()

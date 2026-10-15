@@ -537,8 +537,8 @@ def test_a_row_of_pies_keeps_outside_labels_off_their_neighbours():
     strict=True,
     raises=AssertionError,
     reason="The per-axes legend is pinned 2mm from the axes frame rather "
-           "than past the decorations on that side, so an outside label "
-           "at one to two o'clock overprints it.",
+           "than past the decorations on that side, so an outside label on "
+           "the right of the pie overprints it.",
 )
 def test_outside_labels_do_not_overlap_the_default_legend():
     """`legend=True` puts the legend to the right of the axes, where the
@@ -566,6 +566,40 @@ def test_outside_labels_do_not_overlap_the_default_legend():
     for artist in _decorations(ax):
         assert not _boxes_overlap(artist.get_window_extent(renderer),
                                   legend), artist
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="matplotlib places an axes title against the axes frame rather "
+           "than above the decorations, so an outside label near twelve "
+           "o'clock runs into it.",
+)
+def test_outside_labels_do_not_overlap_the_axes_title():
+    """The top label of a pie whose last wedge ends at twelve o'clock
+    climbs into the title as ``offset`` grows.
+
+    The 2% wedge sits just left of twelve o'clock; at ``offset=3`` its
+    label runs 1.63mm into the title on a 38x38mm cell. Measured after a
+    full ``savefig``, as the legend case is, and the setup check uses
+    ``pytest.fail`` so that only the overlap assertion can be the
+    expected failure.
+    """
+    import io
+
+    frame = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
+    fig, ax = pp.subplots(axes_size=(38.0, 38.0))
+    pp.pieplot(data=frame, x="kind", y="n", legend=False, ax=ax,
+               annotate={"anchor": "outside", "offset": 3})
+    ax.set_title("outside")
+    fig.savefig(io.BytesIO(), format="png")
+    renderer = fig.canvas.get_renderer()
+    if len(ax.texts) != 4 or not ax.get_title():
+        pytest.fail("expected four labels and a title")
+    title = ax.title.get_window_extent(renderer)
+    for artist in _decorations(ax):
+        assert not _boxes_overlap(artist.get_window_extent(renderer),
+                                  title), artist
 
 
 def test_a_narrow_ring_cannot_hold_its_labels(df):

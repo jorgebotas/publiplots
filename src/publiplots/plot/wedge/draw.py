@@ -22,15 +22,14 @@ def pull_offset(placement: WedgePlacement, pull: float) -> Tuple[float, float]:
 
 
 def set_hatch_linewidth(patch: Any, linewidth: float) -> None:
-    """Draw ``patch``'s hatch strokes at ``linewidth``, where supported.
+    """Draw ``patch``'s hatch strokes at ``linewidth``.
 
     A hatch stroke outlines the shape it fills, so it takes the outline's
     ``edgewidth`` rather than ``rcParams["hatch.linewidth"]`` -- the same
-    rule ``barplot`` and ``histplot`` apply to their patches.
-    ``Patch.set_hatch_linewidth`` first appeared in matplotlib 3.10 and
-    the floor is 3.7, so it is guarded the way ``utils/rounding.py``
-    guards it; on an older matplotlib the hatch keeps the rcParams width
-    rather than raising.
+    rule ``barplot`` and ``histplot`` apply to their patches. The
+    ``hasattr`` guard matches the one in ``utils/rounding.py``: a patch
+    without ``set_hatch_linewidth`` keeps the rcParams width rather than
+    raising.
     """
     if hasattr(patch, "set_hatch_linewidth"):
         patch.set_hatch_linewidth(linewidth)

@@ -81,28 +81,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `linewidth` sets the hatch strokes as well as the outlines, in the
   wedges and their legend swatches alike, since a pattern stroke outlines
   the shape it fills: 0.75 (the `edgewidth`) by default and 1.5 for
-  `linewidth=1.5`, rather than `rcParams["hatch.linewidth"]` (1.0). This
-  needs matplotlib 3.10 or later, where `Patch.set_hatch_linewidth`
-  exists; earlier, hatches keep the rcParams width. A numeric `hue` maps through a colormap and draws a colorbar,
-  and `palette=` names that colormap as it does for `scatterplot` — a
-  colormap name or a `Colormap`, with `None` giving a light ramp anchored
-  on `color` and a dict or list raising `TypeError`.
+  `linewidth=1.5`, rather than `rcParams["hatch.linewidth"]` (1.0).
 
-  Four known gaps. Outside labels do not de-collide, so adjacent thin
-  wedges can overlap under the default `anchor="auto"`. The per-axes
-  legend that `legend=True` draws is placed 2mm from the axes frame, not
-  past the labels on that side, so a label pointing at one to two o'clock
-  can overprint it: on a 40x40mm cell, `"30.0%"` does on a 30/70 pie with
-  `annotate={"anchor": "outside"}`, and `"3.0%"` does on a 15/3/82 pie
-  with `annotate=True`. And matplotlib places an axes title against the
-  axes frame rather than above the labels, so a label near twelve o'clock
-  can run into it: on the gallery's 38x38mm comparison the top label
-  clears the title by 0.37mm at the default `offset`, and overlaps it by
-  1.63mm at `offset=3`. Finally, under `aspect="equal"` on a cell wider
-  than tall the layout measures a label's overhang from the drawn square
-  rather than from the cell, so it reserves room the cell already had
-  and the figure over-grows: `anchor="outside"` on a 70x40mm cell gives
-  an 85.92mm-wide figure against 74.00mm under `aspect="cell"`, for the
+  A numeric `hue` maps through a colormap and draws a colorbar. As for
+  `scatterplot`, `palette=` then takes a colormap name or a `Colormap`,
+  and a dict or list raises `TypeError`. Left as `None`, `pieplot` builds
+  its own light ramp from near-white up to `color`; `scatterplot`'s
+  `None` gives seaborn's default ramp whatever `color` is.
+
+  Four known gaps. Outside labels do not de-collide, so those of adjacent
+  thin wedges can overlap under `anchor="outside"` and the default
+  `anchor="auto"` alike: on the gallery's anchors comparison, `"6.0%"`
+  and `"2.0%"` overlap by 0.95x1.47mm under both. The key that
+  `legend=True` draws beside the axes — a legend, or a colorbar for a
+  numeric `hue` — is placed 2mm from the axes frame, not past the labels
+  on that side, so a label on the right of the pie can overprint it. On
+  40x40mm cells, `"30.0%"` does on a 30/70 pie with
+  `annotate={"anchor": "outside"}`, and `"3.0%"` on a 15/3/82 pie with
+  `annotate=True`, over the legend and, with a numeric `hue`, over the
+  colorbar; `"50.2%"`, at three o'clock, overprints the colorbar on a
+  52.2/41.8/6/4 pie with `anchor="outside"`. Over pies of two to eight
+  wedges, the labels that overprint the key point anywhere from about
+  half past one to about three o'clock for a colorbar, and to about four
+  for an eight-entry legend, which reaches further down. And matplotlib
+  places an axes title against the axes frame rather than above the
+  labels, so a label near twelve o'clock can run into it: on the
+  gallery's 38x38mm anchors comparison the top label clears the title by
+  0.37mm at the default `offset`, and overlaps it by 1.63mm at
+  `offset=3`. Finally, under `aspect="equal"` on a cell wider than tall
+  the layout measures a label's overhang from the drawn square rather
+  than from the cell, so it reserves room the cell already had and the
+  figure over-grows: `anchor="outside"` on a 70x40mm cell gives an
+  85.92mm-wide figure against 74.00mm under `aspect="cell"`, for the
   same data. That is how the layout treats any decoration on an
   `aspect="equal"` axes, not something particular to these labels.
 
@@ -119,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   built inside the context, drew 3.0 swatches before and after; a
   `pp.legend` band, built at draw once the context had exited, drew 1.0
   before and 3.0 now. Outside such a context nothing changes — both
-  drew 1.0 before and after. Needs matplotlib 3.10 or later, as above.
+  drew 1.0 before and after.
 
 ## [0.19.0] - 2026-09-25
 
