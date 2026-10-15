@@ -205,7 +205,9 @@ pp.show()
 # ``anchor="auto"`` (the default) measures each label against the room
 # its own wedge has, and moves it outside with a leader line when it
 # does not fit — the thin slivers below. ``"inside"`` and ``"outside"``
-# force every label to one placement regardless of fit.
+# force every label to one placement regardless of fit. The disc is the
+# same size under all three: a label that leaves it extends past the
+# axes rather than shrinking the pie.
 
 thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
 fig, axes = pp.subplots(ncols=3, axes_size=(38, 38))
@@ -213,6 +215,23 @@ for ax, anchor in zip(axes, ["inside", "outside", "auto"]):
     pp.pieplot(data=thin, x="kind", y="n", legend=False, ax=ax)
     pp.annotate(ax, "wedge_values", anchor=anchor)
     ax.set_title(anchor)
+pp.show()
+
+# %%
+# How far outside labels sit
+# --------------------------
+# ``offset`` is the gap from the rim to an outside label, in
+# millimetres (``1`` by default), with the leader line spanning it.
+# Like tick labels, outside labels sit beyond the axes, so a larger
+# offset leaves the disc as it is and grows the figure instead.
+
+arms = pd.DataFrame({"arm": ["placebo", "low", "high"],
+                     "n": [35.0, 40.0, 25.0]})
+fig, axes = pp.subplots(ncols=2, axes_size=(38, 38))
+for ax, offset in zip(axes, [1, 4]):
+    pp.pieplot(data=arms, x="arm", y="n", legend=False, ax=ax,
+               annotate={"anchor": "outside", "offset": offset},
+               title=f"offset={offset}")
 pp.show()
 
 # %%
@@ -248,7 +267,8 @@ pp.show()
 # swatches of a single legend entry. Patterns come from
 # ``pp.HATCH_PATTERNS``, at the density ``pp.set_hatch_mode`` sets,
 # unless ``hatch_map`` names them; the dense ones below stay readable in
-# the small legend swatches.
+# the small legend swatches. Pattern strokes are drawn at the outline
+# width, ``linewidth`` (see the last section).
 
 hatches = {"symptom": "", "admin": "////", "lay_dx": "\\\\\\\\",
            "none": "...."}
@@ -299,17 +319,23 @@ pp.show()
 # %%
 # Colouring by a number
 # ---------------------
-# A numeric ``hue`` maps through a colormap instead of a palette, and
-# the legend becomes a colorbar. As with a categorical ``hue``, the
-# value must be constant within each wedge. The colormap runs from
-# near-white up to the theme colour, so this example fills the wedges
-# solid (``alpha=1``) to read against the colorbar, and outlines them in
-# grey so the lightest wedge keeps its edge.
+# A numeric ``hue`` maps through a colormap, and the legend becomes a
+# colorbar. As with a categorical ``hue``, the value must be constant
+# within each wedge. ``palette`` names the colormap (``"viridis"``, or a
+# matplotlib ``Colormap``); a dict or list raises, since a number has no
+# discrete levels to assign colours to. Left unset, the colormap is a
+# light ramp running from near-white up to ``color``. The colorbar shows
+# the colormap at full strength, so both panels fill their wedges solid
+# (``alpha=1``) to read against it. The ramp's lightest wedge would all
+# but vanish into the page, so the left panel outlines its wedges in
+# grey; viridis starts dark and needs no outline.
 
 waits = df.assign(days=[3.0, 11.0, 26.0, 40.0])
-fig, ax = pp.subplots(axes_size=(50, 50))
-pp.pieplot(data=waits, x="kind", y="n", hue="days", alpha=1,
-           edgecolor="0.3", ax=ax)
+fig, axes = pp.subplots(ncols=2, axes_size=(42, 42))
+pp.pieplot(data=waits, x="kind", y="n", hue="days", color="#e67e7e",
+           alpha=1, edgecolor="0.3", ax=axes[0], title='color="#e67e7e"')
+pp.pieplot(data=waits, x="kind", y="n", hue="days", palette="viridis",
+           alpha=1, ax=axes[1], title='palette="viridis"')
 pp.show()
 
 # %%
@@ -319,11 +345,13 @@ pp.show()
 # full-strength outline in the wedge's own colour. ``alpha`` sets the
 # fill alone (``0`` leaves outlines only, ``1`` a solid fill);
 # ``edgecolor`` outlines every wedge the same way regardless of fill;
-# ``linewidth`` sets the outline width.
+# ``linewidth`` sets the outline width, and on matplotlib 3.10 or later
+# the width of the pattern strokes too, in the wedges and their legend
+# swatches alike.
 
-fig, axes = pp.subplots(ncols=3, axes_size=(36, 36))
-# The three panels draw their keys in different styles, so only the
-# first panel's is collected; the band still sits past the last panel.
+fig, axes = pp.subplots(ncols=4, axes_size=(36, 36))
+# The panels draw their keys in different styles, so only the first
+# panel's is collected; the band still sits past the last panel.
 pp.legend(axes=[axes[0]], anchor=axes[-1], side="right")
 pp.pieplot(data=df, x="kind", y="n", palette=palette, ax=axes[0],
            title="default")
@@ -333,4 +361,7 @@ pp.pieplot(data=df, x="kind", y="n", palette=palette, alpha=0,
 pp.pieplot(data=df, x="kind", y="n", palette=palette, alpha=1,
            edgecolor="white", linewidth=1.5, legend=False, ax=axes[2],
            title='alpha=1, linewidth=1.5\nedgecolor="white"')
+pp.pieplot(data=df, x="kind", y="n", palette=palette, hatch="kind",
+           hatch_map=hatches, linewidth=1.5, legend=False, ax=axes[3],
+           title="hatch, linewidth=1.5")
 pp.show()

@@ -78,6 +78,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   #262 all lived. For the same reason there is no introspection fallback
   — `wedge_values` on an axes publiplots did not draw raises and says so.
 
+  `linewidth` sets the hatch strokes as well as the outlines, in the
+  wedges and their legend swatches alike, since a pattern stroke outlines
+  the shape it fills: 0.75 (the `edgewidth`) by default and 1.5 for
+  `linewidth=1.5`, rather than `rcParams["hatch.linewidth"]` (1.0). This
+  needs matplotlib 3.10 or later, where `Patch.set_hatch_linewidth`
+  exists; earlier, hatches keep the rcParams width. A numeric `hue` maps through a colormap and draws a colorbar,
+  and `palette=` names that colormap as it does for `scatterplot` — a
+  colormap name or a `Colormap`, with `None` giving a light ramp anchored
+  on `color` and a dict or list raising `TypeError`.
+
   Four known gaps. Outside labels do not de-collide, so adjacent thin
   wedges can overlap under the default `anchor="auto"`. The per-axes
   legend that `legend=True` draws is placed 2mm from the axes frame, not
@@ -95,6 +105,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an 85.92mm-wide figure against 74.00mm under `aspect="cell"`, for the
   same data. That is how the layout treats any decoration on an
   `aspect="equal"` axes, not something particular to these labels.
+
+### Fixed
+
+- **A rectangle legend swatch keeps the hatch width its handle was
+  created with.** `HandlerRectangle`, the swatch handler every
+  rectangle-swatch plotter shares, read `rcParams["hatch.linewidth"]`
+  when the legend was built, so the width depended on when that
+  happened: a plot drawn inside
+  `matplotlib.rc_context({"hatch.linewidth": ...})` lost the width in a
+  legend built after the context exited. For a hatched `barplot` drawn
+  inside `rc_context({"hatch.linewidth": 3.0})`, the per-axes legend,
+  built inside the context, drew 3.0 swatches before and after; a
+  `pp.legend` band, built at draw once the context had exited, drew 1.0
+  before and 3.0 now. Outside such a context nothing changes — both
+  drew 1.0 before and after. Needs matplotlib 3.10 or later, as above.
 
 ## [0.19.0] - 2026-09-25
 
