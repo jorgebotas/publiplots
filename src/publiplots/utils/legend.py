@@ -215,6 +215,15 @@ class HandlerRectangle(HandlerPatch):
             hatch=hatch_pattern,
             zorder=3
         )
+        # A fresh Rectangle takes rcParams["hatch.linewidth"], whatever
+        # width the handle was given, so carry the handle's own across.
+        # A handle nobody set one on holds that same rcParams value, so
+        # this changes nothing for it. Guarded: the get/set pair is
+        # matplotlib >= 3.10 only.
+        if hasattr(orig_handle, "get_hatch_linewidth") and hasattr(
+            rect_edge, "set_hatch_linewidth"
+        ):
+            rect_edge.set_hatch_linewidth(orig_handle.get_hatch_linewidth())
 
         return [rect_fill, rect_edge]
 

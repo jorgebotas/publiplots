@@ -335,3 +335,32 @@ def test_apply_cell_limits_rejects_an_unknown_aspect():
     fig, ax = pp.subplots()
     with pytest.raises(ValueError, match="aspect"):
         apply_cell_limits(ax, radius=1.0, aspect="square")
+
+
+_HAS_HATCH_LINEWIDTH = hasattr(Wedge, "set_hatch_linewidth")
+
+
+@pytest.mark.skipif(not _HAS_HATCH_LINEWIDTH,
+                    reason="Patch.set_hatch_linewidth needs matplotlib>=3.10")
+def test_draw_wedges_draws_the_hatch_at_the_outline_width():
+    """A hatch stroke outlines its shape, so it follows linewidth= rather
+    than staying at rcParams["hatch.linewidth"] (1.0)."""
+    nodes, places, _ = _places()
+    colors, _ = _style(nodes)
+    hatches = {n.path: "//" for n in nodes}
+    fig, ax = pp.subplots()
+    patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
+                          pull={}, alpha=1.0, edgecolor=None, linewidth=2.5)
+    assert [p.get_hatch_linewidth() for p in patches] == pytest.approx(
+        [2.5, 2.5])
+
+
+def test_set_hatch_linewidth_is_a_no_op_without_the_api():
+    """matplotlib < 3.10 has no Patch.set_hatch_linewidth and the floor is
+    3.7, so the helper must skip, not raise, when the method is absent."""
+    from publiplots.plot.wedge.draw import set_hatch_linewidth
+
+    class _OldPatch:
+        pass
+
+    set_hatch_linewidth(_OldPatch(), 2.5)
