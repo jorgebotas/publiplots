@@ -350,6 +350,7 @@ def violinplot(
         # Level order must be seaborn's, which honours these and sorts
         # numeric levels; without them the pairing desyncs (#262).
         order=order, hue_order=hue_order,
+        split=split, side=side,
         # Only this call's collections: the PolyCollection filter is broad
         # enough to catch a filled kdeplot's fill.
         drawn_artists=tracker.get_new_collections(),

@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on C's, and C's label was dropped. Such groups are now skipped, decided by
   repeating seaborn's own fit, so every other group labels its own body.
   `pp.boxplot` is unchanged: matplotlib draws a box for n=1.
+- **Custom labels on box and violin plots judge contrast against the drawn
+  fill.** `box_custom` / `violin_custom` with `anchor="center"` and
+  `color="auto"` compared against the palette colour at full opacity, so a
+  saturated palette entry could put white text on a body drawn at
+  `alpha=0.1`. They now use the body's drawn face.
 
 ## [0.19.0] - 2026-09-25
 

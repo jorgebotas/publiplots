@@ -255,7 +255,8 @@ class _ColorShim:
     def __init__(self, record):
         self._record = record
         self.hue_color = getattr(record, "hue_color", None)
-        self.patch = getattr(record, "patch", None) or _DummyPatch(self.hue_color)
+        face = getattr(record, "face_color", None) or self.hue_color
+        self.patch = getattr(record, "patch", None) or _DummyPatch(face, self.hue_color)
 
     @classmethod
     def wrap(cls, record):
@@ -267,11 +268,12 @@ class _ColorShim:
 
 
 class _DummyPatch:
-    def __init__(self, rgba):
-        self._rgba = rgba or (0, 0, 0, 1)
+    def __init__(self, face, edge):
+        self._face = face or (0, 0, 0, 1)
+        self._edge = edge or self._face
 
     def get_facecolor(self):
-        return self._rgba
+        return self._face
 
     def get_edgecolor(self):
-        return self._rgba
+        return self._edge

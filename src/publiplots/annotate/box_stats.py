@@ -191,21 +191,23 @@ def _box_stats_strategy(
 
 
 class _BoxStandIn:
-    """Same shim pattern as point_values — resolve_color only needs
-    `hue_color` and `patch.get_facecolor/get_edgecolor`; for the 'outside'
-    anchor used here, neither face/edge path is read."""
+    """Same shim pattern as point_values. resolve_color reads `hue_color`
+    and `patch.get_facecolor/get_edgecolor`; the face is the drawn one, so
+    a label inside the mark contrasts with what is actually under it."""
 
     def __init__(self, box: BoxStatsRecord):
-        self.patch = _PatchShim(box.hue_color)
+        face = box.face_color if box.face_color is not None else box.hue_color
+        self.patch = _PatchShim(face, box.hue_color)
         self.hue_color = box.hue_color
 
 
 class _PatchShim:
-    def __init__(self, rgba):
-        self._rgba = rgba or (0, 0, 0, 1)
+    def __init__(self, face, edge):
+        self._face = face or (0, 0, 0, 1)
+        self._edge = edge or self._face
 
     def get_facecolor(self):
-        return self._rgba
+        return self._face
 
     def get_edgecolor(self):
-        return self._rgba
+        return self._edge
