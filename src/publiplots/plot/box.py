@@ -258,29 +258,14 @@ def boxplot(
 
     # Build a map of position -> color from patches
     # Position is on the categorical axis (x or y)
-    box_colors = {}
+    patch_colors = {}
     for patch in new_patches:
         verts = patch.get_path().vertices
         if categorical_axis == "x":
             pos = round(np.mean(verts[:, 0]), 2)
         else:
             pos = round(np.mean(verts[:, 1]), 2)
-        box_colors[pos] = patch.get_facecolor()
-
-    # With fill=False seaborn draws no patches: the box outline is a closed
-    # Line2D, and it strokes every structural line (outline, whiskers,
-    # median, caps) in that box's palette colour. Key the map off those
-    # instead, centring on the extent midpoint since the closed outline
-    # repeats a vertex and would skew a mean.
-    if not box_colors:
-        for line in new_lines:
-            if line.get_marker() and line.get_marker() != 'None':
-                continue
-            line_data = line.get_xdata() if categorical_axis == "x" else line.get_ydata()
-            if len(line_data) == 0:
-                continue
-            pos = round((np.min(line_data) + np.max(line_data)) / 2, 2)
-            box_colors.setdefault(pos, to_rgba(line.get_color()))
+        patch_colors[pos] = patch.get_facecolor()
 
     # Resolve markeredgewidth for outliers
     flierprops = kwargs.get("flierprops", {})
@@ -290,13 +275,23 @@ def boxplot(
     # Recolor lines based on position and edgecolor
     for line in new_lines:
         line_data = line.get_xdata() if categorical_axis == "x" else line.get_ydata()
-        if len(line_data) == 0 or not box_colors:
+        if len(line_data) == 0:
             continue
-        pos = (np.min(line_data) + np.max(line_data)) / 2
-        closest_pos = min(box_colors.keys(), key=lambda p: abs(p - pos))
-        base_color = box_colors[closest_pos]
+        is_flier = line.get_marker() and line.get_marker() != 'None'
+        if patch_colors:
+            pos = np.mean(line_data)
+            closest_pos = min(patch_colors.keys(), key=lambda p: abs(p - pos))
+            base_color = patch_colors[closest_pos]
+        else:
+            # fill=False: seaborn draws no patches (the box outline is a
+            # closed Line2D) and strokes each line in its own box's palette
+            # colour, so read it off the line. A position lookup would
+            # collapse boxes that share a position (dodge=False) to one colour.
+            base_color = to_rgba(
+                line.get_markeredgecolor() if is_flier else line.get_color()
+            )
 
-        if line.get_marker() and line.get_marker() != 'None':
+        if is_flier:
             # Outlier markers: face = palette color, edge = edgecolor or palette
             line.set_markerfacecolor(base_color)
             line.set_markeredgecolor(resolved_edgecolor if resolved_edgecolor else base_color)

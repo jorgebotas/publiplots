@@ -10,16 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`pp.boxplot(..., fill=False)` no longer raises `ValueError: min()
-  iterable argument is empty`.** The recolouring pass built its
-  position → colour map only from the box `PathPatch`es, but unfilled,
-  seaborn draws no patches: each box outline is a closed `Line2D`, stroked —
-  along with its whiskers, median, caps and flier edges — in that box's
-  palette colour. The map is now keyed off those lines when there are no
-  patches, so every box keeps its palette colour on its outline, whiskers
-  and fliers (or the explicit `edgecolor`, when one is given), with
-  `edgewidth` applied as for filled boxes. Line positions are now taken as
-  the midpoint of their extent rather than the mean of their vertices, since
-  the closed outline repeats a vertex.
+  iterable argument is empty`.** The recolouring pass looked each line's
+  colour up in a position → colour map built only from the box
+  `PathPatch`es, but unfilled, seaborn draws no patches: each box outline is
+  a closed `Line2D`, stroked — along with its whiskers, median, caps and
+  flier edges — in that box's palette colour. With no patches, each line now takes its base colour from
+  itself (stroke colour, or marker edge colour for fliers), so every box
+  keeps its palette colour on its outline, whiskers and fliers (or the
+  explicit `edgecolor`, when one is given), with `edgewidth` applied as for
+  filled boxes. Reading the colour off the line rather than looking it up by
+  position also keeps boxes that share a position (`dodge=False` with a hue
+  other than the categorical axis) in their own colours.
 
 ## [0.19.0] - 2026-09-25
 

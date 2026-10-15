@@ -1,7 +1,7 @@
 """Tests for pp.boxplot with ``fill=False``.
 
 Unfilled, seaborn draws each box outline as a closed ``Line2D`` instead of a
-``PathPatch``, so the recolouring pass must key box colours off lines.
+``PathPatch``, so the recolouring pass must take box colours from the lines.
 """
 from __future__ import annotations
 
@@ -91,3 +91,21 @@ def test_unfilled_honours_explicit_edgecolor(df):
                fill=False, edgecolor="black", ax=ax)
     for line in _structural_lines(ax):
         assert to_rgba(line.get_color()) == to_rgba("black")
+
+
+def test_unfilled_overlapping_boxes_keep_their_own_colours():
+    # dodge=False with hue != x puts two boxes at each position; a
+    # position -> colour lookup would paint both in one colour.
+    rng = np.random.default_rng(0)
+    frame = pd.DataFrame({
+        "c": np.repeat(list("AB"), 40),
+        "g": np.tile(list("xy"), 40),
+        "v": rng.normal(size=80),
+    })
+    frame.loc[frame["g"] == "y", "v"] += 5
+    palette = {"x": "#d62728", "y": "#1f77b4"}
+    _, ax = pp.subplots(axes_size=(40, 40))
+    pp.boxplot(data=frame, x="c", y="v", hue="g", palette=palette,
+               dodge=False, fill=False, ax=ax)
+    colours = {to_rgba(l.get_color()) for l in _structural_lines(ax)}
+    assert colours == {to_rgba(c) for c in palette.values()}
