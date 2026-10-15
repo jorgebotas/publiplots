@@ -101,9 +101,11 @@ def _numeric_hue_cmap(
     it (``cmap(norm(v))``), which a string cannot do.
 
     A dict or list assigns colours to discrete levels, which a numeric
-    hue does not have. ``scatterplot`` raises on both too, but with a bare
-    ``TypeError`` from deep inside matplotlib; this raises the same types
-    with a message that names the parameter.
+    hue does not have. ``scatterplot`` raises ``TypeError`` on both too,
+    from its dependencies (matplotlib's colormap lookup for a dict,
+    seaborn's hue mapping for a list), with a message that names neither
+    the parameter nor the cause; this raises the same type with one that
+    does.
     """
     if palette is None:
         return resolve_continuous_cmap(None, color=color)

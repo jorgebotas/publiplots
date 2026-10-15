@@ -215,11 +215,17 @@ class HandlerRectangle(HandlerPatch):
             hatch=hatch_pattern,
             zorder=3
         )
-        # A fresh Rectangle takes rcParams["hatch.linewidth"], whatever
-        # width the handle was given, so carry the handle's own across.
-        # A handle nobody set one on holds that same rcParams value, so
-        # this changes nothing for it. Guarded: the get/set pair is
-        # matplotlib >= 3.10 only.
+        # The swatch takes the hatch width the handle carries -- set
+        # explicitly, or else the rcParams["hatch.linewidth"] in force when
+        # the handle was CREATED -- rather than whatever rcParams holds when
+        # the legend renders. matplotlib records that rcParam on a patch at
+        # construction, and a legend band can render lazily, long after the
+        # plot ran and outside the rc_context it ran in; reading it at
+        # render time made the swatch depend on when that happened, and
+        # discarded any width set on the handle. This departs from stock
+        # matplotlib: Patch.update_from does not copy _hatch_linewidth, so
+        # matplotlib's own HandlerPatch uses the render-time value. Guarded:
+        # the get/set pair is matplotlib >= 3.10 only.
         if hasattr(orig_handle, "get_hatch_linewidth") and hasattr(
             rect_edge, "set_hatch_linewidth"
         ):
