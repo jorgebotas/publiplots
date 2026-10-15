@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`anchor="inside"` for `box_stats`, `box_custom` and `violin_custom`.**
+  The label sits on the forward side of the median line — above it for
+  vertical marks, right of it for horizontal ones — inside the body, and
+  never flips side near the axis end. Split violins and `side=` halves put
+  each label against the seam on its own half's side. `color="auto"`
+  contrasts with the drawn fill.
+
 ### Changed
 
 - **`color="auto"` picks label ink by WCAG contrast ratio.** It compared HLS
