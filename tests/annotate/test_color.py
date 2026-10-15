@@ -4,10 +4,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+import seaborn as sns
 from matplotlib.colors import to_rgba
 
 from publiplots.annotate._cache import BarRecord
-from publiplots.annotate._color import resolve_color
+from publiplots.annotate._color import contrast_ink, relative_luminance, resolve_color
 
 
 @pytest.fixture(autouse=True)
@@ -95,3 +96,50 @@ def test_hue_with_hue_active_false_warns_and_falls_back_to_auto():
                              hue_active=False)
     # Dark bar inside anchor → light text under auto semantics.
     assert rgba == to_rgba("#ffffff")
+
+
+_PALETTES = ("deep", "muted", "pastel", "bright", "dark", "colorblind", "tab10")
+_WHITE = to_rgba("#ffffff")
+
+
+def _ink():
+    return to_rgba(plt.rcParams["text.color"])
+
+
+def _sweep():
+    return [rgb for pal in _PALETTES for rgb in sns.color_palette(pal)]
+
+
+def test_relative_luminance_matches_seaborn():
+    for rgb in _sweep():
+        assert relative_luminance(rgb) == pytest.approx(
+            sns.utils.relative_luminance(rgb), abs=1e-4)
+
+
+def test_contrast_ink_picks_the_higher_wcag_contrast_ratio():
+    for rgb in _sweep():
+        y = sns.utils.relative_luminance(rgb)
+        white_wins = 1.05 / (y + 0.05) > (y + 0.05) / 0.05
+        got = contrast_ink(to_rgba(rgb), to_rgba("white"))
+        assert got == (_WHITE if white_wins else _ink()), rgb
+
+
+@pytest.mark.parametrize("fill, want_white", [
+    ("#0000ff", True),    # HLS lightness 0.500 picked ink: contrast 2.4 vs 8.6
+    ("#2ca02c", False),   # HLS lightness 0.400 picked white: 3.4 vs 6.2
+    ("#5d83c3", False),   # publiplots' default colour: 5.5 vs 3.8
+])
+def test_auto_inside_uses_wcag_not_hls(fill, want_white):
+    fig, ax = plt.subplots()
+    ax.set_facecolor("white")
+    r = _bar(ax, facecolor=fill, alpha=1.0)
+    bar = BarRecord(patch=r, value=1.0, err_low=None, err_high=None, hue_color=None)
+    got = resolve_color(bar, color="auto", anchor="inside", ax=ax)
+    assert got == (_WHITE if want_white else _ink())
+
+
+def test_default_alpha_fills_always_get_ink():
+    """At pp.rcParams["alpha"] = 0.1 every fill composites to near-white, so
+    the rule change cannot move a default-styled label."""
+    for rgb in _sweep():
+        assert contrast_ink(to_rgba(rgb, 0.1), to_rgba("white")) == _ink(), rgb

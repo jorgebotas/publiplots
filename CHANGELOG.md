@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`color="auto"` picks label ink by WCAG contrast ratio.** It compared HLS
+  lightness against 0.408, which put black text on pure blue (contrast 2.4,
+  against 8.6 for white) and white text on tab:green (3.4, against 6.2).
+  Ink is now whichever of white or `text.color` has the higher WCAG 2.x
+  contrast ratio against the composited fill — white below relative luminance
+  ≈0.179. Labels on default `alpha=0.1` fills are unaffected: every fill
+  composites to near-white and keeps its ink.
+
 ### Fixed
 
 - **Violin labels no longer shift onto the next violin after a group seaborn
