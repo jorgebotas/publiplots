@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The package metadata now declares the Python and matplotlib versions
+  publiplots actually runs on: `requires-python = ">=3.10"` and
+  `matplotlib>=3.10.0`** (were `>=3.9` and `>=3.7.0`). This makes the
+  metadata match reality; it does not remove working support. **publiplots
+  has not imported on Python 3.9, or on any matplotlib below 3.10, since
+  v0.4.2.** That release added an unconditional
+  `from matplotlib.collections import FillBetweenPolyCollection` to
+  `utils/transparency.py`, and that class only exists from matplotlib 3.10.
+  On matplotlib 3.9.4 `import publiplots` fails outright with
+  `ImportError: cannot import name 'FillBetweenPolyCollection' from
+  'matplotlib.collections'`. `pp.barplot` and `pp.histplot` also paint bars
+  through `Patch.set_hatch_linewidth`, which is matplotlib 3.10+ as well.
+
+  The two floors are one fact, not two: matplotlib 3.10.0 itself declares
+  `requires-python >=3.10`, so on Python 3.9 every resolver picks a 3.9.x
+  matplotlib and installs a publiplots that cannot be imported. The
+  repository's own `uv.lock` carried exactly that combination — a
+  `python_full_version < '3.10'` fork pinning `matplotlib 3.9.4` — and
+  nothing exercised it, because CI only runs on Python 3.11. The lockfile is
+  regenerated without that fork.
+
+  The new floor was verified by running it, not inferred: on Python 3.10
+  with `matplotlib==3.10.0` and every other dependency at its latest
+  release, `import publiplots` succeeds and the full suite passes (2229
+  tests). The 3.9 classifier is dropped, the `black`, `ruff` and `mypy`
+  targets move to 3.10, and the installation page, the Python badge, the
+  docs requirements file and the publishing guide's version example are
+  brought into line; the installation page also gains the `scipy` floor it
+  omitted.
+
+  Note for Python 3.9 users: resolvers will now stop at 0.19.0, the last
+  release that claims 3.9 support. It does not import there either; use
+  Python 3.10 or later.
+
 ## [0.19.0] - 2026-09-25
 
 ### Added
