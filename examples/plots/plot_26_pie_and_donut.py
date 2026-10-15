@@ -17,8 +17,10 @@ df = pd.DataFrame({
     "n": [52.2, 41.8, 6.0, 4.0],
 })
 
-palette = {"symptom": "#75b375", "admin": "#8e8ec1",
-           "lay_dx": "#eeaa58", "none": "#e67e7e"}
+# Not the default assignment: each category gets a colour the default
+# palette would have given another one.
+palette = {"symptom": "#8e8ec1", "admin": "#eeaa58",
+           "lay_dx": "#e67e7e", "none": "#75b375"}
 
 # %%
 # A pie beside a bar panel
@@ -40,16 +42,55 @@ pp.show()
 # %%
 # One legend for both panels
 # --------------------------
-# A pie stashes its legend entry the same way every other plotter does,
-# so a figure-level ``pp.legend`` band collects it alongside the bar
-# panel's. The two entries share a name (``kind``) and the same
-# colours, so the band shows them once, for both panels.
+# Here the bars break each category down by year, and the pie shows the
+# two years pooled. Both panels key colour on ``kind``, and each stashes
+# a ``kind`` colour entry; a figure-level ``pp.legend`` band collects
+# both and merges them by name, so ``kind`` is listed once, for both
+# panels. Merging is by name, not by colour: where two panels draw the
+# same label differently, the band keeps the first panel's swatch and,
+# for a different fill or stroke width, warns. The shared ``palette``
+# is what makes the merged key true of both panels.
+#
+# (A bar panel whose ``x`` is ``kind`` itself, as above, labels its
+# categories on the axis and stashes no colour entry, so it has nothing
+# to merge.)
 
+yearly = pd.DataFrame({
+    "year": ["2023"] * 4 + ["2024"] * 4,
+    "kind": ["symptom", "admin", "lay_dx", "none"] * 2,
+    "n": [24.1, 20.3, 3.2, 1.9, 28.1, 21.5, 2.8, 2.1],
+})
 fig, axes = pp.subplots(ncols=2, axes_size=(50, 45))
 pp.legend(side="right")
-pp.barplot(data=df, x="kind", y="n", hue="kind", palette=palette,
+pp.barplot(data=yearly, x="year", y="n", hue="kind", palette=palette,
            ax=axes[0])
-pp.pieplot(data=df, x="kind", y="n", palette=palette, ax=axes[1])
+pp.pieplot(data=yearly, x="kind", y="n", palette=palette, ax=axes[1])
+pp.show()
+
+# %%
+# Counting rows
+# -------------
+# With ``y`` omitted, each wedge is the number of rows in its category,
+# so a pie can be drawn straight from one-row-per-observation data.
+# ``fmt=",.0f"`` labels the counts rather than the shares.
+
+visits = pd.DataFrame({
+    "kind": ["symptom"] * 12 + ["admin"] * 9 + ["lay_dx"] * 5
+            + ["none"] * 4,
+})
+fig, ax = pp.subplots(axes_size=(50, 50))
+pp.pieplot(data=visits, x="kind", palette=palette, ax=ax,
+           annotate={"fmt": ",.0f"})
+pp.show()
+
+# %%
+# A palette by name
+# -----------------
+# ``palette`` also takes a seaborn or publiplots palette name, assigned
+# in category order.
+
+fig, ax = pp.subplots(axes_size=(50, 50))
+pp.pieplot(data=df, x="kind", y="n", palette="Set2", ax=ax)
 pp.show()
 
 # %%
@@ -58,8 +99,7 @@ pp.show()
 # By default wedges follow the category order of the data — the same
 # order a bar panel drawn from the same frame uses — running clockwise
 # from twelve o'clock. ``sort=True`` orders them by descending value
-# instead, and ``order=`` names the order outright — here the reverse
-# of the data order. ``order=`` should
+# instead, and ``order=`` names the order outright. ``order=`` should
 # list every category: one it leaves out is dropped and the rest
 # renormalise to a full circle, with a warning.
 
@@ -72,15 +112,31 @@ stage_palette = dict(zip(severity["stage"], pp.color_palette("pastel", 4)))
 fig, axes = pp.subplots(ncols=4, axes_size=(36, 36))
 pp.legend(side="right")
 pp.barplot(data=severity, x="stage", y="n", hue="stage",
-           palette=stage_palette, ax=axes[0])
-axes[0].tick_params(axis="x", labelrotation=45)
+           palette=stage_palette, ax=axes[0], title="bars")
+for label in axes[0].get_xticklabels():
+    label.set(rotation=45, ha="right", rotation_mode="anchor")
 pp.pieplot(data=severity, x="stage", y="n", palette=stage_palette,
            ax=axes[1], title="default")
 pp.pieplot(data=severity, x="stage", y="n", palette=stage_palette,
            sort=True, ax=axes[2], title="sort=True")
 pp.pieplot(data=severity, x="stage", y="n", palette=stage_palette,
-           order=["critical", "severe", "moderate", "mild"], ax=axes[3],
+           order=["severe", "mild", "critical", "moderate"], ax=axes[3],
            title="order=[...]")
+pp.show()
+
+# %%
+# Legend order
+# ------------
+# ``hue_order`` reorders the legend's entries and nothing else: the
+# wedges stay where the data order puts them, and every wedge keeps its
+# colour.
+
+fig, axes = pp.subplots(ncols=2, axes_size=(36, 36))
+pp.pieplot(data=severity, x="stage", y="n", palette=stage_palette,
+           ax=axes[0], title="default")
+pp.pieplot(data=severity, x="stage", y="n", palette=stage_palette,
+           hue_order=["critical", "severe", "moderate", "mild"],
+           ax=axes[1], title="hue_order=[...]")
 pp.show()
 
 # %%
@@ -114,13 +170,18 @@ pp.pieplot(data=df, x="kind", y="n", donut=0.55, palette=palette,
 pp.show()
 
 # %%
-# Pulling a wedge out
-# --------------------
-# ``pull`` is keyed by category, never positional.
+# Pulling wedges out
+# ------------------
+# ``pull`` is a fraction of the radius. A dict keyed by category pulls
+# just those wedges — it is never positional — and a single float pulls
+# every wedge by the same amount.
 
-fig, ax = pp.subplots(axes_size=(50, 50))
+fig, axes = pp.subplots(ncols=2, axes_size=(42, 42))
+pp.legend(side="right")
 pp.pieplot(data=df, x="kind", y="n", palette=palette,
-           pull={"lay_dx": 0.15}, ax=ax)
+           pull={"lay_dx": 0.15}, ax=axes[0], title='{"lay_dx": 0.15}')
+pp.pieplot(data=df, x="kind", y="n", palette=palette, pull=0.05,
+           ax=axes[1], title="0.05")
 pp.show()
 
 # %%
@@ -134,7 +195,8 @@ pp.show()
 # named in an explicit order.
 
 fig, ax = pp.subplots(axes_size=(50, 50))
-pp.pieplot(data=df, x="kind", y="n", min_share=0.1, ax=ax, annotate=True)
+pp.pieplot(data=df, x="kind", y="n", palette=palette, min_share=0.1,
+           ax=ax, annotate=True)
 pp.show()
 
 # %%
@@ -270,5 +332,5 @@ pp.pieplot(data=df, x="kind", y="n", palette=palette, alpha=0,
            title="alpha=0, linewidth=1.5")
 pp.pieplot(data=df, x="kind", y="n", palette=palette, alpha=1,
            edgecolor="white", linewidth=1.5, legend=False, ax=axes[2],
-           title='alpha=1, edgecolor="white"')
+           title='alpha=1, linewidth=1.5\nedgecolor="white"')
 pp.show()

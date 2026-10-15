@@ -71,8 +71,10 @@ def test_value_omitted_counts_rows():
 
 def test_shares_a_palette_dict_with_barplot(df):
     """#268's motivating case: a pie beside a bar panel, same colours."""
-    palette = {"symptom": "#75b375", "admin": "#8e8ec1",
-               "lay_dx": "#eeaa58", "none": "#e67e7e"}
+    # Deliberately not the default assignment (pastel, in category order),
+    # so a call that ignored palette= would draw different colours.
+    palette = {"symptom": "#8e8ec1", "admin": "#eeaa58",
+               "lay_dx": "#e67e7e", "none": "#75b375"}
     fig, axes = pp.subplots(ncols=2)
     # barplot only maps a palette through hue; without hue="kind" every
     # bar takes the single theme colour and the panels stop matching.
@@ -96,6 +98,37 @@ def test_shares_a_palette_dict_with_barplot(df):
         category = ticks[round(bar.get_x() + bar.get_width() / 2)]
         assert tuple(bar.get_facecolor()[:3]) == pytest.approx(
             mcolors.to_rgb(palette[category])), category
+
+
+def test_pie_and_bar_share_one_figure_level_legend(df):
+    """#268: a pie joins a shared band with the other panels of its figure.
+
+    Both panels must contribute a ``kind`` entry, and the band must merge
+    them into one. A bar panel whose ``x`` is ``kind`` itself stashes no
+    colour entry, so it uses a different ``x`` here.
+    """
+    from matplotlib.legend import Legend
+
+    from publiplots.utils.legend_entries import get_entries
+
+    palette = {"symptom": "#8e8ec1", "admin": "#eeaa58",
+               "lay_dx": "#e67e7e", "none": "#75b375"}
+    yearly = pd.concat([df.assign(year="2023"), df.assign(year="2024")])
+    fig, axes = pp.subplots(ncols=2)
+    pp.legend(side="right")
+    pp.barplot(data=yearly, x="year", y="n", hue="kind", palette=palette,
+               ax=axes[0])
+    pp.pieplot(data=yearly, x="kind", y="n", palette=palette, ax=axes[1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fig.canvas.draw()
+
+    for ax in axes:
+        assert ("kind", "hue") in [(e.name, e.kind) for e in get_entries(ax)]
+    legends = fig.findobj(Legend)
+    assert len(legends) == 1
+    assert legends[0].get_title().get_text() == "kind"
+    assert [t.get_text() for t in legends[0].get_texts()] == list(palette)
 
 
 def test_wedges_inherit_the_theme_edge(df):
