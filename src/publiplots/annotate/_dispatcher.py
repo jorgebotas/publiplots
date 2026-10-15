@@ -103,13 +103,11 @@ def annotate(
           share; anchor vocabulary ``{"inside", "outside", "auto"}``.
           Under ``'auto'`` each label is measured against the room its
           own wedge has and pushed outside, with a leader line, when it
-          does not fit. Outside labels make the axis limits grow to
-          hold them, and when the chart cannot hold both ``offset`` and
-          ``pad``, ``offset`` is honoured exactly and ``pad`` is
-          reduced — so on a chart too small for its labels they may end
-          up outside the axes rather than at the wrong distance from
-          their wedge. Prefer ``anchor='inside'`` or a shorter ``fmt``
-          there.
+          does not fit. Outside labels are decorations, like a title:
+          the axis limits are left alone, so the disc is the same size
+          whichever anchor is used, and the labels extend beyond the
+          axes while the layout grows the figure to hold them. ``pad``
+          has no effect for this kind.
     fmt : str, optional
         Either a bare format spec (e.g. ``".2f"``, ``",.0f"``) or a
         format-string template containing ``{}`` (e.g.
@@ -141,6 +139,9 @@ def annotate(
         so the geometry reads:
 
         ``mark → offset → label → pad → axis edge``.
+
+        Ignored by ``wedge_values``, whose outside labels sit beyond
+        the axes edge rather than inside it.
     rotation : float or str, default ``0.0``
         Label rotation in degrees, counter-clockwise. For right-angle
         multiples (0, 90, 180, 270) the ``(ha, va)`` alignment is
