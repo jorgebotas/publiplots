@@ -106,8 +106,10 @@ def annotate(
           does not fit. Outside labels are decorations, like a title:
           the axis limits are left alone, so the disc is the same size
           whichever anchor is used, and the labels extend beyond the
-          axes while the layout grows the figure to hold them. ``pad``
-          has no effect for this kind.
+          axes. On an axes from :func:`publiplots.subplots` the layout
+          grows the figure to hold them; on any other axes nothing does,
+          and labels that reach past the figure edge are cut off. ``pad``
+          has no effect for this kind, and is not validated for it.
     fmt : str, optional
         Either a bare format spec (e.g. ``".2f"``, ``",.0f"``) or a
         format-string template containing ``{}`` (e.g.
@@ -184,7 +186,8 @@ def annotate(
     ------
     ValueError
         If ``kind`` is not one of the registered strategies, or if
-        ``offset`` / ``pad`` is negative.
+        ``offset`` is negative, or ``pad`` is negative for any kind but
+        ``wedge_values``.
     TypeError
         If an option belonging to one strategy is passed with a
         ``kind`` that does not take it: ``basis=`` outside the wedge
@@ -252,7 +255,10 @@ def annotate(
         raise ValueError("offset must be >= 0")
     if pad is None:
         pad = offset
-    if pad < 0:
+    # `pad` has no effect for the wedge kinds, so a value there is not
+    # validated: refusing an argument that changes nothing would only make
+    # a call shared across kinds fail on the pie.
+    if pad < 0 and kind not in _WEDGE_KINDS:
         raise ValueError("pad must be >= 0")
     # Wedge charts add two named orientations, `"tangential"` and
     # `"radial"`, which only mean anything where there is a mid-ray to

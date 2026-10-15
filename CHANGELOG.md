@@ -78,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   #262 all lived. For the same reason there is no introspection fallback
   — `wedge_values` on an axes publiplots did not draw raises and says so.
 
-  Three known gaps. Outside labels do not de-collide, so adjacent thin
+  Four known gaps. Outside labels do not de-collide, so adjacent thin
   wedges can overlap under the default `anchor="auto"`. The per-axes
   legend that `legend=True` draws is placed 2mm from the axes frame, not
   past the labels on that side, so a label pointing at one to two o'clock
@@ -88,7 +88,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   axes frame rather than above the labels, so a label near twelve o'clock
   can run into it: on the gallery's 38x38mm comparison the top label
   clears the title by 0.37mm at the default `offset`, and overlaps it by
-  1.63mm at `offset=3`.
+  1.63mm at `offset=3`. Finally, under `aspect="equal"` on a cell wider
+  than tall the layout measures a label's overhang from the drawn square
+  rather than from the cell, so it reserves room the cell already had
+  and the figure over-grows: `anchor="outside"` on a 70x40mm cell gives
+  an 85.92mm-wide figure against 74.00mm under `aspect="cell"`, for the
+  same data. That is how the layout treats any decoration on an
+  `aspect="equal"` axes, not something particular to these labels.
 
 ## [0.19.0] - 2026-09-25
 

@@ -364,24 +364,28 @@ def test_auto_keeps_a_short_label_inside_a_wedge_a_long_one_leaves():
 # Outside labels are decorations
 # -----------------------------------------------------------------------------
 
-def test_the_disc_is_the_same_size_whichever_anchor_its_labels_take():
+@pytest.mark.parametrize("size", [(38.0, 38.0), (40.0, 70.0), (70.0, 40.0)])
+def test_the_disc_is_the_same_size_whichever_anchor_its_labels_take(size):
     """The same data draws the same pie, wherever its labels went.
 
-    The gallery's comparison: one figure, three cells, the same frame
-    labelled ``inside``, ``outside`` and ``auto``. Labels that leave the
-    disc are decorations the layout makes room for, so none of them may
-    shrink the chart to keep itself inside the frame.
+    The gallery's comparison: one figure, the same frame labelled
+    ``inside``, ``outside`` and ``auto`` beside a bare copy. Labels that
+    leave the disc are decorations the layout makes room for, so none of
+    them may shrink the chart to keep itself inside the frame. Tall and
+    wide cells too, since ``aspect="cell"`` frames those by stretching
+    the limits on the longer side.
     """
     thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
-    fig, axes = pp.subplots(ncols=4, axes_size=(38.0, 38.0))
+    fig, axes = pp.subplots(ncols=4, axes_size=size)
     for ax in axes:
         pp.pieplot(data=thin, x="kind", y="n", legend=False, ax=ax)
     for ax, anchor in zip(axes[1:], ["inside", "outside", "auto"]):
         pp.annotate(ax, "wedge_values", anchor=anchor)
 
-    outside_counts = [sum(_radius(t) > 1.0 for t in ax.texts)
-                      for ax in axes[1:]]
-    assert outside_counts == [0, 4, 2], "auto must move some labels, not all"
+    inside, outside, auto = [sum(_radius(t) > 1.0 for t in ax.texts)
+                             for ax in axes[1:]]
+    assert (inside, outside) == (0, 4)
+    assert 0 < auto < 4, "auto must move some labels, not all"
 
     bare = axes[0]
     for ax in axes[1:]:
@@ -531,21 +535,33 @@ def test_a_row_of_pies_keeps_outside_labels_off_their_neighbours():
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="The per-axes legend is pinned 2mm from the axes frame rather "
            "than past the decorations on that side, so an outside label "
            "at one to two o'clock overprints it.",
 )
 def test_outside_labels_do_not_overlap_the_default_legend():
     """`legend=True` puts the legend to the right of the axes, where the
-    labels of wedges pointing right now are."""
+    labels of wedges pointing right now are.
+
+    Measured after a full ``savefig``, which settles the layout, so a fix
+    that needs more than one draw to place the legend is still seen. The
+    setup check uses ``pytest.fail`` rather than ``assert`` so that only
+    the overlap assertion can be the expected failure.
+    """
+    import io
+
+    import matplotlib.legend
+
     frame = pd.DataFrame({"kind": list("AB"), "n": [30.0, 70.0]})
     fig, ax = pp.subplots(axes_size=(40.0, 40.0))
     pp.pieplot(data=frame, x="kind", y="n", ax=ax,
                annotate={"anchor": "outside"})
-    renderer = _settle(fig)
-    import matplotlib.legend
+    fig.savefig(io.BytesIO(), format="png")
+    renderer = fig.canvas.get_renderer()
     legends = fig.findobj(matplotlib.legend.Legend)
-    assert len(legends) == 1
+    if len(legends) != 1:
+        pytest.fail(f"expected one legend, found {len(legends)}")
     legend = legends[0].get_window_extent(renderer)
     for artist in _decorations(ax):
         assert not _boxes_overlap(artist.get_window_extent(renderer),
@@ -827,6 +843,26 @@ def test_a_label_auto_pushed_out_stops_taking_the_fills_contrast():
     assert inside.get_color() != pushed_out.get_color()
 
 
+def test_outside_labels_take_the_outside_colour():
+    """`anchor="outside"` labels sit on the page, not on a fill.
+
+    Same dark opaque fill as above, so the inside contrast colour would be
+    white; an outside label drawn white on the page would be invisible.
+    """
+    from matplotlib.colors import to_rgba
+
+    frame = pd.DataFrame({"kind": list("AB"), "n": [60.0, 40.0]})
+    ax = _pie(frame, alpha=1.0, palette={"A": "#101010", "B": "#101010"})
+    pp.annotate(ax, "wedge_values", anchor="outside", color="auto")
+    for text in ax.texts:
+        assert text.get_color() == to_rgba(plt.rcParams["text.color"])
+
+    inside = _pie(frame, alpha=1.0, palette={"A": "#101010", "B": "#101010"})
+    pp.annotate(inside, "wedge_values", anchor="inside", color="auto")
+    for text in inside.texts:
+        assert text.get_color() == to_rgba("#ffffff"), "the fill must matter"
+
+
 # -----------------------------------------------------------------------------
 # Wiring
 # -----------------------------------------------------------------------------
@@ -855,6 +891,24 @@ def test_annotate_dict_on_the_plot_call_is_forwarded(df):
     pp.pieplot(data=df, x="kind", y="n", legend=False, ax=ax,
                annotate={"fmt": ",.0f"})
     assert [t.get_text() for t in ax.texts] == ["50", "25", "15", "10"]
+
+
+def test_a_negative_pad_is_not_rejected_for_wedge_values(df):
+    """`pad` has no effect here, so it is not validated here either."""
+    ax = _pie(df)
+    labels = pp.annotate(ax, "wedge_values", anchor="outside", pad=-2.0)
+    assert len(labels) == 4
+
+
+def test_a_negative_pad_is_still_rejected_for_every_other_kind():
+    from publiplots.annotate._dispatcher import _STRATEGIES, _WEDGE_KINDS
+
+    others = sorted(set(_STRATEGIES) - _WEDGE_KINDS)
+    assert others, "nothing to check"
+    for kind in others:
+        fig, ax = pp.subplots()
+        with pytest.raises(ValueError, match="pad must be >= 0"):
+            pp.annotate(ax, kind, pad=-0.5)
 
 
 def test_text_kws_reach_the_artists(df):

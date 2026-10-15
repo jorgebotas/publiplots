@@ -144,28 +144,37 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
     degrees the wedge stops being convex about its mid-ray and the edges
     no longer bound the label at all, so the disc itself is the limit.
 
-    The tangential bound is **approximate**. It resolves the label's
-    reach along the mid-ray's tangent, whereas the half-planes that
-    actually contain the wedge have normals perpendicular to its two
-    *edge* rays, which the tangent only matches as the span goes to
-    zero. For an ordinary label the error is optimistic: a label can be
-    accepted with a corner proud of an edge. At three o'clock on a
-    40x40mm chart ``"50.0%"`` is accepted from a 14.3-degree span, where
-    the exact geometric threshold is 22.3 degrees; at 15 degrees the
-    accepted label's inner corner sits 0.39mm outside the wedge, at 18
-    degrees 0.23mm. A label much wider than it is tall, on a wide wedge,
-    errs the other way: ``"1,234,567"`` at twelve o'clock on a 25x25mm
-    chart is rejected below 134.2 degrees although it fits from 98.0.
-    Fractions of a millimetre on a chart whose wedges are outlined
-    anyway, and a label sent outside that could have stayed in, are
-    both cheaper than the exact half-plane test.
+    The tangential bound is **approximate, and its error is not small**.
+    It resolves the label's reach along the mid-ray's tangent, whereas
+    the half-planes that actually contain the wedge have normals
+    perpendicular to its two *edge* rays, which the tangent only matches
+    as the span goes to zero. In most directions that makes it
+    optimistic: it accepts a label with a corner outside its wedge, by an
+    amount that grows with the label's width and shrinks as the chart
+    gets bigger. Swept over every span it accepts (0.5-degree steps) at
+    every whole-degree direction, for a pie with no hole at the default
+    rotation, the worst overhang is 0.63mm for ``"50.0%"`` on a 40x40mm
+    chart, 1.35mm for ``"1,234,567"`` on that chart, and 1.98mm for
+    ``"1,234,567"`` on a 25x25mm one -- just below three o'clock, at a
+    64-degree span. That last is the largest over ``"5.0%"``,
+    ``"50.0%"``, ``"1,234.57"`` and ``"1,234,567"`` on 25, 40 and 80mm
+    charts. At three o'clock exactly, the same label on the same chart
+    is accepted from a 23.0-degree span and only fits from 136.8; and
+    ``"50.0%"`` on 40mm is accepted from 14.3 against a geometric 22.3.
+    Only near twelve o'clock does a long label err the other way:
+    ``"1,234,567"`` on 25mm is rejected there below 134.2 degrees
+    although it fits from 98.0. So an ``auto`` label left inside can
+    visibly cross its wedge's edge -- by up to about two millimetres
+    with long labels on a small chart -- and ``anchor="outside"`` or a
+    shorter ``fmt`` is the remedy there.
 
-    What the span a label needs is *not* is a single number. Against
+    The span a label needs is *not* a single number. Against
     this test at the themed 7pt font, ``"50.0%"`` on a 40x40mm chart
     needs 43.2 degrees at twelve o'clock and 14.3 at three o'clock, where
     the label lies along the radius rather than across it; the same
     label at twelve o'clock needs 72.2 degrees on a 25mm chart and 21.2
-    on an 80mm one; and ``"1,234,567"`` on that 25mm chart needs 134.2.
+    on an 80mm one; and ``"1,234,567"`` at twelve o'clock on that 25mm
+    chart needs 134.2.
     That is the range a single constant would have had to stand for,
     which is why this measures instead.
     """
