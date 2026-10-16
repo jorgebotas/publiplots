@@ -8,7 +8,9 @@ import seaborn as sns
 from matplotlib.colors import to_rgba
 
 from publiplots.annotate._cache import BarRecord
-from publiplots.annotate._color import contrast_ink, relative_luminance, resolve_color
+from publiplots.annotate._color import (
+    contrast_ink, relative_luminance, resolve_color, white_wins,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -122,6 +124,13 @@ def test_contrast_ink_picks_the_higher_wcag_contrast_ratio():
         white_wins = 1.05 / (y + 0.05) > (y + 0.05) / 0.05
         got = contrast_ink(to_rgba(rgb), to_rgba("white"))
         assert got == (_WHITE if white_wins else _ink()), rgb
+
+
+def test_white_wins_ignores_text_color():
+    white_bg = to_rgba("white")
+    with plt.rc_context({"text.color": "white"}):
+        assert not white_wins(to_rgba("#5d83c3", 0.1), white_bg)
+        assert white_wins(to_rgba("#0000ff"), white_bg)
 
 
 @pytest.mark.parametrize("fill, want_white", [

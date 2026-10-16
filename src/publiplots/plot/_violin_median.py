@@ -19,7 +19,7 @@ from matplotlib.colors import to_rgba
 from matplotlib.lines import Line2D
 
 from publiplots.annotate._cache import BoxStatsMeta
-from publiplots.annotate._color import _background_rgba, contrast_ink
+from publiplots.annotate._color import _background_rgba, white_wins
 from publiplots.annotate._positioning import mm_to_data
 
 _PT_TO_MM = 25.4 / 72.0
@@ -79,7 +79,7 @@ def _auto_color(body, ax: Axes):
     edges = np.asarray(body.get_edgecolor()).reshape(-1, 4)
     edge = tuple(edges[0]) if len(edges) else to_rgba(plt.rcParams["text.color"])
     faces = np.asarray(body.get_facecolor()).reshape(-1, 4)
-    if len(faces) and contrast_ink(tuple(faces[0]), _background_rgba(ax)) == _WHITE:
+    if len(faces) and white_wins(tuple(faces[0]), _background_rgba(ax)):
         return _WHITE
     return edge
 

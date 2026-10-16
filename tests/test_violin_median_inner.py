@@ -106,6 +106,15 @@ def test_box_only_inner_kws_still_style_inner_box(df):
     assert {4, 2} <= {l.get_linewidth() for l in ax.lines}
 
 
+def test_white_text_colour_keeps_the_median_on_its_edge_colour(df):
+    with plt.rc_context({"text.color": "white"}):
+        ax = pp.violinplot(data=df, x="cat", y="v")
+    for line, body in zip(ax.lines, (b.artist for b in ax._publiplots_box_meta.boxes)):
+        assert to_rgba(line.get_color()) == pytest.approx(
+            tuple(body.get_edgecolor()[0]))
+        assert to_rgba(line.get_color()) != to_rgba("white")
+
+
 def test_median_line_and_label_agree(df):
     ax = pp.violinplot(data=df, x="cat", y="v", annotate={"fmt": ".3f"})
     assert [t.get_text() for t in ax.texts] == [
