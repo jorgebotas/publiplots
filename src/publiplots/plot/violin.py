@@ -24,6 +24,9 @@ from publiplots.utils import is_categorical
 from publiplots.utils.plot_legend import stash_hue_legend
 from publiplots.utils.transparency import ArtistTracker
 
+# inner_kws that only seaborn's inner="box" understands.
+_BOX_ONLY_INNER_KWS = frozenset({"box_width", "whis_width", "marker"})
+
 
 def violinplot(
     data: pd.DataFrame,
@@ -269,6 +272,15 @@ def violinplot(
     median_kws: Dict = {}
     if median_inner:
         median_kws, inner_kws = dict(inner_kws), {}
+        # seaborn's inner="box" styling keys mean nothing to a median line,
+        # and would otherwise fail deep inside ax.plot.
+        box_only = sorted(set(median_kws) & _BOX_ONLY_INNER_KWS)
+        if box_only:
+            raise ValueError(
+                f"inner_kws {box_only} style seaborn's box inner; pass "
+                f"inner='box' to use them (the default inner='median' "
+                f"accepts inset, color, linewidth and other Line2D keywords)"
+            )
     # Resolve linewidth for box whiskers
     if inner == "box":
         inner_kws["whis_width"] = inner_kws.get("whis_width", linewidth)

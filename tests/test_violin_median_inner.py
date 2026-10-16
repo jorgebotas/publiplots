@@ -94,6 +94,18 @@ def test_a_nan_keeps_its_bodys_median_line_and_label(df):
     assert [t.get_text() for t in ax.texts] == [f"{clean[c]:.3f}" for c in "ABC"]
 
 
+@pytest.mark.parametrize("key", ["box_width", "whis_width", "marker"])
+def test_box_only_inner_kws_point_to_inner_box(df, key):
+    with pytest.raises(ValueError, match=rf"{key}.*inner=.box."):
+        pp.violinplot(data=df, x="cat", y="v", inner_kws={key: 4})
+
+
+def test_box_only_inner_kws_still_style_inner_box(df):
+    ax = pp.violinplot(data=df, x="cat", y="v", inner="box",
+                       inner_kws={"box_width": 4, "whis_width": 2})
+    assert {4, 2} <= {l.get_linewidth() for l in ax.lines}
+
+
 def test_median_line_and_label_agree(df):
     ax = pp.violinplot(data=df, x="cat", y="v", annotate={"fmt": ".3f"})
     assert [t.get_text() for t in ax.texts] == [
