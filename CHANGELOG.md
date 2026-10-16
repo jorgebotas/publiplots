@@ -203,7 +203,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   little as keeps every two labels' boxes `label_spacing` mm apart
   (0.4), keeping their order. `"elbow"` labels move up or down their
   column, the elbow moving with them so the tail stays level, held off
-  the disc and with no leader left running through another label.
+  the disc, and with a moved label's leader kept from running through
+  another label.
   `"radial"` and unled labels move round the circle onto a ray off
   their wedge's mid-ray, a radial leader leaning from the same rim
   point to follow — but never further than `acos(R / (R + offset))`
@@ -217,30 +218,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `avoid_overlap=False`, which runs neither pass — and inside labels
   never move.
 
-  **On a pie too crowded for that room** — a whole circle of 24 or
-  more equal wedges at 25mm, or a run of ten slivers on a 25 or 40mm
-  chart — the circle cannot keep every radial or unled label apart, and
-  every outside label of that pie is laid out as a `"elbow"` label
+  **When the bounded solve does not clear every conflict**, every
+  outside label of that pie is laid out as a `"elbow"` label
   instead and spread up and down its column, which always has room: the
   leader asked for is overridden, leader lines are drawn even for
   `leader=None`, and the `offset`, `leader_gap` and `elbow_length` in
   effect are used. No warning is issued. A pie the circle can clear
   keeps the style asked for and draws exactly as before;
   `avoid_overlap=False` never falls back. `min_share` pools the
-  slivers where the radial style matters more.
+  slivers where the radial style matters more. The fallback fires on a
+  whole circle of 24 or more equal wedges at 25mm, and on a run of
+  slivers whose length depends on where it sits: four to six 0.5%
+  wedges near twelve or six o'clock, where labels stand side by side,
+  nine to eleven near three or nine, where they stack. It also fires on
+  some pies a tight radial packing could have held, but only with
+  leaders lying near the rim's tangent: in 82 of the sweep's 498
+  fallbacks such a packing existed within the bound. That is deliberate
+  — those leaders read as lying on the rim — not a sign that separation
+  was impossible.
   Across a sweep of 3,870 charts — ten data sets from two wedges to 40,
   25 to 80mm cells, every start angle in 30-degree steps, donuts, gaps,
   scalar and dict `pull`, rotated labels and `anchor="auto"` — every
   chart keeps `label_spacing` (the closest pair anywhere is 0.399mm),
   no leader enters the disc, no radial or unled label left on the circle
-  moves past its bound (the furthest, 33.6 degrees, is the bound on a
-  25mm chart), and no label ends on a wedge it did not touch unmoved.
+  moves past its bound (31.1 degrees on a plain 25mm pie, R = 11.90mm;
+  the furthest move, 33.6 degrees, is the bound of a wedge pulled out
+  by a dict `pull` on a 25mm chart), and no label ends on a wedge it
+  did not touch unmoved.
   Elbow labels, asked for or fallen back to, that are rotated across
   their tail near twelve or six o'clock — taller than the space the
   `offset` leaves — are moved clear of the wedge they would overlap.
   Only beside a dict `pull`, whose pulled wedge and leader reach into
-  its neighbours' room, can one leader cross another (on 30 of its 216
-  charts) or run through another label (on 8).
+  its neighbours' room, does one leader cross another (on 30 of its 216
+  charts). A leader runs through another label on 8 of the dict-pull
+  charts, and on 5 without one — four with rotated elbow labels (the
+  8- and 13-wedge tails at 40 and 80mm) and 40 equal wedges at 80mm
+  under `anchor="auto"` — each with no more such leaders than
+  unmoved.
   Anything but a bool `avoid_overlap` raises `TypeError`;
   `label_spacing` is validated as `leader_gap` is.
 

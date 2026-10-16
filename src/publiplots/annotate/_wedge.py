@@ -930,12 +930,13 @@ def _pav_with_gaps(desired, gaps, lower=None, upper=None):
 # labels that are not neighbours in their column overlap or a leader runs
 # through a label; the circle pass's are estimated at each pair's middle,
 # so it re-measures and re-solves -- but only pairs that were given their
-# full separation, so a chart without the room stops at once. Measured on
-# the 40/30/20/5/3/1/0.5/0.5 pie at 25, 40 and 80mm, slivers at twelve,
-# three and seven o'clock, both directions: the circle pass took at most
-# five rounds and the column pass one; on the 45 crowded charts of
-# tests/annotate/test_wedge_label_spacing.py, one or two. The cap only
-# bounds the cost of a chart nothing here has produced.
+# full separation, so most charts without the room stop at once.
+# Measured over the 3,870-chart review sweep: the circle pass needed six
+# to eight rounds on 34 charts and reached this cap on 4 (the 13-wedge
+# tail at 25mm with no leader), each of which then fell back to elbow
+# labels cleanly; the column pass reached it on 11, every one beside a
+# dict pull, where a pulled wedge's leg can be in a label's way however
+# often the column is re-solved. The cap bounds that cost.
 _MAX_SPREAD_ROUNDS = 8
 
 
@@ -1241,7 +1242,10 @@ def _spread_in_columns(labels: List[_OutsideLabel], geom: _OutsideGeometry,
     shifts, the label in the way gets a floor or a ceiling just clear of
     it; where it is the elbow or tail, which move with their own label,
     the two labels are held further apart in the column. A constraint
-    that would leave the column with no solution is not added.
+    that would leave the column with no solution is not added, and a
+    crossing between two labels neither of which moved is left as it
+    was drawn: on rotated labels, and beside a dict ``pull``, some
+    leaders still run through another label, never more than unmoved.
 
     Returns
     -------
@@ -1460,8 +1464,8 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
 
     with ``R_i`` the wedge's drawn outer radius, an even explode
     included, about its own (dict-``pull``ed) centre. It is about 25
-    degrees on a 40mm chart at the default 2mm ``offset``, 34 on a
-    25mm one and 18 on an 80mm one, and 0 for ``offset=0``, where
+    degrees on a 40mm chart at the default 2mm ``offset``, 31 on a
+    25mm one (``R`` = 11.90mm) and 18 on an 80mm one, and 0 for ``offset=0``, where
     nothing can move. An unled label takes the same bound with ``offset``
     as its gap from the rim: the straight line from its wedge's rim
     point to the point ``offset`` beyond the rim on its ray then does not
@@ -1496,7 +1500,13 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
     returning ``complete=False``. The strategy then lays the whole pie's
     outside labels out as elbow labels (:func:`_as_elbows`), whose
     columns have the chart's height to spread into, so that layout is
-    never what is drawn.
+    never what is drawn. ``complete=False`` means this solve did not
+    clear every conflict, not that none could be cleared: the
+    separations are estimated at each pair's middle and relaxed stretch
+    by stretch, so on some pies a tight packing within the bounds
+    exists -- always with leaders near the rim's tangent -- that the
+    solve does not find. Over the 3,870-chart sweep that was 82 of 498
+    fallbacks; elbow labels read better there anyway.
 
     **Verification.** The separations are right for each pair's middle,
     not for wherever the solve puts it, so after each solve every label
@@ -1532,7 +1542,9 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
         Rounds of solve-then-measure used; 0 with fewer than two labels.
     complete : bool
         Whether every crowded pair got its full separation within the
-        bounds: ``False`` where the bounds left too little room.
+        bounds: ``False`` where this solve left a conflict, which is
+        usually but not always for want of room (see "When there is not
+        room").
     """
     n = len(labels)
     if n < 2:
@@ -1750,9 +1762,9 @@ def _wedge_values_strategy(
     ``label_spacing`` mm (``pie.label_spacing``, ``0.4``) between any
     two boxes: elbow labels up and down their column
     (:func:`_spread_in_columns`), the others round the circle
-    (:func:`_spread_on_circle`). Where the circle has too little room
-    to clear every conflict, every outside label is laid out as an
-    elbow label instead (:func:`_as_elbows`) and spread up and down its
+    (:func:`_spread_on_circle`). Where that bounded pass does not clear
+    every conflict, every outside label is laid out as an elbow label
+    instead (:func:`_as_elbows`) and spread up and down its
     column. A label that crowds nothing is not moved, and with
     ``avoid_overlap=False`` neither pass runs.
 
@@ -1938,10 +1950,11 @@ def _as_elbows(labels: List[_OutsideLabel], geom: _OutsideGeometry,
                ax: Axes, edgewidth: float) -> _OutsideGeometry:
     """Lay every outside label of the axes out as an elbow label.
 
-    The fallback for a pie too crowded for the circle: when
-    :func:`_spread_on_circle` cannot clear every conflict within its
-    bounds, the radial or unled labels it was asked for would be left
-    overlapping, with leaders leaning as far as they can. The whole
+    The fallback for a pie crowded on the circle: when
+    :func:`_spread_on_circle` does not clear every conflict within its
+    bounds (see its "When there is not room"), the radial or unled
+    labels it was asked for would be left overlapping, with leaders
+    leaning as far as they can. The whole
     pie's outside labels are then laid out as ``leader="elbow"`` labels
     instead, so that :func:`_spread_in_columns` can spread them up and
     down the chart's height, which always has room. Every label is

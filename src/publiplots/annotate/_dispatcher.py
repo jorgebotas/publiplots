@@ -206,8 +206,8 @@ def annotate(
         straight up or down), with the label left- or right-aligned
         beside it; ``None`` or ``False`` draws no line. Defaults to
         ``pp.rcParams["pie.leader"]`` (``'radial'``). With
-        ``avoid_overlap`` on, a pie whose outside labels are too crowded
-        to keep apart round the circle draws ``'elbow'`` labels, with
+        ``avoid_overlap`` on, a pie whose outside labels the bounded
+        circle pass does not keep apart draws ``'elbow'`` labels, with
         their lines, whichever of ``'radial'`` or ``None`` was asked for
         (see ``avoid_overlap``). A rotated label
         is placed by its rotated bounding box in every style. Passing it
@@ -233,8 +233,10 @@ def annotate(
         ``wedge_values`` only: move outside labels that would overlap
         apart, by as little as keeps every pair ``label_spacing`` apart.
         ``'elbow'`` labels move up or down their column, the elbow
-        moving with them so the tail stays level, and no leader is left
-        running through another label. ``'radial'`` and unled labels
+        moving with them so the tail stays level, and a moved label's
+        leader is kept from running through another label (a leader
+        that already did so unmoved, as a rotated label's can, is not
+        always cleared). ``'radial'`` and unled labels
         move round the circle onto a ray off their wedge's mid-ray, a
         radial leader leaning to follow -- but never further than
         ``acos(R / (R + offset))`` from the mid-ray, ``R`` the wedge's
@@ -242,17 +244,23 @@ def annotate(
         across the chart (about 25 degrees at 40mm and the default
         ``offset``). Their order is kept, a label that crowds nothing
         does not move, inside labels never move, and no leader enters
-        the disc. **On a pie too crowded for that room** -- a run of
-        slivers wider than the bounds allow, or more labels than fit
-        round the circle -- every outside label of the axes is laid out
-        as an ``'elbow'`` label instead, leader and all (drawn too when
-        ``leader=None``), using the ``offset``, ``leader_gap`` and
-        ``elbow_length`` in effect, and spread up and down its column,
-        which always has room. No warning is issued; pass
-        ``min_share`` to :func:`publiplots.pieplot` to pool the slivers
-        if the radial style matters more, or ``avoid_overlap=False`` to
-        keep every label on its mid-ray whatever overlaps. A pie the
-        circle can clear keeps the style asked for. Defaults to ``pp.rcParams["pie.avoid_overlap"]`` (``True``);
+        the disc. **When the bounded solve does not clear every
+        conflict** -- a run of slivers side by side, or more labels than
+        fit round the circle, and also some pies where a tight radial
+        packing exists but only with leaders lying close to the rim's
+        tangent, which this solve does not reach for -- every outside
+        label of the axes is laid out as an ``'elbow'`` label instead,
+        leader and all (drawn too when ``leader=None``), using the
+        ``offset``, ``leader_gap`` and ``elbow_length`` in effect, and
+        spread up and down its column, which always has room. How many
+        slivers that takes depends on where they sit: near twelve or six
+        o'clock, where labels stand side by side, four to six 0.5%
+        wedges already do; near three or nine, where they stack, nine to
+        eleven. No warning is issued; pass ``min_share`` to
+        :func:`publiplots.pieplot` to pool the slivers if the radial
+        style matters more, or ``avoid_overlap=False`` to keep every
+        label on its mid-ray whatever overlaps. A pie the circle pass
+        clears keeps the style asked for. Defaults to ``pp.rcParams["pie.avoid_overlap"]`` (``True``);
         ``False`` places every label on its own mid-ray. Anything but a
         bool is a ``TypeError``, as is passing it with any other kind.
     label_spacing : float, optional

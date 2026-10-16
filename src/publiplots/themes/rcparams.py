@@ -50,9 +50,10 @@ publiplots-specific keys (not in matplotlib) include:
   leader's horizontal tail (``"radial"`` / ``2.0`` / ``0.8`` / ``2.0``).
 - ``pie.avoid_overlap`` / ``pie.label_spacing`` — whether crowded outside
   wedge labels are moved apart, and the least gap in mm kept between two
-  of their boxes (``True`` / ``0.4``). A pie too crowded to keep its
-  radial or unled labels apart round the circle draws elbow labels
-  instead.
+  of their boxes (``True`` / ``0.4``). A pie whose radial or unled
+  labels the bounded circle pass does not clear draws elbow labels
+  instead -- including some that a tight radial packing, with leaders
+  near the rim's tangent, could have held.
 - ``subplots.axes_size`` — default ``(width_mm, height_mm)`` for
   :func:`publiplots.subplots`.
 - ``subplots.title_space`` / ``xlabel_space`` / ``ylabel_space`` /

@@ -311,9 +311,10 @@ pp.rcParams["pie.leader"] = default_leader
 # the same chart with ``avoid_overlap=False``.
 #
 # A radial or unled label moves at most as far round as its leader can
-# lean without cutting back across the chart. A pie with more slivers
-# side by side than that room holds is drawn with elbow labels instead
-# (next figure).
+# lean without cutting back across the chart. Where the slivers need
+# more room than that -- four to six 0.5% wedges side by side near
+# twelve or six o'clock, nine to eleven stacked near three or nine --
+# the pie is drawn with elbow labels instead (next figure).
 
 long_tail = pd.DataFrame({
     "kind": ["A", "B", "C", "D", "E", "F", "G", "H"],
@@ -333,17 +334,20 @@ pp.show()
 
 # %%
 # The thirteen-wedge tail below, at 30mm, is too much for that room:
-# with its slivers side by side at twelve o'clock, radial labels cannot
-# all be kept apart round the circle. So although both panels ask for
-# ``leader="radial"`` (the default), the left one comes out with elbow
-# labels: when the circle cannot clear every overlap, every outside
-# label of the pie is laid out as an elbow label and spread up and down
-# its column, with the ``offset``, ``leader_gap`` and ``elbow_length``
-# in effect -- and with leader lines even if ``leader=None`` was asked
-# for. No warning is issued. Where the radial style matters more,
-# ``min_share`` (right, ``0.02``) pools the slivers into one wedge,
-# leaving labels the circle can keep apart; ``avoid_overlap=False``
-# keeps every label on its mid-ray, overlaps and all.
+# with its slivers side by side at twelve o'clock, the bounded circle
+# pass does not keep its radial labels apart. So although both panels
+# ask for ``leader="radial"`` (the default), the left one comes out
+# with elbow labels: whenever that pass does not clear every overlap,
+# every outside label of the pie is laid out as an elbow label and
+# spread up and down its column, with the ``offset``, ``leader_gap``
+# and ``elbow_length`` in effect -- and with leader lines even if
+# ``leader=None`` was asked for. That includes some pies a tight radial
+# packing could hold, but only with leaders lying along the rim's
+# tangent; elbow labels read better there. No warning is issued. Where
+# the radial style matters more, ``min_share`` (right, ``0.02``) pools
+# the slivers into one wedge, leaving labels the circle can keep apart;
+# ``avoid_overlap=False`` keeps every label on its mid-ray, overlaps and
+# all.
 
 tail13 = pd.DataFrame({
     "kind": [f"k{i}" for i in range(13)],
