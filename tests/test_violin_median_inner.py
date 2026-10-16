@@ -83,6 +83,17 @@ def test_inner_kws_reach_the_median(df):
     assert {l.get_linewidth() for l in ax.lines} == {2}
 
 
+def test_a_nan_keeps_its_bodys_median_line_and_label(df):
+    df.loc[0, "v"] = np.nan   # group A
+    ax = pp.violinplot(data=df, x="cat", y="v", annotate={"fmt": ".3f"})
+    meta = ax._publiplots_box_meta
+    assert len(ax.lines) == len(meta.boxes) == 3
+    clean = df.dropna().groupby("cat")["v"].median()
+    for line, rec in zip(ax.lines, meta.boxes):
+        assert line.get_ydata()[0] == pytest.approx(clean[rec.category])
+    assert [t.get_text() for t in ax.texts] == [f"{clean[c]:.3f}" for c in "ABC"]
+
+
 def test_median_line_and_label_agree(df):
     ax = pp.violinplot(data=df, x="cat", y="v", annotate={"fmt": ".3f"})
     assert [t.get_text() for t in ax.texts] == [

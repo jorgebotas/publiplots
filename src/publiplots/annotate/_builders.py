@@ -897,7 +897,11 @@ def _aggregate_box_stats(
         mask = data[categorical_axis] == cat
         if spec.split_hue is not None:
             mask = mask & (data[spec.split_hue] == h_val)
-        vals = data.loc[mask, value_col].to_numpy()
+        vals = data.loc[mask, value_col].to_numpy(dtype=float, na_value=np.nan)
+        # seaborn drops non-finite values before drawing, and np.median /
+        # np.percentile are not NaN-aware: one NaN would poison every stat.
+        # An all-NaN group then draws nothing, exactly like an empty one.
+        vals = vals[np.isfinite(vals)]
         if len(vals) == 0:
             continue
         if skip_singular and _is_singular(vals):
