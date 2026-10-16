@@ -116,6 +116,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same data. That is how the layout treats any decoration on an
   `aspect="equal"` axes, not something particular to these labels.
 
+- **`pp.pieplot(gap=...)` — an even gap between every pair of
+  neighbouring wedges, in millimetres.** `pull` moves each wedge along
+  its own mid-ray, as matplotlib's `explode` does, so the sideways gap a
+  scalar `pull` opens to a neighbour is `pull * sin(half-span)`: wide
+  wedges part widely and a 4–6% sliver barely at all. `gap` instead
+  insets each wedge's two straight edges by `gap / 2`, parallel to
+  themselves, leaving the arcs on their radii, so two neighbours sit
+  exactly `gap` apart along the whole of the edge they share. Measured
+  on the rendered paths of the gallery's 52.2/41.8/6/4 pie, every pair
+  of neighbouring edges is 1.000mm apart for `gap=1` as a pie, as a
+  donut and under `aspect="equal"` on 70x40 and 40x70mm cells, 0.400mm
+  for `gap=0.4`, and 1.500mm on a 70/30 pie whose 252-degree wedge is
+  reflex. The width runs between the outlines' centre lines, so the
+  unpainted band is one outline narrower. It defaults to
+  `rcParams["pie.gap"]` (0.0) and composes with `pull`, `donut`,
+  hatches, `alpha`, `edgecolor` and `linewidth`; at 0 every wedge is
+  matplotlib's own `Wedge` path, vertex for vertex. A wedge too thin to
+  keep any shape after the inset draws nothing, but keeps its record,
+  label and legend entry. A negative or non-finite `gap` raises
+  `ValueError`, and a non-number `TypeError`.
+
+  Wedge outlines are drawn with round joins. With matplotlib's default
+  miter join the two edges of a thin wedge, meeting at an acute angle,
+  spiked past the centre into the neighbouring wedges, visibly so at
+  600 dpi on the 6% wedge of the same pie.
+
 ### Fixed
 
 - **A rectangle legend swatch keeps the hatch width its handle was

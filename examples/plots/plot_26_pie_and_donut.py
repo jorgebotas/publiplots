@@ -172,16 +172,27 @@ pp.show()
 # %%
 # Pulling wedges out
 # ------------------
-# ``pull`` is a fraction of the radius. A dict keyed by category pulls
-# just those wedges — it is never positional — and a single float pulls
-# every wedge by the same amount.
+# ``pull`` moves a wedge out along its own mid-ray, by a fraction of the
+# radius. A dict keyed by category pulls just those wedges — it is never
+# positional — which is what ``pull`` is for: popping one wedge out.
+# A single float pulls every wedge the same distance, but the sideways
+# gap that opens between two neighbours is that distance times the sine
+# of their half-spans, so wide wedges part widely and thin ones barely
+# at all. To separate every wedge evenly, use ``gap``: a width in
+# millimetres that every pair of neighbours keeps along the whole of
+# the edge they share, thin wedges included, in a pie or a donut.
 
-fig, axes = pp.subplots(ncols=2, axes_size=(42, 42))
+fig, axes = pp.subplots(ncols=4, axes_size=(36, 36))
 pp.legend(side="right")
 pp.pieplot(data=df, x="kind", y="n", palette=palette,
-           pull={"lay_dx": 0.15}, ax=axes[0], title='{"lay_dx": 0.15}')
+           pull={"lay_dx": 0.15}, ax=axes[0],
+           title='pull={"lay_dx": 0.15}')
 pp.pieplot(data=df, x="kind", y="n", palette=palette, pull=0.05,
-           ax=axes[1], title="0.05")
+           ax=axes[1], title="pull=0.05")
+pp.pieplot(data=df, x="kind", y="n", palette=palette, gap=1.0,
+           ax=axes[2], title="gap=1.0")
+pp.pieplot(data=df, x="kind", y="n", palette=palette, gap=1.0,
+           donut=0.55, ax=axes[3], title="gap=1.0, donut=0.55")
 pp.show()
 
 # %%

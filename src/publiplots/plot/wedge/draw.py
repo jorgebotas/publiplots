@@ -4,10 +4,13 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.patches import Wedge
+from matplotlib.path import Path
 
 from publiplots.annotate._cache import WedgeMeta, WedgeRecord
+from publiplots.annotate._positioning import mm_to_data
 from publiplots.plot.wedge.geometry import WedgePlacement
 
 MM_PER_INCH = 25.4
@@ -19,6 +22,129 @@ def pull_offset(placement: WedgePlacement, pull: float) -> Tuple[float, float]:
         return (0.0, 0.0)
     mid = math.radians((placement.theta0 + placement.theta1) / 2.0)
     return (pull * math.cos(mid), pull * math.sin(mid))
+
+
+class GappedWedge(Wedge):
+    """A :class:`~matplotlib.patches.Wedge` whose straight edges are inset.
+
+    Each of the two straight edges is moved ``inset`` data units into the
+    wedge, parallel to itself, while the arcs stay on their radii. Two
+    neighbouring wedges inset by ``h`` each therefore leave a band of
+    constant width ``2 * h`` along the ray they share, whatever either
+    wedge's span -- unlike a radial ``pull``, whose sideways separation
+    grows with the span.
+
+    With ``inset == 0`` the path is matplotlib's own, vertex for vertex.
+    Otherwise, with ``h = inset`` and ``half`` the half-span:
+
+    - the outer arc runs from ``theta1 + asin(h / r)`` to
+      ``theta2 - asin(h / r)``;
+    - an inner radius ``r_in > h`` whose inset arc keeps a positive
+      extent (``asin(h / r_in) < half``) is inset the same way;
+    - otherwise the two offset edges meet at an apex on the mid-ray, at
+      ``h / sin(half)`` from the centre. That holds for a reflex wedge
+      too (``90 < half < 180``), whose apex lies past the centre on its
+      own side;
+    - a full 360-degree wedge has no straight edges and is not inset.
+
+    Two cases leave no shape to draw. A wedge whose offset edges meet at
+    or beyond its outer arc is too thin for the gap: its path collapses
+    to a single point at the centre, so it draws no fill, outline or
+    hatch, while the patch -- and the record holding it -- stay in place
+    for ``annotate`` and the legend. A reflex wedge can only reach that
+    state when everything else in the ring together is that thin, and
+    then there is nothing left for it to keep a gap from, so it is drawn
+    uninset, as a lone wedge would be.
+
+    Parameters
+    ----------
+    center, r, theta1, theta2, width
+        As for :class:`~matplotlib.patches.Wedge`.
+    inset : float, default 0.0
+        Perpendicular inset of each straight edge, in data units.
+    **kwargs
+        Forwarded to :class:`~matplotlib.patches.Wedge`.
+    """
+
+    def __init__(
+        self,
+        center: Tuple[float, float],
+        r: float,
+        theta1: float,
+        theta2: float,
+        *,
+        width: Optional[float] = None,
+        inset: float = 0.0,
+        **kwargs: Any,
+    ) -> None:
+        # Set before the base initialiser, which builds the path.
+        self.inset = float(inset)
+        super().__init__(center, r, theta1, theta2, width=width, **kwargs)
+
+    def set_inset(self, inset: float) -> None:
+        """Set the perpendicular edge inset, in data units."""
+        self._path = None
+        self.inset = float(inset)
+        self.stale = True
+
+    def get_inset(self) -> float:
+        """Return the perpendicular edge inset, in data units."""
+        return self.inset
+
+    def is_collapsed(self) -> bool:
+        """Whether the inset leaves this wedge nothing to draw."""
+        return self.get_path().vertices.shape[0] == 1
+
+    def _recompute_path(self) -> None:
+        h = self.inset
+        span = self.theta2 - self.theta1
+        if h <= 0.0 or abs(span - 360.0) <= 1e-12:
+            super()._recompute_path()
+            return
+
+        r_out = self.r
+        r_in = (r_out - self.width) if self.width is not None else 0.0
+        half = math.radians(span) / 2.0
+        mid = math.radians(self.theta1) + half
+        center = np.asarray(self.center, dtype=float)
+
+        def arc_angles(radius: float) -> Optional[Tuple[float, float]]:
+            """The inset arc's end angles at ``radius``, or None if empty."""
+            if radius <= h:
+                return None
+            shift = math.asin(h / radius)
+            if shift >= half:
+                return None
+            return (self.theta1 + math.degrees(shift),
+                    self.theta2 - math.degrees(shift))
+
+        outer = arc_angles(r_out)
+        inner = arc_angles(r_in) if r_in > 0.0 else None
+        # sin(half) > 0 for every span short of a full circle.
+        apex_distance = h / math.sin(half)
+
+        if outer is None or (inner is None and apex_distance >= r_out):
+            if half > math.pi / 2.0:
+                super()._recompute_path()
+            else:
+                self._path = Path(center[np.newaxis, :], [Path.MOVETO])
+            return
+
+        arc = Path.arc(*outer)
+        if inner is not None:
+            back = Path.arc(*inner)
+            vertices = np.concatenate([
+                arc.vertices * r_out,
+                back.vertices[::-1] * r_in,
+                [(0.0, 0.0)],
+            ])
+            codes = [*arc.codes, Path.LINETO, *back.codes[1:],
+                     Path.CLOSEPOLY]
+        else:
+            apex = apex_distance * np.array([math.cos(mid), math.sin(mid)])
+            vertices = np.concatenate([arc.vertices * r_out, [apex, apex]])
+            codes = [*arc.codes, Path.LINETO, Path.CLOSEPOLY]
+        self._path = Path(vertices + center, codes)
 
 
 def set_hatch_linewidth(patch: Any, linewidth: float) -> None:
@@ -46,12 +172,21 @@ def draw_wedges(
     alpha: float,
     edgecolor: Optional[Any],
     linewidth: float,
-) -> List[Wedge]:
-    """Add one Wedge per placement, in draw order, and return them."""
-    patches: List[Wedge] = []
+) -> List[GappedWedge]:
+    """Add one wedge per placement, in draw order, and return them.
+
+    Every wedge is drawn with round joins. At a thin wedge's apex the two
+    straight edges meet at an acute angle, and the default miter join
+    there spikes past the centre into the neighbouring wedges -- visibly
+    so at 600 dpi on the 6% wedge of a 52.2/41.8/6/4 pie.
+
+    The wedges start uninset; :func:`apply_gap` insets them once the
+    limits are framed.
+    """
+    patches: List[GappedWedge] = []
     for place in placements:
         dx, dy = pull_offset(place, pull.get(place.node.path, 0.0))
-        patch = Wedge(
+        patch = GappedWedge(
             (center[0] + dx, center[1] + dy),
             place.r_outer,
             place.theta0,
@@ -62,6 +197,7 @@ def draw_wedges(
             linewidth=linewidth,
             alpha=alpha,
             hatch=hatches.get(place.node.path),
+            joinstyle="round",
         )
         set_hatch_linewidth(patch, linewidth)
         ax.add_patch(patch)
@@ -197,3 +333,27 @@ def apply_cell_limits(ax: Axes, *, radius: float, aspect: str) -> None:
     else:
         ax.set_xlim(-radius, radius)
         ax.set_ylim(-radius / ratio, radius / ratio)
+
+
+def apply_gap(ax: Axes, patches: Sequence[GappedWedge], gap: float) -> None:
+    """Inset every wedge so neighbours sit ``gap`` millimetres apart.
+
+    Each straight edge moves ``gap / 2`` millimetres into its wedge, so
+    any two wedges sharing a ray leave a band exactly ``gap`` wide
+    between their outlines' centre lines (see :class:`GappedWedge`).
+
+    The conversion to data units reads the axes' current transform, so
+    it must run after :func:`apply_cell_limits` has framed the limits.
+    ``apply_aspect`` comes first so that under ``aspect="equal"`` it
+    reads the square matplotlib will draw rather than the full cell, as
+    ``annotate``'s wedge strategy does; under ``aspect="cell"`` the call
+    changes nothing. Both aspects give equal x and y scales, so the
+    y-axis conversion holds in every direction. A ``gap`` of 0 returns
+    before touching the axes, leaving the drawing exactly as it was.
+    """
+    if not gap:
+        return
+    ax.apply_aspect()
+    inset = abs(mm_to_data(gap / 2.0, ax, "y"))
+    for patch in patches:
+        patch.set_inset(inset)

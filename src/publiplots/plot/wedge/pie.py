@@ -1,6 +1,8 @@
 """Pie and donut charts."""
 from __future__ import annotations
 
+import math
+import numbers
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -13,6 +15,7 @@ from publiplots.annotate import annotate as _annotate
 from publiplots.plot.wedge.colour import derive_colors, resolve_hue_values
 from publiplots.plot.wedge.draw import (
     apply_cell_limits,
+    apply_gap,
     build_wedge_meta,
     draw_wedges,
     set_hatch_linewidth,
@@ -150,6 +153,7 @@ def pieplot(
     hue_order: Optional[Sequence] = None,
     sort: bool = False,
     pull: Union[float, Dict[Any, float], None] = None,
+    gap: Optional[float] = None,
     min_share: float = 0.0,
     center_label: Union[str, Callable[[float], str], None] = None,
     aspect: str = "cell",
@@ -228,7 +232,24 @@ def pieplot(
     pull : float or dict, optional
         Radial offset as a fraction of the radius: a float for every
         wedge, or a dict keyed by category. Deliberately not a positional
-        sequence.
+        sequence. Each wedge moves along its own mid-ray, as in
+        matplotlib's ``explode``, so the sideways gap it opens to a
+        neighbour is ``pull * sin(half-span)``: a float pulls a wide
+        wedge well clear of its neighbours and a 5% sliver barely at
+        all. Use a dict to pop out one or two wedges, and ``gap`` to
+        separate all of them evenly.
+    gap : float, optional
+        Gap between every pair of neighbouring wedges, in millimetres.
+        Each wedge's two straight edges are inset by ``gap / 2``
+        parallel to themselves, so the band between two neighbours is
+        ``gap`` wide along its whole length, for wide and thin wedges
+        alike, while the arcs keep their radii. The width is measured
+        between the outlines' centre lines, so the unpainted band is
+        ``gap`` less one outline width (``linewidth`` points). A wedge
+        too thin to keep any shape after the inset draws nothing, but
+        keeps its record, its label and its legend entry. Composes with
+        ``pull``, which then moves each inset wedge as a whole. Defaults
+        to ``rcParams["pie.gap"]`` (``0.0``, no gap).
     min_share : float, default 0.0
         Categories **strictly below** this fraction of the total merge
         into a single ``"Other"`` wedge; a category sitting exactly on the
@@ -370,6 +391,19 @@ def pieplot(
             f"of the data, so it cannot be named in an explicit order and "
             f"every category folded into it would be dropped from the "
             f"chart. Pass one or the other."
+        )
+
+    gap = resolve_param("pie.gap", gap)
+    if isinstance(gap, bool) or not isinstance(gap, numbers.Real):
+        raise TypeError(
+            f"pieplot: gap= must be a number of millimetres; got "
+            f"{type(gap).__name__} {gap!r}."
+        )
+    gap = float(gap)
+    if not math.isfinite(gap) or gap < 0:
+        raise ValueError(
+            f"pieplot: gap= must be a finite, non-negative number of "
+            f"millimetres; got {gap!r}."
         )
 
     hue_column = hue if hue is not None else levels[0]
@@ -535,6 +569,9 @@ def pieplot(
 
     max_pull = max(pull_map.values(), default=0.0)
     apply_cell_limits(ax, radius=1.0 + max_pull + 0.05, aspect=aspect)
+    # Only once the limits are framed does a data unit have a fixed size
+    # in millimetres to convert the gap with.
+    apply_gap(ax, patches, gap)
 
     if donut and center_label is not None:
         text = center_label(total) if callable(center_label) else center_label
