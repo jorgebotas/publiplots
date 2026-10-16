@@ -221,10 +221,10 @@ pp.show()
 # force every label to one placement regardless of fit. An outside label
 # is centred on its wedge's mid-ray, a little past the end of its line.
 # The disc is the same size under all three: a label that leaves it
-# extends past the axes rather than shrinking the pie. Outside labels are
-# not moved apart from one another, so those of adjacent thin wedges can
-# overlap. ``start_angle=0`` only turns the chart, so the slivers point
-# right.
+# extends past the axes rather than shrinking the pie. Where the labels
+# of adjacent thin wedges would overlap, they are moved apart (see
+# "Crowded labels" below). ``start_angle=0`` only turns the chart, so the
+# slivers point right.
 
 thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
 fig, axes = pp.subplots(ncols=3, axes_size=(38, 38))
@@ -265,11 +265,10 @@ pp.show()
 # and centres the label on it. ``"elbow"`` bends the line into a short
 # horizontal tail, ``elbow_length`` millimetres long (``2`` by default),
 # and sets the label beside it, aligned away from the disc, so the text
-# starts ``leader_gap`` past the end of its tail. Each label still hangs
-# off its own wedge's mid-ray: elbow labels are not lined up into a
-# column, nor moved apart where they crowd. ``None`` (or ``False``)
-# draws no line and centres the label with its nearest point ``offset``
-# from the rim.
+# starts ``leader_gap`` past the end of its tail. Each label hangs off
+# its own wedge's mid-ray: elbow labels are not lined up into a column.
+# ``None`` (or ``False``) draws no line and centres the label with its
+# nearest point ``offset`` from the rim.
 # ``start_angle=120`` only turns the chart, so the thin wedges point up
 # and to the left.
 
@@ -295,6 +294,37 @@ pp.pieplot(data=df, x="kind", y="n", donut=0.55, palette=palette,
            annotate={"anchor": "outside"})
 pp.show()
 pp.rcParams["pie.leader"] = default_leader
+
+# %%
+# Crowded labels
+# --------------
+# A long tail puts several slivers side by side, and their outside
+# labels would land on top of one another. ``avoid_overlap`` (on by
+# default, ``pp.rcParams["pie.avoid_overlap"]``) moves them apart by as
+# little as keeps every two labels ``label_spacing`` millimetres apart
+# (``0.4`` by default, ``pp.rcParams["pie.label_spacing"]``), keeping
+# their order. Elbow labels move up or down their column, and the
+# elbow moves with them so the tail stays level; radial labels move
+# round the circle, their leaders leaning to follow; labels with no
+# leader move round the circle too. A label that crowds nothing stays
+# exactly where it was, and no label is moved onto the disc. The top
+# row is the same chart with ``avoid_overlap=False``.
+
+long_tail = pd.DataFrame({
+    "kind": ["A", "B", "C", "D", "E", "F", "G", "H"],
+    "n": [40.0, 30.0, 20.0, 5.0, 3.0, 1.0, 0.5, 0.5],
+})
+fig, axes = pp.subplots(nrows=2, ncols=3, axes_size=(36, 36),
+                        hspace=10)
+for row, avoid in zip(axes, [False, True]):
+    for ax, leader in zip(row, ["radial", "elbow", None]):
+        pp.pieplot(data=long_tail, x="kind", y="n", legend=False,
+                   start_angle=30, ax=ax,
+                   annotate={"anchor": "outside", "leader": leader,
+                             "avoid_overlap": avoid})
+        ax.set_title(f"leader={leader!r}\navoid_overlap={avoid}",
+                     pad=18)
+pp.show()
 
 # %%
 # Formatting and rotating the labels

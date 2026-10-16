@@ -90,10 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own light ramp from near-white up to `color`; `scatterplot`'s
   `None` gives seaborn's default ramp whatever `color` is.
 
-  Four known gaps. Outside labels do not de-collide, so those of adjacent
-  thin wedges can overlap under `anchor="outside"` and the default
-  `anchor="auto"` alike: on the gallery's anchors comparison, `"6.0%"`
-  and `"2.0%"` overlap by 0.95x1.47mm under both. The key that
+  Three known gaps. The key that
   `legend=True` draws beside the axes — a legend, or a colorbar for a
   numeric `hue` — is placed 2mm from the axes frame, not past the labels
   on that side, so a label on the right of the pie can overprint it. On
@@ -193,16 +190,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with no leader the label's nearest point is `offset` from the rim. A
   rotated label is placed by its rotated box. These are exact at
   `figure.dpi`; text metrics at `savefig.dpi` 600 can put the gap up to
-  about 0.05mm off. Labels are not yet lined up into columns or moved
-  apart. A non-number or bool `offset`, `leader_gap`, `elbow_length` or
+  about 0.05mm off. Labels are not lined up into columns; crowded ones
+  are moved apart (below). A non-number or bool `offset`, `leader_gap`, `elbow_length` or
   `gap` raises `TypeError`, and a negative, NaN or infinite one
   `ValueError`, in one message style.
 
+- **Crowded outside wedge labels are moved apart: `avoid_overlap` and
+  `label_spacing`.** On a long tail the outside labels of adjacent
+  slivers landed on one another — on a 40/30/20/5/3/1/0.5/0.5 pie in a
+  40mm cell the last four overlapped, by as much as 2.35mm, under every
+  leader style. `avoid_overlap=True` (the default) now moves them by as little
+  as keeps every two labels' boxes `label_spacing` mm apart (0.4), and
+  keeps their order: `"elbow"` labels up or down their column, the
+  elbow moving with them so the tail stays level, and `"radial"` and
+  unled labels round the circle onto a ray off their wedge's mid-ray, a
+  radial leader leaning from the same rim point to follow, never nearer
+  its label than `leader_gap`. Both are solved exactly, as an isotonic
+  regression by pool-adjacent-violators, for the least total squared
+  move; the circle pass re-measures the rendered boxes and re-solves,
+  at most eight rounds. A label that crowds nothing is not moved — a
+  chart with nothing crowded renders byte-for-byte as with
+  `avoid_overlap=False`, which runs neither pass — inside labels never
+  move, and no label is moved onto the disc. On that pie at 25, 40 and
+  80mm, every start angle in 30-degree steps, both directions, as a
+  donut, with a scalar `pull` and with `gap=1`, the closest pair of
+  labels renders 0.399–0.464mm apart (elbow labels 0.400mm exactly),
+  no two leaders cross, no leader
+  runs through another label, and no label touches a wedge. A dict
+  `pull` is not as well behaved: a pulled wedge reaches into its
+  neighbours' labels' room, so a moved circle label that touches it is
+  slid out along its ray, but a crowded elbow column boxed in by one
+  keeps its labels apart and may set one on the pulled wedge, and
+  leaders there can still cross (as they could unmoved). Anything but a
+  bool `avoid_overlap` raises `TypeError`; `label_spacing` is validated
+  as `leader_gap` is.
+
 - **`pie.*` rcParams.** `pie.gap` (0.0), `pie.leader` (`"radial"`),
-  `pie.label_offset` (2.0), `pie.leader_gap` (0.8) and
-  `pie.elbow_length` (2.0) set the defaults of the arguments of the same
-  name — `offset` for `pie.label_offset` — so a figure set can restyle
-  every pie at once.
+  `pie.label_offset` (2.0), `pie.leader_gap` (0.8),
+  `pie.elbow_length` (2.0), `pie.avoid_overlap` (`True`) and
+  `pie.label_spacing` (0.4) set the defaults of the arguments of the
+  same name — `offset` for `pie.label_offset` — so a figure set can
+  restyle every pie at once.
 
 - **The default outside wedge-label offset is `pie.label_offset`,
   2mm.** `wedge_values` does not take the 1mm default the other

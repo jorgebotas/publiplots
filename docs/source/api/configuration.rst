@@ -14,7 +14,7 @@ rcParams
 Pie charts
 ----------
 
-Five ``publiplots.rcParams`` keys set the defaults of
+Seven ``publiplots.rcParams`` keys set the defaults of
 :func:`publiplots.pieplot` and of its labels,
 ``pp.annotate(ax, "wedge_values")``. Every length is in millimetres,
 and each is overridden per call by the argument of the same name
@@ -41,6 +41,18 @@ and each is overridden per call by the argument of the same name
 ``pie.elbow_length`` : float, default ``2.0``
     Length of an ``"elbow"`` leader's horizontal tail. Unused by the
     other styles.
+
+``pie.avoid_overlap`` : bool, default ``True``
+    Whether outside labels that would overlap are moved apart. Elbow
+    labels move up or down their column, and radial and unled labels
+    round the circle, each by as little as keeps every pair
+    ``pie.label_spacing`` apart; a label that crowds nothing does not
+    move. ``False`` places every label on its own wedge's mid-ray.
+
+``pie.label_spacing`` : float, default ``0.4``
+    The least gap kept between two outside labels' boxes, and between a
+    moved elbow label and the disc. Unused with ``pie.avoid_overlap``
+    off.
 
 Sunburst colour derivation (reserved)
 -------------------------------------
