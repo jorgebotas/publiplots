@@ -369,10 +369,11 @@ def boxplot(
         # Level order must be seaborn's, which honours these and sorts
         # numeric levels; without them the pairing desyncs (#262).
         order=order, hue_order=hue_order,
-        # Only this call's patches. Re-read here because apply_border_radius
-        # swaps in new objects; get_new_patches() recomputes against the
-        # live axes.
-        drawn_artists=tracker.get_new_patches(),
+        # Only this call's patches, plus its lines for the closed box
+        # outlines fill=False draws instead. Re-read here because
+        # apply_border_radius swaps in new objects; get_new_patches()
+        # recomputes against the live axes.
+        drawn_artists=tracker.get_new_patches() + tracker.get_new_lines(),
     )
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn

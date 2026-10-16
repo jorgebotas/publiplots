@@ -106,6 +106,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   swatch's fill layer is now hidden (`alpha=0`), leaving the opaque
   palette-coloured outline (or the explicit `edgecolor`) to match the boxes.
 
+- **`pp.boxplot(..., fill=False, annotate=True)` now annotates its boxes.**
+  It drew nothing: `build_from_boxplot_call` paired groups only with box
+  `PathPatch`es, and unfilled, seaborn draws each box as a closed `Line2D`
+  outline instead, so there was nothing to pair with. Those outlines are
+  now accepted too — closed, unmarked polylines, which no whisker, cap,
+  median or flier is — in the same draw order as filled boxes, so unfilled
+  annotations land exactly where filled ones do, dodged, notched or
+  zero-IQR boxes included.
+
 ## [0.19.0] - 2026-09-25
 
 ### Added
