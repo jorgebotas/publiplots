@@ -30,8 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`pp.violinplot(annotate=True)` labels medians from inside the body**, via
   `violin_stats`. Vertical labels sat beside the violin, often closer to the
   neighbouring violin than to their own. `violin_custom`'s default anchor
-  moves from `"top"` to `"inside"`: unchanged for vertical violins, while
-  horizontal labels move from above the row to right of the median.
+  moves from `"top"` to `"inside"`: unchanged for full vertical violins on a
+  light fill, while horizontal labels move from above the row to right of the
+  median, split and `side=` halves move against their seam, and
+  `color="auto"` turns white on a dark fill.
 - **`color="auto"` picks label ink by WCAG contrast ratio.** It compared HLS
   lightness against 0.408, which put black text on pure blue (contrast 2.4,
   against 8.6 for white) and white text on tab:green (3.4, against 6.2).
