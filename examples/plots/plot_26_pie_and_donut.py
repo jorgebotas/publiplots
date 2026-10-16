@@ -230,10 +230,10 @@ pp.show()
 # ``leader_gap`` the space between its end and the label, both in
 # millimetres (``pp.rcParams["pie.label_offset"]`` and
 # ``pp.rcParams["pie.leader_gap"]``, ``2`` and ``0.8`` by default). The
-# gap is measured along the line to the nearest point of the label, so
-# no label closes in on its line at any angle. Like tick labels, outside
-# labels sit beyond the axes, so a larger offset leaves the disc as it
-# is and grows the figure instead.
+# gap is the distance you see, from the end of the line to the nearest
+# point of the label, so it is the same at every angle. Like tick
+# labels, outside labels sit beyond the axes, so a larger offset leaves
+# the disc as it is and grows the figure instead.
 
 arms = pd.DataFrame({"arm": ["placebo", "low", "high"],
                      "n": [35.0, 40.0, 25.0]})
@@ -254,8 +254,9 @@ pp.show()
 # horizontal tail, ``elbow_length`` millimetres long (``2`` by default),
 # and sets the label beside it, aligned away from the disc, so labels
 # read like a column of text. ``None`` (or ``False``) draws no line and
-# centres the label ``offset`` from the rim. ``start_angle=120`` only
-# turns the chart, so the thin wedges point up and to the left.
+# centres the label with its nearest point ``offset`` from the rim.
+# ``start_angle=120`` only turns the chart, so the thin wedges point up
+# and to the left.
 
 fig, axes = pp.subplots(ncols=3, axes_size=(36, 36))
 for ax, leader in zip(axes, ["radial", "elbow", None]):

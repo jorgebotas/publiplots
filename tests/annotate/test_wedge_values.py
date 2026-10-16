@@ -68,20 +68,17 @@ def _mid_ray(record):
     return math.cos(mid), math.sin(mid)
 
 
-def _clearance_mm(ax, renderer, record, text, start):
-    """How far beyond ``start`` the label's rendered box begins, in mm.
+def _box_distance_mm(ax, renderer, text, point):
+    """The visible gap from ``point`` to the label's rendered box, in mm.
 
-    Measured along the wedge's mid-ray: the least projection of any box
-    corner onto that ray, less the projection of ``start`` (a display
-    point). That is the support-function distance the radial and no-leader
-    layouts place by, and the gap the label clears its leader by.
+    The shortest straight-line distance from a display point to the
+    nearest point of the box -- what the eye reads as the space between
+    a leader's end and its label. Zero when the point is inside the box.
     """
-    dx, dy = _mid_ray(record)
     box = text.get_window_extent(renderer)
-    corners = [(box.x0, box.y0), (box.x0, box.y1),
-               (box.x1, box.y0), (box.x1, box.y1)]
-    nearest = min(x * dx + y * dy for x, y in corners)
-    return (nearest - (start[0] * dx + start[1] * dy)) * _px_to_mm(ax.figure)
+    dx = max(box.x0 - point[0], 0.0, point[0] - box.x1)
+    dy = max(box.y0 - point[1], 0.0, point[1] - box.y1)
+    return math.hypot(dx, dy) * _px_to_mm(ax.figure)
 
 
 def _rim_display(ax, record):
@@ -102,17 +99,38 @@ def _outside_records(ax):
 
 
 def _rim_gaps_mm(ax):
-    """Rendered rim-to-label clearance, in millimetres, per outside label.
+    """Rendered ``offset``, in millimetres, for every outside label.
 
-    Measured in display space along each mid-ray, so it reads what is
-    drawn under either framing rather than assuming the two data scales
-    agree. With ``leader=None`` it is ``offset``; with a radial leader,
-    ``offset + leader_gap``.
+    Measured in display space, so it reads what is drawn under either
+    framing rather than assuming the two data scales agree. With a
+    leader it is the leader's length, rim to end; with ``leader=None``,
+    the visible gap from the rim point to the label's box.
     """
     renderer = _settle(ax.figure)
-    return [_clearance_mm(ax, renderer, record, text,
-                          _rim_display(ax, record))
-            for record, text in _outside_records(ax)]
+    pairs = _outside_records(ax)
+    if ax.lines:
+        assert len(ax.lines) == len(pairs)
+        return [math.dist(*_display(ax, line.get_xdata(),
+                                    line.get_ydata())[:2])
+                * _px_to_mm(ax.figure)
+                for line in ax.lines]
+    return [_box_distance_mm(ax, renderer, text, _rim_display(ax, record))
+            for record, text in pairs]
+
+
+def _end_gaps_mm(ax):
+    """Visible gap, in mm, from each radial leader's end to its label."""
+    renderer = _settle(ax.figure)
+    pairs = _outside_records(ax)
+    assert len(ax.lines) == len(pairs)
+    return [_box_distance_mm(
+                ax, renderer, text,
+                _display(ax, line.get_xdata(), line.get_ydata())[-1])
+            for (_, text), line in zip(pairs, ax.lines)]
+
+
+def _display(ax, xs, ys):
+    return ax.transData.transform(list(zip(xs, ys)))
 
 
 def _disc_diameter_mm(ax):
@@ -237,10 +255,10 @@ def test_the_outside_gap_is_the_requested_millimetres_at_any_chart_size(
     size and on every cell shape, so a gap converted any other way would
     come out right on at most one of these. The non-square cells matter
     because ``aspect="cell"`` stretches the limits on the longer side.
-    With no leader the label starts ``offset`` past the rim; a radial
-    leader adds ``leader_gap`` between its end and the label.
+    With no leader the label's nearest point is ``offset`` from the rim;
+    a radial leader is ``offset`` long, with ``leader_gap`` between its
+    end and the label.
     """
-    extra = pp.rcParams["pie.leader_gap"] if leader else 0.0
     for size in [(25.0, 25.0), (40.0, 40.0), (80.0, 80.0),
                  (70.0, 40.0), (40.0, 70.0)]:
         ax = _pie(df, size=size)
@@ -249,7 +267,11 @@ def test_the_outside_gap_is_the_requested_millimetres_at_any_chart_size(
         gaps = _rim_gaps_mm(ax)
         assert len(gaps) == 4, size
         for gap in gaps:
-            assert gap == pytest.approx(3.0 + extra, abs=1e-3), size
+            assert gap == pytest.approx(3.0, abs=1e-3), size
+        if leader:
+            for gap in _end_gaps_mm(ax):
+                assert gap == pytest.approx(pp.rcParams["pie.leader_gap"],
+                                            abs=1e-3), size
 
 
 def test_the_outside_gap_tracks_the_requested_millimetres(df):
@@ -258,7 +280,9 @@ def test_the_outside_gap_tracks_the_requested_millimetres(df):
         ax = _pie(df)
         pp.annotate(ax, "wedge_values", anchor="outside", offset=offset)
         for gap in _rim_gaps_mm(ax):
-            assert gap == pytest.approx(offset + leader_gap, abs=1e-3)
+            assert gap == pytest.approx(offset, abs=1e-3)
+        for gap in _end_gaps_mm(ax):
+            assert gap == pytest.approx(leader_gap, abs=1e-3)
 
 
 def test_a_bigger_offset_pushes_outside_labels_further(df):
@@ -514,8 +538,9 @@ def test_an_extreme_offset_leaves_the_limits_alone(df):
     assert ax.get_xlim() == pytest.approx(axes[0].get_xlim(), abs=1e-12)
     assert ax.get_ylim() == pytest.approx(axes[0].get_ylim(), abs=1e-12)
     for gap in _rim_gaps_mm(ax):
-        assert gap == pytest.approx(10.0 + pp.rcParams["pie.leader_gap"],
-                                    abs=1e-3)
+        assert gap == pytest.approx(10.0, abs=1e-3)
+    for gap in _end_gaps_mm(ax):
+        assert gap == pytest.approx(pp.rcParams["pie.leader_gap"], abs=1e-3)
     renderer = _settle(fig)
     page = fig.bbox
     for artist in _decorations(ax):
@@ -564,8 +589,8 @@ def test_a_row_of_pies_keeps_outside_labels_off_their_neighbours():
     Every outside label and leader in a 1x3 row must stay clear of every
     *other* axes -- and of the other cells' labels. ``offset=4`` so the
     labels reach sideways well past the 3mm the layout leaves between
-    cells that have no decorations: 4.82mm past the label's own frame.
-    The default 2mm offset reaches only 3.28mm, and a 1mm one 2.51mm,
+    cells that have no decorations: 3.94mm past the label's own frame.
+    The default 2mm offset reaches only 2.40mm, and a 1mm one 1.63mm,
     inside that 3mm, where the row would pass with no reservation at all.
     """
     thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
@@ -643,7 +668,7 @@ def test_outside_labels_do_not_overlap_the_axes_title():
     climbs into the title as ``offset`` grows.
 
     The 2% wedge sits just left of twelve o'clock; at ``offset=3`` its
-    label, centred on the mid-ray past a radial leader, runs 3.79mm into
+    label, centred on the mid-ray past a radial leader, runs 3.62mm into
     the title on a 38x38mm cell. Measured after a
     full ``savefig``, as the legend case is, and the setup check uses
     ``pytest.fail`` so that only the overlap assertion can be the
@@ -721,7 +746,9 @@ def test_aspect_equal_honours_offset_in_both_orientations(df):
         gaps = _rim_gaps_mm(ax)
         assert len(gaps) == 4, size
         for gap in gaps:
-            assert gap == pytest.approx(3.0 + pp.rcParams["pie.leader_gap"],
+            assert gap == pytest.approx(3.0, abs=1e-3), size
+        for gap in _end_gaps_mm(ax):
+            assert gap == pytest.approx(pp.rcParams["pie.leader_gap"],
                                         abs=1e-3), size
 
 
@@ -813,10 +840,6 @@ def _saved_pie(frame=GALLERY, size=(45.0, 45.0), **annotate_kws):
     return ax, _settle(fig)
 
 
-def _display(ax, xs, ys):
-    return ax.transData.transform(list(zip(xs, ys)))
-
-
 def _mm(ax, px):
     return px * _px_to_mm(ax.figure)
 
@@ -824,45 +847,117 @@ def _mm(ax, px):
 ROTATIONS = [0.0, "tangential", "radial", 30.0]
 
 
-@pytest.mark.parametrize("rotation", ROTATIONS)
-@pytest.mark.parametrize("leader_gap", [None, 0.3, 2.5])
-def test_a_radial_leader_ends_leader_gap_short_of_its_label(
-    leader_gap, rotation,
-):
-    """The label box starts exactly ``leader_gap`` past the leader's end.
+# Mid-ray angles, anticlockwise from three o'clock: twelve exactly and just
+# off it, half past one, three, half past four, and one in each other
+# quadrant. `_pointing` centres a wedge on each, and the other wedge lands
+# opposite it, so both halves of the dial are covered.
+ANGLES = [90.0, 84.0, 45.0, 0.0, -45.0, 135.0, 200.0, 250.0]
 
-    Measured along the mid-ray, the distance the layout places by: every
-    corner of the rendered box -- rotated, where the label is -- projects
-    at least that far past the end. The leader used to end on the label's
-    anchor point, a gap of zero.
-    """
-    ax, renderer = _saved_pie(leader="radial", leader_gap=leader_gap,
-                              rotation=rotation)
-    expected = (pp.rcParams["pie.leader_gap"] if leader_gap is None
-                else leader_gap)
+
+def _pointing(angle, size=(40.0, 40.0), **annotate_kws):
+    """A two-wedge pie whose 10% wedge is centred on ``angle``, saved."""
+    import io
+
+    frame = pd.DataFrame({"kind": list("AB"), "n": [10.0, 90.0]})
+    fig, ax = pp.subplots(axes_size=size)
+    # Clockwise from the start: the 36-degree wedge's mid-ray is 18
+    # degrees short of where it starts.
+    pp.pieplot(data=frame, x="kind", y="n", legend=False, ax=ax,
+               start_angle=angle + 18.0)
+    annotate_kws.setdefault("anchor", "outside")
+    pp.annotate(ax, "wedge_values", **annotate_kws)
+    fig.savefig(io.BytesIO(), format="png")
+    record = ax._publiplots_wedge_meta.wedges[0]
+    mid = ((record.theta0 + record.theta1) / 2.0 - angle) % 360.0
+    assert min(mid, 360.0 - mid) == pytest.approx(0.0, abs=1e-9)
+    return ax, _settle(fig)
+
+
+def _assert_end_gaps(ax, renderer, expected):
     pairs = _outside_records(ax)
-    assert len(pairs) == len(ax.lines) == 4
+    assert pairs and len(pairs) == len(ax.lines)
     for (record, text), line in zip(pairs, ax.lines):
         end = _display(ax, line.get_xdata(), line.get_ydata())[-1]
-        gap = _clearance_mm(ax, renderer, record, text, end)
-        assert gap == pytest.approx(expected, abs=GAP_TOL_MM), text.get_text()
+        gap = _box_distance_mm(ax, renderer, text, end)
+        assert gap == pytest.approx(expected, abs=GAP_TOL_MM), (
+            text.get_text(), (record.theta0 + record.theta1) / 2.0)
 
 
-def test_a_radial_gap_is_the_straight_line_gap_where_the_ray_is_horizontal():
-    """At three and nine o'clock the nearest point of the box is on the ray.
+@pytest.mark.parametrize("angle", ANGLES)
+@pytest.mark.parametrize("leader_gap", [None, 0.3, 2.5])
+def test_a_radial_leader_ends_leader_gap_short_of_its_label_at_any_angle(
+    angle, leader_gap,
+):
+    """The visible gap from the leader's end to the label is ``leader_gap``.
 
-    There the along-the-ray gap and the plain distance from the leader's
-    end to the box are the same number.
+    The shortest straight-line distance to the rendered box, at every
+    angle. Placing the box by its reach along the mid-ray instead left
+    labels off the axes -- half past one, say -- visibly further from
+    their lines than those at three o'clock; and the leader used to end
+    on the label's anchor point, a gap of zero.
     """
-    halves = pd.DataFrame({"kind": list("AB"), "n": [50.0, 50.0]})
-    ax, renderer = _saved_pie(halves, leader="radial")
-    for line, text in zip(ax.lines, ax.texts):
-        ex, ey = _display(ax, line.get_xdata(), line.get_ydata())[-1]
-        box = text.get_window_extent(renderer)
-        dx = max(box.x0 - ex, 0.0, ex - box.x1)
-        dy = max(box.y0 - ey, 0.0, ey - box.y1)
-        assert _mm(ax, math.hypot(dx, dy)) == pytest.approx(
-            pp.rcParams["pie.leader_gap"], abs=GAP_TOL_MM)
+    ax, renderer = _pointing(angle, leader="radial", leader_gap=leader_gap)
+    _assert_end_gaps(ax, renderer, pp.rcParams["pie.leader_gap"]
+                     if leader_gap is None else leader_gap)
+
+
+@pytest.mark.parametrize("rotation", ROTATIONS)
+def test_a_rotated_radial_label_keeps_the_gap_to_its_rotated_box(rotation):
+    """The gap is to the box around the rotated label, on the gallery frame."""
+    ax, renderer = _saved_pie(leader="radial", rotation=rotation)
+    _assert_end_gaps(ax, renderer, pp.rcParams["pie.leader_gap"])
+
+
+@pytest.mark.parametrize("angle", ANGLES)
+def test_no_leader_puts_the_label_offset_from_the_rim_at_any_angle(angle):
+    ax, renderer = _pointing(angle, leader=None, offset=3.0)
+    assert len(ax.lines) == 0
+    pairs = _outside_records(ax)
+    assert len(pairs) == 2
+    for record, text in pairs:
+        gap = _box_distance_mm(ax, renderer, text, _rim_display(ax, record))
+        assert gap == pytest.approx(3.0, abs=GAP_TOL_MM), text.get_text()
+
+
+@pytest.mark.parametrize("direction", [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0),
+                                       (0.0, -1.0)])
+@pytest.mark.parametrize("gap", [0.0, 0.8])
+def test_centre_distance_on_an_axis_is_the_half_size_plus_the_gap(
+    direction, gap,
+):
+    """Exactly along an axis one component is zero, and must not divide."""
+    from publiplots.annotate._wedge import _centre_distance
+
+    half_w, half_h = 3.0, 1.0
+    expected = (half_w if direction[0] else half_h) + gap
+    assert _centre_distance(half_w, half_h, direction, gap) == pytest.approx(
+        expected, abs=1e-12)
+
+
+@pytest.mark.parametrize("degrees", [1.0, 10.0, 18.4, 30.0, 45.0, 60.0,
+                                     71.6, 85.0, 120.0, 225.0, 300.0])
+@pytest.mark.parametrize("gap", [0.0, 0.3, 0.8, 5.0])
+def test_centre_distance_puts_the_box_gap_from_the_point(degrees, gap):
+    """The closed form against the definition, over side and corner cases.
+
+    18.4 and 71.6 degrees sit near the switch between a side and the
+    corner for a 3:1 box at these gaps.
+    """
+    from publiplots.annotate._wedge import _centre_distance
+
+    half_w, half_h = 3.0, 1.0
+    dx, dy = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+    t = _centre_distance(half_w, half_h, (dx, dy), gap)
+
+    def dist(t):
+        return math.hypot(max(abs(t * dx) - half_w, 0.0),
+                          max(abs(t * dy) - half_h, 0.0))
+
+    assert dist(t) == pytest.approx(gap, abs=1e-9)
+    # The smallest such t: any nearer and the box is closer than the gap
+    # (or, for a zero gap, still covers the point).
+    nearer = dist(t - 1e-6)
+    assert nearer < gap or (gap == 0.0 and nearer == 0.0)
 
 
 @pytest.mark.parametrize("rotation", ROTATIONS)
@@ -896,8 +991,7 @@ def test_no_leader_puts_the_label_offset_from_the_rim_and_draws_nothing(
     pairs = _outside_records(ax)
     assert len(pairs) == 4
     for record, text in pairs:
-        gap = _clearance_mm(ax, renderer, record, text,
-                            _rim_display(ax, record))
+        gap = _box_distance_mm(ax, renderer, text, _rim_display(ax, record))
         assert gap == pytest.approx(3.0, abs=GAP_TOL_MM), text.get_text()
 
 
@@ -1103,10 +1197,7 @@ def test_leader_gap_defaults_to_the_rcparam(restore_pie_rcparams):
     pp.rcParams["pie.leader_gap"] = 1.7
     for leader_gap, expected in [(None, 1.7), (0.4, 0.4)]:
         ax, renderer = _saved_pie(leader_gap=leader_gap)
-        for (record, text), line in zip(_outside_records(ax), ax.lines):
-            end = _display(ax, line.get_xdata(), line.get_ydata())[-1]
-            assert _clearance_mm(ax, renderer, record, text, end) == (
-                pytest.approx(expected, abs=GAP_TOL_MM))
+        _assert_end_gaps(ax, renderer, expected)
 
 
 def test_elbow_length_defaults_to_the_rcparam(restore_pie_rcparams):

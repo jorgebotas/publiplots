@@ -117,8 +117,8 @@ def annotate(
           straight out from the rim and centres the label on the mid-ray
           ``leader_gap`` mm beyond its end; ``'elbow'`` bends that line
           into a horizontal tail ``elbow_length`` mm long, with the label
-          beside it; ``None`` draws no line and centres the label
-          ``offset`` mm from the rim. Outside labels are decorations,
+          beside it; ``None`` draws no line and centres the label so its
+          nearest point is ``offset`` mm from the rim. Outside labels are decorations,
           like a title: the axis limits are left alone, so the disc is
           the same size whichever anchor is used, and the labels extend
           beyond the axes. On an axes from :func:`publiplots.subplots`
@@ -145,7 +145,8 @@ def annotate(
         present) and the label, applied outward in the anchor
         direction. ``1.0`` when not given, except for ``wedge_values``,
         where it is the distance from the rim to the leader's end (to
-        the label itself with ``leader=None``) and defaults to
+        the nearest point of the label, in a straight line, with
+        ``leader=None``) and defaults to
         ``pp.rcParams["pie.label_offset"]`` (``2.0``).
     color : str or tuple, default ``'auto'``
         Label color. Accepted values:
@@ -204,10 +205,9 @@ def annotate(
         with any other kind is a ``TypeError``.
     leader_gap : float, optional
         ``wedge_values`` only: millimetres from the leader's end to the
-        label. For ``'radial'`` it is measured along the mid-ray to the
-        label box's nearest point, so the box clears the whole line by
-        at least this much; for ``'elbow'``, horizontally from the end
-        of the tail. Defaults to ``pp.rcParams["pie.leader_gap"]``
+        label -- the straight-line distance to the nearest point of the
+        label's box, so it reads the same at every angle. For
+        ``'elbow'`` that is horizontal, from the end of the tail. Defaults to ``pp.rcParams["pie.leader_gap"]``
         (``0.8``); unused with ``leader=None``. Passing it with any other
         kind is a ``TypeError``.
     elbow_length : float, optional

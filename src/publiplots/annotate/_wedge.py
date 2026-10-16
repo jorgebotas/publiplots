@@ -234,17 +234,57 @@ class _OutsideLabel:
     mid: float
 
 
-def _support(text: Text, renderer, scale: float,
-             direction: Tuple[float, float]) -> float:
-    """Reach of the rendered label's box from its centre along ``direction``.
+def _half_extents(text: Text, renderer, scale: float) -> Tuple[float, float]:
+    """Half the rendered label box's width and height, in data units.
 
-    The support function of an axis-aligned rectangle of half-sizes
-    ``w/2``, ``h/2``: ``|w/2 * dx| + |h/2 * dy|``. ``get_window_extent``
-    already folds in any rotation, so this is the rotated label's box.
+    ``get_window_extent`` already folds in any rotation, so this is the
+    axis-aligned box around the rotated label.
     """
     box = text.get_window_extent(renderer)
-    return (abs(box.width * scale / 2.0 * direction[0])
-            + abs(box.height * scale / 2.0 * direction[1]))
+    return box.width * scale / 2.0, box.height * scale / 2.0
+
+
+def _centre_distance(half_w: float, half_h: float,
+                     direction: Tuple[float, float], gap: float) -> float:
+    """How far along ``direction`` to centre a box so it is ``gap`` from P.
+
+    A box of half-sizes ``(a, b)`` centred at ``P + t * d`` is at distance
+
+        ``dist(t) = hypot(max(t|dx| - a, 0), max(t|dy| - b, 0))``
+
+    from ``P``: the plain straight-line gap from ``P`` to the nearest
+    point of the box. ``dist`` is zero while ``P`` is inside the box and
+    strictly increasing once the box clears it, so ``dist(t) = gap`` has
+    one solution, found here in closed form from whichever of the box's
+    sides or corners is nearest ``P``:
+
+    - its near *vertical* side, ``t|dx| - a = gap``, when that leaves
+      ``P`` level with the box (``t|dy| <= b``);
+    - its near *horizontal* side, ``t|dy| - b = gap``, when that leaves
+      ``P`` beside it (``t|dx| <= a``);
+    - otherwise its near corner, the larger root of
+      ``(t|dx| - a)**2 + (t|dy| - b)**2 = gap**2``.
+
+    A mid-ray exactly along an axis never divides by zero: the vertical
+    side is skipped when ``dx == 0``, and when ``dy == 0`` it always
+    applies, so the horizontal side is only reached with ``dy != 0``.
+    With ``gap == 0`` the box just touches ``P``.
+    """
+    ax_, ay_ = abs(direction[0]), abs(direction[1])
+    if ax_ > 0.0:
+        t = (half_w + gap) / ax_
+        if t * ay_ <= half_h:
+            return t
+    # Reached only with `ay_ > 0`: when it is 0 the branch above returns.
+    t = (half_h + gap) / ay_
+    if t * ax_ <= half_w:
+        return t
+    # Both separations are positive at the solution: the nearest point is
+    # a corner. `direction` is a unit vector, so the quadratic's leading
+    # coefficient is 1.
+    p = half_w * ax_ + half_h * ay_
+    q = half_w * half_w + half_h * half_h - gap * gap
+    return p + math.sqrt(max(p * p - q, 0.0))
 
 
 def _outside_layout(text: Text, record: WedgeRecord, mid: float,
@@ -256,26 +296,26 @@ def _outside_layout(text: Text, record: WedgeRecord, mid: float,
     keeps its label -- the rim point is ``c + r_outer * d``, and:
 
     - ``'radial'``: the leader runs from the rim to ``offset`` beyond it
-      along ``d``. The label's box is centred on the mid-ray with its
-      nearest point ``leader_gap`` past the leader's end, measured along
-      ``d``: its centre sits at ``r_outer + offset + leader_gap + s``,
-      where ``s`` is the box's support along ``d`` (:func:`_support`).
-      Every point of the box then projects at least that far along
-      ``d``, so the box clears the whole leader by ``leader_gap`` and its
-      own wedge's disc by ``offset + leader_gap``. Off the axes the
-      straight-line gap from the leader's end to the box is larger than
-      ``leader_gap``, because the box's nearest point is a corner beside
-      the mid-ray rather than on it.
+      along ``d``. The label's rendered box is centred on the mid-ray at
+      the distance that puts its nearest point exactly ``leader_gap``
+      from the leader's end, in a straight line
+      (:func:`_centre_distance`), so the gap reads the same at every
+      angle. The box's nearest point is on the mid-ray only at three,
+      six, nine and twelve o'clock; elsewhere it is a corner beside it,
+      and the box reaches back past the leader's end without coming
+      nearer than ``leader_gap`` to any point of the line.
     - ``None``: no leader, and the same centred box with its nearest
-      point ``offset`` beyond the rim.
+      point ``offset`` from the rim point, in a straight line.
     - ``'elbow'``: a radial segment from the rim to an elbow ``offset``
       beyond it, then a horizontal tail of ``elbow_length`` toward the
       label's side -- right where ``d`` points right or straight up or
       down, left otherwise. The label is ``ha='left'``/``'right'``,
       ``va='center'``, ``leader_gap`` past the tail's end.
 
-    A rotated label is laid out by its rotated box in every style. For
-    ``'radial'`` and ``None`` that is the support above; for ``'elbow'``
+    A rotated label is laid out by its rotated box in every style -- the
+    axis-aligned box around the rotated text, so the ink of a rotated
+    label can sit a little further off than the gap. For ``'radial'`` and
+    ``None`` that box is measured directly; for ``'elbow'``
     it is matplotlib's default ``rotation_mode``, which applies ``ha``
     and ``va`` to the rotated box, so its near side still sits
     ``leader_gap`` past the tail and its middle level with the tail. A
@@ -307,13 +347,13 @@ def _outside_layout(text: Text, record: WedgeRecord, mid: float,
                     [rim_point[1], end_point[1], end_point[1]])
         return position, ha, "center", vertices
 
-    reach = _support(text, geom.renderer, geom.scale, d)
+    half_w, half_h = _half_extents(text, geom.renderer, geom.scale)
     if geom.leader == "radial":
-        centre = end + geom.leader_gap + reach
+        centre = end + _centre_distance(half_w, half_h, d, geom.leader_gap)
         vertices = ([rim_point[0], end_point[0]],
                     [rim_point[1], end_point[1]])
     else:
-        centre = end + reach
+        centre = rim + _centre_distance(half_w, half_h, d, geom.offset)
         vertices = None
     position = (cx + centre * d[0], cy + centre * d[1])
     return position, "center", "center", vertices
