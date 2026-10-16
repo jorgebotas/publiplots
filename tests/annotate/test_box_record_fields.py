@@ -151,3 +151,32 @@ def test_custom_center_label_contrasts_with_the_drawn_face():
                         anchor="center")
     ink = to_rgba(plt.rcParams["text.color"])
     assert [to_rgba(t.get_color()) for t in texts] == [ink] * 4
+
+
+def _unfilled_navy_box(ax):
+    # hue repeats the categorical axis, so no hue value is recorded and
+    # hue_color comes from the drawn artist rather than the palette.
+    pp.boxplot(data=_df(), x="cat", y="v", hue="cat", fill=False,
+               palette={"A": "#000080", "B": "#000080"}, legend=False, ax=ax)
+
+
+def test_unfilled_box_has_no_drawn_face_but_keeps_its_stroke_hue():
+    fig, ax = pp.subplots(axes_size=(40, 40))
+    _unfilled_navy_box(ax)
+    boxes = ax._publiplots_box_meta.boxes
+    assert len(boxes) == 2
+    for rec in boxes:
+        stroke = to_rgba(rec.artist.get_color())
+        assert stroke == pytest.approx(to_rgba("#000080"))
+        assert rec.face_color[3] == 0.0
+        assert rec.face_color[:3] == pytest.approx(stroke[:3])
+        assert rec.hue_color == pytest.approx(stroke)
+
+
+def test_custom_center_label_on_an_unfilled_box_uses_ink():
+    fig, ax = pp.subplots(axes_size=(40, 40))
+    _unfilled_navy_box(ax)
+    texts = pp.annotate(ax, kind="box_custom", labels=lambda r: "n",
+                        anchor="center", color="auto")
+    ink = to_rgba(plt.rcParams["text.color"])
+    assert [to_rgba(t.get_color()) for t in texts] == [ink] * 2

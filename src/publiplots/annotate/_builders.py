@@ -952,6 +952,19 @@ def _facecolor_of(artist) -> Tuple[float, float, float, float]:
     return tuple(float(c) for c in fc[:4])
 
 
+def _drawn_face_of(artist) -> Tuple[float, float, float, float]:
+    """The face a label inside ``artist`` actually sits on, alpha included.
+
+    An unfilled box outline paints nothing inside it, so its face is fully
+    transparent and contrast is judged against the axes background. The
+    stroke colour still serves as the box's colour via `_facecolor_of`.
+    """
+    if isinstance(artist, Line2D):
+        r, g, b, _ = to_rgba(artist.get_color())
+        return (r, g, b, 0.0)
+    return _facecolor_of(artist)
+
+
 def _build_box_stats_meta(
     ax: Axes,
     data,
@@ -1015,7 +1028,7 @@ def _build_box_stats_meta(
             hatch_value=row["hatch_value"],
             draw_index=i,
             frame_row_index=row["frame_row_index"],
-            face_color=_facecolor_of(artist),
+            face_color=_drawn_face_of(artist),
             artist=artist,
             half=half_of(row) if half_of is not None else None,
         ))

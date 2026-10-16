@@ -177,3 +177,14 @@ def test_violin_custom_inside_sits_on_the_median_and_contrasts():
         assert t.get_position() == pytest.approx((box.center_pos, box.stats["median"]))
     white, ink = to_rgba("#ffffff"), to_rgba(plt.rcParams["text.color"])
     assert [to_rgba(t.get_color()) for t in texts] == [white, ink, white]
+
+
+def test_inside_on_an_unfilled_box_contrasts_with_the_empty_interior():
+    # Nothing is drawn inside an unfilled box, so even a dark outline leaves
+    # the label sitting on the axes background.
+    fig, ax = pp.subplots(axes_size=(60, 40))
+    pp.boxplot(data=_df(), x="cat", y="v", hue="h", fill=False,
+               palette={"x": "#000080", "y": "#000080"}, legend=False, ax=ax)
+    texts = pp.annotate(ax, kind="box_stats", anchor="inside")
+    assert len(texts) == 6
+    assert {to_rgba(t.get_color()) for t in texts} == {to_rgba(plt.rcParams["text.color"])}
