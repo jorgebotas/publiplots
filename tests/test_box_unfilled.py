@@ -131,3 +131,41 @@ def test_filled_legend_swatches_keep_translucent_fill(df):
     (entry,) = get_entries(ax)
     for handle in entry.handles:
         assert handle.get_alpha() == pytest.approx(pp.rcParams["alpha"])
+
+
+def _annotations(fill, **kwargs):
+    _, ax = pp.subplots(axes_size=(60, 40))
+    pp.boxplot(fill=fill, ax=ax, annotate=True, **kwargs)
+    return sorted(
+        (t.get_text(), tuple(np.round(t.get_position(), 6))) for t in ax.texts
+    )
+
+
+@pytest.mark.parametrize("hue", [None, "c", "g"])
+@pytest.mark.parametrize("orient", ["v", "h"])
+def test_unfilled_annotate_matches_filled(hue, orient):
+    # box_stats pairs groups to the drawn boxes; unfilled, those are closed
+    # Line2D outlines rather than PathPatches, and must pair the same way.
+    rng = np.random.default_rng(0)
+    frame = pd.DataFrame({
+        "c": np.repeat(list("ABC"), 40),
+        "g": np.tile(list("xy"), 60),
+        "v": rng.normal(size=120),
+    })
+    xy = dict(x="c", y="v") if orient == "v" else dict(x="v", y="c")
+    kwargs = dict(data=frame, hue=hue, **xy)
+    filled = _annotations(True, **kwargs)
+    n_boxes = 6 if hue == "g" else 3
+    assert len(filled) == n_boxes
+    assert _annotations(False, **kwargs) == filled
+
+
+def test_unfilled_annotate_pairs_zero_height_box():
+    # A constant group draws a degenerate (zero-IQR) outline; it must still
+    # take its slot, or every later box would shift by one.
+    frame = pd.DataFrame({
+        "c": np.repeat(list("ABC"), 10),
+        "v": np.r_[np.zeros(10), np.arange(10.0), np.arange(10.0) + 20],
+    })
+    kwargs = dict(data=frame, x="c", y="v")
+    assert _annotations(False, **kwargs) == _annotations(True, **kwargs)
