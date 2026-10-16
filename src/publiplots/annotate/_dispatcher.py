@@ -19,6 +19,7 @@ from publiplots.annotate.box_stats import _box_stats_strategy
 from publiplots.annotate.point_custom import _point_custom_strategy
 from publiplots.annotate.point_values import _point_values_strategy
 from publiplots.annotate.violin_custom import _violin_custom_strategy
+from publiplots.annotate.violin_stats import _violin_stats_strategy
 
 
 _STRATEGIES: dict[str, Callable] = {
@@ -28,6 +29,7 @@ _STRATEGIES: dict[str, Callable] = {
     "box_custom": _box_custom_strategy,
     "point_values": _point_values_strategy,
     "point_custom": _point_custom_strategy,
+    "violin_stats": _violin_stats_strategy,
     "violin_custom": _violin_custom_strategy,
 }
 
@@ -40,8 +42,14 @@ _DEFAULT_FMT: dict[str, str] = {
     "box_custom": "{}",
     "point_values": ".2f",
     "point_custom": "{}",
+    "violin_stats": ".2f",
     "violin_custom": "{}",
 }
+
+
+# Kinds that decide their own default rotation and so receive rotation=None
+# when the caller passed none. Every other kind gets 0.0.
+_AUTO_ROTATION_KINDS = frozenset({"violin_stats"})
 
 
 def annotate(
@@ -53,7 +61,7 @@ def annotate(
     offset: float = 1.0,
     color: Union[str, tuple] = "auto",
     pad: Optional[float] = None,
-    rotation: float = 0.0,
+    rotation: Optional[float] = None,
     labels=None,
     data=None,
     **text_kws,
@@ -71,7 +79,7 @@ def annotate(
         The axes to annotate. Must already have marks drawn on it
         (e.g. via :func:`publiplots.barplot`, :func:`publiplots.boxplot`,
         :func:`publiplots.pointplot`, or :func:`publiplots.lineplot`).
-    kind : {'bar_values', 'bar_custom', 'box_stats', 'point_values'}, default ``'bar_values'``
+    kind : {'bar_values', 'bar_custom', 'box_stats', 'box_custom', 'violin_stats', 'violin_custom', 'point_values', 'point_custom'}, default ``'bar_values'``
         Annotation strategy to use:
 
         - ``'bar_values'`` — label bars with their values; anchor
@@ -83,6 +91,10 @@ def annotate(
           ``bar_values``).
         - ``'box_stats'`` — label box plots with distributional
           summary statistics.
+        - ``'violin_stats'`` — the same statistics for violin plots, with
+          default anchor ``"inside"``: on the forward side of the median
+          line, inside the body. Labels on dodged vertical violins turn
+          90° to fit their body unless ``rotation`` is given.
         - ``'point_values'`` — label scatter or line-plot points;
           anchor vocabulary
           ``{"top", "bottom", "left", "right", "center"}``.
@@ -114,8 +126,10 @@ def annotate(
         so the geometry reads:
 
         ``mark → offset → label → pad → axis edge``.
-    rotation : float, default ``0.0``
-        Label rotation in degrees, counter-clockwise. For right-angle
+    rotation : float, optional
+        Label rotation in degrees, counter-clockwise. Defaults to ``0``,
+        except ``kind='violin_stats'``, which turns labels on dodged
+        vertical violins 90°. For right-angle
         multiples (0, 90, 180, 270) the ``(ha, va)`` alignment is
         auto-remapped so the rotated label still sits at the expected
         offset from the mark, and the categorical axis is also expanded
@@ -205,8 +219,10 @@ def annotate(
         pad = offset
     if pad < 0:
         raise ValueError("pad must be >= 0")
-    if not math.isfinite(rotation):
+    if rotation is not None and not math.isfinite(rotation):
         raise ValueError("rotation must be a finite number of degrees")
+    if rotation is None and kind not in _AUTO_ROTATION_KINDS:
+        rotation = 0.0
 
     resolved_fmt = fmt if fmt is not None else _DEFAULT_FMT[kind]
 

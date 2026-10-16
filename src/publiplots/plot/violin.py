@@ -144,9 +144,10 @@ def violinplot(
     legend_kws : dict, optional
         Additional keyword arguments for legend.
     annotate : bool or dict, optional
-        If truthy, run :func:`publiplots.annotate` with ``kind="box_stats"``
-        on the resulting axes. A dict is forwarded as keyword arguments to
-        the annotate call (e.g., ``annotate={"comparisons": [("A", "B")]}``).
+        If truthy, run :func:`publiplots.annotate` with
+        ``kind="violin_stats"``, which labels each median from inside its
+        body. A dict is forwarded as keyword arguments to the annotate call
+        (e.g., ``annotate={"fmt": ".3f"}``).
     side : str, default="both"
         Publiplots-specific: which side of the categorical position to draw
         the violin on. Options: ``"both"``, ``"left"``, ``"right"``. When
@@ -358,7 +359,7 @@ def violinplot(
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn
         opts = dict(annotate) if isinstance(annotate, dict) else {}
-        kind = opts.pop("kind", "box_stats")
+        kind = opts.pop("kind", "violin_stats")
         _annotate_fn(ax, kind=kind, **opts)
 
     if _hide_axis == "x":

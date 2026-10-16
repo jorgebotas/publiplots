@@ -9,7 +9,7 @@ the box), which matches the most common journal style.
 from __future__ import annotations
 
 import warnings
-from typing import ClassVar, FrozenSet, Iterable, List, Tuple
+from typing import ClassVar, FrozenSet, Iterable, List, Optional, Tuple
 
 from matplotlib.axes import Axes
 from matplotlib.text import Text
@@ -156,27 +156,32 @@ class BoxAnchorResolver:
         )
 
 
-def _box_stats_strategy(
+def _stats_strategy(
     ax: Axes,
     *,
+    kind: str,
+    default_anchor: str,
     fmt: str,
     anchor,
     offset: float,
     color,
     pad: float,
-    rotation: float = 0.0,
+    rotation: Optional[float] = None,
     **text_kws,
 ) -> List[Text]:
+    """Shared body of box_stats and violin_stats. They differ only in
+    ``default_anchor`` and in what ``rotation=None`` resolves to; the
+    dispatcher hands None to violin_stats alone."""
     # Pop strategy-specific opts before forwarding the rest to ax.text.
     stats_opt = text_kws.pop("stats", None)
     # Top-level `rotation` wins over one smuggled via text_kws; pop silently.
     text_kws.pop("rotation", None)
 
     if anchor is None:
-        anchor = _DEFAULT_ANCHOR
+        anchor = default_anchor
     if anchor not in _VALID_ANCHORS:
         raise ValueError(
-            f"box_stats anchor must be one of {sorted(_VALID_ANCHORS)}; "
+            f"{kind} anchor must be one of {sorted(_VALID_ANCHORS)}; "
             f"got {anchor!r}"
         )
     if stats_opt is None:
@@ -193,7 +198,7 @@ def _box_stats_strategy(
     meta = getattr(ax, "_publiplots_box_meta", None)
     if not isinstance(meta, BoxStatsMeta):
         warnings.warn(
-            "pp.annotate: kind='box_stats' needs pp.boxplot- or "
+            f"pp.annotate: kind='{kind}' needs pp.boxplot- or "
             "pp.violinplot-owned axes; call pp.boxplot(..., annotate=True) "
             "or pp.violinplot(..., annotate=True) instead of annotating a "
             "foreign axes.",
@@ -204,6 +209,12 @@ def _box_stats_strategy(
     if not meta.boxes:
         return []
 
+    if rotation is None:
+        # A dodged vertical violin is narrower than a 7 pt label (~3.8 mm
+        # body against ~5.4 mm of "0.92"), so its labels stand upright. The
+        # rule is structural — whether the plot dodged — never data-driven.
+        rotation = (90.0 if anchor == "inside" and meta.orient == "v"
+                    and meta.dodged else 0.0)
     rotated = abs(rotation) % 180 == 90
     # "inside" sits on the fill, so it alone takes the contrast path; every
     # other anchor keeps "outside" and boxplot output stays byte-identical.
@@ -244,6 +255,11 @@ def _box_stats_strategy(
         pad_mm=pad, owner_is_publiplots=meta.owner_is_publiplots,
     )
     return texts
+
+
+def _box_stats_strategy(ax: Axes, **kwargs) -> List[Text]:
+    return _stats_strategy(ax, kind="box_stats", default_anchor=_DEFAULT_ANCHOR,
+                           **kwargs)
 
 
 class _BoxStandIn:

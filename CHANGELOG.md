@@ -15,9 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never flips side near the axis end. Split violins and `side=` halves put
   each label against the seam on its own half's side. `color="auto"`
   contrasts with the drawn fill.
+- **`kind="violin_stats"`** — box_stats' statistics with `"inside"` as the
+  default anchor. On a dodged vertical violin, whose body is narrower than a
+  7 pt label, labels turn 90°; an explicit `rotation=` wins.
 
 ### Changed
 
+- **`pp.violinplot(annotate=True)` labels medians from inside the body**, via
+  `violin_stats`. Vertical labels sat beside the violin, often closer to the
+  neighbouring violin than to their own. `violin_custom`'s default anchor
+  moves from `"top"` to `"inside"`: unchanged for vertical violins, while
+  horizontal labels move from above the row to right of the median.
 - **`color="auto"` picks label ink by WCAG contrast ratio.** It compared HLS
   lightness against 0.408, which put black text on pure blue (contrast 2.4,
   against 8.6 for white) and white text on tab:green (3.4, against 6.2).
