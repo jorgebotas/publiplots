@@ -7,6 +7,7 @@ register it in `_STRATEGIES` below.
 from __future__ import annotations
 
 import math
+import numbers
 from typing import Callable, List, Optional, Union
 
 from matplotlib.axes import Axes
@@ -118,14 +119,15 @@ def annotate(
           ``leader_gap`` mm beyond its end; ``'elbow'`` bends that line
           into a horizontal tail ``elbow_length`` mm long, with the label
           beside it; ``None`` draws no line and centres the label so its
-          nearest point is ``offset`` mm from the rim. Outside labels are decorations,
-          like a title: the axis limits are left alone, so the disc is
-          the same size whichever anchor is used, and the labels extend
-          beyond the axes. On an axes from :func:`publiplots.subplots`
-          the layout grows the figure to hold them; on any other axes
-          nothing does, and labels that reach past the figure edge are
-          cut off. Crowded outside labels are not moved apart. ``pad``
-          has no effect for this kind, and is not validated for it.
+          nearest point is ``offset`` mm from the rim. Outside labels
+          are decorations, like a title: the axis limits are left alone,
+          so the disc is the same size whichever anchor is used, and the
+          labels extend beyond the axes. On an axes from
+          :func:`publiplots.subplots` the layout grows the figure to
+          hold them; on any other axes nothing does, and labels that
+          reach past the figure edge are cut off. Crowded outside labels
+          are not moved apart. ``pad`` has no effect for this kind, and
+          is not validated for it.
     fmt : str, optional
         Either a bare format spec (e.g. ``".2f"``, ``",.0f"``) or a
         format-string template containing ``{}`` (e.g.
@@ -207,9 +209,14 @@ def annotate(
         ``wedge_values`` only: millimetres from the leader's end to the
         label -- the straight-line distance to the nearest point of the
         label's box, so it reads the same at every angle. For
-        ``'elbow'`` that is horizontal, from the end of the tail. Defaults to ``pp.rcParams["pie.leader_gap"]``
-        (``0.8``); unused with ``leader=None``. Passing it with any other
-        kind is a ``TypeError``.
+        ``'elbow'`` that is horizontal, from the end of the tail.
+        Defaults to ``pp.rcParams["pie.leader_gap"]`` (``0.8``); unused
+        with ``leader=None``. Passing it with any other kind is a
+        ``TypeError``. For ``'radial'``, and for ``offset`` with
+        ``leader=None``, the label's box is measured with the renderer
+        at ``figure.dpi``, so the gap is exact there; text metrics at
+        another resolution differ slightly, and a figure saved at
+        ``savefig.dpi`` 600 can show the gap up to about 0.05 mm off.
     elbow_length : float, optional
         ``wedge_values`` only: millimetres of an ``'elbow'`` leader's
         horizontal tail. Defaults to ``pp.rcParams["pie.elbow_length"]``
@@ -303,14 +310,23 @@ def annotate(
     # `pad` still falls back to the offset actually in effect.
     if offset is None and kind not in _WEDGE_KINDS:
         offset = _DEFAULT_OFFSET
-    if offset is not None and offset < 0:
-        raise ValueError("offset must be >= 0")
+    # The wedge kinds validate `offset` in their strategy, with their
+    # other lengths and after the rcParam default is read, so every
+    # wedge length reports a bad value the same way.
+    if offset is not None and kind not in _WEDGE_KINDS:
+        if not isinstance(offset, numbers.Real):
+            raise TypeError(
+                f"offset must be a number of millimetres; got "
+                f"{type(offset).__name__} {offset!r}"
+            )
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
     if pad is None:
         pad = offset if offset is not None else _DEFAULT_OFFSET
     # `pad` has no effect for the wedge kinds, so a value there is not
     # validated: refusing an argument that changes nothing would only make
     # a call shared across kinds fail on the pie.
-    if pad < 0 and kind not in _WEDGE_KINDS:
+    if kind not in _WEDGE_KINDS and pad < 0:
         raise ValueError("pad must be >= 0")
     # Wedge charts add two named orientations, `"tangential"` and
     # `"radial"`, which only mean anything where there is a mid-ray to

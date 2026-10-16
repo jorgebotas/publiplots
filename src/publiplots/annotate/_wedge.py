@@ -25,6 +25,7 @@ a label and re-route its leader in one step.
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -161,21 +162,39 @@ def _resolve_leader(leader) -> Optional[str]:
         leader = None
     if leader not in _VALID_LEADERS:
         raise ValueError(
-            f"leader must be 'radial', 'elbow' or None; got {leader!r}"
+            f"wedge_values: leader= must be 'radial', 'elbow', or None or "
+            f"False for no line; got {leader!r}."
         )
     return leader
 
 
+def check_length(value, name: str, *, owner: str) -> float:
+    """Validate a length in millimetres and return it as a float.
+
+    The one rule for every wedge length -- ``pieplot``'s ``gap`` and
+    ``wedge_values``' ``offset``, ``leader_gap`` and ``elbow_length``:
+    anything but a real number raises :class:`TypeError`, and so does a
+    bool, which is a number to Python but never a length; a negative,
+    NaN or infinite one raises :class:`ValueError`. ``owner`` prefixes
+    the message with the function the caller called.
+    """
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise TypeError(
+            f"{owner}: {name}= must be a number of millimetres; got "
+            f"{type(value).__name__} {value!r}."
+        )
+    value = float(value)
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(
+            f"{owner}: {name}= must be a finite, non-negative number of "
+            f"millimetres; got {value!r}."
+        )
+    return value
+
+
 def _resolve_length(name: str, key: str, value: Optional[float]) -> float:
     """A non-negative finite length in mm, defaulting to ``rcParams[key]``."""
-    value = resolve_param(key, value)
-    try:
-        value = float(value)
-    except (TypeError, ValueError):
-        raise ValueError(f"{name} must be a number of mm; got {value!r}")
-    if not math.isfinite(value) or value < 0.0:
-        raise ValueError(f"{name} must be a finite number >= 0; got {value!r}")
-    return value
+    return check_length(resolve_param(key, value), name, owner="wedge_values")
 
 
 @dataclass
@@ -376,8 +395,38 @@ def _apply_outside(label: _OutsideLabel, geom: _OutsideGeometry) -> None:
         label.leader.set_data(*vertices)
 
 
+def _drawn_inset(record) -> float:
+    """The perpendicular inset of the drawn wedge's straight edges.
+
+    ``gap / 2`` plus any even explode, in data units, read off the patch
+    so it is what was drawn. A full circle has no edges to inset, and a
+    patch that is not a :class:`~publiplots.plot.wedge.draw.GappedWedge`
+    has none either.
+    """
+    get_inset = getattr(record.patch, "get_inset", None)
+    if get_inset is None or record.theta1 - record.theta0 >= 360.0 - 1e-9:
+        return 0.0
+    return max(float(get_inset()), 0.0)
+
+
+def _drawn_inner_radius(record, inset: float, half_span: float) -> float:
+    """Where the drawn wedge begins along its mid-ray, from its centre.
+
+    ``r_inner`` while the inset leaves an inner arc; once the offset
+    edges meet first, the apex where they do, ``inset / sin(half_span)``
+    out -- the same rule :class:`~publiplots.plot.wedge.draw.GappedWedge`
+    draws by.
+    """
+    if inset <= 0.0:
+        return record.r_inner
+    apex = inset / math.sin(half_span)
+    if half_span < math.pi / 2.0:
+        return max(record.r_inner, apex)
+    return record.r_inner if record.r_inner > inset else apex
+
+
 def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
-    """Does the rendered label fit inside its own wedge?
+    """Does the rendered label fit inside its own wedge, as drawn?
 
     The label is an axis-aligned rectangle once rendered (``get_window_extent``
     already folds in any rotation), so its reach along a unit direction
@@ -385,10 +434,18 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
     Two directions matter: tangential, where the wedge's two edge rays
     close in, and radial, where the ring's inner and outer radii do.
 
-    At the label radius ``r`` the perpendicular distance from the mid-ray
-    to either edge ray is ``r * sin(span / 2)``. Past a half-span of 90
-    degrees the wedge stops being convex about its mid-ray and the edges
-    no longer bound the label at all, so the disc itself is the limit.
+    The wedge is the one drawn, not the one laid out. Its radii are the
+    record's, which already include a scalar ``pull``'s even explode, and
+    each straight edge sits ``inset`` inside its ray -- ``gap / 2`` plus
+    that explode, read off the patch. At the label radius ``r`` the
+    perpendicular distance from the mid-ray to either inset edge is
+    therefore ``r * sin(span / 2) - inset``; and where the inset closes
+    the wedge in an apex before it reaches ``r_inner``, the wedge begins
+    at the apex, so that is where the radial room starts. With no gap
+    and no ``pull`` both reduce to the un-inset wedge. Past a half-span
+    of 90 degrees the wedge stops being convex about its mid-ray and the
+    edges no longer bound the label at all, so the disc itself is the
+    limit.
 
     The tangential bound is **approximate, and its error is not small**.
     It resolves the label's reach along the mid-ray's tangent, whereas
@@ -415,7 +472,10 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
     degrees although it fits from 98.0. So an ``auto`` label left inside
     can visibly cross its wedge's edge -- by up to about two millimetres
     with long labels on a small chart -- and ``anchor="outside"`` or a
-    shorter ``fmt`` is the remedy there.
+    shorter ``fmt`` is the remedy there. Those figures are for a wedge
+    with no gap and no ``pull``; the inset moves the tangential bound in
+    by exactly the inset, so a gap or an even explode adds nothing to
+    the overhang past the drawn edges.
 
     The span a label needs is *not* a single number. Against
     this test at the themed 7pt font, ``"50.0%"`` on a 40x40mm chart
@@ -438,13 +498,19 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
 
     r_label = (record.r_inner + record.r_outer) / 2.0
     half_span = math.radians(record.theta1 - record.theta0) / 2.0
+    inset = _drawn_inset(record)
     if half_span >= math.pi / 2.0:
         room_t = record.r_outer
     else:
-        room_t = r_label * math.sin(half_span)
+        room_t = r_label * math.sin(half_span) - inset
     if reach_t > room_t:
         return False
-    return 2.0 * reach_r <= (record.r_outer - record.r_inner)
+    if 2.0 * reach_r > record.r_outer - record.r_inner:
+        return False
+    inner = _drawn_inner_radius(record, inset, half_span)
+    # Only an apex past r_inner tightens the radial room; otherwise the
+    # check above already is the whole band.
+    return inner <= record.r_inner or reach_r <= r_label - inner
 
 
 def _wedge_values_strategy(

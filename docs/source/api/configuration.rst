@@ -11,6 +11,37 @@ rcParams
    publiplots.rcParams
    publiplots.resolve_param
 
+Pie charts
+----------
+
+Five ``publiplots.rcParams`` keys set the defaults of
+:func:`publiplots.pieplot` and of its labels,
+``pp.annotate(ax, "wedge_values")``. Every length is in millimetres,
+and each is overridden per call by the argument of the same name
+(``offset`` for ``pie.label_offset``).
+
+``pie.gap`` : float, default ``0.0``
+    Gap between every pair of neighbouring wedges: each wedge's straight
+    edges are inset by half of it, so two neighbours sit exactly this
+    far apart along the whole edge they share. ``0`` draws no gap.
+
+``pie.leader`` : {``"radial"``, ``"elbow"``, ``None``}, default ``"radial"``
+    How an outside label is joined to its wedge: a straight line along
+    the mid-ray, a line that bends into a horizontal tail, or no line
+    (``False`` is accepted for ``None``).
+
+``pie.label_offset`` : float, default ``2.0``
+    From the rim to the leader's end -- to its elbow, for ``"elbow"`` --
+    or, with no leader, to the nearest point of the label.
+
+``pie.leader_gap`` : float, default ``0.8``
+    From the leader's end to the nearest point of the label. Unused with
+    no leader.
+
+``pie.elbow_length`` : float, default ``2.0``
+    Length of an ``"elbow"`` leader's horizontal tail. Unused by the
+    other styles.
+
 Sunburst colour derivation (reserved)
 -------------------------------------
 

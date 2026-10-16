@@ -474,13 +474,24 @@ def test_a_zero_gap_draws_matplotlibs_own_wedge(df, kwargs):
                               plain.get_path().codes)
 
 
-def test_a_zero_gap_renders_identically_to_no_gap(df):
+def test_an_explicit_zero_gap_overrides_the_rcparam(df):
+    """gap=0 is a value, not "unset": with rcParams["pie.gap"] at 1 it
+    must still render exactly what the default rcParam of 0 does."""
     def render(**kwargs):
         ax = _pie(df, donut=0.4, annotate=True, **kwargs)
         buf = io.BytesIO()
         ax.figure.savefig(buf, format="raw", dpi=200)
         return buf.getvalue()
-    assert render(gap=0.0) == render()
+
+    assert pp.rcParams["pie.gap"] == 0.0
+    baseline = render()
+    previous = pp.rcParams["pie.gap"]
+    pp.rcParams["pie.gap"] = 1.0
+    try:
+        assert render() != baseline, "the rcParam must reach the drawing"
+        assert render(gap=0.0) == baseline
+    finally:
+        pp.rcParams["pie.gap"] = previous
 
 
 # ------------------------------------------------- too thin for the gap

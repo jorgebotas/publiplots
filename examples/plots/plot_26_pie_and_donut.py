@@ -264,9 +264,12 @@ pp.show()
 # ``"radial"`` (the default) carries the wedge's mid-ray on past the rim
 # and centres the label on it. ``"elbow"`` bends the line into a short
 # horizontal tail, ``elbow_length`` millimetres long (``2`` by default),
-# and sets the label beside it, aligned away from the disc, so labels
-# read like a column of text. ``None`` (or ``False``) draws no line and
-# centres the label with its nearest point ``offset`` from the rim.
+# and sets the label beside it, aligned away from the disc, so the text
+# starts ``leader_gap`` past the end of its tail. Each label still hangs
+# off its own wedge's mid-ray: elbow labels are not lined up into a
+# column, nor moved apart where they crowd. ``None`` (or ``False``)
+# draws no line and centres the label with its nearest point ``offset``
+# from the rim.
 # ``start_angle=120`` only turns the chart, so the thin wedges point up
 # and to the left.
 

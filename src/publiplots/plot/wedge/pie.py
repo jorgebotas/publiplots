@@ -12,6 +12,7 @@ from matplotlib import colormaps
 from matplotlib.colors import Colormap, Normalize, to_rgba
 
 from publiplots.annotate import annotate as _annotate
+from publiplots.annotate._wedge import check_length
 from publiplots.plot.wedge.colour import derive_colors, resolve_hue_values
 from publiplots.plot.wedge.draw import (
     apply_cell_limits,
@@ -435,18 +436,7 @@ def pieplot(
             f"chart. Pass one or the other."
         )
 
-    gap = resolve_param("pie.gap", gap)
-    if isinstance(gap, bool) or not isinstance(gap, numbers.Real):
-        raise TypeError(
-            f"pieplot: gap= must be a number of millimetres; got "
-            f"{type(gap).__name__} {gap!r}."
-        )
-    gap = float(gap)
-    if not math.isfinite(gap) or gap < 0:
-        raise ValueError(
-            f"pieplot: gap= must be a finite, non-negative number of "
-            f"millimetres; got {gap!r}."
-        )
+    gap = check_length(resolve_param("pie.gap", gap), "gap", owner="pieplot")
 
     hue_column = hue if hue is not None else levels[0]
 

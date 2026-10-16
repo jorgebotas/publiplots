@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   marks group, a wedge chart keeps its structure in `x`.
 
   `donut=` opens a hole and `center_label=` fills it, only when `donut` is
-  non-zero. `pull=` offsets a wedge and is keyed by category rather than
-  positional. `min_share=` collapses the long tail into one `"Other"`
+  non-zero. `pull=` pops wedges out when keyed by category — never
+  positionally — and explodes the whole chart evenly as a float (below). `min_share=` collapses the long tail into one `"Other"`
   wedge, but only when at least two categories fall below the threshold,
   so a single small category is never relabelled on its own; it cannot be
   combined with `order=`, since the `"Other"` bucket is not a category of
@@ -117,10 +117,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `aspect="equal"` axes, not something particular to these labels.
 
 - **`pp.pieplot(gap=...)` — an even gap between every pair of
-  neighbouring wedges, in millimetres.** `pull` moves each wedge along
-  its own mid-ray, as matplotlib's `explode` does, so the sideways gap a
-  scalar `pull` opens to a neighbour is `pull * sin(half-span)`: wide
-  wedges part widely and a 4–6% sliver barely at all. `gap` instead
+  neighbouring wedges, in millimetres.** A translation along each
+  wedge's own mid-ray, as matplotlib's `explode` does, opens a sideways
+  gap of `pull * sin(half-span)` to a neighbour: wide wedges part widely
+  and a 4–6% sliver barely at all. `gap` instead
   insets each wedge's two straight edges by `gap / 2`, parallel to
   themselves, leaving the arcs on their radii, so two neighbours sit
   exactly `gap` apart along the whole of the edge they share. Measured
@@ -130,7 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for `gap=0.4`, and 1.500mm on a 70/30 pie whose 252-degree wedge is
   reflex. The width runs between the outlines' centre lines, so the
   unpainted band is one outline narrower. It defaults to
-  `rcParams["pie.gap"]` (0.0) and composes with `pull`, `donut`,
+  `rcParams["pie.gap"]` (0.0) and composes with `pull` (adding to a
+  float `pull`'s even gap), `donut`,
   hatches, `alpha`, `edgecolor` and `linewidth`; at 0 every wedge is
   matplotlib's own `Wedge` path, vertex for vertex. A wedge too thin to
   keep any shape after the inset draws nothing, but keeps its record,
@@ -141,6 +142,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   miter join the two edges of a thin wedge, meeting at an acute angle,
   spiked past the centre into the neighbouring wedges, visibly so at
   600 dpi on the 6% wedge of the same pie.
+
+- **A float `pull` explodes a pie evenly.** `pull=0.05` used to
+  translate every wedge along its own mid-ray, so neighbours parted by
+  only `pull * sin(half-span)` per side and thin wedges barely
+  separated. A float `pull` now moves nothing: with `t` that fraction of
+  the outer radius, every wedge's inner boundary moves out to
+  `r_inner + t` and its rim to `r_outer + t`, and its straight edges are
+  inset so that every pair of neighbours is `2t` apart (plus any `gap`).
+  A pie opens a central hole of radius `t`, a donut's hole grows by `t`,
+  and labels, the framing and `center_label` follow. On the gallery's
+  52.2/41.8/6/4 pie in a 50x50mm cell (radius 22.73mm, so `t` =
+  1.136mm at `pull=0.05`) every pair of neighbours measures 2.273mm
+  apart, 3.273mm with `gap=1`, every rim sits at 23.864mm, and a
+  `donut=0.55` hole at 13.636mm. Wedges keep the same separation but not
+  their shape: even for a half-disc, whose halves match a translation by
+  `t` in their edges and gap, the rim is an arc about the chart's centre
+  and reaches up to 0.98`t` further at its ends. A wedge too narrow at
+  its rim for the `2t` gap draws nothing, as for `gap`, and a lone
+  category's wedge becomes a full ring from `r_inner + t` to
+  `r_outer + t`. A dict `pull` is unchanged: it still translates the
+  wedges it names. A float `pull` that is not a number raises
+  `TypeError`, and a negative or non-finite one `ValueError`.
+
+- **Leader styles for outside wedge labels: `leader`, `leader_gap` and
+  `elbow_length`.** `pp.annotate(ax, "wedge_values")` — and
+  `pieplot(annotate={...})` — take `leader="radial"` (a line straight
+  out along the mid-ray, the label centred on it), `"elbow"` (a line
+  that bends into a horizontal tail `elbow_length` mm long, the label
+  left- or right-aligned beside it) or `None`/`False` (no line).
+  `leader_gap` is the visible distance from the leader's end to the
+  nearest point of the label's box, so it reads the same at every angle;
+  with no leader the label's nearest point is `offset` from the rim. A
+  rotated label is placed by its rotated box. These are exact at
+  `figure.dpi`; text metrics at `savefig.dpi` 600 can put the gap up to
+  about 0.05mm off. Labels are not yet lined up into columns or moved
+  apart. A non-number or bool `offset`, `leader_gap`, `elbow_length` or
+  `gap` raises `TypeError`, and a negative, NaN or infinite one
+  `ValueError`, in one message style.
+
+- **`pie.*` rcParams.** `pie.gap` (0.0), `pie.leader` (`"radial"`),
+  `pie.label_offset` (2.0), `pie.leader_gap` (0.8) and
+  `pie.elbow_length` (2.0) set the defaults of the arguments of the same
+  name — `offset` for `pie.label_offset` — so a figure set can restyle
+  every pie at once.
+
+- **The default outside wedge-label offset is `pie.label_offset`,
+  2mm.** `wedge_values` does not take the 1mm default the other
+  annotate kinds use: an omitted `offset` reads
+  `rcParams["pie.label_offset"]` (2.0), the length of a radial leader.
+  Every other kind still defaults to 1mm.
 
 ### Fixed
 

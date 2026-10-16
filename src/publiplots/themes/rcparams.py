@@ -366,7 +366,8 @@ class PubliplotsRcParams:
     publiplots-specific parameters. Mimics matplotlib's rcParams but
     also exposes the custom keys listed in this module's docstring
     (``alpha``, ``edgecolor``, ``edgewidth``, ``palette``,
-    ``hatch_mode``, ``scatter.size_*``, ``subplots.*``). Use the module-level
+    ``hatch_mode``, ``scatter.size_*``, ``pie.*``, ``subplots.*``). Use
+    the module-level
     :data:`rcParams` instance — don't instantiate this class yourself.
 
     Writes are routed automatically: publiplots keys update the

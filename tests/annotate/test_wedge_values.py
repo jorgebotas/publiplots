@@ -691,6 +691,84 @@ def test_outside_labels_do_not_overlap_the_axes_title():
                                   title), artist
 
 
+def _overhang_mm(ax, renderer, record, text):
+    """How far the label's box reaches past its drawn wedge, in mm.
+
+    The worst box corner against each inset straight edge (convex wedges
+    only) and the rim; negative when the box is inside all of them.
+    """
+    inverse = ax.transData.inverted()
+    box = text.get_window_extent(renderer)
+    centre = record.patch.center
+    corners = inverse.transform([(box.x0, box.y0), (box.x0, box.y1),
+                                 (box.x1, box.y0), (box.x1, box.y1)])
+    corners = [(x - centre[0], y - centre[1]) for x, y in corners]
+    inset = record.patch.get_inset()
+    worst = max(math.hypot(x, y) - record.r_outer for x, y in corners)
+    if record.theta1 - record.theta0 < 180.0:
+        for theta, side in ((record.theta0, 1.0), (record.theta1, -1.0)):
+            nx = -side * math.sin(math.radians(theta))
+            ny = side * math.cos(math.radians(theta))
+            worst = max(worst, max(inset - (x * nx + y * ny)
+                                   for x, y in corners))
+    (_, y0), (_, y1) = ax.transData.transform([(0.0, 0.0), (0.0, 1.0)])
+    return worst * abs(y1 - y0) * _px_to_mm(ax.figure)
+
+
+@pytest.mark.parametrize("kwargs", [
+    pytest.param(dict(gap=1.0), id="gap"),
+    pytest.param(dict(gap=2.0), id="gap-wide"),
+    pytest.param(dict(pull=0.05), id="even-explode"),
+    pytest.param(dict(pull=0.05, gap=1.0), id="even-explode-gap"),
+])
+def test_auto_leaves_a_label_inside_only_if_it_fits_the_drawn_wedge(kwargs):
+    """The fit is measured against the inset edges, not the laid-out ones.
+
+    Measured against the un-inset wedge, the 12% label on this 40mm pie
+    stays inside and crosses its drawn edges by 0.64mm at gap=1, 1.14mm
+    at gap=2, 0.88mm under pull=0.05 and 1.38mm under both -- the inset,
+    on top of the 0.14mm the approximate tangential bound overhangs by
+    with no gap at all. A case where that approximation alone overhangs
+    is deliberately not used here.
+    """
+    frame = pd.DataFrame({"kind": list("ABCDE"),
+                          "n": [40.0, 25.0, 15.0, 12.0, 8.0]})
+    ax = _pie(frame, size=(40.0, 40.0), **kwargs)
+    pp.annotate(ax, "wedge_values", anchor="auto")
+    renderer = _settle(ax.figure)
+    inside = [(record, text)
+              for record, text in zip(ax._publiplots_wedge_meta.wedges,
+                                      ax.texts)
+              if math.dist(text.get_position(), record.patch.center)
+              < record.r_outer]
+    assert [r.path[0] for r, _ in inside] == ["A", "B", "C"]
+    for record, text in inside:
+        assert _overhang_mm(ax, renderer, record, text) <= 0.0, record.path
+
+
+@pytest.mark.parametrize("inset, fits", [(0.0, True), (0.05, True),
+                                         (0.1, False)])
+def test_the_fit_test_starts_the_radial_room_at_the_drawn_apex(inset, fits):
+    """A 60-degree wedge inset by h closes in an apex 2h out. A box
+    0.64 long along the mid-ray, centred at 0.5, starts at 0.18: inside
+    the wedge for h = 0 or 0.05, but short of the apex at 0.2 for
+    h = 0.1, although it clears both inset edges there."""
+    from types import SimpleNamespace
+
+    from matplotlib.transforms import Bbox
+
+    from publiplots.annotate._wedge import _label_fits
+    from publiplots.plot.wedge.draw import GappedWedge
+
+    patch = GappedWedge((0.0, 0.0), 1.0, -30.0, 30.0, width=1.0,
+                        inset=inset)
+    record = SimpleNamespace(patch=patch, r_inner=0.0, r_outer=1.0,
+                             theta0=-30.0, theta1=30.0)
+    text = SimpleNamespace(get_window_extent=lambda renderer: Bbox(
+        [[0.18, -0.05], [0.82, 0.05]]))
+    assert bool(_label_fits(text, record, None, 1.0, 0.0)) is fits
+
+
 def test_a_narrow_ring_cannot_hold_its_labels(df):
     """The radial half of the fit test carries its own weight.
 
@@ -1112,21 +1190,36 @@ def test_leaders_keep_their_wedges_colour_width_and_zorder_in_every_style():
 
 @pytest.mark.parametrize("leader", ["radial", "elbow", None])
 def test_a_pulled_wedge_keeps_its_outside_label(df, leader):
-    """Rim, leader and label all move out with the pulled wedge."""
-    ax = _pie(df, pull={"A": 0.3})
+    """Rim, leader and label all move out with the pulled wedge.
+
+    Measured in mm from the rim the pulled wedge is drawn with, computed
+    here from the pull: a label placed from the chart's centre instead
+    sits on the same mid-ray, so being on the ray proves nothing; its
+    distance from the pulled rim is what tells the two apart.
+    """
+    ax = _pie(df, size=(40.0, 40.0), pull={"A": 0.3})
     pp.annotate(ax, "wedge_values", anchor="outside", leader=leader)
+    renderer = _settle(ax.figure)
     record = ax._publiplots_wedge_meta.wedges[0]
-    assert record.patch.center != pytest.approx((0.0, 0.0))
-    cx, cy = record.patch.center
+    text = ax.texts[0]
     dx, dy = _mid_ray(record)
-    if leader is not None:
-        xs, ys = ax.lines[0].get_xdata(), ax.lines[0].get_ydata()
-        assert (xs[0], ys[0]) == pytest.approx(
-            (cx + record.r_outer * dx, cy + record.r_outer * dy))
-    if leader != "elbow":
-        tx, ty = ax.texts[0].get_position()
-        assert -(tx - cx) * dy + (ty - cy) * dx == pytest.approx(0.0,
-                                                                 abs=1e-12)
+    centre = (0.3 * dx, 0.3 * dy)
+    assert tuple(record.patch.center) == pytest.approx(centre, abs=1e-12)
+    rim = ax.transData.transform((centre[0] + dx, centre[1] + dy))
+    offset = pp.rcParams["pie.label_offset"]
+    leader_gap = pp.rcParams["pie.leader_gap"]
+    if leader is None:
+        assert not ax.lines
+        assert _box_distance_mm(ax, renderer, text, rim) == pytest.approx(
+            offset, abs=GAP_TOL_MM)
+        return
+    points = _display(ax, ax.lines[0].get_xdata(), ax.lines[0].get_ydata())
+    assert _mm(ax, math.dist(points[0], rim)) == pytest.approx(
+        0.0, abs=GAP_TOL_MM)
+    assert _mm(ax, math.dist(points[0], points[1])) == pytest.approx(
+        offset, abs=GAP_TOL_MM)
+    assert _box_distance_mm(ax, renderer, text, points[-1]) == \
+        pytest.approx(leader_gap, abs=GAP_TOL_MM)
 
 
 @pytest.mark.parametrize("donut", [0.0, 0.6])
@@ -1264,12 +1357,70 @@ def test_an_unknown_leader_rcparam_raises(df, restore_pie_rcparams):
         pp.annotate(ax, "wedge_values")
 
 
-@pytest.mark.parametrize("name", ["leader_gap", "elbow_length"])
-@pytest.mark.parametrize("value", [-0.5, float("nan"), "wide"])
-def test_a_bad_length_raises(df, name, value):
+def test_an_unknown_leader_says_false_is_accepted(df):
     ax = _pie(df)
-    with pytest.raises(ValueError, match=name):
+    with pytest.raises(ValueError, match=r"None or False"):
+        pp.annotate(ax, "wedge_values", leader="curved")
+
+
+LENGTHS = ["offset", "leader_gap", "elbow_length"]
+
+
+@pytest.mark.parametrize("name", LENGTHS)
+@pytest.mark.parametrize("value", [-0.5, float("nan"), float("inf")])
+def test_a_negative_or_non_finite_length_raises_value_error(df, name, value):
+    ax = _pie(df)
+    with pytest.raises(ValueError, match=rf"^wedge_values: {name}= must be "
+                       r"a finite, non-negative number of millimetres; "
+                       rf"got {value!r}\.$"):
         pp.annotate(ax, "wedge_values", **{name: value})
+
+
+@pytest.mark.parametrize("name", LENGTHS)
+@pytest.mark.parametrize("value", ["wide", True, False, [1.0]])
+def test_a_non_number_or_bool_length_raises_type_error(df, name, value):
+    ax = _pie(df)
+    with pytest.raises(TypeError, match=rf"^wedge_values: {name}= must be "
+                       r"a number of millimetres; got "
+                       rf"{type(value).__name__} "):
+        pp.annotate(ax, "wedge_values", **{name: value})
+
+
+@pytest.mark.parametrize("name, key", [("offset", "pie.label_offset"),
+                                       ("leader_gap", "pie.leader_gap"),
+                                       ("elbow_length", "pie.elbow_length")])
+def test_a_bad_length_rcparam_is_refused_the_same_way(
+    df, name, key, restore_pie_rcparams,
+):
+    ax = _pie(df)
+    pp.rcParams[key] = -1.0
+    with pytest.raises(ValueError, match=rf"^wedge_values: {name}= "):
+        pp.annotate(ax, "wedge_values")
+    pp.rcParams[key] = "wide"
+    with pytest.raises(TypeError, match=rf"^wedge_values: {name}= "):
+        pp.annotate(ax, "wedge_values")
+
+
+def test_pieplot_gap_reports_a_bad_value_in_the_same_style(df):
+    with pytest.raises(ValueError, match=r"^pieplot: gap= must be a finite, "
+                       r"non-negative number of millimetres; got -0\.5\.$"):
+        _pie(df, gap=-0.5)
+    with pytest.raises(TypeError, match=r"^pieplot: gap= must be a number "
+                       r"of millimetres; got str 'wide'\.$"):
+        _pie(df, gap="wide")
+
+
+def test_other_kinds_name_a_non_number_offset():
+    """A bar offset that is not a number gets a message, not the bare
+    comparison TypeError; a negative one keeps its own."""
+    fig, ax = pp.subplots()
+    pp.barplot(data=pd.DataFrame({"x": list("ab"), "y": [1.0, 2.0]}),
+               x="x", y="y", ax=ax)
+    with pytest.raises(TypeError, match=r"^offset must be a number of "
+                       r"millimetres; got str 'wide'$"):
+        pp.annotate(ax, "bar_values", offset="wide")
+    with pytest.raises(ValueError, match=r"^offset must be >= 0$"):
+        pp.annotate(ax, "bar_values", offset=-1.0)
 
 
 @pytest.mark.parametrize("option", [
