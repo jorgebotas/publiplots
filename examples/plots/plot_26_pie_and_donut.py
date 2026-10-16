@@ -312,10 +312,8 @@ pp.rcParams["pie.leader"] = default_leader
 #
 # A radial or unled label moves at most as far round as its leader can
 # lean without cutting back across the chart. A pie with more slivers
-# side by side than that room holds -- the last row, thirteen wedges on
-# a small chart -- keeps some overlap there; elbow labels, which have
-# the chart's height to spread into, or ``min_share`` to pool the
-# slivers, are the way out.
+# side by side than that room holds is drawn with elbow labels instead
+# (next figure).
 
 long_tail = pd.DataFrame({
     "kind": ["A", "B", "C", "D", "E", "F", "G", "H"],
@@ -334,24 +332,28 @@ for row, avoid in zip(axes, [False, True]):
 pp.show()
 
 # %%
-# The thirteen-wedge tail below, at 30mm, is too much for that room.
-# With its slivers side by side at twelve o'clock the radial labels
-# (left) run out of room and still overlap; the elbow labels (middle)
-# stack up their column and separate; and ``min_share=0.02`` (right)
-# pools the slivers into one wedge whose label has room. (Turned so the
-# slivers sit at three o'clock, where labels stack rather than stand
-# side by side, the radial labels would fit.)
+# The thirteen-wedge tail below, at 30mm, is too much for that room:
+# with its slivers side by side at twelve o'clock, radial labels cannot
+# all be kept apart round the circle. So although both panels ask for
+# ``leader="radial"`` (the default), the left one comes out with elbow
+# labels: when the circle cannot clear every overlap, every outside
+# label of the pie is laid out as an elbow label and spread up and down
+# its column, with the ``offset``, ``leader_gap`` and ``elbow_length``
+# in effect -- and with leader lines even if ``leader=None`` was asked
+# for. No warning is issued. Where the radial style matters more,
+# ``min_share`` (right, ``0.02``) pools the slivers into one wedge,
+# leaving labels the circle can keep apart; ``avoid_overlap=False``
+# keeps every label on its mid-ray, overlaps and all.
 
 tail13 = pd.DataFrame({
     "kind": [f"k{i}" for i in range(13)],
     "n": [50.0, 20.0, 10.0, 5.0, 3.0, 2.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.3,
           0.2],
 })
-fig, axes = pp.subplots(ncols=3, axes_size=(30, 30))
-for ax, (pie_kws, leader) in zip(axes, [({}, "radial"), ({}, "elbow"),
-                                        ({"min_share": 0.02}, "radial")]):
+fig, axes = pp.subplots(ncols=2, axes_size=(30, 30))
+for ax, pie_kws in zip(axes, [{}, {"min_share": 0.02}]):
     pp.pieplot(data=tail13, x="kind", y="n", legend=False, ax=ax,
-               annotate={"anchor": "outside", "leader": leader},
+               annotate={"anchor": "outside", "leader": "radial"},
                **pie_kws)
 pp.show()
 

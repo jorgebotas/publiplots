@@ -205,7 +205,11 @@ def annotate(
         tail toward the label's side (right for a mid-ray pointing
         straight up or down), with the label left- or right-aligned
         beside it; ``None`` or ``False`` draws no line. Defaults to
-        ``pp.rcParams["pie.leader"]`` (``'radial'``). A rotated label
+        ``pp.rcParams["pie.leader"]`` (``'radial'``). With
+        ``avoid_overlap`` on, a pie whose outside labels are too crowded
+        to keep apart round the circle draws ``'elbow'`` labels, with
+        their lines, whichever of ``'radial'`` or ``None`` was asked for
+        (see ``avoid_overlap``). A rotated label
         is placed by its rotated bounding box in every style. Passing it
         with any other kind is a ``TypeError``.
     leader_gap : float, optional
@@ -240,12 +244,15 @@ def annotate(
         does not move, inside labels never move, and no leader enters
         the disc. **On a pie too crowded for that room** -- a run of
         slivers wider than the bounds allow, or more labels than fit
-        round the circle -- the radial and unled labels are moved as far
-        apart as their bounds allow and some overlap remains; use
-        ``leader='elbow'``, whose columns have the chart's height to
-        spread into, or ``min_share`` on :func:`publiplots.pieplot` to
-        pool the slivers. The leader style is never switched for you.
-        Defaults to ``pp.rcParams["pie.avoid_overlap"]`` (``True``);
+        round the circle -- every outside label of the axes is laid out
+        as an ``'elbow'`` label instead, leader and all (drawn too when
+        ``leader=None``), using the ``offset``, ``leader_gap`` and
+        ``elbow_length`` in effect, and spread up and down its column,
+        which always has room. No warning is issued; pass
+        ``min_share`` to :func:`publiplots.pieplot` to pool the slivers
+        if the radial style matters more, or ``avoid_overlap=False`` to
+        keep every label on its mid-ray whatever overlaps. A pie the
+        circle can clear keeps the style asked for. Defaults to ``pp.rcParams["pie.avoid_overlap"]`` (``True``);
         ``False`` places every label on its own mid-ray. Anything but a
         bool is a ``TypeError``, as is passing it with any other kind.
     label_spacing : float, optional

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import math
 import numbers
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -1019,7 +1019,8 @@ def _strip_extent(polyline, x0: float, x1: float):
 
 
 def _column_bound(obstacles, x0: float, x1: float, y0: float, y1: float,
-                  desired: float, spacing: float) -> Tuple[float, float]:
+                  desired: float, spacing: float,
+                  escape: bool = False) -> Tuple[float, float]:
     """Floor and ceiling on the height of one box in a column.
 
     The box spans ``x0``-``x1`` and ``y0``-``y1`` unmoved, centred on
@@ -1033,6 +1034,14 @@ def _column_bound(obstacles, x0: float, x1: float, y0: float, y1: float,
     mirror image. A span the widened box already reaches into holds it
     where it is on the side the span mostly lies. Each bound is relaxed
     to ``desired`` when that is nearer, so it never moves a box.
+
+    With ``escape``, for the wedges themselves, a box that already
+    *overlaps* one -- not merely within ``spacing`` of it -- is not held
+    there but sent clear of it, away from the side the wedge mostly
+    lies. Unmoved, an elbow label's box is centred level with its elbow,
+    ``offset`` beyond the rim, so only a box taller than about twice
+    that does: a label rotated across its tail near twelve or six
+    o'clock.
     """
     half = 0.5 * (y1 - y0)
     floor, ceiling = -math.inf, math.inf
@@ -1041,6 +1050,13 @@ def _column_bound(obstacles, x0: float, x1: float, y0: float, y1: float,
         if extent is None:
             continue
         bottom, top = extent
+        inside = _strip_extent(polyline, x0, x1) if escape else None
+        if inside is not None and inside[0] < y1 and inside[1] > y0:
+            if bottom + top <= 2.0 * desired:
+                floor = max(floor, top + half + spacing)
+            else:
+                ceiling = min(ceiling, bottom - half - spacing)
+            continue
         if top <= y0 - spacing:
             floor = max(floor, min(desired, top + half + spacing))
         elif bottom >= y1 + spacing:
@@ -1056,8 +1072,10 @@ def _column_bounds(label: _OutsideLabel, box, desired: float, obstacles,
                    spacing: float):
     """How far an elbow label may move down and up its column.
 
-    ``obstacles`` are polylines in data units: every wedge's outline and
-    every other outside label's radial leg, rim to elbow, as unmoved.
+    ``obstacles`` are two lists of polylines in data units: every
+    wedge's outline, and every other outside label's radial leg, rim to
+    elbow, as unmoved. A box that overlaps a wedge is sent clear of it
+    (``escape`` in :func:`_column_bound`).
     The label's box and its tail's end -- the point the tail reaches,
     ``leader_gap`` beside the box and nearer the chart -- each get a
     floor and a ceiling (:func:`_column_bound`), so neither is moved to
@@ -1085,11 +1103,14 @@ def _column_bounds(label: _OutsideLabel, box, desired: float, obstacles,
     tail_x = xs[-1]
     sin, cos = math.sin(label.mid), math.cos(label.mid)
     upward = sin >= 0.0
-    of_box = _column_bound(obstacles, x0, x1, y0, y1, desired, spacing)
-    of_tail = _column_bound(obstacles, tail_x, tail_x, desired, desired,
+    wedges, legs = obstacles
+    of_wedges = _column_bound(wedges, x0, x1, y0, y1, desired, spacing,
+                              escape=True)
+    of_legs = _column_bound(legs, x0, x1, y0, y1, desired, spacing)
+    of_tail = _column_bound(wedges + legs, tail_x, tail_x, desired, desired,
                             desired, spacing)
-    floor = max(of_box[0], of_tail[0])
-    ceiling = min(of_box[1], of_tail[1])
+    floor = max(of_wedges[0], of_legs[0], of_tail[0])
+    ceiling = min(of_wedges[1], of_legs[1], of_tail[1])
     # The leg from the rim to the moved elbow must not point into the
     # wedge: its direction (offset * cos, y - y_rim) against the mid-ray.
     offset = math.hypot(xs[1] - xs[0], ys[1] - ys[0])
@@ -1257,8 +1278,8 @@ def _spread_in_columns(labels: List[_OutsideLabel], geom: _OutsideGeometry,
         upper: List[float] = []
         facing: List[Tuple[float, float]] = []
         for k, label in enumerate(column):
-            obstacles = polygons + [legs[id(other)] for other in labels
-                                    if other is not label]
+            obstacles = (polygons, [legs[id(other)] for other in labels
+                                    if other is not label])
             low, high, toward = _column_bounds(label, unmoved[k], desired[k],
                                                obstacles, spacing)
             lower.append(low)
@@ -1471,10 +1492,11 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
     are then relaxed toward what the pairs already have, each stretch as
     little as its room requires (:func:`_relax_to_fit`), and the solve
     is exact for those gaps: the labels move as far apart as their
-    bounds allow and some overlap remains. On a pie that crowded,
-    ``leader="elbow"``, which has a column's height to spread into, or
-    ``min_share`` on :func:`publiplots.pieplot`, which pools the slivers,
-    is the remedy; the leader style is never switched for the caller.
+    bounds allow and some overlap remains -- and the pass says so,
+    returning ``complete=False``. The strategy then lays the whole pie's
+    outside labels out as elbow labels (:func:`_as_elbows`), whose
+    columns have the chart's height to spread into, so that layout is
+    never what is drawn.
 
     **Verification.** The separations are right for each pair's middle,
     not for wherever the solve puts it, so after each solve every label
@@ -1728,8 +1750,11 @@ def _wedge_values_strategy(
     ``label_spacing`` mm (``pie.label_spacing``, ``0.4``) between any
     two boxes: elbow labels up and down their column
     (:func:`_spread_in_columns`), the others round the circle
-    (:func:`_spread_on_circle`). A label that crowds nothing is not
-    moved, and with ``avoid_overlap=False`` neither pass runs.
+    (:func:`_spread_on_circle`). Where the circle has too little room
+    to clear every conflict, every outside label is laid out as an
+    elbow label instead (:func:`_as_elbows`) and spread up and down its
+    column. A label that crowds nothing is not moved, and with
+    ``avoid_overlap=False`` neither pass runs.
 
     The axis limits are never changed here -- they are whatever
     :func:`publiplots.pieplot` framed, room for ``pull`` included -- so
@@ -1861,28 +1886,8 @@ def _wedge_values_strategy(
 
         if not place_outside:
             continue
-        line = None
-        if leader is not None:
-            (line,) = ax.plot(
-                [], [],
-                # The wedge's own edge, not the themed `edgecolor`: that
-                # rcParam is None by default, which means "match the
-                # fill" for a wedge outline and would mean "take the next
-                # colour off the property cycle" here -- leaders in
-                # colours from no wedge at all. Reading the drawn patch
-                # honours an explicit edgecolor too, since the patch
-                # already carries it.
-                color=record.patch.get_edgecolor(),
-                linewidth=edgewidth,
-                solid_capstyle="butt",
-                # An elbow is one polyline, so its corner is a join; a
-                # round one reads as a single bent stroke.
-                solid_joinstyle="round",
-                zorder=record.patch.get_zorder() + 1,
-                # Line2D clips to the axes by default, which would cut a
-                # leader off at the frame on its way to a label beyond it.
-                clip_on=False,
-            )
+        line = (_leader_line(ax, record, edgewidth) if leader is not None
+                else None)
         placed = _OutsideLabel(text=text, leader=line, record=record, mid=mid)
         _apply_outside(placed, geom)
         outside.append(placed)
@@ -1894,5 +1899,69 @@ def _wedge_values_strategy(
         if leader == "elbow":
             _spread_in_columns(outside, geom, ax, meta.wedges)
         else:
-            _spread_on_circle(outside, geom, ax, meta.wedges)
+            _, cleared = _spread_on_circle(outside, geom, ax, meta.wedges)
+            if not cleared:
+                elbow = _as_elbows(outside, geom, ax, edgewidth)
+                _spread_in_columns(outside, elbow, ax, meta.wedges)
     return texts
+
+
+def _leader_line(ax: Axes, record: WedgeRecord, edgewidth: float) -> Line2D:
+    """An empty leader line for ``record``'s label, styled as every one is.
+
+    A leader outlines the gap between rim and label rather than being
+    data itself, so it takes ``edgewidth``, not ``lines.linewidth``.
+    """
+    (line,) = ax.plot(
+        [], [],
+        # The wedge's own edge, not the themed `edgecolor`: that rcParam
+        # is None by default, which means "match the fill" for a wedge
+        # outline and would mean "take the next colour off the property
+        # cycle" here -- leaders in colours from no wedge at all. Reading
+        # the drawn patch honours an explicit edgecolor too, since the
+        # patch already carries it.
+        color=record.patch.get_edgecolor(),
+        linewidth=edgewidth,
+        solid_capstyle="butt",
+        # An elbow is one polyline, so its corner is a join; a round one
+        # reads as a single bent stroke.
+        solid_joinstyle="round",
+        zorder=record.patch.get_zorder() + 1,
+        # Line2D clips to the axes by default, which would cut a leader
+        # off at the frame on its way to a label beyond it.
+        clip_on=False,
+    )
+    return line
+
+
+def _as_elbows(labels: List[_OutsideLabel], geom: _OutsideGeometry,
+               ax: Axes, edgewidth: float) -> _OutsideGeometry:
+    """Lay every outside label of the axes out as an elbow label.
+
+    The fallback for a pie too crowded for the circle: when
+    :func:`_spread_on_circle` cannot clear every conflict within its
+    bounds, the radial or unled labels it was asked for would be left
+    overlapping, with leaders leaning as far as they can. The whole
+    pie's outside labels are then laid out as ``leader="elbow"`` labels
+    instead, so that :func:`_spread_in_columns` can spread them up and
+    down the chart's height, which always has room. Every label is
+    re-laid out, not only the crowded ones, so the chart keeps one
+    leader style. The configured ``offset``, ``leader_gap`` and
+    ``elbow_length`` are used as they are; with no leader asked for,
+    elbow leaders are drawn, since an elbow label beside a column has
+    no other way to say which wedge it names. Each label keeps its own
+    :class:`~matplotlib.text.Text`, so what ``annotate`` returns is
+    unchanged.
+
+    Returns
+    -------
+    _OutsideGeometry
+        ``geom`` with ``leader='elbow'``, for the column pass.
+    """
+    elbow = replace(geom, leader="elbow")
+    for label in labels:
+        label.phi, label.slide, label.label_y = None, 0.0, None
+        if label.leader is None:
+            label.leader = _leader_line(ax, label.record, edgewidth)
+        _apply_outside(label, elbow)
+    return elbow

@@ -159,6 +159,11 @@ def _crosses(p1, p2, q1, q2):
             and orient(p1, p2, q1) * orient(p1, p2, q2) < 0)
 
 
+def _mid_ray(record):
+    mid = math.radians((record.theta0 + record.theta1) / 2.0)
+    return math.cos(mid), math.sin(mid)
+
+
 def _rim_display(ax, record):
     cx, cy = record.patch.center
     mid = math.radians((record.theta0 + record.theta1) / 2.0)
@@ -176,21 +181,13 @@ def _rim_display(ax, record):
 def test_no_two_outside_labels_come_within_label_spacing(
     leader, start, direction, size,
 ):
-    """Every pair, not only neighbours, measured on the rendered boxes.
-
-    Where the pass reports that a label's bound left too little room --
-    radial and unled labels on the 25mm chart with the slivers at twelve
-    o'clock -- the labels are still never closer than unmoved."""
+    """Every pair, not only neighbours, measured on the rendered boxes --
+    whether the labels stayed on the circle or, on the 25mm chart with
+    the slivers at twelve o'clock, fell back to elbow labels."""
     kws = {"start_angle": start, "direction": direction}
     ax, renderer = _pie(size=size, leader=leader, pie_kws=kws)
-    gap, complete = _min_gap_mm(ax, renderer), _complete()
-    if complete:
-        assert gap >= pp.rcParams["pie.label_spacing"] - TOL_MM
-    else:
-        assert leader != "elbow" and size == 25.0
-        assert gap >= _min_gap_mm(*_pie(size=size, leader=leader,
-                                        avoid_overlap=False,
-                                        pie_kws=kws)) - TOL_MM
+    assert _min_gap_mm(ax, renderer) >= pp.rcParams["pie.label_spacing"] \
+        - TOL_MM
 
 
 @pytest.mark.parametrize("size", [25.0, 80.0])
@@ -202,17 +199,12 @@ def test_label_spacing_holds_on_a_donut_with_pull_and_gap(
 ):
     kws = {"start_angle": start, **GEOMETRIES[geometry]}
     ax, renderer = _pie(size=size, leader=leader, pie_kws=kws)
-    gap = _min_gap_mm(ax, renderer)
-    if _complete() or leader == "elbow":
-        # An elbow column can always be spread; what it may leave, beside
-        # a dict pull, is a leader it could not clear (see
-        # `_spread_in_columns`), never two labels too close.
-        assert gap >= pp.rcParams["pie.label_spacing"] - TOL_MM
-    else:
-        assert size == 25.0
-        assert gap >= _min_gap_mm(*_pie(size=size, leader=leader,
-                                        avoid_overlap=False,
-                                        pie_kws=kws)) - TOL_MM
+    # Every request ends in labels kept apart: on the circle, or as elbow
+    # labels where the circle had too little room. What an elbow column
+    # may leave beside a dict pull is a leader it could not clear (see
+    # `_spread_in_columns`), never two labels too close.
+    assert _min_gap_mm(ax, renderer) >= pp.rcParams["pie.label_spacing"] \
+        - TOL_MM
 
 
 def test_the_long_tail_overlaps_without_the_pass():
@@ -352,8 +344,14 @@ def test_every_leader_still_starts_on_its_rim_at_its_mid_ray(
             pytest.approx(0.0, abs=1e-6), record.path
 
 
-@pytest.mark.parametrize("size", [25.0, 40.0, 80.0])
-@pytest.mark.parametrize("start", [90, 0, 200])
+# Every start and size of the long tail but one: at 25mm with the slivers
+# at twelve o'clock the circle has too little room, and the labels are
+# laid out as elbow labels instead (tested under "Charts too crowded").
+ON_THE_CIRCLE = [(start, size) for start in (90, 0, 200)
+                 for size in (25.0, 40.0, 80.0) if (start, size) != (90, 25.0)]
+
+
+@pytest.mark.parametrize("start, size", ON_THE_CIRCLE)
 def test_a_radial_leader_keeps_leader_gap_to_its_own_label(start, size):
     """However far a label moved, no point of its leaning leader comes
     nearer its box than ``leader_gap``, and the nearest is at it."""
@@ -402,8 +400,7 @@ def test_a_moved_elbow_keeps_a_level_tail_leader_gap_from_its_label(
     assert moved >= 3
 
 
-@pytest.mark.parametrize("size", [25.0, 40.0, 80.0])
-@pytest.mark.parametrize("start", [90, 0, 200])
+@pytest.mark.parametrize("start, size", ON_THE_CIRCLE)
 def test_an_unled_moved_label_keeps_offset_from_the_rim_on_its_new_ray(
     start, size,
 ):
@@ -506,6 +503,10 @@ STRADDLE = [0.6] * 8 + [45.2] + [0.6] * 8 + [45.2]
 CROWDED = (
     [(f"equal{n}-{size:g}", [1.0] * n, size, {}, {})
      for n in (24, 32, 36, 40) for size in (25.0, 40.0)]
+    # Two whole circles that only just fit: here the chain would close up
+    # across the pair the circle is cut between, were that pair not held.
+    + [("equal30-35", [1.0] * 30, 35.0, {}, {}),
+       ("equal34-40", [1.0] * 34, 40.0, {}, {})]
     + [("tail13-25", TAIL13, 25.0, {"start_angle": 90}, {}),
        ("tail13-40", TAIL13, 40.0, {"start_angle": 90}, {}),
        ("geometric-25", GEOMETRIC, 25.0, {"start_angle": 60}, {}),
@@ -532,7 +533,14 @@ def _measure(values, size, pie_kws, annotate_kws, leader, avoid):
     ax, renderer = _pie(_frame(values), size=size, pie_kws=pie_kws,
                         leader=leader, avoid_overlap=avoid, **annotate_kws)
     complete = _complete()
+    circle_cleared = RESULTS[0][1] if RESULTS and leader != "elbow" else None
     rounds = max((result[0] for result in RESULTS), default=0)
+    elbow_shaped = (all(text.get_ha() in ("left", "right")
+                        for record, text in zip(
+                            ax._publiplots_wedge_meta.wedges, ax.texts)
+                        if math.dist(text.get_position(), record.patch.center)
+                        > record.r_outer)
+                    and all(len(line.get_xdata()) == 3 for line in ax.lines))
     k = MM_PER_INCH / ax.figure.dpi
     records = ax._publiplots_wedge_meta.wedges
     boxes = _boxes(ax, renderer)
@@ -597,7 +605,9 @@ def _measure(values, size, pie_kws, annotate_kws, leader, avoid):
     return {"gap": gap, "complete": complete, "into": into,
             "excess": excess, "pressed": pressed, "crossings": crossings,
             "through": through, "on_wedge": on_wedge,
-            "turn": math.degrees(turn), "rounds": rounds}
+            "turn": math.degrees(turn), "rounds": rounds,
+            "circle_cleared": circle_cleared, "elbow_shaped": elbow_shaped,
+            "lines": len(ax.lines), "outside": len(outside)}
 
 
 _MEASURED: dict = {}
@@ -622,34 +632,112 @@ def test_no_leader_ever_enters_the_disc(chart, leader):
 
 
 @pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
-def test_no_label_moves_round_the_circle_past_its_bound(chart, leader):
+def test_a_circle_too_crowded_to_clear_falls_back_to_elbow_labels(chart,
+                                                                  leader):
+    """Radial and unled requests stay on the circle exactly when the
+    circle pass clears every conflict, and otherwise come out as elbow
+    labels -- every outside label, each with a three-point leader, the
+    unled ones too."""
+    if leader == "elbow":
+        pytest.skip("asked for elbow labels")
+    on, _ = _crowded(chart, leader)
+    assert on["elbow_shaped"] == (not on["circle_cleared"])
+    if not on["circle_cleared"]:
+        assert on["lines"] == on["outside"]
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_labels_left_on_the_circle_stay_within_their_bound(chart, leader):
     """``|phi - mid| <= acos(R / (R + offset))``, read off the rendered
     box's centre about its wedge's centre."""
-    if leader == "elbow":
-        pytest.skip("elbow labels move up and down, not round")
     on, _ = _crowded(chart, leader)
+    if on["elbow_shaped"]:
+        pytest.skip("laid out as elbow labels")
     assert on["excess"] <= 1e-6
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_every_crowded_chart_is_cleared_to_label_spacing(chart, leader):
+    """On the circle or, where it has too little room, as elbow labels:
+    every pair ends ``label_spacing`` apart."""
+    on, _ = _crowded(chart, leader)
+    assert on["gap"] >= pp.rcParams["pie.label_spacing"] - TOL_MM
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_the_circle_pass_gives_up_only_when_out_of_room(chart, leader):
+    """Where the circle pass reports too little room, the room really
+    was used up: some label is pressed against its bound, or the labels
+    need about the whole circle (estimated from the unmoved boxes, so
+    within a tenth of a turn). Measured before the fallback re-lays the
+    labels out, by running the circle pass alone."""
+    if leader == "elbow":
+        pytest.skip("asked for elbow labels")
+    on, _ = _crowded(chart, leader)
+    if on["circle_cleared"]:
+        return
+    alone = _circle_alone(chart, leader)
+    off = _crowded(chart, leader)[1]
+    assert alone["pressed"] or off["turn"] >= 0.9 * 360.0
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_the_circle_pass_only_claims_what_it_cleared(chart, leader):
+    """Its verdict decides the fallback, so it must be honest: where the
+    circle pass reports every conflict cleared, its own layout has every
+    pair -- the pair the circle is cut between included --
+    ``label_spacing`` apart; and where it reports otherwise, its layout
+    does leave a pair too close."""
+    if leader == "elbow":
+        pytest.skip("asked for elbow labels")
+    on, _ = _crowded(chart, leader)
+    alone = _circle_alone(chart, leader)
+    spacing = pp.rcParams["pie.label_spacing"]
+    if on["circle_cleared"]:
+        assert alone["gap"] >= spacing - TOL_MM
+    else:
+        assert alone["gap"] < spacing - TOL_MM
+
+
+def _circle_alone(chart, leader):
+    """The circle pass's own layout, with the elbow fallback switched off."""
+    key = (chart[0], leader, "alone")
+    if key not in _MEASURED:
+        circle = _wedge._spread_on_circle
+
+        def cleared(*args, **kwargs):
+            # Report every conflict cleared, so the layout is left as
+            # the circle pass made it.
+            return circle(*args, **kwargs)[0], True
+        _wedge._spread_on_circle = cleared
+        try:
+            _, values, size, pie_kws, annotate_kws = chart
+            _MEASURED[key] = _measure(values, size, pie_kws, annotate_kws,
+                                      leader, True)
+        finally:
+            _wedge._spread_on_circle = circle
+    return _MEASURED[key]
+
+
+class _NoFallback(Exception):
+    pass
+
+
+def _no_fallback(labels, geom, ax, edgewidth):
+    raise _NoFallback
+
+
+def test_the_crowded_charts_include_both_outcomes():
+    """Guards the tests above against a pass that reports one answer."""
+    outcomes = {_crowded(chart, leader)[0]["circle_cleared"]
+                for chart, leader in CROWDED_CASES if leader == "radial"}
+    assert outcomes == {True, False}
 
 
 @pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
 def test_labels_are_never_closer_than_unmoved(chart, leader):
     on, off = _crowded(chart, leader)
     assert on["gap"] >= off["gap"] - TOL_MM
-
-
-@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
-def test_overlaps_are_cleared_in_full_wherever_the_bounds_allow(chart, leader):
-    """Where the pass reports full separation, every pair is
-    ``label_spacing`` apart. Where it reports too little room, the room
-    really was used up: some label is pressed against its bound, or the
-    labels need about the whole circle (estimated from the unmoved boxes,
-    so within a tenth of a turn)."""
-    on, off = _crowded(chart, leader)
-    if on["complete"]:
-        assert on["gap"] >= pp.rcParams["pie.label_spacing"] - TOL_MM
-    else:
-        assert leader != "elbow", "an elbow column always has room"
-        assert on["pressed"] or off["turn"] >= 0.9 * 360.0
 
 
 @pytest.mark.parametrize("leader", ["radial", None])
@@ -665,19 +753,12 @@ def test_a_dict_pull_never_leaves_labels_closer_than_unmoved(leader):
 
 @pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
 def test_a_chart_without_room_does_not_spin(chart, leader):
-    """A pair relaxed for lack of room is not widened again, so a chart
-    that cannot be separated stops within two rounds rather than
-    running to the cap; measured, every crowded chart here needs one or
-    two."""
+    """A pair relaxed for lack of room is not widened again, so the
+    circle pass on a chart it cannot separate stops within two rounds
+    rather than running to the cap; measured, every crowded chart here
+    needs one or two, in either pass."""
     on, _ = _crowded(chart, leader)
     assert on["rounds"] <= 2
-
-
-def test_the_crowded_charts_include_both_outcomes():
-    """Guards the test above against a pass that reports one answer."""
-    outcomes = {_crowded(chart, leader)[0]["complete"]
-                for chart, leader in CROWDED_CASES if leader == "radial"}
-    assert outcomes == {True, False}
 
 
 @pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
@@ -690,16 +771,103 @@ def test_no_two_leaders_cross_on_a_crowded_chart(chart, leader):
 def test_no_leader_runs_through_another_label_on_a_crowded_chart(
     chart, leader,
 ):
-    on, off = _crowded(chart, leader)
-    assert on["through"] <= off["through"]
-    if leader == "elbow":
-        assert on["through"] == 0
+    on, _ = _crowded(chart, leader)
+    assert on["through"] == 0
 
 
 @pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
 def test_no_label_is_moved_onto_a_wedge_on_a_crowded_chart(chart, leader):
     on, _ = _crowded(chart, leader)
     assert on["on_wedge"] == 0
+
+
+# --- the fallback itself ----------------------------------------------------
+
+def _fallback_pie(leader, **annotate_kws):
+    """tail13 at 25mm, slivers at twelve: too crowded for the circle."""
+    fig, ax = pp.subplots(axes_size=(25.0, 25.0))
+    pp.pieplot(data=_frame(TAIL13), x="kind", y="n", legend=False, ax=ax,
+               start_angle=90)
+    texts = pp.annotate(ax, "wedge_values", anchor="outside", leader=leader,
+                        **annotate_kws)
+    fig.savefig(io.BytesIO(), format="png")
+    return ax, texts, _settle(fig)
+
+
+@pytest.mark.parametrize("leader", ["radial", None])
+def test_the_fallback_returns_the_same_text_objects(leader):
+    ax, texts, _ = _fallback_pie(leader)
+    assert all(len(line.get_xdata()) == 3 for line in ax.lines)
+    assert len(texts) == len(ax.texts) == len(TAIL13)
+    assert all(a is b for a, b in zip(texts, ax.texts))
+
+
+@pytest.mark.parametrize("leader", ["radial", None])
+def test_the_fallback_uses_the_configured_elbow_length_and_leader_gap(leader):
+    """The tail is ``elbow_length`` and the label ``leader_gap`` past it,
+    as for a requested elbow; ``offset`` reaches the elbow."""
+    ax, texts, renderer = _fallback_pie(leader, elbow_length=3.0,
+                                        leader_gap=1.2, offset=1.5)
+    assert ax.lines
+    for record, text, points in zip(ax._publiplots_wedge_meta.wedges, texts,
+                                    _leaders(ax)):
+        rim, elbow, tail = points
+        box = text.get_window_extent(renderer).extents
+        assert _mm(ax, abs(tail[0] - elbow[0])) == pytest.approx(3.0,
+                                                                abs=TOL_MM)
+        gap = box[0] - tail[0] if text.get_ha() == "left" else tail[0] - box[2]
+        assert _mm(ax, gap) == pytest.approx(1.2, abs=TOL_MM)
+        assert _mm(ax, math.dist(rim, _rim_display(ax, record))) == \
+            pytest.approx(0.0, abs=1e-6)
+        assert _mm(ax, abs(elbow[0] - rim[0])) == pytest.approx(
+            1.5 * abs(_mid_ray(record)[0]), abs=TOL_MM)
+
+
+def test_unled_labels_that_fall_back_get_leaders_styled_like_any_other():
+    ax, _, _ = _fallback_pie(None)
+    assert len(ax.lines) == len(TAIL13)
+    for record, line in zip(ax._publiplots_wedge_meta.wedges, ax.lines):
+        assert tuple(line.get_color()) == pytest.approx(
+            tuple(record.patch.get_edgecolor()))
+        assert line.get_linewidth() == pytest.approx(pp.rcParams["edgewidth"])
+        assert line.get_zorder() == record.patch.get_zorder() + 1
+        assert line.get_clip_on() is False
+        assert line.get_solid_joinstyle() == "round"
+
+
+@pytest.mark.parametrize("leader", ["radial", None])
+def test_a_pie_the_circle_can_clear_never_reaches_the_fallback(
+    leader, monkeypatch,
+):
+    """And so draws exactly as before the fallback existed."""
+    monkeypatch.setattr(_wedge, "_as_elbows", _no_fallback)
+    for start in (90, 0, 200):
+        for size in (40.0, 80.0):
+            ax, _ = _pie(size=size, leader=leader,
+                         pie_kws={"start_angle": start})
+            assert all(text.get_ha() == "center" for text in ax.texts)
+
+
+@pytest.mark.parametrize("leader", ["elbow", "radial"])
+@pytest.mark.parametrize("rotation", [90, "radial", 30])
+def test_a_rotated_elbow_label_is_moved_off_the_wedge_it_would_overlap(
+    leader, rotation,
+):
+    """A label rotated across its tail near six o'clock is taller than
+    the room ``offset`` leaves it, and unmoved it overlaps the disc; the
+    column pass sends it clear -- for elbow labels asked for, and for
+    radial ones that fell back to them."""
+    kws = {"start_angle": 0}
+    on = _measure(TAIL13, 40.0, kws, {"rotation": rotation}, leader, True)
+    assert on["on_wedge"] == 0
+    assert on["gap"] >= pp.rcParams["pie.label_spacing"] - TOL_MM
+
+
+def test_avoid_overlap_false_never_falls_back(monkeypatch):
+    monkeypatch.setattr(_wedge, "_as_elbows", _no_fallback)
+    for leader in ("radial", None):
+        ax, _, _ = _fallback_pie(leader, avoid_overlap=False)
+        assert all(text.get_ha() == "center" for text in ax.texts)
 
 
 # -----------------------------------------------------------------------------
