@@ -30,7 +30,8 @@ palette = {"symptom": "#8e8ec1", "admin": "#eeaa58",
 # across the figure. ``barplot`` only maps ``palette`` through ``hue``,
 # so the bar panel passes ``hue="kind"`` as well; the pie colours by its
 # ``x`` column without being asked. ``annotate=True`` labels each wedge
-# with its share of the whole, as a percentage.
+# with its share of the whole, as a percentage; the two wedges too thin
+# to hold theirs get them outside, on leader lines.
 
 fig, axes = pp.subplots(ncols=2, axes_size=(50, 45))
 pp.barplot(data=df, x="kind", y="n", hue="kind", palette=palette,
@@ -214,18 +215,21 @@ pp.show()
 # Labels inside, outside, or chosen per wedge
 # ---------------------------------------------
 # ``anchor="auto"`` (the default) measures each label against the room
-# its own wedge has, and moves it outside with a leader line when it
+# its own wedge has, and moves it outside, on a leader line, when it
 # does not fit — the thin slivers below. ``"inside"`` and ``"outside"``
-# force every label to one placement regardless of fit. The disc is the
-# same size under all three: a label that leaves it extends past the
-# axes rather than shrinking the pie. Outside labels are not moved apart
-# from one another, so those of adjacent thin wedges — ``"6.0%"`` and
-# ``"2.0%"`` here — can overlap.
+# force every label to one placement regardless of fit. An outside label
+# is centred on its wedge's mid-ray, a little past the end of its line.
+# The disc is the same size under all three: a label that leaves it
+# extends past the axes rather than shrinking the pie. Outside labels are
+# not moved apart from one another, so those of adjacent thin wedges can
+# overlap. ``start_angle=0`` only turns the chart, so the slivers point
+# right.
 
 thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
 fig, axes = pp.subplots(ncols=3, axes_size=(38, 38))
 for ax, anchor in zip(axes, ["inside", "outside", "auto"]):
-    pp.pieplot(data=thin, x="kind", y="n", legend=False, ax=ax)
+    pp.pieplot(data=thin, x="kind", y="n", legend=False, start_angle=0,
+               ax=ax)
     pp.annotate(ax, "wedge_values", anchor=anchor)
     ax.set_title(anchor)
 pp.show()
@@ -233,19 +237,60 @@ pp.show()
 # %%
 # How far outside labels sit
 # --------------------------
-# ``offset`` is the gap from the rim to an outside label, in
-# millimetres (``1`` by default), with the leader line spanning it.
-# Like tick labels, outside labels sit beyond the axes, so a larger
-# offset leaves the disc as it is and grows the figure instead.
+# ``offset`` is the length of the leader line from the rim, and
+# ``leader_gap`` the space between its end and the label, both in
+# millimetres (``pp.rcParams["pie.label_offset"]`` and
+# ``pp.rcParams["pie.leader_gap"]``, ``2`` and ``0.8`` by default). The
+# gap is the distance you see, from the end of the line to the nearest
+# point of the label, so it is the same at every angle. Like tick
+# labels, outside labels sit beyond the axes, so a larger offset leaves
+# the disc as it is and grows the figure instead.
 
 arms = pd.DataFrame({"arm": ["placebo", "low", "high"],
                      "n": [35.0, 40.0, 25.0]})
-fig, axes = pp.subplots(ncols=2, axes_size=(38, 38))
-for ax, offset in zip(axes, [1, 4]):
+fig, axes = pp.subplots(ncols=3, axes_size=(36, 36))
+for ax, (title, kws) in zip(axes, [("default", {}),
+                                   ("offset=5", {"offset": 5}),
+                                   ("leader_gap=2", {"leader_gap": 2})]):
     pp.pieplot(data=arms, x="arm", y="n", legend=False, ax=ax,
-               annotate={"anchor": "outside", "offset": offset},
-               title=f"offset={offset}")
+               annotate={"anchor": "outside", **kws}, title=title)
 pp.show()
+
+# %%
+# Leader lines
+# ------------
+# ``leader`` sets how an outside label hangs off its wedge.
+# ``"radial"`` (the default) carries the wedge's mid-ray on past the rim
+# and centres the label on it. ``"elbow"`` bends the line into a short
+# horizontal tail, ``elbow_length`` millimetres long (``2`` by default),
+# and sets the label beside it, aligned away from the disc, so labels
+# read like a column of text. ``None`` (or ``False``) draws no line and
+# centres the label with its nearest point ``offset`` from the rim.
+# ``start_angle=120`` only turns the chart, so the thin wedges point up
+# and to the left.
+
+fig, axes = pp.subplots(ncols=3, axes_size=(36, 36))
+for ax, leader in zip(axes, ["radial", "elbow", None]):
+    pp.pieplot(data=df, x="kind", y="n", palette=palette, legend=False,
+               start_angle=120, ax=ax,
+               annotate={"anchor": "outside", "leader": leader},
+               title=f"leader={leader!r}")
+pp.show()
+
+# %%
+# The default style is ``pp.rcParams["pie.leader"]``, so a figure set can
+# switch every pie at once. Here the donut from above, with every label
+# outside and the rcParam set to ``"elbow"``; the last line puts the
+# default back for the rest of this page.
+
+default_leader = pp.rcParams["pie.leader"]
+pp.rcParams["pie.leader"] = "elbow"
+fig, ax = pp.subplots(axes_size=(50, 50))
+pp.pieplot(data=df, x="kind", y="n", donut=0.55, palette=palette,
+           center_label="{:,.0f}".format, ax=ax,
+           annotate={"anchor": "outside"})
+pp.show()
+pp.rcParams["pie.leader"] = default_leader
 
 # %%
 # Formatting and rotating the labels
