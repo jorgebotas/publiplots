@@ -59,8 +59,8 @@ ordinary ``Artist`` property, so it arrives on precisely the KDE lines.
 The tag is removed again once painting is done.
 
 **Upstream dependency.** This holds only while ``line_kws`` reaches the
-KDE curve and nothing else. Verified byte-for-byte in seaborn 0.12.0 (the
-floor of ``pyproject.toml``'s ``seaborn>=0.12.0``) and 0.13.2: in both,
+KDE curve and nothing else. Verified byte-for-byte in seaborn 0.13.1 (the
+floor of ``pyproject.toml``'s ``seaborn>=0.13.1``) and 0.13.2: in both,
 ``plot_univariate_histogram`` copies ``line_kws``, sets only ``color`` on
 it, and passes it to a single ``ax.plot``; the step/poly hull is drawn
 from ``_artist_kws(plot_kws, ...)``, a different dict. A future seaborn

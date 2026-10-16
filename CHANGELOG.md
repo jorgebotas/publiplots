@@ -9,6 +9,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The package metadata now declares the Python and matplotlib versions
+  publiplots actually runs on: `requires-python = ">=3.10"` and
+  `matplotlib>=3.10.0`** (were `>=3.9` and `>=3.7.0`). This makes the
+  metadata match reality; it does not remove working support. **publiplots
+  has not imported on Python 3.9, or on any matplotlib below 3.10, since
+  v0.4.2.** That release added an unconditional
+  `from matplotlib.collections import FillBetweenPolyCollection` to
+  `utils/transparency.py`, and that class only exists from matplotlib 3.10.
+  On matplotlib 3.9.4 `import publiplots` fails outright with
+  `ImportError: cannot import name 'FillBetweenPolyCollection' from
+  'matplotlib.collections'`. `pp.barplot` and `pp.histplot` also paint
+  hatched bars through `Patch.set_hatch_linewidth`, which is matplotlib
+  3.10+ as well.
+
+  The two floors are one fact, not two: matplotlib 3.10.0 itself declares
+  `requires-python >=3.10`, so on Python 3.9 every resolver picks a 3.9.x
+  matplotlib and installs a publiplots that cannot be imported. The
+  repository's own `uv.lock` carried exactly that combination — a
+  `python_full_version < '3.10'` fork pinning `matplotlib 3.9.4` — and
+  nothing exercised it: the only CI workflows, `docs.yml` and `publish.yml`,
+  build the documentation and the package on Python 3.11 and run no tests.
+  The lockfile is regenerated without that fork.
+
+  The new floor was verified by running it, not inferred: on Python 3.10
+  with `matplotlib==3.10.0` and every other dependency at the latest
+  release available for Python 3.10 (numpy 2.2.6, pandas 2.3.3, scipy
+  1.15.3, seaborn 0.13.2), `import publiplots` succeeds and the full suite
+  passes (2229 tests). The 3.9 classifier is dropped, the `black`, `ruff`
+  and `mypy` targets move to 3.10, and the installation page, the Python
+  badge, the docs requirements file and the publishing guide's version
+  example are brought into line; the installation page also gains the
+  `scipy` floor it omitted.
+
+  Note for Python 3.9 users: resolvers will now stop at 0.19.0, the last
+  release that claims 3.9 support. It does not import there either; use
+  Python 3.10 or later.
+
+- **The seaborn and numpy floors now name versions publiplots runs on:
+  `seaborn>=0.13.1` and `numpy>=1.23.0`** (were `>=0.12.0` and
+  `>=1.21.0`). Both were found by installing every direct dependency at its
+  declared minimum (`uv pip install --resolution lowest-direct`) on Python
+  3.10 and running the suite, which nothing had done before.
+
+  **seaborn 0.12.0 and 0.13.0 both fail.** publiplots passes seaborn
+  keyword arguments that 0.12 does not accept: with every other direct
+  dependency at its floor (matplotlib 3.10.0, numpy 1.23.0, scipy 1.10.0,
+  and pandas 1.3.4, the oldest pandas with a Python 3.10 wheel on macOS
+  arm64), seaborn 0.12.0 fails **389 of 2229 tests**, led by
+  `AttributeError: Rectangle.set() got an unexpected keyword argument
+  'err_kws'` from `pp.barplot` and `TypeError: Axes.boxplot() got an
+  unexpected keyword argument 'linecolor'` from `pp.boxplot`. seaborn 0.13.0
+  accepts those but not `weights`, which arrived in 0.13.1: with matplotlib
+  3.10.0 and the other dependencies at their current releases (numpy 2.2.6,
+  pandas 2.3.3, scipy 1.15.3) it fails **131 of 2229**, 119 of them
+  `AttributeError: Line2D.set() got an unexpected keyword argument
+  'weights'` through `pp.pointplot` and `pp.lineplot`, 11
+  `AttributeError: 'NoneType' object has no attribute 'index'` inside
+  seaborn's `plot_violins` when `pp.raincloudplot` draws its violins, and
+  one a pandas `FutureWarning` from seaborn's `get_group` call that a
+  `pp.violinplot` test treats as an error. That warning is not fixed by
+  0.13.1: with a current pandas, seaborn 0.13.1 still emits it (a warning,
+  not a functional failure) and 0.13.2 does not.
+  seaborn 0.13.1 passes all 2229 with every other direct dependency at its
+  floor, as below.
+
+  **The numpy floor could never be installed.** matplotlib 3.10.0 itself
+  requires `numpy>=1.23`, so with the matplotlib floor above, numpy 1.21.0
+  was unreachable and the effective floor was already 1.23.0; the metadata
+  now says so.
+
+  Verified together at the new floors: Python 3.10, matplotlib 3.10.0,
+  seaborn 0.13.1, numpy 1.23.0, scipy 1.10.0 and pandas 1.3.4 — the
+  nearest installable release to the unchanged `pandas>=1.3.0` floor, which
+  ships no Python 3.10 wheel — pass all 2229 tests, as does the same set
+  with pandas 1.3.0 built from source. The installation page and the docs
+  requirements file are updated to match.
+
 - **`pp.boxplot(..., fill=False)` no longer raises `ValueError: min()
   iterable argument is empty`.** The recolouring pass looked each line's
   colour up in a position → colour map built only from the box
