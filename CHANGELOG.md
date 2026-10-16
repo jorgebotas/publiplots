@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`kind="violin_stats"`** — box_stats' statistics with `"inside"` as the
   default anchor. On a dodged vertical violin, whose body is narrower than a
   7 pt label, labels turn 90°; an explicit `rotation=` wins.
+- **`inner="median"` for `pp.violinplot`** — one line across each violin
+  at its median, spanning the body's thickness at that point rather than
+  its widest, in the outline's colour and `linewidth`. `inner_kws` tunes it:
+  `inset` (`"auto"`; `0` for a border-to-border chord; or a fraction such as
+  `0.12` for a detached tick), `color`, `linewidth`, `solid_capstyle`. On a
+  fill too dark for the outline colour it turns white. (#275)
 
 ### Changed
 
@@ -33,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contrast ratio against the composited fill — white below relative luminance
   ≈0.179. Labels on default `alpha=0.1` fills are unaffected: every fill
   composites to near-white and keeps its ink.
+- **`pp.violinplot` defaults to `inner="median"`**, replacing seaborn's
+  `"box"`, whose whiskers and caps restate quartiles the silhouette already
+  shows. `inner="box"` remains available. (#275)
+- **`pp.violinplot` defaults to `width=0.9`** (was seaborn's 0.8), so
+  neighbouring violins sit closer. `pp.raincloudplot` pins its cloud at 0.8
+  and is unchanged. (#275)
 
 ### Fixed
 

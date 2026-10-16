@@ -107,7 +107,7 @@ def test_split_without_hue_draws_low_halves(orient):
     boxes = ax._publiplots_box_meta.boxes
     assert [r.half for r in boxes] == ["low", "low"]
     col = 0 if orient == "v" else 1
-    slot_half_width = 0.4  # seaborn's default width=.8, halved
+    slot_half_width = 0.45  # violinplot's default width=0.9, halved
     for pos, r in enumerate(boxes):
         cs = r.artist.get_paths()[0].vertices[:, col]
         seam = r.center_pos + r.cat_half_width

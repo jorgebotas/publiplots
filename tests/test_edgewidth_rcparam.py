@@ -290,3 +290,10 @@ def test_create_legend_handles_splits_line_from_outline(inverted_stroke_probes):
         labels=["a"], style="line", linewidth=0.25
     )[0]
     assert float(explicit.get_linewidth()) == pytest.approx(0.25)
+
+
+def test_violin_median_line_follows_edgewidth(df, edgewidth_probe):
+    fig, ax = pp.subplots(1, 1, axes_size=(40, 30))
+    pp.violinplot(data=df, x="cat", y="y", hue="g", ax=ax)
+    assert ax.lines, "expected one median line per violin"
+    assert all(l.get_linewidth() == pytest.approx(PROBE) for l in ax.lines)

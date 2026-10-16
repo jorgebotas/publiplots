@@ -64,7 +64,7 @@ def test_column_labels_hue_split():
     # boxplot order, which put B/x's label on the A/y violin. Assert the
     # positions too, since order alone did not catch that.
     assert [t.get_text() for t in texts] == ["11", "22", "33", "44"]
-    expected_x = {"11": -0.2, "22": 0.2, "33": 0.8, "44": 1.2}
+    expected_x = {"11": -0.225, "22": 0.225, "33": 0.775, "44": 1.225}
     for t in texts:
         assert t.get_position()[0] == pytest.approx(
             expected_x[t.get_text()], abs=1e-6)
