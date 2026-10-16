@@ -22,6 +22,7 @@ from matplotlib.colors import to_rgba
 from matplotlib.patches import Rectangle
 
 from matplotlib.patches import PathPatch
+from matplotlib.lines import Line2D
 
 from publiplots.annotate._cache import (
     BarRecord,
@@ -940,6 +941,9 @@ def _cat_extents_from_artist(artist, ax: Axes, orient: str) -> Tuple[float, floa
 
 
 def _facecolor_of(artist) -> Tuple[float, float, float, float]:
+    if isinstance(artist, Line2D):
+        # An unfilled box outline has no face; its stroke is the box colour.
+        return to_rgba(artist.get_color())
     fc = artist.get_facecolor()
     # Collection.get_facecolor returns an array of shape (N, 4); patches return (4,)
     fc = np.asarray(fc)
@@ -1042,6 +1046,24 @@ def _build_box_stats_meta(
     )
 
 
+def _is_box_outline(artist) -> bool:
+    """True for the closed ``Line2D`` an unfilled seaborn box is drawn as.
+
+    Whiskers, caps and medians are open two-point segments, and fliers are
+    markers with no connecting line, so a closed, unmarked polyline is the
+    box. Extent is deliberately not tested: a zero-IQR group draws a
+    degenerate outline that must still take its slot in the pairing.
+    """
+    if not isinstance(artist, Line2D):
+        return False
+    if artist.get_linestyle() in ("None", "", " "):
+        return False
+    if artist.get_marker() not in (None, "", "None", " "):
+        return False
+    xy = np.asarray(artist.get_xydata())
+    return len(xy) >= 4 and bool(np.allclose(xy[0], xy[-1]))
+
+
 def build_from_boxplot_call(
     ax: Axes,
     data,
@@ -1057,26 +1079,33 @@ def build_from_boxplot_call(
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
 ) -> BoxStatsMeta:
-    """Build a BoxStatsMeta paired with the boxplot's PathPatches.
+    """Build a BoxStatsMeta paired with the boxplot's drawn boxes.
+
+    A filled box is a ``PathPatch`` (or ``_RoundedBarPatch`` once rounded);
+    with ``fill=False`` seaborn draws no patches and each box is instead a
+    closed ``Line2D`` outline, in the same draw order.
 
     ``source_frame`` is required keyword-only; see ``_build_box_stats_meta``.
 
-    ``drawn_artists`` should be the patches this call drew
-    (``ArtistTracker(ax).get_new_patches()``). Boxes are paired to groups by
-    position, so any other artist on the axes matching the type filter takes
-    a box's slot: a *rounded* ``pp.barplot`` emits ``_RoundedBarPatch`` and
-    supplied the box geometry, and a second ``pp.boxplot`` call paired its
-    groups against the first call's boxes (issue #241). Defaults to scanning
-    ``ax.patches``, which only holds for an axes nothing else has drawn on.
+    ``drawn_artists`` should be the patches and lines this call drew
+    (``ArtistTracker(ax).get_new_patches()`` + ``get_new_lines()``). Boxes
+    are paired to groups by position, so any other artist on the axes
+    matching the type filter takes a box's slot: a *rounded* ``pp.barplot``
+    emits ``_RoundedBarPatch`` and supplied the box geometry, and a second
+    ``pp.boxplot`` call paired its groups against the first call's boxes
+    (issue #241). Defaults to scanning ``ax.patches`` and ``ax.lines``,
+    which only holds for an axes nothing else has drawn on.
     """
     # Lazy import to avoid a cycle through utils.rounding.
     from publiplots.utils.rounding import _RoundedBarPatch
 
-    candidates = ax.patches if drawn_artists is None else drawn_artists
-    patches = [p for p in candidates
-               if isinstance(p, (PathPatch, _RoundedBarPatch))]
+    if drawn_artists is None:
+        drawn_artists = [*ax.patches, *ax.lines]
+    boxes = [a for a in drawn_artists
+             if isinstance(a, (PathPatch, _RoundedBarPatch))
+             or _is_box_outline(a)]
     return _build_box_stats_meta(
-        ax, data, x, y, hue, categorical_axis, palette, whis, patches,
+        ax, data, x, y, hue, categorical_axis, palette, whis, boxes,
         source_frame=source_frame,
         order=order, hue_order=hue_order,
     )
