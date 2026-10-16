@@ -95,7 +95,15 @@ def test_auto_inset_is_half_the_stroke():
     assert line.get_solid_capstyle() == "round"
 
 
-@pytest.mark.parametrize("bad", [-0.1, 1.0, "wide", True])
+def test_numpy_scalar_inset_is_accepted():
+    ax, meta = _plot()
+    numpy_lines = draw_median_inner(ax, meta, {"inset": np.float32(0.1)}, linewidth=0.75)
+    float_lines = draw_median_inner(ax, meta, {"inset": 0.1}, linewidth=0.75)
+    for a, b in zip(numpy_lines, float_lines):
+        assert _segment(a) == pytest.approx(_segment(b), rel=1e-6)
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.0, "wide", True, np.bool_(True)])
 def test_invalid_inset_raises(bad):
     ax, meta = _plot()
     with pytest.raises(ValueError, match="inset"):

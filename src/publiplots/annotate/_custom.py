@@ -71,6 +71,9 @@ class _CustomStrategy:
     axes_to_expand: Callable[[str, str, float], List[str]] = field(
         default=_default_axes_to_expand
     )
+    # The kind named in error messages, when it differs from the one
+    # `meta_attr` implies (violin_custom shares box_custom's meta).
+    kind_name: Optional[str] = None
 
     def __call__(
         self,
@@ -234,6 +237,8 @@ class _CustomStrategy:
 
     def _kind_name(self) -> str:
         """e.g. '_publiplots_bar_meta' -> 'bar_custom'."""
+        if self.kind_name is not None:
+            return self.kind_name
         core = self.meta_attr.removeprefix("_publiplots_").removesuffix("_meta")
         return f"{core}_custom"
 

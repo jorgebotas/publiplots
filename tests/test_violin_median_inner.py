@@ -81,6 +81,7 @@ def test_inner_kws_reach_the_median(df):
                        inner_kws={"inset": 0, "color": "k", "linewidth": 2})
     assert {l.get_solid_capstyle() for l in ax.lines} == {"butt"}
     assert {l.get_linewidth() for l in ax.lines} == {2}
+    assert {to_rgba(l.get_color()) for l in ax.lines} == {to_rgba("k")}
 
 
 def test_a_nan_keeps_its_bodys_median_line_and_label(df):

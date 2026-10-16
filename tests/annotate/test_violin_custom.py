@@ -153,3 +153,9 @@ def test_end_to_end_via_pp_violinplot_annotate():
         annotate={"kind": "violin_custom", "labels": "n", "fmt": "n={}"},
     )
     assert [t.get_text() for t in ax.texts] == ["n=10", "n=20", "n=30"]
+
+
+def test_bad_anchor_names_violin_custom():
+    ax = pp.violinplot(data=_simple_df(), x="cat", y="value")
+    with pytest.raises(ValueError, match="violin_custom anchor"):
+        pp.annotate(ax, kind="violin_custom", labels="n", anchor="nowhere")

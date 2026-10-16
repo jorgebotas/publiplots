@@ -29,11 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`pp.violinplot(annotate=True)` labels medians from inside the body**, via
   `violin_stats`. Vertical labels sat beside the violin, often closer to the
-  neighbouring violin than to their own. `violin_custom`'s default anchor
-  moves from `"top"` to `"inside"`: unchanged for full vertical violins on a
-  light fill, while horizontal labels move from above the row to right of the
-  median, split and `side=` halves move against their seam, and
-  `color="auto"` turns white on a dark fill.
+  neighbouring violin than to their own. Labels on dodged vertical violins
+  turn 90°, and split and `side=` halves put their labels against the seam.
+  `violin_custom`'s default anchor moves from `"top"` to `"inside"`:
+  unchanged for full vertical violins on a light fill, while horizontal
+  labels move from above the row to right of the median, split and `side=`
+  halves move against their seam, and `color="auto"` turns white on a dark
+  fill.
 - **`color="auto"` picks label ink by WCAG contrast ratio.** It compared HLS
   lightness against 0.408, which put black text on pure blue (contrast 2.4,
   against 8.6 for white) and white text on tab:green (3.4, against 6.2).
@@ -61,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on C's, and C's label was dropped. Such groups are now skipped, decided by
   repeating seaborn's own fit, so every other group labels its own body.
   `pp.boxplot` is unchanged: matplotlib draws a box for n=1.
+- **Box and violin statistics ignore NaN values.** seaborn drops them before
+  drawing, but the statistics behind `box_stats` / `violin_stats` labels and
+  the median line did not: one NaN made its group's label read "nan" and,
+  under `inner="median"`, removed that violin's median line. An all-NaN
+  group is now skipped like an empty one, where `pp.boxplot` paired it with
+  the next group's box.
 - **Custom labels on box and violin plots judge contrast against the drawn
   fill.** `box_custom` / `violin_custom` with `anchor="center"` and
   `color="auto"` compared against the palette colour at full opacity, so a

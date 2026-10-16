@@ -102,9 +102,10 @@ def annotate(
         Either a bare format spec (e.g. ``".2f"``, ``",.0f"``) or a
         format-string template containing ``{}`` (e.g.
         ``"{:,.1f}%"``). If ``None`` (the default), each strategy picks
-        its own default: ``bar_values``, ``box_stats``, and
-        ``point_values`` default to ``'.2f'``; ``bar_custom`` defaults
-        to ``'{}'`` (raw passthrough of the supplied labels).
+        its own default: ``bar_values``, ``box_stats``,
+        ``point_values`` and ``violin_stats`` default to ``'.2f'``; the
+        ``*_custom`` kinds default to ``'{}'`` (raw passthrough of the
+        supplied labels).
     anchor : str, optional
         Where to place the label relative to the mark.
         Strategy-specific — see ``kind`` above. If ``None``, each

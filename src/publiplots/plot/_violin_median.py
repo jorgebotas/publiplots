@@ -9,6 +9,7 @@ widest point), and a split or ``side=`` half yields a half-width line.
 """
 from __future__ import annotations
 
+import numbers
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
@@ -53,7 +54,7 @@ def local_span(body, value: float, val_axis: int) -> Optional[Tuple[float, float
 def _validate_inset(inset: Any) -> Union[str, float]:
     if isinstance(inset, str) and inset == "auto":
         return inset
-    if (isinstance(inset, bool) or not isinstance(inset, (int, float))
+    if (isinstance(inset, bool) or not isinstance(inset, numbers.Real)
             or not 0 <= inset < 1):
         raise ValueError(
             "inner_kws['inset'] must be 'auto' or a number in [0, 1); "

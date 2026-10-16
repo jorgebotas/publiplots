@@ -26,6 +26,7 @@ _violin_custom_strategy = _CustomStrategy(
     record_type=BoxStatsRecord,
     meta_attr="_publiplots_box_meta",
     records_attr="boxes",
+    kind_name="violin_custom",
     introspect=None,
     has_fit_check=False,
     value_source=lambda r: r.stats.get("median", float("nan")),

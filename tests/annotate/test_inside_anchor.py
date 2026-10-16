@@ -131,6 +131,24 @@ def test_inside_contrasts_with_the_drawn_fill():
     assert [to_rgba(t.get_color()) for t in texts] == [white, ink, white]
 
 
+@pytest.mark.parametrize("plot, kind", [(pp.boxplot, "box_stats"),
+                                         (pp.violinplot, "violin_stats")])
+def test_inside_contrasts_with_the_translucent_face_not_the_palette(plot, kind):
+    # At the default alpha=0.1 a saturated dark palette colour is drawn as a
+    # pale tint, so the label needs ink even though the hue colour is dark.
+    # The hue must differ from the categorical axis: a repeated hue records
+    # no hue value, and its hue_color falls back to the drawn face.
+    fig, ax = pp.subplots()
+    plot(data=_df(), x="cat", y="v", hue="h", fill=True, legend=False,
+         palette={"x": "#000080", "y": "#000080"}, ax=ax)
+    boxes = ax._publiplots_box_meta.boxes
+    assert {b.hue_color for b in boxes} == {to_rgba("#000080")}
+    assert [b.face_color[3] for b in boxes] == pytest.approx([0.1] * 6)
+    texts = pp.annotate(ax, kind=kind, anchor="inside")
+    assert len(texts) == len(boxes) == 6
+    assert {to_rgba(t.get_color()) for t in texts} == {to_rgba(plt.rcParams["text.color"])}
+
+
 def test_outside_anchors_keep_ink_on_the_same_fill():
     fig, ax = pp.subplots()
     pp.violinplot(data=_df(), x="cat", y="v", hue="cat", fill=True, alpha=1.0,
