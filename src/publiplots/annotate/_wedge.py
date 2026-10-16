@@ -292,8 +292,9 @@ def _outside_layout(text: Text, record: WedgeRecord, mid: float,
     """Where an outside label goes, and the vertices of its leader.
 
     With ``d`` the unit mid-ray and ``c`` the wedge's own centre -- the
-    patch centre, which already carries any ``pull``, so a pulled wedge
-    keeps its label -- the rim point is ``c + r_outer * d``, and:
+    patch centre, which already carries a dict ``pull``, so a pulled
+    wedge keeps its label -- the rim point is ``c + r_outer * d``, and
+    ``r_outer`` already includes a scalar ``pull``'s even explode:
 
     - ``'radial'``: the leader runs from the rim to ``offset`` beyond it
       along ``d``. The label's rendered box is centred on the mid-ray at

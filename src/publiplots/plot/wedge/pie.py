@@ -18,6 +18,7 @@ from publiplots.plot.wedge.draw import (
     apply_gap,
     build_wedge_meta,
     draw_wedges,
+    even_explode,
     set_hatch_linewidth,
 )
 from publiplots.plot.wedge.geometry import (
@@ -87,6 +88,23 @@ def _bucket_small(
     out[level] = column.astype(object)
     out.loc[out[level].isin(small), level] = OTHER_LABEL
     return out
+
+
+def _check_scalar_pull(pull: Any) -> float:
+    """A scalar ``pull`` must be a finite, non-negative fraction."""
+    if isinstance(pull, bool) or not isinstance(pull, numbers.Real):
+        raise TypeError(
+            f"pieplot: pull= must be a number (a fraction of the radius) "
+            f"or a dict keyed by category; got {type(pull).__name__} "
+            f"{pull!r}."
+        )
+    pull = float(pull)
+    if not math.isfinite(pull) or pull < 0:
+        raise ValueError(
+            f"pieplot: pull= must be a finite, non-negative fraction of "
+            f"the radius; got {pull!r}."
+        )
+    return pull
 
 
 def _numeric_hue_cmap(
@@ -230,14 +248,34 @@ def pieplot(
         ``order``. Off by default so a pie keeps the category order of a
         bar panel drawn from the same frame.
     pull : float or dict, optional
-        Radial offset as a fraction of the radius: a float for every
-        wedge, or a dict keyed by category. Deliberately not a positional
-        sequence. Each wedge moves along its own mid-ray, as in
-        matplotlib's ``explode``, so the sideways gap it opens to a
-        neighbour is ``pull * sin(half-span)``: a float pulls a wide
-        wedge well clear of its neighbours and a 5% sliver barely at
-        all. Use a dict to pop out one or two wedges, and ``gap`` to
-        separate all of them evenly.
+        How far wedges move out from the centre, as a fraction of the
+        outer radius. Deliberately not a positional sequence.
+
+        A **dict** keyed by category pops out just the wedges it names:
+        each is translated along its own mid-ray by ``pull`` times the
+        radius, as in matplotlib's ``explode``, keeping its shape.
+
+        A **float** explodes the whole chart evenly. With ``t`` that
+        fraction of the radius, no wedge is translated: every wedge's
+        inner boundary moves out to ``r_inner + t`` and its rim to
+        ``r_outer + t``, and both its straight edges are inset so that
+        every pair of neighbours is the same perpendicular distance
+        ``2 * t`` apart, wide and thin wedges alike. Everything moves
+        out by ``t`` and apart by ``2 * t``. A pie opens a central hole
+        of radius ``t`` (a donut's hole grows by ``t``), and labels
+        follow the drawn radii. The price is shape: a translation along
+        each wedge's own mid-ray would keep it, but would open only
+        ``t * sin(half-span)`` per side, so a thin wedge barely
+        separates. Even for the two halves of a half-disc, where the
+        edges and the gap match a translation exactly, the rim is an
+        arc of radius ``r_outer + t`` about the chart's centre, and so
+        reaches up to about ``t`` further than a translated half's at
+        its ends. A wedge too narrow at its rim for the ``2 * t`` gap
+        draws nothing, as for ``gap``. A lone category's 360-degree
+        wedge has no edges to inset and draws as a full ring between
+        ``r_inner + t`` and ``r_outer + t``. ``0`` draws exactly what
+        no ``pull`` does; a negative or non-finite float raises
+        ``ValueError``.
     gap : float, optional
         Gap between every pair of neighbouring wedges, in millimetres.
         Each wedge's two straight edges are inset by ``gap / 2``
@@ -247,9 +285,10 @@ def pieplot(
         between the outlines' centre lines, so the unpainted band is
         ``gap`` less one outline width (``linewidth`` points). A wedge
         too thin to keep any shape after the inset draws nothing, but
-        keeps its record, its label and its legend entry. Composes with
-        ``pull``, which then moves each inset wedge as a whole. Defaults
-        to ``rcParams["pie.gap"]`` (``0.0``, no gap).
+        keeps its record, its label and its legend entry. With a float
+        ``pull`` the two add up, so neighbours sit ``gap`` plus
+        ``2 * t`` apart; a dict ``pull`` moves each inset wedge as a
+        whole. Defaults to ``rcParams["pie.gap"]`` (``0.0``, no gap).
     min_share : float, default 0.0
         Categories **strictly below** this fraction of the total merge
         into a single ``"Other"`` wedge; a category sitting exactly on the
@@ -551,30 +590,48 @@ def pieplot(
         hatch_map_resolved = {}
         hatches = {n.path: None for n in nodes}
 
+    # A dict pops the wedges it names out along their own mid-rays, as
+    # matplotlib's `explode` does. A scalar is the even explode: no wedge
+    # is translated, every one grows outward by the same distance and is
+    # inset by it, so all neighbours part by the same gap (`even_explode`).
+    r_outer = max((p.r_outer for p in places), default=1.0)
     if pull is None:
         pull_map = {}
+        explode = 0.0
     elif isinstance(pull, dict):
         pull_map = {n.path: float(pull.get(n.path[0], 0.0)) for n in nodes}
+        explode = 0.0
     else:
-        pull_map = {n.path: float(pull) for n in nodes}
+        pull = _check_scalar_pull(pull)
+        # The translation map stays empty: records still carry the value
+        # asked for, while the geometry takes it from `explode`.
+        pull_map = {}
+        explode = even_explode(pull, r_outer)
 
     patches = draw_wedges(
         ax, places, colors, hatches, center=(0.0, 0.0), pull=pull_map,
         alpha=alpha, edgecolor=edgecolor, linewidth=linewidth,
+        explode=explode,
     )
     _split_face_and_edge_alpha(patches, alpha=alpha, edgecolor=edgecolor)
 
+    record_pull = (pull_map if not explode
+                   else {n.path: float(pull) for n in nodes})
     ax._publiplots_wedge_meta = build_wedge_meta(
-        places, patches, colors, hatches, pull_map,
+        places, patches, colors, hatches, record_pull,
         total=total, donut=donut, center=(0.0, 0.0), levels=levels,
         hue_active=True, hue_continuous=hue_continuous, source_frame=data,
+        explode=explode,
     )
 
+    # Room for the furthest rim: a translated wedge reaches `pull` past
+    # the radius, and an evenly exploded one has its rim at r + t.
     max_pull = max(pull_map.values(), default=0.0)
-    apply_cell_limits(ax, radius=1.0 + max_pull + 0.05, aspect=aspect)
+    apply_cell_limits(ax, radius=r_outer + max(max_pull, explode) + 0.05,
+                      aspect=aspect)
     # Only once the limits are framed does a data unit have a fixed size
     # in millimetres to convert the gap with.
-    apply_gap(ax, patches, gap)
+    apply_gap(ax, patches, gap, explode=explode)
 
     if donut and center_label is not None:
         text = center_label(total) if callable(center_label) else center_label

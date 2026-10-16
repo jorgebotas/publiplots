@@ -24,6 +24,37 @@ def pull_offset(placement: WedgePlacement, pull: float) -> Tuple[float, float]:
     return (pull * math.cos(mid), pull * math.sin(mid))
 
 
+def even_explode(pull: float, r_outer: float) -> float:
+    """The even explode distance of a scalar ``pull``, in data units.
+
+    ``pull`` is a fraction of the outer radius, so the distance is
+    ``t = pull * r_outer``. The explode it describes is not a
+    translation: every wedge stays centred on the chart centre, its inner
+    and outer radii both grow by ``t``, and both its straight edges are
+    inset by ``t``. Every wedge therefore moves out by the same distance
+    ``t`` and every pair of neighbours ends up the same perpendicular
+    distance ``2 * t`` apart, whatever either wedge's span -- a
+    translation along each wedge's own mid-ray opens only
+    ``t * sin(half-span)`` per side, so thin wedges barely separate.
+
+    Moving every wedge out by the same distance, giving every pair of
+    neighbours the same gap and keeping each wedge's shape cannot all
+    hold at once; this keeps the first two. A wedge grows by ``t`` at
+    both radii, and none reaches inside ``r_inner + t`` -- a hole of
+    radius ``t`` in a pie. Where the inset leaves room there, a wedge
+    ends in an arc on that radius; a narrower one ends further out,
+    where its inset edges meet. A lone 360-degree wedge has no edges to
+    inset and is a full ring from ``r_inner + t`` to ``r_outer + t``.
+    For the two halves of a half-disc the
+    straight edges, the ``2 * t`` gap and the rim on each mid-ray match a
+    translation by ``t`` exactly, but the rim is an arc of radius
+    ``r_outer + t`` about the chart centre rather than of ``r_outer``
+    about the translated one, so the shapes differ by up to about ``t``
+    at the rim's ends: 0.976 ``t`` at ``pull=0.05``.
+    """
+    return float(pull) * float(r_outer)
+
+
 class GappedWedge(Wedge):
     """A :class:`~matplotlib.patches.Wedge` whose straight edges are inset.
 
@@ -172,6 +203,7 @@ def draw_wedges(
     alpha: float,
     edgecolor: Optional[Any],
     linewidth: float,
+    explode: float = 0.0,
 ) -> List[GappedWedge]:
     """Add one wedge per placement, in draw order, and return them.
 
@@ -180,18 +212,26 @@ def draw_wedges(
     there spikes past the centre into the neighbouring wedges -- visibly
     so at 600 dpi on the 6% wedge of a 52.2/41.8/6/4 pie.
 
-    The wedges start uninset; :func:`apply_gap` insets them once the
-    limits are framed.
+    ``pull`` translates the wedges it names along their own mid-rays.
+    ``explode`` is the even explode instead, in data units: every wedge
+    stays centred on ``center``, its inner and outer radii both grow by
+    ``explode``, and each straight edge is inset by ``explode``, so all
+    of them move out by the same distance and every pair of neighbours
+    sits ``2 * explode`` apart (see :func:`even_explode`).
+
+    The wedges start inset by ``explode`` alone; :func:`apply_gap` adds
+    the gap once the limits are framed.
     """
     patches: List[GappedWedge] = []
     for place in placements:
         dx, dy = pull_offset(place, pull.get(place.node.path, 0.0))
         patch = GappedWedge(
             (center[0] + dx, center[1] + dy),
-            place.r_outer,
+            place.r_outer + explode,
             place.theta0,
             place.theta1,
             width=place.r_outer - place.r_inner,
+            inset=explode,
             facecolor=colors[place.node.path],
             edgecolor=edgecolor,
             linewidth=linewidth,
@@ -219,11 +259,17 @@ def build_wedge_meta(
     hue_active: bool,
     hue_continuous: bool,
     source_frame: Optional[Any],
+    explode: float = 0.0,
 ) -> WedgeMeta:
     """Pair each placement with the artist drawn for it, positionally --
     and safely, because both lists were produced by the loop above in the
     same pass. This is the only place the two meet, and neither is
     recovered from the axes.
+
+    Each record describes the wedge as drawn: an even ``explode`` (data
+    units, as passed to :func:`draw_wedges`) is folded into ``r_inner``
+    and ``r_outer``, so a label placed from the record lands on the
+    radii the wedge actually has.
     """
     if len(placements) != len(patches):
         raise AssertionError(
@@ -254,8 +300,8 @@ def build_wedge_meta(
                                 if parent_total else 0.0),
             theta0=place.theta0,
             theta1=place.theta1,
-            r_inner=place.r_inner,
-            r_outer=place.r_outer,
+            r_inner=place.r_inner + explode,
+            r_outer=place.r_outer + explode,
             depth=node.depth,
             hue_color=colors[node.path],
             hatch=hatches.get(node.path),
@@ -335,12 +381,15 @@ def apply_cell_limits(ax: Axes, *, radius: float, aspect: str) -> None:
         ax.set_ylim(-radius / ratio, radius / ratio)
 
 
-def apply_gap(ax: Axes, patches: Sequence[GappedWedge], gap: float) -> None:
+def apply_gap(ax: Axes, patches: Sequence[GappedWedge], gap: float,
+              *, explode: float = 0.0) -> None:
     """Inset every wedge so neighbours sit ``gap`` millimetres apart.
 
     Each straight edge moves ``gap / 2`` millimetres into its wedge, so
     any two wedges sharing a ray leave a band exactly ``gap`` wide
     between their outlines' centre lines (see :class:`GappedWedge`).
+    With an even ``explode`` (data units) each edge is inset by
+    ``explode`` on top, so the band is ``gap`` plus ``2 * explode``.
 
     The conversion to data units reads the axes' current transform, so
     it must run after :func:`apply_cell_limits` has framed the limits.
@@ -354,6 +403,6 @@ def apply_gap(ax: Axes, patches: Sequence[GappedWedge], gap: float) -> None:
     if not gap:
         return
     ax.apply_aspect()
-    inset = abs(mm_to_data(gap / 2.0, ax, "y"))
+    inset = abs(mm_to_data(gap / 2.0, ax, "y")) + explode
     for patch in patches:
         patch.set_inset(inset)

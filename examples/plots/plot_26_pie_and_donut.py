@@ -173,15 +173,16 @@ pp.show()
 # %%
 # Pulling wedges out
 # ------------------
-# ``pull`` moves a wedge out along its own mid-ray, by a fraction of the
-# radius. A dict keyed by category pulls just those wedges — it is never
-# positional — which is what ``pull`` is for: popping one wedge out.
-# A single float pulls every wedge the same distance, but the sideways
-# gap that opens between two neighbours is that distance times the sine
-# of their half-spans, so wide wedges part widely and thin ones barely
-# at all. To separate every wedge evenly, use ``gap``: a width in
-# millimetres that every pair of neighbours keeps along the whole of
-# the edge they share, thin wedges included, in a pie or a donut.
+# ``pull`` is a fraction of the radius. A dict keyed by category pops
+# out just those wedges — it is never positional — moving each along
+# its own mid-ray with its shape unchanged. A single float explodes the
+# whole chart evenly instead: every wedge moves out by the same
+# distance ``t``, rim and inner edge alike, and every pair of neighbours
+# ends up ``2t`` apart, the thin wedges as far from their neighbours as
+# the wide ones. A pie opens a small hole at its centre to do it. ``gap``
+# separates the wedges by a width in millimetres without moving them
+# out: every pair of neighbours keeps it along the whole of the edge
+# they share, in a pie or a donut. With a float ``pull`` the two add up.
 
 fig, axes = pp.subplots(ncols=4, axes_size=(36, 36))
 pp.legend(side="right")

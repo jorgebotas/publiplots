@@ -1129,6 +1129,44 @@ def test_a_pulled_wedge_keeps_its_outside_label(df, leader):
                                                                  abs=1e-12)
 
 
+@pytest.mark.parametrize("donut", [0.0, 0.6])
+def test_an_even_explode_labels_the_middle_of_the_drawn_band(df, donut):
+    """A scalar pull moves both radii out by t, so the band's middle
+    moves out by t too, on the chart's own centre."""
+    ax = _pie(df, pull=0.1, donut=donut)
+    pp.annotate(ax, "wedge_values", anchor="inside")
+    for record, text in zip(ax._publiplots_wedge_meta.wedges, ax.texts):
+        dx, dy = _mid_ray(record)
+        middle = (donut + 1.0) / 2.0 + 0.1
+        assert text.get_position() == pytest.approx(
+            (middle * dx, middle * dy), abs=1e-12)
+
+
+@pytest.mark.parametrize("leader", ["radial", "elbow", None])
+def test_an_even_explode_hangs_outside_labels_off_the_moved_rim(df, leader):
+    """Measured in mm from the rim the wedge is drawn with, r_out + t on
+    each mid-ray, computed here from the pull rather than the record."""
+    pull, offset = 0.1, 3.0
+    ax = _pie(df, size=(40.0, 40.0), pull=pull)
+    pp.annotate(ax, "wedge_values", anchor="outside", leader=leader,
+                offset=offset)
+    renderer = _settle(ax.figure)
+    records = ax._publiplots_wedge_meta.wedges
+    for i, (record, text) in enumerate(zip(records, ax.texts)):
+        dx, dy = _mid_ray(record)
+        rim = ax.transData.transform(((1.0 + pull) * dx, (1.0 + pull) * dy))
+        if leader is None:
+            gap = _box_distance_mm(ax, renderer, text, rim)
+            assert gap == pytest.approx(offset, abs=GAP_TOL_MM), record.path
+            continue
+        line = ax.lines[i]
+        start, end = _display(ax, line.get_xdata(), line.get_ydata())[:2]
+        assert _mm(ax, math.dist(start, rim)) == pytest.approx(
+            0.0, abs=GAP_TOL_MM), record.path
+        assert _mm(ax, math.dist(start, end)) == pytest.approx(
+            offset, abs=GAP_TOL_MM), record.path
+
+
 def test_auto_places_a_pushed_out_label_with_the_chosen_leader():
     thin = pd.DataFrame({"kind": list("AB"), "n": [99.5, 0.5]})
     ax = _pie(thin)

@@ -378,7 +378,8 @@ class WedgeRecord:
         fraction_of_parent: share of this node's parent; equal to
             fraction_of_total at depth 0.
         theta0, theta1: angular extent in degrees, theta0 < theta1.
-        r_inner, r_outer: radial band in axes data units.
+        r_inner, r_outer: radial band in axes data units, as drawn: an
+            even explode (a scalar ``pull``) is already added to both.
         depth: 0 for the innermost ring.
         hue_color: the RGB the wedge was filled with. Named to match
             BarRecord/PointRecord so `_color.resolve_color` accepts a
@@ -386,7 +387,13 @@ class WedgeRecord:
             and its `anchor in ("inside", "center", "base")` branch already
             covers the wedge anchor vocabulary.
         hatch: the hatch pattern, or None.
-        pull: radial offset as a fraction of the radius.
+        pull: the ``pull`` the wedge was drawn with, as a fraction of
+            the radius. A dict ``pull`` translates the wedge, so
+            ``patch.center`` carries it; a scalar one is an even explode
+            that leaves ``patch.center`` on the chart's centre and is
+            already folded into ``r_inner`` and ``r_outer``. Either way,
+            geometry is read from ``patch.center`` and the radii, never
+            recomputed from this.
     """
 
     patch: Any

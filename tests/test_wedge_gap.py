@@ -181,25 +181,6 @@ def test_a_donut_keeps_its_hole_and_its_inner_radius(df, donut, gap):
             assert radii.min() == pytest.approx(r_in, abs=0.01), record.path
 
 
-def test_a_scalar_pull_leaves_each_wedge_inset_from_its_own_edges(df):
-    """Every wedge moves, so neighbours are no longer gap apart; each
-    one's edges are still gap/2 inside the edges it was pulled with."""
-    ax = _pie(df, gap=1.0, pull=0.05)
-    ax.figure.canvas.draw()
-    for record in ax._publiplots_wedge_meta.wedges:
-        patch = record.patch
-        centre = ax.transData.transform(patch.center)
-        centre = centre / ax.figure.dpi * MM_PER_INCH
-        leading, trailing = _edges_mm(patch)
-        for theta, edge in ((record.theta0, leading),
-                            (record.theta1, trailing)):
-            ray = np.array([math.cos(math.radians(theta)),
-                            math.sin(math.radians(theta))])
-            far = centre + ray
-            assert _distance_to_line(centre, far, np.array(edge)) == \
-                pytest.approx([0.5, 0.5], abs=0.01), record.path
-
-
 def test_a_pulled_wedge_leaves_its_unpulled_neighbours_gap_apart(df):
     ax = _pie(df, gap=1.0, pull={"lay_dx": 0.15})
     gaps = _neighbour_gaps_mm(ax)
@@ -247,6 +228,183 @@ def test_the_painted_band_is_the_gap_less_one_outline(df):
         pixels = img[rows, samples[:, 0].astype(int)]
         blank = (pixels.min(axis=1) >= 250).sum() * step / dpi * MM_PER_INCH
         assert blank == pytest.approx(1.0 - outline, abs=2 / dpi * 25.4)
+
+
+# ------------------------------------------------- a scalar pull, evenly
+
+
+def _radius_mm(ax):
+    """The unexploded outer radius, 1 data unit, in rendered mm."""
+    fig = ax.figure
+    (x0, _), (x1, _) = ax.transData.transform([(0.0, 0.0), (1.0, 0.0)])
+    return (x1 - x0) / fig.dpi * MM_PER_INCH
+
+
+def _curve_radii_mm(ax, patch):
+    """Distance from the chart centre of points along the drawn outline.
+
+    Sampled on the path's own Bezier segments rather than read off its
+    vertices: an arc's control points sit outside the arc.
+    """
+    fig = ax.figure
+    points = np.vstack([bezier(np.linspace(0.0, 1.0, 64))
+                        for bezier, _ in patch.get_path().iter_bezier()])
+    to_mm = MM_PER_INCH / fig.dpi
+    centre = ax.transData.transform((0.0, 0.0)) * to_mm
+    return np.linalg.norm(ax.transData.transform(points) * to_mm - centre,
+                          axis=1)
+
+
+@pytest.mark.parametrize("kwargs", [
+    pytest.param(dict(pull=0.05), id="pie"),
+    pytest.param(dict(pull=0.12), id="pie-wide"),
+    pytest.param(dict(pull=0.05, gap=1.0), id="pie-gap"),
+    pytest.param(dict(pull=0.05, donut=0.55), id="donut"),
+    pytest.param(dict(pull=0.05, donut=0.55, gap=1.0), id="donut-gap"),
+    pytest.param(dict(pull=0.05, axes_size=(40, 70)), id="tall-cell"),
+    pytest.param(dict(pull=0.08, aspect="equal", axes_size=(70, 40)),
+                 id="equal-wide"),
+    pytest.param(dict(pull=0.08, gap=0.5, aspect="equal",
+                      axes_size=(40, 70)), id="equal-tall-gap"),
+])
+def test_a_scalar_pull_parts_every_pair_of_neighbours_by_two_t(df, kwargs):
+    """Every pair -- the 52/42 one, the 6/4 one and the one across
+    twelve o'clock -- is the same 2t (+ gap) apart, thin wedges included.
+    A translation along each mid-ray would part the 4% and 6% slivers
+    by a fraction of what it parts the two wide wedges by."""
+    ax = _pie(df, **kwargs)
+    gaps = _neighbour_gaps_mm(ax)
+    t = kwargs["pull"] * _radius_mm(ax)
+    expected = 2.0 * t + kwargs.get("gap", 0.0)
+    assert len(gaps) == 4
+    for pair, measured in gaps.items():
+        assert measured == pytest.approx([expected] * 4, abs=0.01), pair
+
+
+def test_a_scalar_pull_parts_a_reflex_wedge_evenly_too():
+    two = pd.DataFrame({"kind": ["a", "b"], "n": [70.0, 30.0]})
+    ax = _pie(two, pull=0.06, gap=0.6)
+    gaps = _neighbour_gaps_mm(ax)
+    expected = 2.0 * 0.06 * _radius_mm(ax) + 0.6
+    for pair, measured in gaps.items():
+        assert measured == pytest.approx([expected] * 4, abs=0.01), pair
+
+
+@pytest.mark.parametrize("kwargs", [
+    pytest.param(dict(pull=0.05), id="pie"),
+    pytest.param(dict(pull=0.05, gap=1.0), id="pie-gap"),
+    pytest.param(dict(pull=0.05, donut=0.55), id="donut"),
+    pytest.param(dict(pull=0.05, donut=0.6, gap=0.5), id="donut-gap"),
+    pytest.param(dict(pull=0.08, aspect="equal", axes_size=(70, 40)),
+                 id="equal"),
+])
+def test_a_scalar_pull_moves_every_rim_and_inner_boundary_out_by_t(
+    df, kwargs,
+):
+    """Rims at r_out + t, nothing inside r_in + t.
+
+    In a donut every wedge here keeps an inner arc, which lies on
+    r_in + t exactly. In a pie the wedges end where their inset edges
+    meet; the 52% wedge is a hair past a half-disc, so with no gap its
+    edge comes down to the hole itself, at t.
+    """
+    ax = _pie(df, **kwargs)
+    ax.figure.canvas.draw()
+    ax.apply_aspect()
+    radius = _radius_mm(ax)
+    t = kwargs["pull"] * radius
+    donut = kwargs.get("donut", 0.0)
+    hole = donut * radius + t
+    nearest = []
+    for record in ax._publiplots_wedge_meta.wedges:
+        radii = _curve_radii_mm(ax, record.patch)
+        assert radii.max() == pytest.approx(radius + t, abs=0.01), \
+            record.path
+        assert radii.min() >= hole - 0.01, record.path
+        if donut:
+            assert radii.min() == pytest.approx(hole, abs=0.01), record.path
+        nearest.append(radii.min())
+    if not donut and not kwargs.get("gap"):
+        assert min(nearest) == pytest.approx(t, abs=0.01)
+
+
+def test_a_scalar_pull_keeps_every_wedge_and_the_hole_on_the_centre(df):
+    """Nothing is translated, so the hole -- and the centre label in it
+    -- stays centred on the chart."""
+    ax = _pie(df, pull=0.05, donut=0.55, center_label="total")
+    for record in ax._publiplots_wedge_meta.wedges:
+        assert tuple(record.patch.center) == (0.0, 0.0), record.path
+    (label,) = [t for t in ax.texts if t.get_text() == "total"]
+    assert label.get_position() == (0.0, 0.0)
+    assert (label.get_ha(), label.get_va()) == ("center", "center")
+
+
+def test_a_scalar_pull_leaves_room_in_the_frame_for_the_moved_rim(df):
+    ax = _pie(df, pull=0.2)
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    assert min(-x0, x1, -y0, y1) > 1.2
+
+
+@pytest.mark.parametrize("donut", [0.0, 0.5])
+def test_a_scalar_pull_on_a_single_category_draws_a_full_ring(donut):
+    """No edges to inset and no neighbour to part from: the lone wedge
+    moves out like any other, to a ring from r_in + t to r_out + t."""
+    one = pd.DataFrame({"kind": ["a"], "n": [1.0]})
+    ax = _pie(one, pull=0.1, gap=1.0, donut=donut)
+    (patch,) = [p for p in ax.patches if isinstance(p, Wedge)]
+    ring = Wedge((0.0, 0.0), 1.1, 90.0 - 360.0, 90.0, width=1.0 - donut)
+    assert np.allclose(patch.get_path().vertices, ring.get_path().vertices,
+                       atol=1e-12, rtol=0)
+    (record,) = ax._publiplots_wedge_meta.wedges
+    assert (record.r_inner, record.r_outer) == pytest.approx(
+        (donut + 0.1, 1.1))
+
+
+def test_a_dict_pull_still_translates_the_wedges_it_names(df):
+    """Exactly what it did before the even explode: the named wedge's
+    shape is unchanged and moved along its own mid-ray, the others stay
+    put, and the records keep the drawn radii."""
+    ax = _pie(df, pull={"lay_dx": 0.15, "none": 0.05})
+    for record in ax._publiplots_wedge_meta.wedges:
+        patch = record.patch
+        pull = {"lay_dx": 0.15, "none": 0.05}.get(record.path[0], 0.0)
+        mid = math.radians((record.theta0 + record.theta1) / 2.0)
+        assert patch.center == pytest.approx(
+            (pull * math.cos(mid), pull * math.sin(mid)), abs=1e-12)
+        assert (record.r_inner, record.r_outer, patch.r) == (0.0, 1.0, 1.0)
+        assert patch.get_inset() == 0.0
+        assert record.pull == pull
+        plain = Wedge(patch.center, 1.0, record.theta0, record.theta1,
+                      width=1.0)
+        assert np.array_equal(patch.get_path().vertices,
+                              plain.get_path().vertices)
+
+
+@pytest.mark.parametrize("kwargs", [dict(), dict(donut=0.55),
+                                    dict(gap=1.0), dict(annotate=True)])
+def test_a_zero_scalar_pull_draws_exactly_what_no_pull_does(df, kwargs):
+    def render(**extra):
+        ax = _pie(df, **kwargs, **extra)
+        buf = io.BytesIO()
+        ax.figure.savefig(buf, format="raw", dpi=200)
+        records = [(r.r_inner, r.r_outer, tuple(r.patch.center),
+                    r.patch.get_inset())
+                   for r in ax._publiplots_wedge_meta.wedges]
+        return buf.getvalue(), records, ax.get_xlim(), ax.get_ylim()
+    assert render(pull=0.0) == render()
+
+
+@pytest.mark.parametrize("bad", [-0.05, float("nan"), float("inf")])
+def test_a_negative_or_non_finite_scalar_pull_is_refused(df, bad):
+    with pytest.raises(ValueError, match=r"pull="):
+        _pie(df, pull=bad)
+
+
+@pytest.mark.parametrize("bad", ["0.1", True, [0.1]])
+def test_a_non_numeric_scalar_pull_is_refused(df, bad):
+    with pytest.raises(TypeError, match=r"pull="):
+        _pie(df, pull=bad)
 
 
 # ------------------------------------------------- the geometry, exactly
