@@ -18,6 +18,7 @@ import warnings
 from typing import Dict, FrozenSet, Optional, Set, Tuple
 
 import matplotlib as mpl
+import matplotlib.axis as maxis
 
 from publiplots.layout.figure_layout import FigureLayout
 
@@ -797,11 +798,15 @@ class SubplotsAutoLayout:
             # auto-measurement (which sees the lifted title at its new
             # position) then reserves room for both. _side_extent excludes
             # the legend artist itself, so it never double-counts.
-            if group._anchor_kind == "axes":
-                # Every side steps the legend past the tick labels / axis
-                # label on its own side of the axes rectangle (Issue B for
-                # 'left', #212 for 'bottom'); 'top' then lifts the title
-                # above the stepped band, so it runs second.
+            if (
+                group._anchor_kind == "axes"
+                and group._side in self._FIELD_BY_SIDE
+            ):
+                # Every edge side steps the legend past the tick labels /
+                # axis label on its own side of the axes rectangle (Issue B
+                # for 'left', #212 for 'bottom'); 'top' then lifts the title
+                # above the stepped band, so it runs second. A legend inside
+                # the axes ('center', ...) has no side to clear.
                 self._offset_inside_legend_past_decorations(group, axes_matrix)
                 if group._side == "top":
                     self._lift_title_above_top_legend(group, dpi)
@@ -1164,7 +1169,7 @@ class SubplotsAutoLayout:
         for row in axes_matrix:
             for ax in row:
                 decorations = [
-                    a for sibling in self._cell_siblings(ax)
+                    a for sibling in self._drawn_siblings(ax)
                     for a in _registered_decorations(sibling)
                 ]
                 if not decorations and getattr(
@@ -1178,7 +1183,7 @@ class SubplotsAutoLayout:
                 if not titles or getattr(ax, "_autotitlepos", None) is False:
                     continue
                 if renderer is None:
-                    renderer = self._fig.canvas.get_renderer()
+                    renderer = self._fig._get_renderer()
                 ax_top = ax.get_window_extent().y1
                 deco_top = ax_top
                 for title in titles:
@@ -1204,7 +1209,7 @@ class SubplotsAutoLayout:
         are on top — that axis's tight bbox — or the axes top otherwise; the
         same rule matplotlib applies.
         """
-        renderer = self._fig.canvas.get_renderer()
+        renderer = self._fig._get_renderer()
         top = ax_top
         for sibling in self._cell_siblings(ax):
             xaxis = sibling.xaxis
@@ -1222,23 +1227,62 @@ class SubplotsAutoLayout:
         """Tight bboxes of ``artists`` that have an area, optionally only
         those sharing part of ``span`` — ``("x" | "y", lo, hi)`` in pixels.
 
-        An Axis's tight bbox is its tick labels, label and offset text at
-        their true extent (``None`` when hidden); any other artist's is its
-        window extent, clipped when it is. Zero-width or zero-height extents
-        are dropped, as ``Axes.get_tightbbox`` drops them.
+        An Axis contributes :meth:`_axis_boxes`; any other artist its tight
+        bbox — its window extent, clipped when it is. Zero-width or
+        zero-height extents are dropped, as ``Axes.get_tightbbox`` drops
+        them.
         """
         boxes = []
         for artist in artists:
-            bb = artist.get_tightbbox(renderer)
-            if bb is None or not (bb.width > 0 and bb.height > 0):
+            if isinstance(artist, maxis.Axis):
+                boxes.extend(SubplotsAutoLayout._axis_boxes(artist, renderer))
+            else:
+                bb = artist.get_tightbbox(renderer)
+                if bb is not None:
+                    boxes.append(bb)
+        kept = []
+        for bb in boxes:
+            if not (bb.width > 0 and bb.height > 0):
                 continue
             if span is not None:
                 axis, lo, hi = span
                 a0, a1 = (bb.x0, bb.x1) if axis == "x" else (bb.y0, bb.y1)
                 if a1 <= lo or a0 >= hi:
                     continue
-            boxes.append(bb)
+            kept.append(bb)
+        return kept
+
+    @staticmethod
+    def _axis_boxes(axis, renderer) -> list:
+        """One box per tick label, plus the offset text and the axis label,
+        as ``Axis.get_tightbbox`` measures them.
+
+        Separate boxes, so a band's span is compared with each tick label
+        rather than with the whole axis. The label counts only while
+        matplotlib positions it (``_autolabelpos``): ``set_label_coords``
+        may place it in any coordinates — the figure's, which move as the
+        layout grows the figure — and is then the user's to clear.
+        """
+        if axis.get_tightbbox(renderer) is None:  # hidden; also positions
+            return []                              # the label and offset
+        ticks = axis._update_ticks()
+        tlb1, tlb2 = axis._get_ticklabel_bboxes(ticks, renderer)
+        boxes = [*tlb1, *tlb2]
+        for text in (axis.offsetText, axis.label):
+            if text is axis.label and not getattr(axis, "_autolabelpos", True):
+                continue
+            if text.get_visible() and text.get_text():
+                boxes.append(text.get_window_extent(renderer))
         return boxes
+
+    def _drawn_siblings(self, ax) -> list:
+        """:meth:`_cell_siblings` that are drawn with their axes on: a
+        hidden axes, or one after ``ax.axis("off")``, draws no tick labels or
+        axis labels, and ``Axes.get_tightbbox`` skips them too."""
+        return [
+            a for a in self._cell_siblings(ax)
+            if a.get_visible() and a.axison
+        ]
 
     def _offset_inside_legend_past_decorations(
         self, group, axes_matrix, ref_axes=None, ref_idx=None
@@ -1433,9 +1477,11 @@ class SubplotsAutoLayout:
 
         Known decorations are the axis along that side — x for 'top' /
         'bottom', y for 'left' / 'right' — of each reference axes and each of
-        its twins (tick labels, axis label and offset text, at their true
-        extent), and every artist registered on them with
-        :func:`register_decoration`. All are fixed relative to the axes:
+        its twins that is drawn with its axes on (:meth:`_drawn_siblings`):
+        tick labels, offset text and the axis label while matplotlib
+        positions it (:meth:`_axis_boxes`), at their true extent; and every
+        artist registered on them with :func:`register_decoration`. All are
+        fixed relative to the axes:
         nothing the layout places — a legend, a colorbar, the figure size —
         moves them, so a band stepping past them settles in one pass.
 
@@ -1443,13 +1489,13 @@ class SubplotsAutoLayout:
         of the band's along-edge extent: a band can only collide with what
         lies beside it.
         """
-        renderer = self._fig.canvas.get_renderer()
+        renderer = self._fig._get_renderer()
         overhang_fn = self._OVERHANG_BY_SIDE[side]
         best = float("-inf")
         for ax in ref_axes:
             edge = ax.get_window_extent()
             artists = []
-            for sibling in self._cell_siblings(ax):
+            for sibling in self._drawn_siblings(ax):
                 artists.append(
                     sibling.yaxis if side in ("left", "right") else sibling.xaxis
                 )

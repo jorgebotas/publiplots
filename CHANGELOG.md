@@ -44,10 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It does not clear an arbitrary text, patch or annotation you place past
   the edge: such an artist can be positioned off the legend itself, a
   colorbar or the figure, which the layout moves, and stepping past
-  something that moves with the step never settles. 'left' and 'bottom'
-  measure exactly what they measured before, plus twins. The same rule
-  holds for the title: matplotlib lifts it above top tick labels, and
-  publiplots adds nothing to that for your own artists.
+  something that moves with the step never settles. For the same reason an
+  axis label you placed with `set_label_coords` is not cleared, though its
+  tick labels are. Axes that are hidden or have `ax.axis("off")` draw no
+  decorations, and none are measured. 'left' and 'bottom' measure exactly
+  what they measured before, plus twins. The same rule holds for the
+  title: matplotlib lifts it above top tick labels, and publiplots adds
+  nothing to that for your own artists.
+
+  With a `side="top"` legend, a title pad set after the figure was first
+  drawn (`ax.set_title(..., pad=60)`) is now honoured. The legend's title
+  lift used to keep the pad from the first draw and overwrite the new one.
 
   Across two corpora of 43 and 57 default figures, every legend, title and
   axes box is identical to before to 0.0000mm except the two cases above

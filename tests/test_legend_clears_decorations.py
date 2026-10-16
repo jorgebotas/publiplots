@@ -270,6 +270,87 @@ def test_the_title_over_figure_text_settles(df):
     assert getattr(ax, "_pp_deco_titlepad", None) is None
 
 
+@pytest.mark.parametrize("side", ["left", "bottom", "right", "top"])
+def test_axis_decorations_that_are_not_drawn_are_not_cleared(df, side):
+    """After ``ax.axis("off")`` no tick label or axis label is drawn, and
+    ``Axes.get_tightbbox`` skips them; so must the legend. Measuring the
+    undrawn axis pushed a bottom legend 7.39 mm too far out."""
+    fig, ax = _bar(df, legend_kws={"side": side})
+    ax.set_xlabel("x label")
+    ax.set_ylabel("y label")
+    if side == "right":
+        ax.yaxis.tick_right()
+    elif side == "top":
+        ax.xaxis.tick_top()
+    ax.axis("off")
+    _assert_settled(_save(fig))
+
+    leg = _extent(fig, _legend(fig))
+    axes = ax.get_window_extent()
+    gap = {
+        "left": axes.x0 - leg.x1, "right": leg.x0 - axes.x1,
+        "bottom": axes.y0 - leg.y1, "top": leg.y0 - axes.y1,
+    }[side]
+    assert _mm(fig, gap) == pytest.approx(GAP_MM, abs=0.01)
+
+
+def test_a_hidden_twin_is_not_cleared(df):
+    fig, ax = _bar(df)
+    twin = ax.twinx()
+    twin.plot([0, 1, 2], [100, 2000, 30000])
+    twin.set_ylabel("twin label")
+    twin.set_visible(False)
+    _assert_settled(_save(fig))
+    assert _right_legend_gap(fig, ax) == pytest.approx(GAP_MM, abs=0.01)
+
+
+def test_a_twin_label_the_user_placed_is_not_cleared(df):
+    """``set_label_coords`` can put the label anywhere — here in figure
+    coordinates, which move as the figure grows; stepping past it grew the
+    figure on every save, without a warning. The tick labels still count."""
+    fig, ax = _bar(df)
+    twin = ax.twinx()
+    twin.plot([0, 1], [1e3, 3e4])
+    twin.set_ylabel("twin")
+    twin.yaxis.set_label_coords(0.9, 0.8, transform=fig.transFigure)
+    _save(fig)  # the first save settles the label's own reservation
+    _assert_settled(_save(fig, n=4))
+
+    leg = _extent(fig, _legend(fig))
+    r = fig.canvas.get_renderer()
+    level = [
+        _extent(fig, t) for t in twin.get_yticklabels()
+        if t.get_text() and t.get_visible()
+    ]
+    level = [b for b in level if b.y1 > leg.y0 and b.y0 < leg.y1]
+    assert level  # precondition: some tick labels are level with it
+    ticks_x1 = max(b.x1 for b in level)
+    assert _mm(fig, leg.x0 - ticks_x1) == pytest.approx(GAP_MM, abs=0.01)
+    assert twin.yaxis.label.get_window_extent(r).width > 0  # still drawn
+
+
+@pytest.mark.parametrize("fmt", ["pdf", "svg"])
+def test_saving_on_a_non_agg_canvas_clears_the_tick_labels(df, fmt):
+    """Only Agg canvases have ``get_renderer``; the measurement must go
+    through the figure's own renderer, as ``get_tightbbox`` does."""
+    from matplotlib.backends.backend_pdf import FigureCanvasPdf
+    from matplotlib.backends.backend_svg import FigureCanvasSVG
+
+    fig, ax = _bar(df)
+    ax.yaxis.tick_right()
+    (FigureCanvasPdf if fmt == "pdf" else FigureCanvasSVG)(fig)
+    assert not hasattr(fig.canvas, "get_renderer")  # precondition
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", pp.LayoutConvergenceWarning)
+        for _ in range(2):
+            fig.savefig(io.BytesIO(), format=fmt)
+
+    renderer = fig._get_renderer()
+    leg = _legend(fig).get_window_extent(renderer)
+    ticks_x1 = ax.yaxis.get_tightbbox(renderer).x1
+    assert _mm(fig, leg.x0 - ticks_x1) == pytest.approx(GAP_MM, abs=0.01)
+
+
 # ------------------------------------------------------------------- title
 
 def test_the_title_clears_a_registered_decoration_above_the_axes(df):
@@ -323,6 +404,20 @@ def test_a_pad_set_after_a_draw_is_the_new_baseline(df):
         lifted + 24.0, abs=1e-6
     )
     assert _extent(fig, ax.title).y0 > _extent(fig, text).y1
+
+
+def test_a_pad_set_after_a_draw_is_honoured_over_a_top_legend(df):
+    """The top-legend lift used to keep the pad stashed at the first draw,
+    so a larger pad set afterwards was overwritten by the lift."""
+    fig, ax = _bar(df, legend_kws={"side": "top"})
+    ax.set_title("Title")
+    _save(fig)
+    lifted = ax.titleOffsetTrans._t[1] * 72.0
+    assert lifted < 60.0  # precondition: 60 pt is above the lift
+
+    ax.set_title("Title", pad=60)
+    _save(fig)
+    assert ax.titleOffsetTrans._t[1] * 72.0 == pytest.approx(60.0)
 
 
 def _top_ticks_title(df, text_y=None):
@@ -397,9 +492,11 @@ def test_a_colorbar_band_clears_the_tick_labels_on_its_side(side):
     r = fig.canvas.get_renderer()
     cax = next(a for a in fig.axes if a is not ax)
     band = cax.get_tightbbox(r)  # strip + its tick labels
-    ticks = (ax.xaxis if side == "top" else ax.yaxis).get_tightbbox(r)
+    axis = ax.xaxis if side in ("top", "bottom") else ax.yaxis
+    ticks = axis.get_tightbbox(r)
     gap = {
         "top": band.y0 - ticks.y1,
+        "bottom": ticks.y0 - band.y1,
         "left": ticks.x0 - band.x1,
         "right": band.x0 - ticks.x1,
     }[side]
