@@ -199,31 +199,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `label_spacing`.** On a long tail the outside labels of adjacent
   slivers landed on one another — on a 40/30/20/5/3/1/0.5/0.5 pie in a
   40mm cell the last four overlapped, by as much as 2.35mm, under every
-  leader style. `avoid_overlap=True` (the default) now moves them by as little
-  as keeps every two labels' boxes `label_spacing` mm apart (0.4), and
-  keeps their order: `"elbow"` labels up or down their column, the
-  elbow moving with them so the tail stays level, and `"radial"` and
-  unled labels round the circle onto a ray off their wedge's mid-ray, a
-  radial leader leaning from the same rim point to follow, never nearer
-  its label than `leader_gap`. Both are solved exactly, as an isotonic
-  regression by pool-adjacent-violators, for the least total squared
-  move; the circle pass re-measures the rendered boxes and re-solves,
-  at most eight rounds. A label that crowds nothing is not moved — a
-  chart with nothing crowded renders byte-for-byte as with
-  `avoid_overlap=False`, which runs neither pass — inside labels never
-  move, and no label is moved onto the disc. On that pie at 25, 40 and
-  80mm, every start angle in 30-degree steps, both directions, as a
-  donut, with a scalar `pull` and with `gap=1`, the closest pair of
-  labels renders 0.399–0.464mm apart (elbow labels 0.400mm exactly),
-  no two leaders cross, no leader
-  runs through another label, and no label touches a wedge. A dict
-  `pull` is not as well behaved: a pulled wedge reaches into its
-  neighbours' labels' room, so a moved circle label that touches it is
-  slid out along its ray, but a crowded elbow column boxed in by one
-  keeps its labels apart and may set one on the pulled wedge, and
-  leaders there can still cross (as they could unmoved). Anything but a
-  bool `avoid_overlap` raises `TypeError`; `label_spacing` is validated
-  as `leader_gap` is.
+  leader style. `avoid_overlap=True` (the default) now moves them by as
+  little as keeps every two labels' boxes `label_spacing` mm apart
+  (0.4), keeping their order. `"elbow"` labels move up or down their
+  column, the elbow moving with them so the tail stays level, held off
+  the disc and with no leader left running through another label.
+  `"radial"` and unled labels move round the circle onto a ray off
+  their wedge's mid-ray, a radial leader leaning from the same rim
+  point to follow — but never further than `acos(R / (R + offset))`
+  from the mid-ray, the furthest a leader can lean without cutting back
+  across the chart (about 25 degrees at 40mm). Each is solved exactly,
+  as an isotonic regression by pool-adjacent-violators with those
+  bounds, for the least total squared move; the circle pass re-measures
+  the rendered boxes, the pair the circle is cut between included, and
+  re-solves, at most eight rounds. A label that crowds nothing is not
+  moved — a chart with nothing crowded renders byte-for-byte as with
+  `avoid_overlap=False`, which runs neither pass — and inside labels
+  never move.
+
+  **On a pie too crowded for that room**, radial and unled labels are
+  moved as far apart as their bounds allow and some overlap remains:
+  a whole circle of 24 or more equal wedges at 25mm, or a run of ten
+  slivers on a 25 or 40mm chart. `leader="elbow"`, whose columns have
+  the chart's height to spread into, or `min_share` to pool the
+  slivers, is the remedy; the leader style is never switched for you.
+  Across a sweep of 3,870 charts — ten data sets from two wedges to 40,
+  25 to 80mm cells, every start angle in 30-degree steps, donuts, gaps,
+  scalar and dict `pull`, rotated labels and `anchor="auto"` — no
+  leader enters the disc, no radial or unled label moves past its bound
+  (the furthest, 33.6 degrees, is the bound on a 25mm chart), no leader
+  runs through more labels than it did unmoved, and the closest pair is
+  never closer than unmoved; every one of the 1,287 elbow charts keeps
+  `label_spacing`. Only beside a dict `pull`, whose pulled wedge and
+  leader reach into its neighbours' room, can one leader cross another
+  (on 19 of its 216 charts) or an elbow label sit on the pulled wedge
+  (on one).
+  Anything but a bool `avoid_overlap` raises `TypeError`;
+  `label_spacing` is validated as `leader_gap` is.
 
 - **`pie.*` rcParams.** `pie.gap` (0.0), `pie.leader` (`"radial"`),
   `pie.label_offset` (2.0), `pie.leader_gap` (0.8),

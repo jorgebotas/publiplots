@@ -28,6 +28,30 @@ def _close():
     plt.close("all")
 
 
+# What the last de-collision pass reported: (rounds, complete).
+RESULTS: list = []
+
+
+@pytest.fixture(autouse=True)
+def _record(monkeypatch):
+    """Keep what each pass returns, to tell full separation from partial."""
+    RESULTS.clear()
+    for name in ("_spread_on_circle", "_spread_in_columns"):
+        original = getattr(_wedge, name)
+
+        def recorded(*args, _original=original, **kwargs):
+            result = _original(*args, **kwargs)
+            RESULTS.append(result)
+            return result
+        monkeypatch.setattr(_wedge, name, recorded)
+    yield
+
+
+def _complete():
+    """Did the last chart's pass separate every crowded pair in full?"""
+    return all(complete for _, complete in RESULTS)
+
+
 @pytest.fixture
 def restore_pie_rcparams():
     keys = ["pie.avoid_overlap", "pie.label_spacing", "pie.leader"]
@@ -152,12 +176,21 @@ def _rim_display(ax, record):
 def test_no_two_outside_labels_come_within_label_spacing(
     leader, start, direction, size,
 ):
-    """Every pair, not only neighbours, measured on the rendered boxes."""
-    ax, renderer = _pie(size=size, leader=leader,
-                        pie_kws={"start_angle": start,
-                                 "direction": direction})
-    assert _min_gap_mm(ax, renderer) >= pp.rcParams["pie.label_spacing"] \
-        - TOL_MM
+    """Every pair, not only neighbours, measured on the rendered boxes.
+
+    Where the pass reports that a label's bound left too little room --
+    radial and unled labels on the 25mm chart with the slivers at twelve
+    o'clock -- the labels are still never closer than unmoved."""
+    kws = {"start_angle": start, "direction": direction}
+    ax, renderer = _pie(size=size, leader=leader, pie_kws=kws)
+    gap, complete = _min_gap_mm(ax, renderer), _complete()
+    if complete:
+        assert gap >= pp.rcParams["pie.label_spacing"] - TOL_MM
+    else:
+        assert leader != "elbow" and size == 25.0
+        assert gap >= _min_gap_mm(*_pie(size=size, leader=leader,
+                                        avoid_overlap=False,
+                                        pie_kws=kws)) - TOL_MM
 
 
 @pytest.mark.parametrize("size", [25.0, 80.0])
@@ -167,11 +200,19 @@ def test_no_two_outside_labels_come_within_label_spacing(
 def test_label_spacing_holds_on_a_donut_with_pull_and_gap(
     leader, start, geometry, size,
 ):
-    ax, renderer = _pie(size=size, leader=leader,
-                        pie_kws={"start_angle": start,
-                                 **GEOMETRIES[geometry]})
-    assert _min_gap_mm(ax, renderer) >= pp.rcParams["pie.label_spacing"] \
-        - TOL_MM
+    kws = {"start_angle": start, **GEOMETRIES[geometry]}
+    ax, renderer = _pie(size=size, leader=leader, pie_kws=kws)
+    gap = _min_gap_mm(ax, renderer)
+    if _complete() or leader == "elbow":
+        # An elbow column can always be spread; what it may leave, beside
+        # a dict pull, is a leader it could not clear (see
+        # `_spread_in_columns`), never two labels too close.
+        assert gap >= pp.rcParams["pie.label_spacing"] - TOL_MM
+    else:
+        assert size == 25.0
+        assert gap >= _min_gap_mm(*_pie(size=size, leader=leader,
+                                        avoid_overlap=False,
+                                        pie_kws=kws)) - TOL_MM
 
 
 def test_the_long_tail_overlaps_without_the_pass():
@@ -448,6 +489,220 @@ def test_no_two_leaders_cross_and_none_runs_through_a_label(
 
 
 # -----------------------------------------------------------------------------
+# Charts too crowded for the room each label has
+# -----------------------------------------------------------------------------
+#
+# The charts a review of the first version broke it with: whole circles of
+# equal wedges, long geometric and power tails, slivers straddling twelve
+# and six o'clock -- once with the circle cut between two crowded labels
+# -- and the elbow charts where a moved leg ran through a neighbour. Each
+# is rendered once, with and without the pass, and measured; the tests
+# below read the measurements.
+
+TAIL13 = [50, 20, 10, 5, 3, 2, 1, 1, 0.5, 0.5, 0.5, 0.3, 0.2]
+GEOMETRIC = [2.0 ** -i for i in range(12)]
+STRADDLE = [0.6] * 8 + [45.2] + [0.6] * 8 + [45.2]
+
+CROWDED = (
+    [(f"equal{n}-{size:g}", [1.0] * n, size, {}, {})
+     for n in (24, 32, 36, 40) for size in (25.0, 40.0)]
+    + [("tail13-25", TAIL13, 25.0, {"start_angle": 90}, {}),
+       ("tail13-40", TAIL13, 40.0, {"start_angle": 90}, {}),
+       ("geometric-25", GEOMETRIC, 25.0, {"start_angle": 60}, {}),
+       # The top cluster straddles twelve o'clock, then sits just past it,
+       # where the circle is cut between two of its labels.
+       ("straddle-25", STRADDLE, 25.0, {"start_angle": 94.32}, {}),
+       ("cut-pair-25", STRADDLE, 25.0, {"start_angle": 96.48}, {}),
+       ("geometric-auto-25", GEOMETRIC, 25.0, {"start_angle": 200},
+        {"anchor": "auto"}),
+       ("tail13-tangential-40", TAIL13, 40.0, {"start_angle": 0},
+        {"rotation": "tangential"})]
+)
+CROWDED_CASES = [(chart, leader) for chart in CROWDED for leader in LEADERS]
+CROWDED_IDS = [f"{chart[0]}-{leader}" for chart, leader in CROWDED_CASES]
+
+
+def _frame(values):
+    return pd.DataFrame({"kind": [f"k{i:02d}" for i in range(len(values))],
+                         "n": [float(v) for v in values]})
+
+
+def _measure(values, size, pie_kws, annotate_kws, leader, avoid):
+    RESULTS.clear()
+    ax, renderer = _pie(_frame(values), size=size, pie_kws=pie_kws,
+                        leader=leader, avoid_overlap=avoid, **annotate_kws)
+    complete = _complete()
+    rounds = max((result[0] for result in RESULTS), default=0)
+    k = MM_PER_INCH / ax.figure.dpi
+    records = ax._publiplots_wedge_meta.wedges
+    boxes = _boxes(ax, renderer)
+    outside = [i for i, (record, text) in enumerate(zip(records, ax.texts))
+               if math.dist(text.get_position(), record.patch.center)
+               > record.r_outer]
+    lines = dict(zip(outside, _leaders(ax))) if ax.lines else {}
+    centre = {i: ax.transData.transform(records[i].patch.center)
+              for i in outside}
+    radius = {i: ax.transData.transform(
+                  (records[i].patch.center[0] + records[i].r_outer,
+                   records[i].patch.center[1]))[0] - centre[i][0]
+              for i in outside}
+    offset_px = pp.rcParams["pie.label_offset"] / k
+    gap = min((_gap(boxes[a], boxes[b]) * k
+               for a, b in itertools.combinations(outside, 2)),
+              default=math.inf)
+    into = math.inf
+    for i, points in lines.items():
+        for p, q in zip(points[:-1], points[1:]):
+            for t in (j / 400.0 for j in range(401)):
+                point = (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
+                into = min(into, (math.dist(point, centre[i]) - radius[i]) * k)
+    excess, pressed = -math.inf, False
+    for i in outside:
+        record, box = records[i], boxes[i]
+        angle = math.atan2((box[1] + box[3]) / 2.0 - centre[i][1],
+                           (box[0] + box[2]) / 2.0 - centre[i][0])
+        mid = math.radians((record.theta0 + record.theta1) / 2.0)
+        move = abs((angle - mid + math.pi) % (2 * math.pi) - math.pi)
+        beta = math.acos(radius[i] / (radius[i] + offset_px))
+        excess = max(excess, move - beta)
+        pressed = pressed or abs(move - beta) < 1e-6
+    segments = [(i, p, q) for i, points in lines.items()
+                for p, q in zip(points[:-1], points[1:])]
+    crossings = sum(
+        _crosses(p1, p2, q1, q2)
+        for (i, p1, p2), (j, q1, q2) in itertools.combinations(segments, 2)
+        if i != j)
+    from matplotlib.path import Path
+    from matplotlib.transforms import Bbox
+    through = sum(
+        Path([p, q]).intersects_bbox(Bbox.from_extents(*boxes[j]),
+                                     filled=False)
+        for (i, p, q) in segments for j in outside if j != i)
+    on_wedge = sum(bool(_touches_a_wedge(ax, boxes[i])) for i in outside)
+    # The angle the labels need round the circle, estimated box by box:
+    # the least turn along the tangent that clears a box from a copy of
+    # itself, ``label_spacing`` apart, at the box's own radius.
+    spacing_px = pp.rcParams["pie.label_spacing"] / k
+    turn = 0.0
+    for i in outside:
+        box = boxes[i]
+        x = (box[0] + box[2]) / 2.0 - centre[i][0]
+        y = (box[1] + box[3]) / 2.0 - centre[i][1]
+        phi = math.atan2(y, x)
+        turn += min((box[2] - box[0] + spacing_px)
+                    / max(abs(math.sin(phi)), 1e-9),
+                    (box[3] - box[1] + spacing_px)
+                    / max(abs(math.cos(phi)), 1e-9)) / math.hypot(x, y)
+    plt.close("all")
+    return {"gap": gap, "complete": complete, "into": into,
+            "excess": excess, "pressed": pressed, "crossings": crossings,
+            "through": through, "on_wedge": on_wedge,
+            "turn": math.degrees(turn), "rounds": rounds}
+
+
+_MEASURED: dict = {}
+
+
+def _crowded(chart, leader):
+    key = (chart[0], leader)
+    if key not in _MEASURED:
+        _, values, size, pie_kws, annotate_kws = chart
+        _MEASURED[key] = (
+            _measure(values, size, pie_kws, annotate_kws, leader, True),
+            _measure(values, size, pie_kws, annotate_kws, leader, False))
+    return _MEASURED[key]
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_no_leader_ever_enters_the_disc(chart, leader):
+    """Sampled along every segment, from the leader's own wedge's centre:
+    radial leaders within their bound, elbow legs that may not lean in."""
+    on, _ = _crowded(chart, leader)
+    assert on["into"] >= -TOL_MM
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_no_label_moves_round_the_circle_past_its_bound(chart, leader):
+    """``|phi - mid| <= acos(R / (R + offset))``, read off the rendered
+    box's centre about its wedge's centre."""
+    if leader == "elbow":
+        pytest.skip("elbow labels move up and down, not round")
+    on, _ = _crowded(chart, leader)
+    assert on["excess"] <= 1e-6
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_labels_are_never_closer_than_unmoved(chart, leader):
+    on, off = _crowded(chart, leader)
+    assert on["gap"] >= off["gap"] - TOL_MM
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_overlaps_are_cleared_in_full_wherever_the_bounds_allow(chart, leader):
+    """Where the pass reports full separation, every pair is
+    ``label_spacing`` apart. Where it reports too little room, the room
+    really was used up: some label is pressed against its bound, or the
+    labels need about the whole circle (estimated from the unmoved boxes,
+    so within a tenth of a turn)."""
+    on, off = _crowded(chart, leader)
+    if on["complete"]:
+        assert on["gap"] >= pp.rcParams["pie.label_spacing"] - TOL_MM
+    else:
+        assert leader != "elbow", "an elbow column always has room"
+        assert on["pressed"] or off["turn"] >= 0.9 * 360.0
+
+
+@pytest.mark.parametrize("leader", ["radial", None])
+def test_a_dict_pull_never_leaves_labels_closer_than_unmoved(leader):
+    """A label slid off a pulled wedge once landed on a label beyond its
+    neighbour; the pass now puts everything back rather than end closer
+    than it started."""
+    kws = {"start_angle": 300, "pull": {"k05": 0.2, "k03": 0.1}}
+    on = _measure(TAIL13, 80.0, kws, {}, leader, True)
+    off = _measure(TAIL13, 80.0, kws, {}, leader, False)
+    assert on["gap"] >= off["gap"] - TOL_MM
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_a_chart_without_room_does_not_spin(chart, leader):
+    """A pair relaxed for lack of room is not widened again, so a chart
+    that cannot be separated stops within two rounds rather than
+    running to the cap; measured, every crowded chart here needs one or
+    two."""
+    on, _ = _crowded(chart, leader)
+    assert on["rounds"] <= 2
+
+
+def test_the_crowded_charts_include_both_outcomes():
+    """Guards the test above against a pass that reports one answer."""
+    outcomes = {_crowded(chart, leader)[0]["complete"]
+                for chart, leader in CROWDED_CASES if leader == "radial"}
+    assert outcomes == {True, False}
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_no_two_leaders_cross_on_a_crowded_chart(chart, leader):
+    on, _ = _crowded(chart, leader)
+    assert on["crossings"] == 0
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_no_leader_runs_through_another_label_on_a_crowded_chart(
+    chart, leader,
+):
+    on, off = _crowded(chart, leader)
+    assert on["through"] <= off["through"]
+    if leader == "elbow":
+        assert on["through"] == 0
+
+
+@pytest.mark.parametrize("chart, leader", CROWDED_CASES, ids=CROWDED_IDS)
+def test_no_label_is_moved_onto_a_wedge_on_a_crowded_chart(chart, leader):
+    on, _ = _crowded(chart, leader)
+    assert on["on_wedge"] == 0
+
+
+# -----------------------------------------------------------------------------
 # Defaults, overrides and validation
 # -----------------------------------------------------------------------------
 
@@ -622,3 +877,96 @@ def test_the_solver_moves_nothing_when_nothing_conflicts(seed):
 def test_the_solver_refuses_a_wrong_number_of_gaps():
     with pytest.raises(ValueError, match="need 2 gaps"):
         _wedge._pav_with_gaps([0.0, 1.0, 2.0], [0.5])
+
+
+def _feasible_instance(rng, n):
+    """Random desired positions, gaps and both-sided bounds that admit a
+    solution, the bounds heterogeneous as the circle pass's are."""
+    while True:
+        desired = sorted(rng.uniform(-3.0, 3.0) for _ in range(n))
+        gaps = [rng.choice([0.0, rng.uniform(0.0, 1.5)]) for _ in range(n - 1)]
+        lower = [d - rng.choice([math.inf, rng.uniform(0.0, 1.5)])
+                 for d in desired]
+        upper = [d + rng.choice([math.inf, rng.uniform(0.0, 1.5)])
+                 for d in desired]
+        if _wedge._chain_window(gaps, lower, upper) is None:
+            return desired, gaps, lower, upper
+
+
+@pytest.mark.parametrize("seed", range(150))
+def test_the_bounded_solver_matches_brute_force_and_slsqp(seed):
+    """Both bounds on every position, each its own width: the solver's
+    answer is feasible and no QP solver finds a cheaper one."""
+    optimize = pytest.importorskip("scipy.optimize")
+    import numpy as np
+    rng = random.Random(1000 + seed)
+    desired, gaps, lower, upper = _feasible_instance(rng, rng.randint(2, 7))
+    n = len(desired)
+    got, _ = _wedge._pav_with_gaps(desired, gaps, lower, upper)
+    cost = sum((a - b) ** 2 for a, b in zip(got, desired))
+    for k in range(n - 1):
+        assert got[k + 1] - got[k] >= gaps[k] - 1e-9
+    for i in range(n):
+        assert lower[i] - 1e-9 <= got[i] <= upper[i] + 1e-9
+    want, want_cost = _brute_force(desired, gaps, lower, upper)
+    assert got == pytest.approx(want, abs=1e-9)
+    assert cost == pytest.approx(want_cost, abs=1e-9)
+    target = np.array(desired)
+    bounds = [(None if math.isinf(lo) else lo, None if math.isinf(hi) else hi)
+              for lo, hi in zip(lower, upper)]
+    constraints = [{"type": "ineq",
+                    "fun": lambda y, k=k: y[k + 1] - y[k] - gaps[k]}
+                   for k in range(n - 1)]
+    for start in (target, np.array(got)):
+        result = optimize.minimize(
+            lambda y: float(((y - target) ** 2).sum()), start,
+            jac=lambda y: 2.0 * (y - target), bounds=bounds,
+            constraints=constraints, method="SLSQP",
+            options={"ftol": 1e-14, "maxiter": 2000})
+        y = result.x
+        if (all(y[k + 1] - y[k] >= gaps[k] - 1e-9 for k in range(n - 1))
+                and all(lo - 1e-9 <= v <= hi + 1e-9
+                        for v, lo, hi in zip(y, lower, upper))):
+            assert cost <= result.fun + 1e-9
+
+
+def test_the_chain_window_names_the_stretch_that_cannot_fit():
+    assert _wedge._chain_window([1.0, 1.0], [0.0, 0.0, 0.0],
+                                [9.0, 9.0, 9.0]) is None
+    # 0 must be at least 0, 2 at most 1.5 -- but 0 to 2 needs 2.
+    assert _wedge._chain_window([1.0, 1.0], [0.0, -9.0, -9.0],
+                                [9.0, 9.0, 1.5]) == (0, 2)
+    # Position 1's own floor restarts the stretch there.
+    assert _wedge._chain_window([1.0, 1.0], [0.0, 5.0, -9.0],
+                                [9.0, 9.0, 5.5]) == (1, 2)
+
+
+@pytest.mark.parametrize("seed", range(60))
+def test_relaxing_the_gaps_is_feasible_and_as_little_as_needed(seed):
+    """Every stretch gets the largest share of what it lacks that fits:
+    raising any relaxed pair's share alone makes the chain unsolvable."""
+    rng = random.Random(seed)
+    n = rng.randint(2, 9)
+    desired = sorted(rng.uniform(-3.0, 3.0) for _ in range(n))
+    sep = [desired[k + 1] - desired[k] for k in range(n - 1)] + [0.0]
+    base = [rng.uniform(0.0, 1.0) * s for s in sep]
+    extra = [rng.choice([0.0, rng.uniform(0.0, 3.0)]) for _ in range(n)]
+    extra[-1] = 0.0
+    half = [rng.uniform(0.0, 1.5) for _ in range(n)]
+    lower = [d - h for d, h in zip(desired, half)]
+    upper = [d + h for d, h in zip(desired, half)]
+    lam = _wedge._relax_to_fit(base, extra, lambda _: lower, lambda _: upper,
+                               n)
+
+    def window(trial):
+        return _wedge._chain_window(
+            [base[k] + trial[k] * extra[k] for k in range(n - 1)],
+            lower, upper)
+
+    assert all(0.0 <= value <= 1.0 for value in lam)
+    assert window(lam) is None
+    for k in range(n - 1):
+        if extra[k] > 0.0 and lam[k] < 1.0:
+            raised = list(lam)
+            raised[k] = min(1.0, lam[k] + 1e-7 / extra[k] + 1e-9)
+            assert window(raised) is not None, k

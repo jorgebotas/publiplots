@@ -221,10 +221,10 @@ pp.show()
 # force every label to one placement regardless of fit. An outside label
 # is centred on its wedge's mid-ray, a little past the end of its line.
 # The disc is the same size under all three: a label that leaves it
-# extends past the axes rather than shrinking the pie. Where the labels
-# of adjacent thin wedges would overlap, they are moved apart (see
-# "Crowded labels" below). ``start_angle=0`` only turns the chart, so the
-# slivers point right.
+# extends past the axes rather than shrinking the pie. Here no two
+# outside labels crowd each other, so each sits on its own wedge's
+# mid-ray; "Crowded labels" below shows what happens when they would.
+# ``start_angle=0`` only turns the chart, so the slivers point right.
 
 thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
 fig, axes = pp.subplots(ncols=3, axes_size=(38, 38))
@@ -307,8 +307,15 @@ pp.rcParams["pie.leader"] = default_leader
 # elbow moves with them so the tail stays level; radial labels move
 # round the circle, their leaders leaning to follow; labels with no
 # leader move round the circle too. A label that crowds nothing stays
-# exactly where it was, and no label is moved onto the disc. The top
-# row is the same chart with ``avoid_overlap=False``.
+# exactly where it was, and no leader enters the disc. The top row is
+# the same chart with ``avoid_overlap=False``.
+#
+# A radial or unled label moves at most as far round as its leader can
+# lean without cutting back across the chart. A pie with more slivers
+# side by side than that room holds -- the last row, thirteen wedges on
+# a small chart -- keeps some overlap there; elbow labels, which have
+# the chart's height to spread into, or ``min_share`` to pool the
+# slivers, are the way out.
 
 long_tail = pd.DataFrame({
     "kind": ["A", "B", "C", "D", "E", "F", "G", "H"],
@@ -324,6 +331,28 @@ for row, avoid in zip(axes, [False, True]):
                              "avoid_overlap": avoid})
         ax.set_title(f"leader={leader!r}\navoid_overlap={avoid}",
                      pad=18)
+pp.show()
+
+# %%
+# The thirteen-wedge tail below, at 30mm, is too much for that room.
+# With its slivers side by side at twelve o'clock the radial labels
+# (left) run out of room and still overlap; the elbow labels (middle)
+# stack up their column and separate; and ``min_share=0.02`` (right)
+# pools the slivers into one wedge whose label has room. (Turned so the
+# slivers sit at three o'clock, where labels stack rather than stand
+# side by side, the radial labels would fit.)
+
+tail13 = pd.DataFrame({
+    "kind": [f"k{i}" for i in range(13)],
+    "n": [50.0, 20.0, 10.0, 5.0, 3.0, 2.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.3,
+          0.2],
+})
+fig, axes = pp.subplots(ncols=3, axes_size=(30, 30))
+for ax, (pie_kws, leader) in zip(axes, [({}, "radial"), ({}, "elbow"),
+                                        ({"min_share": 0.02}, "radial")]):
+    pp.pieplot(data=tail13, x="kind", y="n", legend=False, ax=ax,
+               annotate={"anchor": "outside", "leader": leader},
+               **pie_kws)
 pp.show()
 
 # %%

@@ -521,15 +521,21 @@ def _slide_clear(label: _OutsideLabel, geom: _OutsideGeometry,
     nothing. A wedge pulled out by a dict ``pull`` breaks that: it, and
     the leader off its rim, reach past its neighbours' rims into the
     ring their labels move round. Sets ``label.slide`` to the least
-    distance, found by bisection, that clears them all, leaving it 0
-    when nothing is touched.
+    distance, found by bisection, that clears them all by
+    ``label_spacing``, leaving it 0 when nothing is that near.
     """
     from matplotlib.transforms import Bbox
+
+    # Clear by `label_spacing`, as from another label, and never by less
+    # than the measuring tolerance, so the rendered box -- whose edges
+    # round a little differently from these -- does not touch either.
+    margin = max(geom.label_spacing, geom.tolerance)
 
     def touches(slide: float) -> bool:
         label.slide = slide
         (x, y), _ = _ray_layout(label, label.phi, geom, half_w, half_h)
-        box = (x - half_w, y - half_h, x + half_w, y + half_h)
+        box = (x - half_w - margin, y - half_h - margin,
+               x + half_w + margin, y + half_h + margin)
         bbox = Bbox.from_extents(*box)
         return (any(path.intersects_bbox(bbox, filled=True)
                     for path in wedges)
@@ -921,18 +927,15 @@ def _pav_with_gaps(desired, gaps, lower=None, upper=None):
 
 # Most rounds of solve-then-measure a de-collision pass makes. The column
 # pass's separations are exact, so it needs a second round only when two
-# labels that are not neighbours in their column overlap; the circle
-# pass's are estimated at each pair's middle, so it re-measures and
-# re-solves. Measured on the 40/30/20/5/3/1/0.5/0.5 pie at 25, 40 and
-# 80mm, every start angle in 30-degree steps, both directions, as a pie,
-# a donut, with a scalar pull and with gap=1: the column pass always
-# finished in one round and the circle pass in at most four. With a dict
-# pull, whose pulled wedges' labels sit on circles about their own
-# centres, the circle pass took up to five rounds at 25 and 40mm, and at
-# 80mm with no leader four of 24 charts reached this cap, their closest
-# pair then 0.397mm apart for a 0.4mm label_spacing. The 52.2/41.8/6/4
-# pie never needed a second round. Each round is cheap; the cap stops a
-# chart that cannot be separated from spinning.
+# labels that are not neighbours in their column overlap or a leader runs
+# through a label; the circle pass's are estimated at each pair's middle,
+# so it re-measures and re-solves -- but only pairs that were given their
+# full separation, so a chart without the room stops at once. Measured on
+# the 40/30/20/5/3/1/0.5/0.5 pie at 25, 40 and 80mm, slivers at twelve,
+# three and seven o'clock, both directions: the circle pass took at most
+# five rounds and the column pass one; on the 45 crowded charts of
+# tests/annotate/test_wedge_label_spacing.py, one or two. The cap only
+# bounds the cost of a chart nothing here has produced.
 _MAX_SPREAD_ROUNDS = 8
 
 
@@ -1100,12 +1103,47 @@ def _column_bounds(label: _OutsideLabel, box, desired: float, obstacles,
     return floor, ceiling, facing
 
 
-def _solves(positions, gaps, lower, upper, tol: float) -> bool:
-    """Do ``positions`` keep every gap and bound, to within ``tol``?"""
-    return (all(positions[k + 1] - positions[k] >= gaps[k] - tol
-                for k in range(len(gaps)))
-            and all(lo - tol <= y <= hi + tol
-                    for y, lo, hi in zip(positions, lower, upper)))
+def _leaders_through_boxes(column: List[_OutsideLabel], boxes,
+                           spacing: float, tol: float):
+    """Leaders that come within ``spacing`` of another label in the column.
+
+    Every moved label's leader against every other box, and every
+    leader against every moved box. A box widened by ``spacing`` spans a
+    vertical strip, and a leader point in that strip is inside the
+    widened box exactly when its height is, so the span of heights the
+    leader covers in the strip (:func:`_strip_extent`) says whether it
+    is in the way and by how much.
+
+    Returns
+    -------
+    list of tuple
+        ``(owner, j, lacking, fixed)``: the leader of ``column[owner]``
+        is ``lacking`` short of clearing ``column[j]`` by ``spacing``,
+        and ``fixed`` is whether the part in the way is its rim point.
+    """
+    found = []
+    for owner, label in enumerate(column):
+        points = list(zip(label.leader.get_xdata(), label.leader.get_ydata()))
+        rim_x, rim_y = points[0]
+        for j, box in enumerate(boxes):
+            if j == owner or (label.label_y is None
+                              and column[j].label_y is None):
+                continue
+            x0, y0, x1, y1 = box
+            extent = _strip_extent(points, x0 - spacing, x1 + spacing)
+            if extent is None:
+                continue
+            low, high = extent
+            if low >= y1 + spacing - tol or high <= y0 - spacing + tol:
+                continue
+            rim_in = x0 - spacing <= rim_x <= x1 + spacing
+            if j > owner:
+                found.append((owner, j, high + spacing - y0,
+                              rim_in and abs(high - rim_y) <= tol))
+            else:
+                found.append((owner, j, y1 + spacing - low,
+                              rim_in and abs(low - rim_y) <= tol))
+    return found
 
 
 def _spread_in_columns(labels: List[_OutsideLabel], geom: _OutsideGeometry,
@@ -1172,10 +1210,24 @@ def _spread_in_columns(labels: List[_OutsideLabel], geom: _OutsideGeometry,
     widened by what it lacks, shared out, and the side re-solved, at
     most :data:`_MAX_SPREAD_ROUNDS` rounds.
 
+    **No leader through another label.** A moved label's leg leans from
+    its rim point to its new height, and can then pass through a label
+    beside it in the column that its unmoved leg cleared; and a moved
+    box can land on an unmoved label's leader. After each solve every
+    such crossing is found on the rendered boxes
+    (:func:`_leaders_through_boxes`) and turned into a constraint: where
+    the part of the leader in the way is its rim point, which no move
+    shifts, the label in the way gets a floor or a ceiling just clear of
+    it; where it is the elbow or tail, which move with their own label,
+    the two labels are held further apart in the column. A constraint
+    that would leave the column with no solution is not added.
+
     Returns
     -------
-    int
+    rounds : int
         The most rounds any side needed; 0 when no side had two labels.
+    complete : bool
+        Whether every side was separated and cleared in full.
     """
     spacing, tol = geom.label_spacing, geom.tolerance
     polygons = _disc_polygons(records)
@@ -1188,6 +1240,7 @@ def _spread_in_columns(labels: List[_OutsideLabel], geom: _OutsideGeometry,
         sides[side].append(label)
 
     rounds_needed = 0
+    complete = True
     for side_labels in sides.values():
         if len(side_labels) < 2:
             continue
@@ -1211,10 +1264,10 @@ def _spread_in_columns(labels: List[_OutsideLabel], geom: _OutsideGeometry,
             lower.append(low)
             upper.append(high)
             facing.append(toward)
-        heights, _ = _pav_with_gaps(desired, gaps, lower, upper)
-        if not _solves(heights, gaps, lower, upper, tol):
+        if _chain_window(gaps, lower, upper, tol) is not None:
             lower = [bound[0] for bound in facing]
             upper = [bound[1] for bound in facing]
+            complete = False
 
         for rounds in range(1, _MAX_SPREAD_ROUNDS + 1):
             heights, moved = _pav_with_gaps(desired, gaps, lower, upper)
@@ -1232,7 +1285,8 @@ def _spread_in_columns(labels: List[_OutsideLabel], geom: _OutsideGeometry,
             conflicts = [(a, b, _box_gap(placed[a], placed[b]))
                          for a in range(n) for b in range(a + 1, n)
                          if _box_gap(placed[a], placed[b]) < spacing - tol]
-            if not conflicts or rounds == _MAX_SPREAD_ROUNDS:
+            crossings = _leaders_through_boxes(column, placed, spacing, tol)
+            if not (conflicts or crossings) or rounds == _MAX_SPREAD_ROUNDS:
                 break
             for a, b, _ in conflicts:
                 lacking = (_vertical_need(placed[a], placed[b], spacing)
@@ -1240,77 +1294,227 @@ def _spread_in_columns(labels: List[_OutsideLabel], geom: _OutsideGeometry,
                 share = max(lacking, tol) / (b - a)
                 for k in range(a, b):
                     gaps[k] = max(gaps[k], heights[k + 1] - heights[k]) + share
+            changed = bool(conflicts)
+            for owner, j, lacking, fixed in crossings:
+                # A leader's fixed end, its rim point, cannot be moved
+                # out of the way: the label in its way gets a floor or a
+                # ceiling. Any other part moves with its own label, so
+                # the two are held further apart instead. Either is
+                # kept only if the column can still be solved.
+                trial_gaps, trial_lower = list(gaps), list(lower)
+                trial_upper = list(upper)
+                if fixed and j > owner:
+                    trial_lower[j] = max(trial_lower[j], heights[j] + lacking)
+                elif fixed:
+                    trial_upper[j] = min(trial_upper[j], heights[j] - lacking)
+                else:
+                    a, b = min(owner, j), max(owner, j)
+                    for k in range(a, b):
+                        trial_gaps[k] = (max(trial_gaps[k],
+                                             heights[k + 1] - heights[k])
+                                         + lacking / (b - a))
+                if _chain_window(trial_gaps, trial_lower, trial_upper) is None:
+                    gaps, lower, upper = trial_gaps, trial_lower, trial_upper
+                    changed = True
+            if not changed:
+                # Nothing more can be added without leaving the column
+                # unsolvable: what is left stays.
+                break
+        complete = complete and not conflicts and not crossings
         rounds_needed = max(rounds_needed, rounds)
-    return rounds_needed
+    return rounds_needed, complete
+
+
+def _chain_window(gaps, lower, upper, tol: float = 0.0):
+    """Is the chain feasible, and if not, which stretch of it is not?
+
+    Gaps and bounds on positions in order: ``y_{k+1} - y_k >= gaps_k``
+    and ``lower_k <= y_k <= upper_k``. Pushing each position as low as
+    its bound and its predecessor allow gives the least feasible value
+    of every one, so the chain is feasible exactly when none of those
+    exceeds its upper bound. When one does, at ``j``, the stretch that
+    cannot fit runs from the last position before it that sat on its own
+    lower bound, ``i``: ``lower_i`` plus the gaps from ``i`` to ``j`` is
+    more than ``upper_j``.
+
+    Returns
+    -------
+    None when feasible, else ``(i, j)``.
+    """
+    y = lower[0]
+    start = 0
+    if y > upper[0] + tol:
+        return 0, 0
+    for k in range(1, len(lower)):
+        pushed = y + gaps[k - 1]
+        if lower[k] >= pushed:
+            y, start = lower[k], k
+        else:
+            y = pushed
+        if y > upper[k] + tol:
+            return start, k
+    return None
+
+
+def _relax_to_fit(base, extra, lower_of, upper_of, n: int):
+    """The gaps nearest to ``base + extra`` that the bounds allow.
+
+    Pair ``k`` gets ``base_k + lam_k * extra_k`` with ``0 <= lam_k <=
+    1``: ``base_k`` is what it already has, so ``lam = 0`` is always
+    feasible, and ``extra_k`` what it lacks. ``lower_of(lam)`` and
+    ``upper_of(lam)`` give the bounds, which may depend on ``lam`` too
+    (the cut pair of the circle is held apart through them). Every
+    ``lam_k`` is raised together as far as the chain stays feasible
+    (bisection, :func:`_chain_window`); the stretch that then cannot fit
+    has its ``lam`` fixed there, and the rest are raised again, until
+    every ``lam`` is fixed or 1. So each crowded stretch gets as large a
+    share of what it lacks as it has room for, and one stretch's lack of
+    room costs no other stretch anything: the max-min fair relaxation.
+
+    Returns
+    -------
+    lam : list of float
+        One per pair, ``n`` of them.
+    """
+    lam = [1.0 if extra[k] > 0.0 else 0.0 for k in range(n)]
+    free = {k for k in range(n) if extra[k] > 0.0}
+
+    def window(level: float):
+        trial = [level if k in free else lam[k] for k in range(n)]
+        gaps = [base[k] + trial[k] * extra[k] for k in range(n)]
+        return _chain_window(gaps, lower_of(trial), upper_of(trial))
+
+    level = 0.0
+    for k in free:
+        lam[k] = 0.0
+    while free:
+        if window(1.0) is None:
+            for k in free:
+                lam[k] = 1.0
+            break
+        lo, hi = level, 1.0
+        for _ in range(_BISECT_STEPS):
+            midpoint = 0.5 * (lo + hi)
+            if window(midpoint) is None:
+                lo = midpoint
+            else:
+                hi = midpoint
+        level = lo
+        i, j = window(hi)
+        # The pairs inside the stretch, and the cut pair (index n - 1)
+        # when the stretch reaches either end of the chain.
+        stuck = {k for k in range(i, j) if k in free}
+        if (i == 0 or j == n - 1) and n - 1 in free:
+            stuck.add(n - 1)
+        if not stuck:
+            stuck = set(free)
+        for k in stuck:
+            lam[k] = level
+        free -= stuck
+        for k in free:
+            lam[k] = level
+    return lam
 
 
 def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
-                      ax: Axes, records) -> int:
+                      ax: Axes, records) -> Tuple[int, bool]:
     """Move crowded ``'radial'`` and unled labels apart, round the chart.
 
     Each label is centred on a ray. The pass lets label ``i`` leave its
     wedge's mid-ray ``mid_i`` for a ray ``phi_i``, keeping the labels'
     order round the circle, and chooses the ``phi`` that minimise
     ``sum((phi_i - mid_i)**2)`` subject to neighbouring labels' boxes
-    keeping ``label_spacing`` apart. On its new ray a label is placed
-    exactly as an unmoved one is on its mid-ray (:func:`_moved_layout`):
-    gap-exact from the leader's end, or from the rim with no leader.
+    keeping ``label_spacing`` apart and to **every label staying within
+    ``beta_i`` of its own mid-ray**. On its new ray a label is placed
+    exactly as an unmoved one is on its mid-ray (:func:`_moved_layout`).
+
+    **The bound.** A radial leader runs from the rim point on ``mid``, at
+    radius ``R`` about the wedge's own centre, to the point at radius
+    ``R + offset`` on ``phi``. That segment stays outside the wedge's
+    circle exactly when it leaves the rim point outward or along the
+    tangent, which is when ``cos(phi - mid) >= R / (R + offset)``; past
+    that it cuts back across the rim and lies over the chart. So
+
+        ``beta_i = acos(R_i / (R_i + offset))``,
+
+    with ``R_i`` the wedge's drawn outer radius, an even explode
+    included, about its own (dict-``pull``ed) centre. It is about 25
+    degrees on a 40mm chart at the default 2mm ``offset``, 34 on a
+    25mm one and 18 on an 80mm one, and 0 for ``offset=0``, where
+    nothing can move. An unled label takes the same bound with ``offset``
+    as its gap from the rim: the straight line from its wedge's rim
+    point to the point ``offset`` beyond the rim on its ray then does not
+    cross the chart either, so the label still sits beside the wedge it
+    names rather than over another one.
 
     **Cutting the circle.** The labels are taken in order of ``mid``
     round the circle and the circle is cut at its largest free angular
     gap -- the largest angle between neighbours' mid-rays once each
-    label's own angular half-width at its radius is taken off both
-    sides -- since that is where the labels have the most room and so
-    least need a constraint. That leaves a chain, solved by
-    :func:`_pav_with_gaps` with each neighbouring pair's least angular
-    separation as its gap.
+    label's own angular half-width is taken off both sides. That leaves
+    a chain, solved by :func:`_pav_with_gaps` with each neighbouring
+    pair's least angular separation as its gap and ``mid_i +- beta_i``
+    as bounds. The pair the circle is cut between is held apart through
+    those bounds: the slack it has beyond its own least separation is
+    split between its two labels' bounds, half each, so the chain can
+    never close up across the cut. That split is the one approximation
+    in the solve: a cyclic solver could share it unevenly.
 
     **The separations.** A pair's least separation depends on where on
-    the circle it sits: boxes are axis-aligned, so the angle two labels
-    need between them is widest near twelve and six o'clock, where they
-    sit side by side, and narrowest at three and nine, where they stack.
-    It is found by bisection on the boxes themselves, the pair's two
-    rays an equal angle either side of their current middle
-    (:func:`_pair_requirement`). A pair that does not conflict where it
-    stands is given no more than its present separation, so it cannot
-    be pushed apart and nothing that does not conflict moves.
+    the circle it sits, so it is found by bisection on the boxes
+    themselves, the pair's two rays an equal angle either side of their
+    current middle (:func:`_pair_requirement`). A pair that does not
+    conflict where it stands is given no more than its present
+    separation, so nothing that does not conflict moves.
 
-    **Verification.** That separation is right for the pair's middle,
-    not for wherever the solve then puts it, so after each solve every
-    label is re-placed on its ray and every pair's *rendered* box
-    measured. A neighbouring pair still less than ``label_spacing``
-    apart has its separation re-found at its new middle (or, if that
-    gives no more, widened by what the gap lacks, over the labels'
-    radius); a pair further apart along the chain has the separations
-    between them widened by that shortfall, shared out. Then the chain
-    is solved again, for at most :data:`_MAX_SPREAD_ROUNDS` rounds. The
-    pair the circle was cut between is not a constraint and cannot be
-    widened: only labels crowding the whole way round reach it.
+    **When there is not room.** With every label held within its bound a
+    crowded stretch may have no placement that separates it. The gaps
+    are then relaxed toward what the pairs already have, each stretch as
+    little as its room requires (:func:`_relax_to_fit`), and the solve
+    is exact for those gaps: the labels move as far apart as their
+    bounds allow and some overlap remains. On a pie that crowded,
+    ``leader="elbow"``, which has a column's height to spread into, or
+    ``min_share`` on :func:`publiplots.pieplot`, which pools the slivers,
+    is the remedy; the leader style is never switched for the caller.
+
+    **Verification.** The separations are right for each pair's middle,
+    not for wherever the solve puts it, so after each solve every label
+    is re-placed on its ray and every neighbouring pair's *rendered* box
+    measured, the cut pair included. A pair that was given its full
+    separation and still conflicts has it re-found at its new middle
+    (or widened by what the gap lacks, over the labels' radius), and the
+    chain is solved again, for at most :data:`_MAX_SPREAD_ROUNDS`
+    rounds. A pair that was relaxed for lack of room is not widened:
+    there is no room to widen it into, and widening it anyway is what
+    would let the labels run round the circle.
 
     **The disc.** A label of a wedge centred on the chart's centre that
     is moved to ``phi`` sits exactly where the label of a wedge with its
     mid-ray on ``phi`` would, so it is as clear of the disc as any
-    unmoved label: its box keeps at least ``offset`` from the rim (and,
-    with a leader, at least ``offset + leader_gap`` less the box's small
-    reach back past the leader's end). Clearing a leaning leader
-    (:func:`_clear_leader`) only slides it further out along its ray.
-    A wedge moved by a dict ``pull`` breaks that argument for its
-    neighbours: it, and the leader off its rim, reach past their rims
-    into the ring their labels move round. So after every solve a moved
-    label that touches any wedge or any other label's leader is slid
-    further out along its own ray until it touches none
-    (:func:`_slide_clear`), which keeps the leader's gap to it and only
-    widens its gap to its neighbours. Without a dict ``pull`` that
-    never triggers.
+    unmoved label, and clearing a leaning leader
+    (:func:`_clear_leader`) only slides it further out along its ray. A
+    wedge pulled out by a dict ``pull`` breaks that for its neighbours:
+    it, and the leader off its rim, reach into the ring their labels
+    move round. So after every solve a moved label that touches any
+    wedge or any other label's leader is slid further out along its own
+    ray until it touches none (:func:`_slide_clear`). Two things a dict
+    ``pull`` can still cause: the leader of a label leaning toward a
+    pulled-out wedge can cross that wedge's leader, which starts further
+    out than its own; and a slid label can land on a label the chain
+    does not join it to. For the second there is a safety net: if the
+    closest pair of labels ends up closer than with nothing moved, the
+    pass puts every label back where it was.
 
     Returns
     -------
-    int
+    rounds : int
         Rounds of solve-then-measure used; 0 with fewer than two labels.
+    complete : bool
+        Whether every crowded pair got its full separation within the
+        bounds: ``False`` where the bounds left too little room.
     """
     n = len(labels)
     if n < 2:
-        return 0
+        return 0, True
     spacing, tol = geom.label_spacing, geom.tolerance
     two_pi = 2.0 * math.pi
     halves = [_half_extents(label.text, geom.renderer, geom.scale)
@@ -1326,6 +1530,9 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
         cx, cy = label.record.patch.center
         x, y = label.text.get_position()
         radii.append(math.hypot(x - cx, y - cy))
+    beta = [math.acos(min(1.0, label.record.r_outer
+                          / (label.record.r_outer + geom.offset)))
+            if geom.offset > 0.0 else 0.0 for label in labels]
 
     theta = [label.mid % two_pi for label in labels]
     order = sorted(range(n), key=lambda i: (theta[i], i))
@@ -1349,6 +1556,7 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
         step = (theta[chain[k]] - theta[chain[k - 1]]) % two_pi
         turns = round((angles[-1] + step - labels[chain[k]].mid) / two_pi)
         angles.append(labels[chain[k]].mid + turns * two_pi)
+    bound = [beta[i] for i in chain]
     mean_radius = sum(radii) / n
 
     def requirement(i: int, j: int, middle: float, hint: float) -> float:
@@ -1356,25 +1564,58 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
             box_on(i, middle - 0.5 * delta), box_on(j, middle + 0.5 * delta)),
             spacing + tol, hint)
 
+    # Pairs 0..n-2 along the chain, and n - 1: the cut pair, from the
+    # chain's last label round to its first.
+    def pair(k: int):
+        return (k, k + 1) if k < n - 1 else (n - 1, 0)
+
+    def separation(k: int, positions) -> float:
+        a, b = pair(k)
+        return positions[b] - positions[a] + (two_pi if k == n - 1 else 0.0)
+
     unmoved = [_data_box(labels[i].text, geom.renderer, ax) for i in chain]
-    gaps = []
-    for k in range(n - 1):
-        separation = angles[k + 1] - angles[k]
-        need = requirement(chain[k], chain[k + 1],
-                           0.5 * (angles[k] + angles[k + 1]), separation)
-        if _box_gap(unmoved[k], unmoved[k + 1]) < spacing - tol:
-            gaps.append(max(need, separation))
+    sep = [separation(k, angles) for k in range(n)]
+    need = []
+    for k in range(n):
+        a, b = pair(k)
+        middle = angles[a] + 0.5 * sep[k]
+        estimate = requirement(chain[a], chain[b], middle, sep[k])
+        if _box_gap(unmoved[a], unmoved[b]) < spacing - tol:
+            need.append(max(estimate, sep[k]))
         else:
-            gaps.append(min(need, separation))
+            need.append(min(estimate, sep[k]))
+    if n == 2:
+        # Two labels are one pair, seen from both sides: the cut pair is
+        # the wide way round and must not be pressed.
+        need[1] = min(need[1], sep[1])
+
+    def bounds_for(lam, needs):
+        lower = [angles[k] - bound[k] for k in range(n)]
+        upper = [angles[k] + bound[k] for k in range(n)]
+        base, extra = min(needs[-1], sep[-1]), max(needs[-1] - sep[-1], 0.0)
+        slack = 0.5 * (sep[-1] - (base + lam[-1] * extra))
+        upper[-1] = min(upper[-1], angles[-1] + slack)
+        lower[0] = max(lower[0], angles[0] - slack)
+        return lower, upper
 
     wedges = [record.patch.get_patch_transform().transform_path(
                   record.patch.get_path()) for record in records]
+    complete = True
     for rounds in range(1, _MAX_SPREAD_ROUNDS + 1):
-        phis, moved = _pav_with_gaps(angles, gaps)
+        base = [min(need[k], sep[k]) for k in range(n)]
+        extra = [max(need[k] - sep[k], 0.0) for k in range(n)]
+        lam = _relax_to_fit(base, extra,
+                            lambda trial: bounds_for(trial, need)[0],
+                            lambda trial: bounds_for(trial, need)[1], n)
+        complete = all(lam[k] >= 1.0 for k in range(n) if extra[k] > 0.0)
+        gaps = [base[k] + lam[k] * extra[k] for k in range(n - 1)]
+        lower, upper = bounds_for(lam, need)
+        phis, moved = _pav_with_gaps(angles, gaps, lower, upper)
         for k, i in enumerate(chain):
             # As in `_spread_in_columns`: a label that stays unmoved is
             # not laid out again, so it keeps its floats to the bit.
-            phi = phis[k] if moved[k] else None
+            phi = (min(max(phis[k], angles[k] - bound[k]),
+                       angles[k] + bound[k]) if moved[k] else None)
             if phi is not None or labels[i].phi is not None:
                 labels[i].phi = phi
                 labels[i].slide = 0.0
@@ -1390,25 +1631,38 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
                          [(line[0], line[1]) for line in leaders])
             _apply_outside(label, geom)
         placed = [_data_box(labels[i].text, geom.renderer, ax) for i in chain]
-        conflicts = [(a, b, _box_gap(placed[a], placed[b]))
-                     for a in range(n) for b in range(a + 1, n)
-                     if (a, b) != (0, n - 1)
-                     and _box_gap(placed[a], placed[b]) < spacing - tol]
-        if not conflicts or rounds == _MAX_SPREAD_ROUNDS:
+        widen = []
+        for k in range(n if n > 2 else 1):
+            a, b = pair(k)
+            gap = _box_gap(placed[a], placed[b])
+            if gap < spacing - tol and (extra[k] == 0.0 or lam[k] >= 1.0):
+                widen.append((k, gap))
+        if not widen or rounds == _MAX_SPREAD_ROUNDS:
             break
-        for a, b, gap in conflicts:
-            lacking = max(spacing - gap, tol) / mean_radius
-            current = phis[b] - phis[a]
-            if b == a + 1:
-                need = requirement(chain[a], chain[b],
-                                   0.5 * (phis[a] + phis[b]), current)
-                gaps[a] = max(gaps[a], need if need > current + 1e-12
-                              else current + lacking)
-            else:
-                for k in range(a, b):
-                    gaps[k] = (max(gaps[k], phis[k + 1] - phis[k])
-                               + lacking / (b - a))
-    return rounds
+        positions = [labels[i].phi if labels[i].phi is not None else angles[k]
+                     for k, i in enumerate(chain)]
+        for k, gap in widen:
+            a, b = pair(k)
+            current = separation(k, positions)
+            estimate = requirement(chain[a], chain[b],
+                                   positions[a] + 0.5 * current, current)
+            need[k] = max(need[k], estimate if estimate > current + 1e-12
+                          else current + max(spacing - gap, tol) / mean_radius)
+    # The safety net: see "The disc" above. Should the closest pair end
+    # up closer than with nothing moved, nothing is moved.
+    if _closest(placed) < _closest(unmoved) - tol:
+        for label in labels:
+            if label.phi is not None:
+                label.phi, label.slide = None, 0.0
+                _apply_outside(label, geom)
+        complete = False
+    return rounds, complete
+
+
+def _closest(boxes) -> float:
+    """The least gap between any two of ``boxes``."""
+    return min((_box_gap(a, b) for k, a in enumerate(boxes)
+                for b in boxes[k + 1:]), default=math.inf)
 
 
 def _pair_requirement(gap_at, spacing: float, hint: float) -> float:

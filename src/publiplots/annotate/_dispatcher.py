@@ -228,15 +228,26 @@ def annotate(
     avoid_overlap : bool, optional
         ``wedge_values`` only: move outside labels that would overlap
         apart, by as little as keeps every pair ``label_spacing`` apart.
-        ``'elbow'`` labels move up or down their column, with the tail
-        of the leader sloping to reach them; ``'radial'`` and unled
-        labels move round the circle, onto a ray off their wedge's
-        mid-ray, and a radial leader leans to follow. Their order is
-        kept, a label that crowds nothing does not move, inside labels
-        never move, and no label is moved onto the disc. Defaults to
-        ``pp.rcParams["pie.avoid_overlap"]`` (``True``); ``False``
-        places every label on its own mid-ray. Anything but a bool is a
-        ``TypeError``, as is passing it with any other kind.
+        ``'elbow'`` labels move up or down their column, the elbow
+        moving with them so the tail stays level, and no leader is left
+        running through another label. ``'radial'`` and unled labels
+        move round the circle onto a ray off their wedge's mid-ray, a
+        radial leader leaning to follow -- but never further than
+        ``acos(R / (R + offset))`` from the mid-ray, ``R`` the wedge's
+        radius, the furthest a leader can lean without cutting back
+        across the chart (about 25 degrees at 40mm and the default
+        ``offset``). Their order is kept, a label that crowds nothing
+        does not move, inside labels never move, and no leader enters
+        the disc. **On a pie too crowded for that room** -- a run of
+        slivers wider than the bounds allow, or more labels than fit
+        round the circle -- the radial and unled labels are moved as far
+        apart as their bounds allow and some overlap remains; use
+        ``leader='elbow'``, whose columns have the chart's height to
+        spread into, or ``min_share`` on :func:`publiplots.pieplot` to
+        pool the slivers. The leader style is never switched for you.
+        Defaults to ``pp.rcParams["pie.avoid_overlap"]`` (``True``);
+        ``False`` places every label on its own mid-ray. Anything but a
+        bool is a ``TypeError``, as is passing it with any other kind.
     label_spacing : float, optional
         ``wedge_values`` only: the least gap in millimetres kept between
         two outside labels' boxes -- the straight-line distance between

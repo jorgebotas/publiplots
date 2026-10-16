@@ -45,9 +45,13 @@ and each is overridden per call by the argument of the same name
 ``pie.avoid_overlap`` : bool, default ``True``
     Whether outside labels that would overlap are moved apart. Elbow
     labels move up or down their column, and radial and unled labels
-    round the circle, each by as little as keeps every pair
-    ``pie.label_spacing`` apart; a label that crowds nothing does not
-    move. ``False`` places every label on its own wedge's mid-ray.
+    round the circle -- never further from their wedge's mid-ray than
+    a leader can lean without crossing the chart -- each by as little
+    as keeps every pair ``pie.label_spacing`` apart; a label that
+    crowds nothing does not move. On a pie too crowded for that room,
+    radial and unled labels can still overlap; ``leader="elbow"`` or
+    ``min_share`` is the remedy there. ``False`` places every label on
+    its own wedge's mid-ray.
 
 ``pie.label_spacing`` : float, default ``0.4``
     The least gap kept between two outside labels' boxes, and between a
