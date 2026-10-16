@@ -40,6 +40,14 @@ publiplots-specific keys (not in matplotlib) include:
   :func:`publiplots.pieplot`, passes ``0.0`` for both because a
   single-ring chart has no descendants to shade. Changing either has no
   effect on any chart publiplots currently draws.
+- ``pie.gap`` — uniform gap in mm between neighbouring wedges of
+  :func:`publiplots.pieplot` (``0.0``).
+- ``pie.leader`` / ``pie.label_offset`` / ``pie.leader_gap`` /
+  ``pie.elbow_length`` — how outside wedge labels are placed: the leader
+  style (``"radial"``, ``"elbow"`` or ``None`` for no line), the mm from
+  the rim to the leader's end (to the label itself with no leader), the
+  mm from the leader's end to the label, and the mm length of an elbow
+  leader's horizontal tail (``"radial"`` / ``2.0`` / ``0.8`` / ``2.0``).
 - ``subplots.axes_size`` — default ``(width_mm, height_mm)`` for
   :func:`publiplots.subplots`.
 - ``subplots.title_space`` / ``xlabel_space`` / ``ylabel_space`` /
@@ -213,6 +221,13 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     # for a single-ring chart, so pieplot pays nothing for them.
     "sunburst.depth_range": 0.45,
     "sunburst.sibling_range": 0.14,
+
+    # Pie and donut charts (pp.pieplot). Lengths in mm.
+    "pie.gap": 0.0,             # uniform gap between neighbouring wedges
+    "pie.leader": "radial",     # outside-label leader: "radial", "elbow" or None
+    "pie.label_offset": 2.0,    # rim -> leader end (or -> label, with no leader)
+    "pie.leader_gap": 0.8,      # leader end -> label
+    "pie.elbow_length": 2.0,    # horizontal tail of an "elbow" leader
 
     # Bar plot styling
     "bar.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.barplot
