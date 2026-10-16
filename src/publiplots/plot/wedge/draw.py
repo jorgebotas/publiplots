@@ -45,6 +45,11 @@ def even_explode(pull: float, r_outer: float) -> float:
     ends in an arc on that radius; a narrower one ends further out,
     where its inset edges meet. A lone 360-degree wedge has no edges to
     inset and is a full ring from ``r_inner + t`` to ``r_outer + t``.
+    A wedge too thin for the full inset is capped so its rim keeps half
+    its span (see :class:`GappedWedge`); it is never dropped. It still
+    stays outside the hole: a convex wedge ends in the inner arc where
+    the apex would fall inside ``r_inner + t``, and in the apex only
+    where the apex lies further out.
     For the two halves of a half-disc the
     straight edges, the ``2 * t`` gap and the rim on each mid-ray match a
     translation by ``t`` exactly, but the rim is an arc of radius
@@ -65,8 +70,18 @@ class GappedWedge(Wedge):
     wedge's span -- unlike a radial ``pull``, whose sideways separation
     grows with the span.
 
+    **No wedge is inset out of existence.** A wedge of at most 180
+    degrees is inset by ``min(inset, r * sin(half / 2))`` instead, with
+    ``r`` its outer radius and ``half`` its half-span, so its rim arc
+    always keeps at least half of its angular span -- half its arc length
+    at ``r``, and so at least half its rim chord too. A wedge that thin
+    is still drawn, narrowed, and the band beside it is narrower by what
+    it was spared: ``inset + get_drawn_inset()`` to a full-inset
+    neighbour, the two drawn insets summed between two capped ones.
+    :meth:`get_drawn_inset` returns the inset actually applied.
+
     With ``inset == 0`` the path is matplotlib's own, vertex for vertex.
-    Otherwise, with ``h = inset`` and ``half`` the half-span:
+    Otherwise, with ``h`` the drawn inset:
 
     - the outer arc runs from ``theta1 + asin(h / r)`` to
       ``theta2 - asin(h / r)``;
@@ -75,15 +90,12 @@ class GappedWedge(Wedge):
     - otherwise the two offset edges meet at an apex on the mid-ray, at
       ``h / sin(half)`` from the centre. That holds for a reflex wedge
       too (``90 < half < 180``), whose apex lies past the centre on its
-      own side;
+      own side. For a capped wedge the apex is at least
+      ``r / (2 * cos(half / 2))``, more than half the outer radius out;
     - a full 360-degree wedge has no straight edges and is not inset.
 
-    Two cases leave no shape to draw. A wedge whose offset edges meet at
-    or beyond its outer arc is too thin for the gap: its path collapses
-    to a single point at the centre, so it draws no fill, outline or
-    hatch, while the patch -- and the record holding it -- stay in place
-    for ``annotate`` and the legend. A reflex wedge can only reach that
-    state when everything else in the ring together is that thin, and
+    A reflex wedge is never capped. Its rim can only vanish when
+    everything else in the ring together is too thin for the gap, and
     then there is nothing left for it to keep a gap from, so it is drawn
     uninset, as a lone wedge would be.
 
@@ -92,7 +104,8 @@ class GappedWedge(Wedge):
     center, r, theta1, theta2, width
         As for :class:`~matplotlib.patches.Wedge`.
     inset : float, default 0.0
-        Perpendicular inset of each straight edge, in data units.
+        Requested perpendicular inset of each straight edge, in data
+        units.
     **kwargs
         Forwarded to :class:`~matplotlib.patches.Wedge`.
     """
@@ -113,26 +126,43 @@ class GappedWedge(Wedge):
         super().__init__(center, r, theta1, theta2, width=width, **kwargs)
 
     def set_inset(self, inset: float) -> None:
-        """Set the perpendicular edge inset, in data units."""
+        """Set the requested perpendicular edge inset, in data units."""
         self._path = None
         self.inset = float(inset)
         self.stale = True
 
     def get_inset(self) -> float:
-        """Return the perpendicular edge inset, in data units."""
+        """Return the requested perpendicular edge inset, in data units."""
         return self.inset
 
-    def is_collapsed(self) -> bool:
-        """Whether the inset leaves this wedge nothing to draw."""
-        return self.get_path().vertices.shape[0] == 1
+    def get_drawn_inset(self) -> float:
+        """Return the inset the path is drawn with, in data units.
 
-    def _recompute_path(self) -> None:
+        The requested inset, capped for a wedge of at most 180 degrees so
+        its rim keeps half its span; ``0`` for a full circle, and for a
+        reflex wedge drawn uninset because its rim would vanish.
+        """
         h = self.inset
         span = self.theta2 - self.theta1
         if h <= 0.0 or abs(span - 360.0) <= 1e-12:
+            return 0.0
+        half = math.radians(span) / 2.0
+        if half <= math.pi / 2.0:
+            return min(h, self.r * math.sin(half / 2.0))
+        r_in = (self.r - self.width) if self.width is not None else 0.0
+        # Its rim vanishes: past the inset, or split by a slot running
+        # past it where the inset edges meet beyond the rim.
+        if self.r <= h or (r_in <= h and h / math.sin(half) >= self.r):
+            return 0.0
+        return h
+
+    def _recompute_path(self) -> None:
+        h = self.get_drawn_inset()
+        if h <= 0.0:
             super()._recompute_path()
             return
 
+        span = self.theta2 - self.theta1
         r_out = self.r
         r_in = (r_out - self.width) if self.width is not None else 0.0
         half = math.radians(span) / 2.0
@@ -149,18 +179,11 @@ class GappedWedge(Wedge):
             return (self.theta1 + math.degrees(shift),
                     self.theta2 - math.degrees(shift))
 
+        # The cap keeps the outer arc at least half the span, and
+        # get_drawn_inset has already sent a vanishing reflex wedge to
+        # the uninset path, so the outer arc always exists here.
         outer = arc_angles(r_out)
         inner = arc_angles(r_in) if r_in > 0.0 else None
-        # sin(half) > 0 for every span short of a full circle.
-        apex_distance = h / math.sin(half)
-
-        if outer is None or (inner is None and apex_distance >= r_out):
-            if half > math.pi / 2.0:
-                super()._recompute_path()
-            else:
-                self._path = Path(center[np.newaxis, :], [Path.MOVETO])
-            return
-
         arc = Path.arc(*outer)
         if inner is not None:
             back = Path.arc(*inner)
@@ -172,7 +195,9 @@ class GappedWedge(Wedge):
             codes = [*arc.codes, Path.LINETO, *back.codes[1:],
                      Path.CLOSEPOLY]
         else:
-            apex = apex_distance * np.array([math.cos(mid), math.sin(mid)])
+            # sin(half) > 0 for every span short of a full circle.
+            apex = (h / math.sin(half)) * np.array([math.cos(mid),
+                                                   math.sin(mid)])
             vertices = np.concatenate([arc.vertices * r_out, [apex, apex]])
             codes = [*arc.codes, Path.LINETO, Path.CLOSEPOLY]
         self._path = Path(vertices + center, codes)

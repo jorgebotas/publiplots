@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   `donut=` opens a hole and `center_label=` fills it, only when `donut` is
   non-zero. `pull=` pops wedges out when keyed by category — never
-  positionally — and explodes the whole chart evenly as a float (below). `min_share=` collapses the long tail into one `"Other"`
+  positionally — and explodes the whole chart evenly as a float
+  (below). `min_share=` collapses the long tail into one `"Other"`
   wedge, but only when at least two categories fall below the threshold,
   so a single small category is never relabelled on its own; it cannot be
   combined with `order=`, since the `"Other"` bucket is not a category of
@@ -131,12 +132,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reflex. The width runs between the outlines' centre lines, so the
   unpainted band is one outline narrower. It defaults to
   `rcParams["pie.gap"]` (0.0) and composes with `pull` (adding to a
-  float `pull`'s even gap), `donut`,
-  hatches, `alpha`, `edgecolor` and `linewidth`; at 0 every wedge is
-  matplotlib's own `Wedge` path, vertex for vertex. A wedge too thin to
-  keep any shape after the inset draws nothing, but keeps its record,
-  label and legend entry. A negative or non-finite `gap` raises
-  `ValueError`, and a non-number `TypeError`.
+  float `pull`'s even gap), `donut`, hatches, `alpha`, `edgecolor` and
+  `linewidth`; at 0 every wedge is matplotlib's own `Wedge` path, vertex
+  for vertex. A negative or non-finite `gap` raises `ValueError`, and a
+  non-number `TypeError`.
+
+  **No wedge is inset out of existence.** A wedge of at most 180 degrees
+  is inset by at most `R * sin(half-span / 2)`, `R` its drawn outer
+  radius, so its rim arc keeps at least half its angular span — half its
+  rim length, and at least half its rim chord. A wedge that thin is drawn
+  narrowed, and only the bands beside it narrow, to `h + h_i` next to a
+  full-inset neighbour (`h` the full inset per edge, `h_i` the capped
+  one) and `h_i + h_j` between two capped wedges; every other pair keeps
+  the full width. A reflex wedge is never capped. Measured in mm: at
+  `gap=1` a 0.1% wedge on a 40x40mm pie keeps a 0.060mm rim chord of its
+  0.120mm, with 0.530mm gaps beside it, and a 0.5% wedge on a 20x20mm
+  pie keeps 0.150 of 0.299mm, with 0.575mm gaps, while the other pair
+  stays 1.000mm apart. At `pull=0.1, gap=1` the gallery pie's 3.8% wedge
+  keeps 2.310 of 4.612mm, with its own gaps at 3.394 and 2.886mm (the
+  6% wedge is capped too) and the wide pair at 4.478mm. On a
+  40/30/20/5/3/1/0.5/0.5 pie at `gap=1.5` the five widest wedges' pairs
+  stay 1.500mm apart, and the two 0.5% wedges sit 0.299mm apart.
 
   Wedge outlines are drawn with round joins. With matplotlib's default
   miter join the two edges of a thin wedge, meeting at an acute angle,
@@ -159,11 +175,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their shape: even for a half-disc, whose halves match a translation by
   `t` in their edges and gap, the rim is an arc about the chart's centre
   and reaches up to 0.98`t` further at its ends. A wedge too narrow at
-  its rim for the `2t` gap draws nothing, as for `gap`, and a lone
-  category's wedge becomes a full ring from `r_inner + t` to
-  `r_outer + t`. A dict `pull` is unchanged: it still translates the
-  wedges it names. A float `pull` that is not a number raises
-  `TypeError`, and a negative or non-finite one `ValueError`.
+  its rim for the full `2t` gap is capped, as for `gap`, rather than
+  dropped, and stays outside the central hole; a lone category's wedge
+  becomes a full ring from `r_inner + t` to `r_outer + t`. A dict
+  `pull` is unchanged: it still translates the wedges it names. A float
+  `pull` that is not a number raises `TypeError`, and a negative or
+  non-finite one `ValueError`.
 
 - **Leader styles for outside wedge labels: `leader`, `leader_gap` and
   `elbow_length`.** `pp.annotate(ax, "wedge_values")` — and

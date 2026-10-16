@@ -271,8 +271,9 @@ def pieplot(
         edges and the gap match a translation exactly, the rim is an
         arc of radius ``r_outer + t`` about the chart's centre, and so
         reaches up to about ``t`` further than a translated half's at
-        its ends. A wedge too narrow at its rim for the ``2 * t`` gap
-        draws nothing, as for ``gap``. A lone category's 360-degree
+        its ends. A wedge too narrow at its rim for the full inset is
+        capped rather than dropped, as for ``gap``. A lone category's
+        360-degree
         wedge has no edges to inset and draws as a full ring between
         ``r_inner + t`` and ``r_outer + t``. ``0`` draws exactly what
         no ``pull`` does; a negative or non-finite float raises
@@ -284,9 +285,16 @@ def pieplot(
         ``gap`` wide along its whole length, for wide and thin wedges
         alike, while the arcs keep their radii. The width is measured
         between the outlines' centre lines, so the unpainted band is
-        ``gap`` less one outline width (``linewidth`` points). A wedge
-        too thin to keep any shape after the inset draws nothing, but
-        keeps its record, its label and its legend entry. With a float
+        ``gap`` less one outline width (``linewidth`` points). No
+        wedge is ever dropped: a wedge of at most 180 degrees is inset
+        by no more than ``r * sin(half-span / 2)``, ``r`` its drawn
+        outer radius, so its rim arc keeps at least half its angular
+        span -- half its rim length, and at least half its rim chord.
+        A wedge thin enough to be capped is drawn narrowed, and the band
+        beside it is narrower by what it was spared: ``h + h_i`` to a
+        full-inset neighbour, where ``h`` is the full inset per edge and
+        ``h_i <= h`` the capped wedge's, and ``h_i + h_j`` between two
+        capped wedges; every other pair keeps the full width. With a float
         ``pull`` the two add up, so neighbours sit ``gap`` plus
         ``2 * t`` apart; a dict ``pull`` moves each inset wedge as a
         whole. Defaults to ``rcParams["pie.gap"]`` (``0.0``, no gap).

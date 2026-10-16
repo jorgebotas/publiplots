@@ -255,8 +255,24 @@ def _curve_radii_mm(ax, patch):
                           axis=1)
 
 
+def _expected_insets_mm(ax, h_mm):
+    """Each wedge's drawn edge inset, in mm, by the rule rather than read
+    off the patch: the full ``h_mm``, capped for a wedge of at most 180
+    degrees at ``R * sin(half-span / 2)``, ``R`` its drawn outer radius,
+    so its rim keeps half its span."""
+    scale = _radius_mm(ax)
+    insets = {}
+    for record in ax._publiplots_wedge_meta.wedges:
+        span = record.theta1 - record.theta0
+        cap = (record.r_outer * scale * math.sin(math.radians(span) / 4.0)
+               if span <= 180.0 else math.inf)
+        insets[record.path[0]] = min(h_mm, cap)
+    return insets
+
+
 @pytest.mark.parametrize("kwargs", [
     pytest.param(dict(pull=0.05), id="pie"),
+    # The 4% wedge is capped from here on: see _expected_insets_mm.
     pytest.param(dict(pull=0.12), id="pie-wide"),
     pytest.param(dict(pull=0.05, gap=1.0), id="pie-gap"),
     pytest.param(dict(pull=0.05, donut=0.55), id="donut"),
@@ -275,10 +291,14 @@ def test_a_scalar_pull_parts_every_pair_of_neighbours_by_two_t(df, kwargs):
     ax = _pie(df, **kwargs)
     gaps = _neighbour_gaps_mm(ax)
     t = kwargs["pull"] * _radius_mm(ax)
-    expected = 2.0 * t + kwargs.get("gap", 0.0)
+    insets = _expected_insets_mm(ax, t + kwargs.get("gap", 0.0) / 2.0)
     assert len(gaps) == 4
-    for pair, measured in gaps.items():
-        assert measured == pytest.approx([expected] * 4, abs=0.01), pair
+    for (a, b), measured in gaps.items():
+        assert measured == pytest.approx([insets[a] + insets[b]] * 4,
+                                         abs=0.01), (a, b)
+    # The pair of wide wedges is never capped, so it is exactly 2t + gap.
+    assert gaps[("symptom", "admin")] == pytest.approx(
+        [2.0 * t + kwargs.get("gap", 0.0)] * 4, abs=0.01)
 
 
 def test_a_scalar_pull_parts_a_reflex_wedge_evenly_too():
@@ -415,10 +435,15 @@ def test_a_non_numeric_scalar_pull_is_refused(df, bad):
 def test_the_apex_sits_on_the_mid_ray_at_h_over_sin_half(span):
     """For convex and reflex wedges alike: the apex is where both offset
     edges meet, h from each original edge line."""
-    h, theta1 = 0.05, 17.0
+    theta1 = 17.0
     centre = np.array([0.3, -0.2])
     patch = GappedWedge(tuple(centre), 1.0, theta1, theta1 + span,
-                        width=1.0, inset=h)
+                        width=1.0, inset=0.05)
+    # The 8-degree wedge is capped so its rim keeps half its span.
+    h = min(0.05, math.sin(math.radians(span) / 4.0)) if span <= 180 \
+        else 0.05
+    assert patch.get_drawn_inset() == pytest.approx(h, abs=1e-15)
+    assert (h < 0.05) == (span == 8.0)
     path = patch.get_path()
     k = int(np.flatnonzero(path.codes == Path.LINETO)[0])
     apex = path.vertices[k] - centre
@@ -494,7 +519,7 @@ def test_an_explicit_zero_gap_overrides_the_rcparam(df):
         pp.rcParams["pie.gap"] = previous
 
 
-# ------------------------------------------------- too thin for the gap
+# --------------------------------- too thin for the inset: capped, kept
 
 
 @pytest.fixture
@@ -503,7 +528,117 @@ def sliver():
     return pd.DataFrame({"kind": ["a", "b", "c"], "n": [60.0, 39.9, 0.1]})
 
 
-def test_a_wedge_too_thin_for_the_gap_draws_no_ink(sliver):
+THIN = [
+    pytest.param([60.0, 39.9, 0.1], (40, 40), id="0.1%-40mm"),
+    pytest.param([60.0, 39.5, 0.5], (20, 20), id="0.5%-20mm"),
+    # The gallery's 52.2/41.8/6/4 pie: 4 of 104 is the "3.8%" wedge.
+    pytest.param([52.2, 41.8, 6.0, 4.0], (40, 40), id="3.8%-40mm"),
+]
+INSETS = [pytest.param(dict(gap=1.0), id="gap=1"),
+          pytest.param(dict(pull=0.1, gap=1.0), id="pull=0.1,gap=1")]
+
+
+def _thin_pie(shares, size, **kwargs):
+    frame = pd.DataFrame({"kind": list("abcd"[:len(shares)]), "n": shares})
+    ax = _pie(frame, axes_size=size, **kwargs)
+    ax.figure.canvas.draw()
+    ax.apply_aspect()
+    return ax
+
+
+def _rim_mm(ax, patch):
+    """The drawn outer arc's chord and angular extent, in mm and radians.
+
+    The path starts on the outer arc and the first ``LINETO`` leaves it.
+    """
+    path = patch.get_path()
+    k = int(np.flatnonzero(path.codes == Path.LINETO)[0])
+    to_mm = MM_PER_INCH / ax.figure.dpi
+    start, end = ax.transData.transform([path.vertices[0],
+                                         path.vertices[k - 1]]) * to_mm
+    centre = ax.transData.transform(patch.center) * to_mm
+    a, b = start - centre, end - centre
+    angle = abs(math.atan2(_cross(a, b), float(np.dot(a, b))))
+    return float(np.linalg.norm(end - start)), angle
+
+
+@pytest.mark.parametrize("kwargs", INSETS)
+@pytest.mark.parametrize("shares, size", THIN)
+def test_a_wedge_too_thin_for_the_inset_keeps_half_its_rim(
+    shares, size, kwargs,
+):
+    """It is capped, not dropped: its rim keeps at least half its span,
+    and so at least half its chord, at the radius it is drawn at."""
+    ax = _thin_pie(shares, size, **kwargs)
+    h = kwargs.get("pull", 0.0) * _radius_mm(ax) + kwargs["gap"] / 2.0
+    insets = _expected_insets_mm(ax, h)
+    thin = ax._publiplots_wedge_meta.wedges[-1]
+    radius = thin.r_outer * _radius_mm(ax)
+    half = math.radians(thin.theta1 - thin.theta0) / 2.0
+    chord, angle = _rim_mm(ax, thin.patch)
+    assert chord >= radius * math.sin(half) - 0.01
+    assert radius * angle >= radius * half - 0.01
+    # The 3.8% wedge only needs the cap once the explode adds to the
+    # gap; the two slivers need it at gap=1 alone. A capped rim keeps
+    # exactly half its span, not merely somewhere above it.
+    capped = insets[thin.path[0]] < h
+    assert capped == (shares[-1] < 1.0 or "pull" in kwargs)
+    if capped:
+        assert radius * angle == pytest.approx(radius * half, abs=0.01)
+
+
+@pytest.mark.parametrize("kwargs", INSETS)
+@pytest.mark.parametrize("shares, size", THIN)
+def test_the_gap_beside_a_capped_wedge_is_h_plus_its_inset(
+    shares, size, kwargs,
+):
+    """``h + h_i`` beside the capped wedge; every pair of uncapped
+    neighbours keeps the full ``2h``."""
+    ax = _thin_pie(shares, size, **kwargs)
+    h = kwargs.get("pull", 0.0) * _radius_mm(ax) + kwargs["gap"] / 2.0
+    insets = _expected_insets_mm(ax, h)
+    gaps = _neighbour_gaps_mm(ax)
+    seen = {"full": 0, "capped": 0}
+    for (a, b), measured in gaps.items():
+        h_a, h_b = insets[a], insets[b]
+        if h_a == h and h_b == h:
+            expected, kind = 2.0 * h, "full"
+        else:
+            # h + h_i beside one capped wedge, h_i + h_j between two.
+            expected, kind = h_a + h_b, "capped"
+        seen[kind] += 1
+        assert measured == pytest.approx([expected] * 4, abs=0.01), (a, b)
+    assert seen["full"] >= 1
+    assert seen["capped"] >= (2 if insets[ax._publiplots_wedge_meta
+                                         .wedges[-1].path[0]] < h else 0)
+
+
+@pytest.mark.parametrize("kwargs", [
+    pytest.param(dict(pull=0.1), id="pull=0.1"),
+    pytest.param(dict(gap=1.5), id="gap=1.5"),
+])
+def test_a_long_tail_keeps_every_wedge_and_every_gap_by_the_rule(kwargs):
+    """Shares 40/30/20/5/3/1/0.5/0.5: the full gap between uncapped
+    neighbours, h + h_i beside a capped one and h_i + h_j between the
+    two capped 0.5% wedges, and every wedge drawn."""
+    frame = pd.DataFrame({"kind": list("abcdefgh"),
+                          "n": [40, 30, 20, 5, 3, 1, 0.5, 0.5]})
+    ax = _pie(frame, axes_size=(40, 40), **kwargs)
+    h = kwargs.get("pull", 0.0) * _radius_mm(ax) + kwargs.get("gap", 0) / 2
+    insets = _expected_insets_mm(ax, h)
+    capped = sorted(k for k, v in insets.items() if v < h)
+    assert {"g", "h"} <= set(capped) and {"a", "b", "c"}.isdisjoint(capped)
+    gaps = _neighbour_gaps_mm(ax)
+    assert len(gaps) == 8
+    for (a, b), measured in gaps.items():
+        assert measured == pytest.approx([insets[a] + insets[b]] * 4,
+                                         abs=0.01), (a, b)
+    for record in ax._publiplots_wedge_meta.wedges:
+        chord, _ = _rim_mm(ax, record.patch)
+        assert chord > 0.0, record.path
+
+
+def test_a_wedge_too_thin_for_the_gap_still_draws_ink(sliver):
     palette = {"a": "#0000ff", "b": "#00ff00", "c": "#ff0000"}
 
     def red_pixels(gap):
@@ -517,16 +652,18 @@ def test_a_wedge_too_thin_for_the_gap_draws_no_ink(sliver):
                     & (img[..., 2] < 100)).sum())
 
     assert red_pixels(0.0) > 1000, "the sliver is visible without a gap"
-    assert red_pixels(2.0) == 0
+    assert red_pixels(2.0) > 100
 
 
-def test_a_collapsed_wedge_keeps_its_record_label_and_legend(sliver):
+def test_a_capped_wedge_keeps_its_record_label_and_legend(sliver):
     fig, ax = pp.subplots(axes_size=(40, 40))
     pp.pieplot(data=sliver, x="kind", y="n", gap=2.0, ax=ax,
                annotate=True)
     records = ax._publiplots_wedge_meta.wedges
     assert [r.path[0] for r in records] == ["a", "b", "c"]
-    assert [r.patch.is_collapsed() for r in records] == [False, False, True]
+    capped = [r.patch.get_drawn_inset() < r.patch.get_inset()
+              for r in records]
+    assert capped == [False, False, True]
     assert ax.patches.count(records[2].patch) == 1
     assert "0.1%" in [t.get_text() for t in ax.texts]
     from publiplots.utils.legend_entries import get_entries
@@ -537,18 +674,38 @@ def test_a_collapsed_wedge_keeps_its_record_label_and_legend(sliver):
 
 
 def test_a_reflex_wedge_with_nothing_left_to_gap_from_is_drawn_whole():
-    """Everything else in the ring is too thin to survive the gap, so
-    the big wedge is drawn as a lone wedge would be rather than split by
-    a slot running past its rim."""
+    """Everything else in the ring is too thin for the full gap, so the
+    big wedge is drawn as a lone wedge would be rather than split by a
+    slot running past its rim; the thin one is capped and still drawn,
+    clear of it by its own inset."""
     data = pd.DataFrame({"kind": ["a", "b"], "n": [99.95, 0.05]})
     ax = _pie(data, axes_size=(40, 40), gap=2.0)
     big, thin = ax._publiplots_wedge_meta.wedges
-    assert thin.patch.is_collapsed()
+    assert 0.0 < thin.patch.get_drawn_inset() < thin.patch.get_inset()
     patch = big.patch
+    assert patch.get_drawn_inset() == 0.0
     plain = Wedge(patch.center, patch.r, patch.theta1, patch.theta2,
                   width=patch.width)
     assert np.array_equal(patch.get_path().vertices,
                           plain.get_path().vertices)
+
+
+@pytest.mark.parametrize("kwargs", [dict(pull=0.1), dict(pull=0.1, gap=1.0),
+                                    dict(pull=0.3)])
+def test_a_capped_wedge_stays_outside_the_hole(kwargs):
+    """Capped insets are smaller than t, but a capped wedge still ends
+    no nearer the centre than r_inner + t."""
+    frame = pd.DataFrame({"kind": list("abcdefgh"),
+                          "n": [40, 30, 20, 5, 3, 1, 0.5, 0.5]})
+    ax = _pie(frame, axes_size=(40, 40), **kwargs)
+    ax.figure.canvas.draw()
+    t = kwargs["pull"] * _radius_mm(ax)
+    records = ax._publiplots_wedge_meta.wedges
+    assert any(r.patch.get_drawn_inset() < r.patch.get_inset()
+               for r in records)
+    for record in records:
+        assert _curve_radii_mm(ax, record.patch).min() >= t - 0.01, \
+            record.path
 
 
 # ----------------------------------------------------------- validation

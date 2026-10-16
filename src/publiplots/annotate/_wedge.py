@@ -398,13 +398,14 @@ def _apply_outside(label: _OutsideLabel, geom: _OutsideGeometry) -> None:
 def _drawn_inset(record) -> float:
     """The perpendicular inset of the drawn wedge's straight edges.
 
-    ``gap / 2`` plus any even explode, in data units, read off the patch
-    so it is what was drawn. A full circle has no edges to inset, and a
-    patch that is not a :class:`~publiplots.plot.wedge.draw.GappedWedge`
-    has none either.
+    ``gap / 2`` plus any even explode, in data units, as capped for a
+    thin wedge so it keeps half its rim: read off the patch, so it is
+    what was drawn. A full circle has no edges to inset, and a patch
+    that is not a :class:`~publiplots.plot.wedge.draw.GappedWedge` has
+    none either.
     """
-    get_inset = getattr(record.patch, "get_inset", None)
-    if get_inset is None or record.theta1 - record.theta0 >= 360.0 - 1e-9:
+    get_inset = getattr(record.patch, "get_drawn_inset", None)
+    if get_inset is None:
         return 0.0
     return max(float(get_inset()), 0.0)
 
@@ -437,11 +438,12 @@ def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
     The wedge is the one drawn, not the one laid out. Its radii are the
     record's, which already include a scalar ``pull``'s even explode, and
     each straight edge sits ``inset`` inside its ray -- ``gap / 2`` plus
-    that explode, read off the patch. At the label radius ``r`` the
-    perpendicular distance from the mid-ray to either inset edge is
-    therefore ``r * sin(span / 2) - inset``; and where the inset closes
-    the wedge in an apex before it reaches ``r_inner``, the wedge begins
-    at the apex, so that is where the radial room starts. With no gap
+    that explode, as capped for a thin wedge, read off the patch. At the
+    label radius ``r`` the perpendicular distance from the mid-ray to
+    either inset edge is therefore ``r * sin(span / 2) - inset``; and
+    where the inset closes the wedge in an apex before it reaches
+    ``r_inner``, the wedge begins at the apex, so that is where the
+    radial room starts. With no gap
     and no ``pull`` both reduce to the un-inset wedge. Past a half-span
     of 90 degrees the wedge stops being convex about its mid-ray and the
     edges no longer bound the label at all, so the disc itself is the
