@@ -62,25 +62,57 @@ def _px_to_mm(fig):
     return MM_PER_INCH / fig.dpi
 
 
-def _rim_gaps_mm(ax):
-    """Rendered rim-to-label gap, in millimetres, for every outside label.
+def _mid_ray(record):
+    """The wedge's unit mid-ray direction."""
+    mid = math.radians((record.theta0 + record.theta1) / 2.0)
+    return math.cos(mid), math.sin(mid)
 
-    Measured in display space, so it reads what is drawn under either
-    framing rather than assuming the two data scales agree.
+
+def _clearance_mm(ax, renderer, record, text, start):
+    """How far beyond ``start`` the label's rendered box begins, in mm.
+
+    Measured along the wedge's mid-ray: the least projection of any box
+    corner onto that ray, less the projection of ``start`` (a display
+    point). That is the support-function distance the radial and no-leader
+    layouts place by, and the gap the label clears its leader by.
     """
-    _settle(ax.figure)
-    gaps = []
-    for record, text in zip(ax._publiplots_wedge_meta.wedges, ax.texts):
-        if _radius(text) <= record.r_outer:
-            continue
-        cx, cy = record.patch.center
-        mid = math.radians((record.theta0 + record.theta1) / 2.0)
-        rim = ax.transData.transform(
-            (cx + record.r_outer * math.cos(mid),
-             cy + record.r_outer * math.sin(mid)))
-        anchor = ax.transData.transform(text.get_position())
-        gaps.append(math.hypot(*(anchor - rim)) * _px_to_mm(ax.figure))
-    return gaps
+    dx, dy = _mid_ray(record)
+    box = text.get_window_extent(renderer)
+    corners = [(box.x0, box.y0), (box.x0, box.y1),
+               (box.x1, box.y0), (box.x1, box.y1)]
+    nearest = min(x * dx + y * dy for x, y in corners)
+    return (nearest - (start[0] * dx + start[1] * dy)) * _px_to_mm(ax.figure)
+
+
+def _rim_display(ax, record):
+    """The display point where the wedge's mid-ray crosses its rim."""
+    cx, cy = record.patch.center
+    dx, dy = _mid_ray(record)
+    return ax.transData.transform((cx + record.r_outer * dx,
+                                   cy + record.r_outer * dy))
+
+
+def _outside_records(ax):
+    """``(record, text)`` for every label placed outside its wedge."""
+    return [(record, text)
+            for record, text in zip(ax._publiplots_wedge_meta.wedges,
+                                    ax.texts)
+            if math.dist(text.get_position(), record.patch.center)
+            > record.r_outer]
+
+
+def _rim_gaps_mm(ax):
+    """Rendered rim-to-label clearance, in millimetres, per outside label.
+
+    Measured in display space along each mid-ray, so it reads what is
+    drawn under either framing rather than assuming the two data scales
+    agree. With ``leader=None`` it is ``offset``; with a radial leader,
+    ``offset + leader_gap``.
+    """
+    renderer = _settle(ax.figure)
+    return [_clearance_mm(ax, renderer, record, text,
+                          _rim_display(ax, record))
+            for record, text in _outside_records(ax)]
 
 
 def _disc_diameter_mm(ax):
@@ -194,7 +226,10 @@ def test_outside_labels_sit_on_the_wedge_mid_ray(df):
         assert math.hypot(tx, ty) > record.r_outer
 
 
-def test_the_outside_gap_is_the_requested_millimetres_at_any_chart_size(df):
+@pytest.mark.parametrize("leader", [None, "radial"])
+def test_the_outside_gap_is_the_requested_millimetres_at_any_chart_size(
+    df, leader,
+):
     """`offset` is millimetres on the page, not data units, and not a
     fraction that drifts with the chart.
 
@@ -202,23 +237,28 @@ def test_the_outside_gap_is_the_requested_millimetres_at_any_chart_size(df):
     size and on every cell shape, so a gap converted any other way would
     come out right on at most one of these. The non-square cells matter
     because ``aspect="cell"`` stretches the limits on the longer side.
+    With no leader the label starts ``offset`` past the rim; a radial
+    leader adds ``leader_gap`` between its end and the label.
     """
+    extra = pp.rcParams["pie.leader_gap"] if leader else 0.0
     for size in [(25.0, 25.0), (40.0, 40.0), (80.0, 80.0),
                  (70.0, 40.0), (40.0, 70.0)]:
         ax = _pie(df, size=size)
-        pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0)
+        pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0,
+                    leader=leader)
         gaps = _rim_gaps_mm(ax)
         assert len(gaps) == 4, size
         for gap in gaps:
-            assert gap == pytest.approx(3.0, abs=1e-3), size
+            assert gap == pytest.approx(3.0 + extra, abs=1e-3), size
 
 
 def test_the_outside_gap_tracks_the_requested_millimetres(df):
+    leader_gap = pp.rcParams["pie.leader_gap"]
     for offset in [0.5, 2.0, 5.0]:
         ax = _pie(df)
         pp.annotate(ax, "wedge_values", anchor="outside", offset=offset)
         for gap in _rim_gaps_mm(ax):
-            assert gap == pytest.approx(offset, abs=1e-3)
+            assert gap == pytest.approx(offset + leader_gap, abs=1e-3)
 
 
 def test_a_bigger_offset_pushes_outside_labels_further(df):
@@ -231,13 +271,23 @@ def test_a_bigger_offset_pushes_outside_labels_further(df):
     assert all(f > n for f, n in zip(far, near))
 
 
-def test_outside_labels_face_away_from_the_centre(df):
+def test_elbow_labels_face_away_from_the_centre(df):
     ax = _pie(df)
-    pp.annotate(ax, "wedge_values", anchor="outside")
+    pp.annotate(ax, "wedge_values", anchor="outside", leader="elbow")
     for text in ax.texts:
         tx, _ = text.get_position()
         expected = "left" if tx >= 0 else "right"
         assert text.get_ha() == expected
+        assert text.get_va() == "center"
+
+
+@pytest.mark.parametrize("leader", ["radial", None])
+def test_radial_and_unled_labels_are_centre_aligned(df, leader):
+    """Centred on the mid-ray, not hung off one side of it."""
+    ax = _pie(df)
+    pp.annotate(ax, "wedge_values", anchor="outside", leader=leader)
+    for text in ax.texts:
+        assert (text.get_ha(), text.get_va()) == ("center", "center")
 
 
 def test_outside_anchor_draws_a_leader_line(df):
@@ -249,15 +299,27 @@ def test_outside_anchor_draws_a_leader_line(df):
         pp.rcParams["edgewidth"])
 
 
-def test_a_leader_line_spans_rim_to_label(df):
-    """Each leader must start on its wedge's rim and end at its label."""
+def test_a_leader_line_spans_rim_to_offset_on_the_mid_ray(df):
+    """Each radial leader starts on its wedge's rim, runs ``offset`` mm out
+    along the mid-ray, and stops short of its label.
+
+    It used to end exactly at the label's anchor point, touching the text.
+    """
     ax = _pie(df)
-    pp.annotate(ax, "wedge_values", anchor="outside")
+    pp.annotate(ax, "wedge_values", anchor="outside", offset=3.0)
+    renderer = _settle(ax.figure)
     records = ax._publiplots_wedge_meta.wedges
     for record, text, line in zip(records, ax.texts, ax.lines):
         xs, ys = line.get_xdata(), line.get_ydata()
+        assert len(xs) == 2
         assert math.hypot(xs[0], ys[0]) == pytest.approx(record.r_outer)
-        assert (xs[1], ys[1]) == pytest.approx(text.get_position())
+        start, end = ax.transData.transform(list(zip(xs, ys)))
+        assert math.dist(start, end) * _px_to_mm(ax.figure) == pytest.approx(
+            3.0, abs=1e-3)
+        mid = (record.theta0 + record.theta1) / 2.0
+        assert math.degrees(math.atan2(ys[1], xs[1])) % 360.0 == pytest.approx(
+            mid % 360.0, abs=1e-6)
+        assert not text.get_window_extent(renderer).contains(*end)
 
 
 def test_a_leader_line_takes_its_own_wedges_edge_colour(df):
@@ -452,7 +514,8 @@ def test_an_extreme_offset_leaves_the_limits_alone(df):
     assert ax.get_xlim() == pytest.approx(axes[0].get_xlim(), abs=1e-12)
     assert ax.get_ylim() == pytest.approx(axes[0].get_ylim(), abs=1e-12)
     for gap in _rim_gaps_mm(ax):
-        assert gap == pytest.approx(10.0, abs=1e-3)
+        assert gap == pytest.approx(10.0 + pp.rcParams["pie.leader_gap"],
+                                    abs=1e-3)
     renderer = _settle(fig)
     page = fig.bbox
     for artist in _decorations(ax):
@@ -500,10 +563,10 @@ def test_a_row_of_pies_keeps_outside_labels_off_their_neighbours():
 
     Every outside label and leader in a 1x3 row must stay clear of every
     *other* axes -- and of the other cells' labels. ``offset=4`` so the
-    labels reach sideways further than the 3mm the layout leaves between
-    cells that have no decorations; at the default 1mm the widest reach
-    is 2.74mm past the label's own frame, inside that 3mm, and the row
-    would pass with no reservation at all.
+    labels reach sideways well past the 3mm the layout leaves between
+    cells that have no decorations: 4.82mm past the label's own frame.
+    The default 2mm offset reaches only 3.28mm, and a 1mm one 2.51mm,
+    inside that 3mm, where the row would pass with no reservation at all.
     """
     thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
     fig, axes = pp.subplots(ncols=3, axes_size=(38.0, 38.0))
@@ -580,7 +643,8 @@ def test_outside_labels_do_not_overlap_the_axes_title():
     climbs into the title as ``offset`` grows.
 
     The 2% wedge sits just left of twelve o'clock; at ``offset=3`` its
-    label runs 1.63mm into the title on a 38x38mm cell. Measured after a
+    label, centred on the mid-ray past a radial leader, runs 3.79mm into
+    the title on a 38x38mm cell. Measured after a
     full ``savefig``, as the legend case is, and the setup check uses
     ``pytest.fail`` so that only the overlap assertion can be the
     expected failure.
@@ -657,7 +721,8 @@ def test_aspect_equal_honours_offset_in_both_orientations(df):
         gaps = _rim_gaps_mm(ax)
         assert len(gaps) == 4, size
         for gap in gaps:
-            assert gap == pytest.approx(3.0, abs=1e-3), size
+            assert gap == pytest.approx(3.0 + pp.rcParams["pie.leader_gap"],
+                                        abs=1e-3), size
 
 
 def test_aspect_equal_on_a_tall_cell_keeps_labels_on_the_page_and_off_neighbours(
@@ -706,6 +771,435 @@ def test_aspect_equal_outside_labels_clear_the_rim_and_get_leaders(df):
     pp.annotate(ax, "wedge_values", anchor="outside")
     assert all(_radius(t) > 1.0 for t in ax.texts)
     assert len(ax.lines) == len(ax.texts)
+
+
+# -----------------------------------------------------------------------------
+# Leader lines
+# -----------------------------------------------------------------------------
+#
+# Every geometry check here reads the rendered figure after a full
+# `savefig`, in millimetres, so it sees what the page shows once the layout
+# has settled -- not the data-unit arithmetic the strategy did.
+
+GAP_TOL_MM = 0.01
+
+# The gallery's first figure: two wide wedges at three and nine o'clock and
+# two thin ones either side of twelve, the case reported as hanging off to
+# one side of its wedge.
+GALLERY = pd.DataFrame({"kind": ["symptom", "admin", "lay_dx", "none"],
+                        "n": [52.2, 41.8, 6.0, 4.0]})
+
+
+@pytest.fixture
+def restore_pie_rcparams():
+    """Put back every ``pie.*`` leader rcParam a test changes."""
+    keys = ["pie.leader", "pie.label_offset", "pie.leader_gap",
+            "pie.elbow_length"]
+    saved = {key: pp.rcParams[key] for key in keys}
+    yield
+    for key, value in saved.items():
+        pp.rcParams[key] = value
+
+
+def _saved_pie(frame=GALLERY, size=(45.0, 45.0), **annotate_kws):
+    """A pie with every label outside, saved, with the renderer it drew."""
+    import io
+
+    fig, ax = pp.subplots(axes_size=size)
+    pp.pieplot(data=frame, x="kind", y="n", legend=False, ax=ax)
+    annotate_kws.setdefault("anchor", "outside")
+    pp.annotate(ax, "wedge_values", **annotate_kws)
+    fig.savefig(io.BytesIO(), format="png")
+    return ax, _settle(fig)
+
+
+def _display(ax, xs, ys):
+    return ax.transData.transform(list(zip(xs, ys)))
+
+
+def _mm(ax, px):
+    return px * _px_to_mm(ax.figure)
+
+
+ROTATIONS = [0.0, "tangential", "radial", 30.0]
+
+
+@pytest.mark.parametrize("rotation", ROTATIONS)
+@pytest.mark.parametrize("leader_gap", [None, 0.3, 2.5])
+def test_a_radial_leader_ends_leader_gap_short_of_its_label(
+    leader_gap, rotation,
+):
+    """The label box starts exactly ``leader_gap`` past the leader's end.
+
+    Measured along the mid-ray, the distance the layout places by: every
+    corner of the rendered box -- rotated, where the label is -- projects
+    at least that far past the end. The leader used to end on the label's
+    anchor point, a gap of zero.
+    """
+    ax, renderer = _saved_pie(leader="radial", leader_gap=leader_gap,
+                              rotation=rotation)
+    expected = (pp.rcParams["pie.leader_gap"] if leader_gap is None
+                else leader_gap)
+    pairs = _outside_records(ax)
+    assert len(pairs) == len(ax.lines) == 4
+    for (record, text), line in zip(pairs, ax.lines):
+        end = _display(ax, line.get_xdata(), line.get_ydata())[-1]
+        gap = _clearance_mm(ax, renderer, record, text, end)
+        assert gap == pytest.approx(expected, abs=GAP_TOL_MM), text.get_text()
+
+
+def test_a_radial_gap_is_the_straight_line_gap_where_the_ray_is_horizontal():
+    """At three and nine o'clock the nearest point of the box is on the ray.
+
+    There the along-the-ray gap and the plain distance from the leader's
+    end to the box are the same number.
+    """
+    halves = pd.DataFrame({"kind": list("AB"), "n": [50.0, 50.0]})
+    ax, renderer = _saved_pie(halves, leader="radial")
+    for line, text in zip(ax.lines, ax.texts):
+        ex, ey = _display(ax, line.get_xdata(), line.get_ydata())[-1]
+        box = text.get_window_extent(renderer)
+        dx = max(box.x0 - ex, 0.0, ex - box.x1)
+        dy = max(box.y0 - ey, 0.0, ey - box.y1)
+        assert _mm(ax, math.hypot(dx, dy)) == pytest.approx(
+            pp.rcParams["pie.leader_gap"], abs=GAP_TOL_MM)
+
+
+@pytest.mark.parametrize("rotation", ROTATIONS)
+@pytest.mark.parametrize("leader", ["radial", None])
+def test_radial_and_unled_label_boxes_are_centred_on_the_mid_ray(
+    leader, rotation,
+):
+    """The rendered box's centre lies on its wedge's mid-ray.
+
+    The old layout hung each label off to the left or right of its point,
+    so a label near twelve o'clock sat beside its wedge with the line
+    meeting it at a corner.
+    """
+    ax, renderer = _saved_pie(leader=leader, rotation=rotation)
+    for record, text in _outside_records(ax):
+        box = text.get_window_extent(renderer)
+        cx, cy = ax.transData.transform(record.patch.center)
+        dx, dy = _mid_ray(record)
+        bx, by = (box.x0 + box.x1) / 2.0 - cx, (box.y0 + box.y1) / 2.0 - cy
+        assert _mm(ax, abs(-bx * dy + by * dx)) == pytest.approx(
+            0.0, abs=GAP_TOL_MM), text.get_text()
+        assert bx * dx + by * dy > 0, "on the ray, not behind the centre"
+
+
+@pytest.mark.parametrize("rotation", [0.0, "tangential"])
+def test_no_leader_puts_the_label_offset_from_the_rim_and_draws_nothing(
+    rotation,
+):
+    ax, renderer = _saved_pie(leader=None, offset=3.0, rotation=rotation)
+    assert len(ax.lines) == 0
+    pairs = _outside_records(ax)
+    assert len(pairs) == 4
+    for record, text in pairs:
+        gap = _clearance_mm(ax, renderer, record, text,
+                            _rim_display(ax, record))
+        assert gap == pytest.approx(3.0, abs=GAP_TOL_MM), text.get_text()
+
+
+def test_leader_false_is_leader_none():
+    ax_false, _ = _saved_pie(leader=False)
+    ax_none, _ = _saved_pie(leader=None)
+    assert len(ax_false.lines) == 0
+    for a, b in zip(ax_false.texts, ax_none.texts):
+        assert a.get_position() == pytest.approx(b.get_position())
+        assert (a.get_ha(), a.get_va()) == (b.get_ha(), b.get_va())
+
+
+def test_leader_false_through_pieplot_annotate_dict():
+    fig, ax = pp.subplots(axes_size=(40.0, 40.0))
+    pp.pieplot(data=GALLERY, x="kind", y="n", legend=False, ax=ax,
+               annotate={"anchor": "outside", "leader": False})
+    assert len(ax.texts) == 4
+    assert len(ax.lines) == 0
+
+
+@pytest.mark.parametrize("elbow_length", [None, 0.5, 4.0])
+def test_an_elbow_runs_out_then_horizontally_for_elbow_length(elbow_length):
+    """One polyline: rim, elbow ``offset`` out on the mid-ray, then a
+    horizontal tail of ``elbow_length`` toward the label's side."""
+    ax, renderer = _saved_pie(leader="elbow", offset=2.5,
+                              elbow_length=elbow_length)
+    expected = (pp.rcParams["pie.elbow_length"] if elbow_length is None
+                else elbow_length)
+    pairs = _outside_records(ax)
+    assert len(pairs) == len(ax.lines) == 4
+    for (record, text), line in zip(pairs, ax.lines):
+        rim, elbow, tail = _display(ax, line.get_xdata(), line.get_ydata())
+        assert rim == pytest.approx(_rim_display(ax, record))
+        assert _mm(ax, math.dist(rim, elbow)) == pytest.approx(
+            2.5, abs=GAP_TOL_MM)
+        dx, dy = _mid_ray(record)
+        assert (elbow - rim) @ (dx, dy) > 0, "the first leg is radial"
+        assert _mm(ax, abs(tail[1] - elbow[1])) == pytest.approx(
+            0.0, abs=1e-9), "the tail is horizontal"
+        assert _mm(ax, abs(tail[0] - elbow[0])) == pytest.approx(
+            expected, abs=GAP_TOL_MM)
+        side = 1.0 if text.get_ha() == "left" else -1.0
+        assert (tail[0] - elbow[0]) * side > 0, "the tail runs toward the label"
+
+
+@pytest.mark.parametrize("rotation", [0.0, "tangential", "radial"])
+@pytest.mark.parametrize("leader_gap", [None, 1.5])
+def test_an_elbow_label_sits_leader_gap_beside_its_tail(leader_gap, rotation):
+    """Left or right of the tail's end by ``leader_gap``, centred on it.
+
+    Rotated labels too: matplotlib aligns the rotated box, so its near
+    side keeps the gap and its middle stays level with the tail.
+    """
+    ax, renderer = _saved_pie(leader="elbow", leader_gap=leader_gap,
+                              rotation=rotation)
+    expected = (pp.rcParams["pie.leader_gap"] if leader_gap is None
+                else leader_gap)
+    sides = set()
+    for (record, text), line in zip(_outside_records(ax), ax.lines):
+        _, _, (tx, ty) = _display(ax, line.get_xdata(), line.get_ydata())
+        box = text.get_window_extent(renderer)
+        if text.get_ha() == "left":
+            gap = box.x0 - tx
+        else:
+            assert text.get_ha() == "right"
+            gap = tx - box.x1
+        sides.add(text.get_ha())
+        assert _mm(ax, gap) == pytest.approx(expected, abs=GAP_TOL_MM)
+        assert _mm(ax, (box.y0 + box.y1) / 2.0 - ty) == pytest.approx(
+            0.0, abs=GAP_TOL_MM)
+    assert sides == {"left", "right"}, "both sides must be exercised"
+
+
+def test_an_elbow_on_a_vertical_mid_ray_turns_right():
+    """Twelve and six o'clock both turn right.
+
+    ``cos`` of six o'clock is -1.8e-16 rather than 0, and without a
+    tolerance that tail would turn left.
+    """
+    halves = pd.DataFrame({"kind": list("AB"), "n": [50.0, 50.0]})
+    fig, ax = pp.subplots(axes_size=(40.0, 40.0))
+    pp.pieplot(data=halves, x="kind", y="n", legend=False, ax=ax,
+               start_angle=0)
+    pp.annotate(ax, "wedge_values", anchor="outside", leader="elbow")
+    mids = sorted(round(((w.theta0 + w.theta1) / 2.0) % 360.0)
+                  for w in ax._publiplots_wedge_meta.wedges)
+    assert mids == [90, 270]
+    for text, line in zip(ax.texts, ax.lines):
+        xs = line.get_xdata()
+        assert text.get_ha() == "left"
+        assert xs[2] > xs[1]
+
+
+def test_an_elbow_is_one_line_with_round_joins_and_butt_caps():
+    """Set on the line itself, not inherited: matplotlib's default join is
+    already round, so a theme that changes it must not reach the leader."""
+    with plt.rc_context({"lines.solid_joinstyle": "miter",
+                         "lines.solid_capstyle": "projecting"}):
+        ax, _ = _saved_pie(leader="elbow")
+    assert len(ax.lines) == 4
+    for line in ax.lines:
+        assert len(line.get_xdata()) == 3
+        assert line.get_solid_joinstyle() == "round"
+        assert line.get_solid_capstyle() == "butt"
+        assert line.get_clip_on() is False
+
+
+def test_leaders_keep_their_wedges_colour_width_and_zorder_in_every_style():
+    for leader in ["radial", "elbow"]:
+        ax, _ = _saved_pie(leader=leader)
+        for record, line in zip(ax._publiplots_wedge_meta.wedges, ax.lines):
+            assert tuple(line.get_color()) == pytest.approx(
+                tuple(record.patch.get_edgecolor()))
+            assert line.get_linewidth() == pytest.approx(
+                pp.rcParams["edgewidth"])
+            assert line.get_zorder() == record.patch.get_zorder() + 1
+
+
+@pytest.mark.parametrize("leader", ["radial", "elbow", None])
+def test_a_pulled_wedge_keeps_its_outside_label(df, leader):
+    """Rim, leader and label all move out with the pulled wedge."""
+    ax = _pie(df, pull={"A": 0.3})
+    pp.annotate(ax, "wedge_values", anchor="outside", leader=leader)
+    record = ax._publiplots_wedge_meta.wedges[0]
+    assert record.patch.center != pytest.approx((0.0, 0.0))
+    cx, cy = record.patch.center
+    dx, dy = _mid_ray(record)
+    if leader is not None:
+        xs, ys = ax.lines[0].get_xdata(), ax.lines[0].get_ydata()
+        assert (xs[0], ys[0]) == pytest.approx(
+            (cx + record.r_outer * dx, cy + record.r_outer * dy))
+    if leader != "elbow":
+        tx, ty = ax.texts[0].get_position()
+        assert -(tx - cx) * dy + (ty - cy) * dx == pytest.approx(0.0,
+                                                                 abs=1e-12)
+
+
+def test_auto_places_a_pushed_out_label_with_the_chosen_leader():
+    thin = pd.DataFrame({"kind": list("AB"), "n": [99.5, 0.5]})
+    ax = _pie(thin)
+    pp.annotate(ax, "wedge_values", anchor="auto", leader="elbow")
+    assert len(ax.lines) == 1
+    assert len(ax.lines[0].get_xdata()) == 3
+    assert ax.texts[0].get_ha() == "center", "the inside label is unchanged"
+    assert ax.texts[1].get_ha() in {"left", "right"}
+
+
+# --- defaults ---------------------------------------------------------------
+
+def test_the_leader_defaults_to_the_rcparam(restore_pie_rcparams):
+    ax, _ = _saved_pie()
+    assert [len(line.get_xdata()) for line in ax.lines] == [2] * 4
+    pp.rcParams["pie.leader"] = "elbow"
+    ax, _ = _saved_pie()
+    assert [len(line.get_xdata()) for line in ax.lines] == [3] * 4
+    pp.rcParams["pie.leader"] = None
+    ax, _ = _saved_pie()
+    assert len(ax.lines) == 0
+
+
+def test_a_per_call_leader_overrides_the_rcparam(restore_pie_rcparams):
+    pp.rcParams["pie.leader"] = "elbow"
+    ax, _ = _saved_pie(leader="radial")
+    assert [len(line.get_xdata()) for line in ax.lines] == [2] * 4
+    ax, _ = _saved_pie(leader=None)
+    assert len(ax.lines) == 0
+
+
+def _leader_length_mm(ax, line):
+    rim, end = _display(ax, line.get_xdata(), line.get_ydata())[:2]
+    return _mm(ax, math.dist(rim, end))
+
+
+def test_offset_defaults_to_the_label_offset_rcparam(restore_pie_rcparams):
+    ax, _ = _saved_pie()
+    for line in ax.lines:
+        assert _leader_length_mm(ax, line) == pytest.approx(2.0,
+                                                            abs=GAP_TOL_MM)
+    pp.rcParams["pie.label_offset"] = 3.5
+    ax, _ = _saved_pie()
+    for line in ax.lines:
+        assert _leader_length_mm(ax, line) == pytest.approx(3.5,
+                                                            abs=GAP_TOL_MM)
+    ax, _ = _saved_pie(offset=1.5)
+    for line in ax.lines:
+        assert _leader_length_mm(ax, line) == pytest.approx(1.5,
+                                                            abs=GAP_TOL_MM)
+
+
+def test_offset_default_reaches_pieplot_annotate_true(restore_pie_rcparams):
+    pp.rcParams["pie.label_offset"] = 4.0
+    fig, ax = pp.subplots(axes_size=(40.0, 40.0))
+    pp.pieplot(data=GALLERY, x="kind", y="n", legend=False, ax=ax,
+               annotate=True)
+    _settle(fig)
+    assert ax.lines, "the thin wedges must be pushed out"
+    for line in ax.lines:
+        assert _leader_length_mm(ax, line) == pytest.approx(4.0,
+                                                            abs=GAP_TOL_MM)
+
+
+def test_leader_gap_defaults_to_the_rcparam(restore_pie_rcparams):
+    pp.rcParams["pie.leader_gap"] = 1.7
+    for leader_gap, expected in [(None, 1.7), (0.4, 0.4)]:
+        ax, renderer = _saved_pie(leader_gap=leader_gap)
+        for (record, text), line in zip(_outside_records(ax), ax.lines):
+            end = _display(ax, line.get_xdata(), line.get_ydata())[-1]
+            assert _clearance_mm(ax, renderer, record, text, end) == (
+                pytest.approx(expected, abs=GAP_TOL_MM))
+
+
+def test_elbow_length_defaults_to_the_rcparam(restore_pie_rcparams):
+    pp.rcParams["pie.elbow_length"] = 3.3
+    for elbow_length, expected in [(None, 3.3), (1.1, 1.1)]:
+        ax, _ = _saved_pie(leader="elbow", elbow_length=elbow_length)
+        for line in ax.lines:
+            _, elbow, tail = _display(ax, line.get_xdata(), line.get_ydata())
+            assert _mm(ax, abs(tail[0] - elbow[0])) == pytest.approx(
+                expected, abs=GAP_TOL_MM)
+
+
+# --- validation and wiring --------------------------------------------------
+
+@pytest.mark.parametrize("leader", ["curved", True, "Radial"])
+def test_an_unknown_leader_raises(df, leader):
+    ax = _pie(df)
+    with pytest.raises(ValueError, match="leader"):
+        pp.annotate(ax, "wedge_values", leader=leader)
+
+
+def test_an_unknown_leader_rcparam_raises(df, restore_pie_rcparams):
+    pp.rcParams["pie.leader"] = "curved"
+    ax = _pie(df)
+    with pytest.raises(ValueError, match="leader"):
+        pp.annotate(ax, "wedge_values")
+
+
+@pytest.mark.parametrize("name", ["leader_gap", "elbow_length"])
+@pytest.mark.parametrize("value", [-0.5, float("nan"), "wide"])
+def test_a_bad_length_raises(df, name, value):
+    ax = _pie(df)
+    with pytest.raises(ValueError, match=name):
+        pp.annotate(ax, "wedge_values", **{name: value})
+
+
+@pytest.mark.parametrize("option", [
+    {"leader": "radial"}, {"leader": None}, {"leader": False},
+    {"leader_gap": 1.0}, {"elbow_length": 1.0},
+])
+def test_leader_options_are_rejected_for_other_kinds(option):
+    from publiplots.annotate._dispatcher import _STRATEGIES, _WEDGE_KINDS
+
+    (name,) = option
+    for kind in sorted(set(_STRATEGIES) - _WEDGE_KINDS):
+        fig, ax = pp.subplots()
+        with pytest.raises(TypeError, match=f"{name}="):
+            pp.annotate(ax, kind, **option)
+
+
+def test_other_kinds_still_default_offset_and_pad_to_one_mm(monkeypatch):
+    """Only the wedge kinds take their offset from an rcParam.
+
+    Every other strategy must still receive ``offset=1.0`` and, through
+    the ``pad = offset`` fallback, ``pad=1.0``; an explicit ``offset``
+    still becomes the pad.
+    """
+    from publiplots.annotate import _dispatcher
+
+    others = sorted(set(_dispatcher._STRATEGIES) - _dispatcher._WEDGE_KINDS)
+    seen = {}
+
+    def spy(kind):
+        def strategy(ax, *, offset, pad, **kws):
+            seen[kind] = (offset, pad)
+            return []
+        return strategy
+
+    for kind in others:
+        monkeypatch.setitem(_dispatcher._STRATEGIES, kind, spy(kind))
+    fig, ax = pp.subplots()
+    for kind in others:
+        pp.annotate(ax, kind)
+    assert seen == {kind: (1.0, 1.0) for kind in others}
+    for kind in others:
+        pp.annotate(ax, kind, offset=2.5)
+    assert seen == {kind: (2.5, 2.5) for kind in others}
+
+
+def test_wedge_values_receives_no_offset_when_none_is_passed(monkeypatch):
+    """The dispatcher leaves the wedge default to the strategy's rcParam."""
+    from publiplots.annotate import _dispatcher
+
+    seen = {}
+
+    def strategy(ax, *, offset, **kws):
+        seen["offset"] = offset
+        return []
+
+    monkeypatch.setitem(_dispatcher._STRATEGIES, "wedge_values", strategy)
+    fig, ax = pp.subplots()
+    pp.annotate(ax, "wedge_values")
+    assert seen == {"offset": None}
 
 
 # -----------------------------------------------------------------------------

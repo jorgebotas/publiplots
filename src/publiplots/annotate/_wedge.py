@@ -15,16 +15,24 @@ or a tick label: they reach past the axes frame, and the layout grows
 the figure to hold them rather than the strategy shrinking the chart to
 fit them in. So nothing here touches the axis limits, and the disc is
 the same size whichever anchor its labels took.
+
+An outside label is placed by one of three leader styles (see
+:func:`_outside_layout`), each exact in millimetres. Its Text and the
+leader that points at it are created and held together, as an
+:class:`_OutsideLabel`, so that a later pass moving labels apart can move
+a label and re-route its leader in one step.
 """
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from matplotlib.axes import Axes
+from matplotlib.lines import Line2D
 from matplotlib.text import Text
 
-from publiplots.annotate._cache import WedgeMeta
+from publiplots.annotate._cache import WedgeMeta, WedgeRecord
 from publiplots.annotate._color import resolve_color
 from publiplots.annotate._positioning import mm_to_data
 from publiplots.annotate._shared import (
@@ -40,6 +48,27 @@ _DEFAULT_ANCHOR = "auto"
 _VALID_BASES = {"total", "parent"}
 _DEFAULT_BASIS = "total"
 _VALID_ROTATIONS = {"tangential", "radial"}
+_VALID_LEADERS = ("radial", "elbow", None)
+
+# A mid-ray this close to vertical counts as vertical, so the elbow of a
+# wedge centred on twelve or six o'clock turns right. `cos(3*pi/2)` is
+# -1.8e-16, not 0, and would otherwise send the six o'clock tail left.
+_VERTICAL_TOLERANCE = 1e-9
+
+
+class _RcLeader:
+    """Default for ``leader``: read ``pp.rcParams["pie.leader"]`` at call time.
+
+    A sentinel rather than ``None``, because ``leader=None`` is a value
+    the caller may pass -- it means "no line" -- and must not be mistaken
+    for "not passed".
+    """
+
+    def __repr__(self) -> str:
+        return "rcParams['pie.leader']"
+
+
+_LEADER_DEFAULT = _RcLeader()
 
 # Sentinel the dispatcher hands back when the caller passed no `fmt`. A
 # real format spec cannot collide with it, and it is what distinguishes
@@ -120,14 +149,190 @@ def _inside_point(record, mid: float) -> Tuple[float, float, str]:
     return cx + radius * math.cos(mid), cy + radius * math.sin(mid), "center"
 
 
-def _outside_point(
-    record, mid: float, gap: float,
-) -> Tuple[float, float, str]:
-    """Anchor ``gap`` data units beyond the wedge's rim, along its mid-ray."""
+def _resolve_leader(leader) -> Optional[str]:
+    """Validate a ``leader`` value, reading the rcParam for the default.
+
+    ``False`` is accepted as ``None`` -- "no line" -- both here and in the
+    rcParam, since ``annotate={"leader": False}`` is the natural spelling.
+    """
+    if leader is _LEADER_DEFAULT:
+        leader = resolve_param("pie.leader")
+    if leader is False:
+        leader = None
+    if leader not in _VALID_LEADERS:
+        raise ValueError(
+            f"leader must be 'radial', 'elbow' or None; got {leader!r}"
+        )
+    return leader
+
+
+def _resolve_length(name: str, key: str, value: Optional[float]) -> float:
+    """A non-negative finite length in mm, defaulting to ``rcParams[key]``."""
+    value = resolve_param(key, value)
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number of mm; got {value!r}")
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(f"{name} must be a finite number >= 0; got {value!r}")
+    return value
+
+
+@dataclass
+class _OutsideGeometry:
+    """Everything outside placement needs, converted to data units once.
+
+    Attributes
+    ----------
+    leader : {'radial', 'elbow'} or None
+        The leader style.
+    offset : float
+        Rim to the leader's end -- to its elbow, for ``'elbow'`` -- or,
+        with no leader, rim to the label's nearest point. Data units.
+    leader_gap : float
+        Leader's end to the label's nearest point. Data units.
+    elbow_length : float
+        Length of an elbow leader's horizontal tail. Data units.
+    scale : float
+        Data units per display pixel, for the label's rendered box.
+    renderer : matplotlib.backend_bases.RendererBase
+        Renderer the label's box is measured with.
+    """
+
+    leader: Optional[str]
+    offset: float
+    leader_gap: float
+    elbow_length: float
+    scale: float
+    renderer: object
+
+
+@dataclass
+class _OutsideLabel:
+    """One outside label and the leader that points at it, kept together.
+
+    A later pass that moves crowded labels apart must move a label and
+    re-route its leader as one step; holding the pair, with the wedge and
+    mid-ray they hang off, is what lets it. :func:`_apply_outside` is the
+    one place that writes a layout onto both.
+
+    Attributes
+    ----------
+    text : matplotlib.text.Text
+        The label.
+    leader : matplotlib.lines.Line2D or None
+        Its leader line, or ``None`` when ``leader=None``.
+    record : WedgeRecord
+        The wedge it labels.
+    mid : float
+        The wedge's mid-ray angle, in radians.
+    """
+
+    text: Text
+    leader: Optional[Line2D]
+    record: WedgeRecord
+    mid: float
+
+
+def _support(text: Text, renderer, scale: float,
+             direction: Tuple[float, float]) -> float:
+    """Reach of the rendered label's box from its centre along ``direction``.
+
+    The support function of an axis-aligned rectangle of half-sizes
+    ``w/2``, ``h/2``: ``|w/2 * dx| + |h/2 * dy|``. ``get_window_extent``
+    already folds in any rotation, so this is the rotated label's box.
+    """
+    box = text.get_window_extent(renderer)
+    return (abs(box.width * scale / 2.0 * direction[0])
+            + abs(box.height * scale / 2.0 * direction[1]))
+
+
+def _outside_layout(text: Text, record: WedgeRecord, mid: float,
+                    geom: _OutsideGeometry):
+    """Where an outside label goes, and the vertices of its leader.
+
+    With ``d`` the unit mid-ray and ``c`` the wedge's own centre -- the
+    patch centre, which already carries any ``pull``, so a pulled wedge
+    keeps its label -- the rim point is ``c + r_outer * d``, and:
+
+    - ``'radial'``: the leader runs from the rim to ``offset`` beyond it
+      along ``d``. The label's box is centred on the mid-ray with its
+      nearest point ``leader_gap`` past the leader's end, measured along
+      ``d``: its centre sits at ``r_outer + offset + leader_gap + s``,
+      where ``s`` is the box's support along ``d`` (:func:`_support`).
+      Every point of the box then projects at least that far along
+      ``d``, so the box clears the whole leader by ``leader_gap`` and its
+      own wedge's disc by ``offset + leader_gap``. Off the axes the
+      straight-line gap from the leader's end to the box is larger than
+      ``leader_gap``, because the box's nearest point is a corner beside
+      the mid-ray rather than on it.
+    - ``None``: no leader, and the same centred box with its nearest
+      point ``offset`` beyond the rim.
+    - ``'elbow'``: a radial segment from the rim to an elbow ``offset``
+      beyond it, then a horizontal tail of ``elbow_length`` toward the
+      label's side -- right where ``d`` points right or straight up or
+      down, left otherwise. The label is ``ha='left'``/``'right'``,
+      ``va='center'``, ``leader_gap`` past the tail's end.
+
+    A rotated label is laid out by its rotated box in every style. For
+    ``'radial'`` and ``None`` that is the support above; for ``'elbow'``
+    it is matplotlib's default ``rotation_mode``, which applies ``ha``
+    and ``va`` to the rotated box, so its near side still sits
+    ``leader_gap`` past the tail and its middle level with the tail. A
+    caller-supplied ``rotation_mode="anchor"`` aligns the unrotated text
+    instead and gives up that guarantee.
+
+    Returns
+    -------
+    position : tuple of float
+        The label's ``(x, y)`` in data units.
+    ha, va : str
+        Its alignment.
+    vertices : tuple of list of float, or None
+        The leader's ``(xs, ys)``, or ``None`` with no leader.
+    """
     cx, cy = record.patch.center
-    radius = record.r_outer + gap
-    ha = "left" if math.cos(mid) >= 0.0 else "right"
-    return cx + radius * math.cos(mid), cy + radius * math.sin(mid), ha
+    d = (math.cos(mid), math.sin(mid))
+    rim = record.r_outer
+    rim_point = (cx + rim * d[0], cy + rim * d[1])
+    end = rim + geom.offset
+    end_point = (cx + end * d[0], cy + end * d[1])
+
+    if geom.leader == "elbow":
+        side = -1.0 if d[0] < -_VERTICAL_TOLERANCE else 1.0
+        tail_x = end_point[0] + side * geom.elbow_length
+        position = (tail_x + side * geom.leader_gap, end_point[1])
+        ha = "left" if side > 0 else "right"
+        vertices = ([rim_point[0], end_point[0], tail_x],
+                    [rim_point[1], end_point[1], end_point[1]])
+        return position, ha, "center", vertices
+
+    reach = _support(text, geom.renderer, geom.scale, d)
+    if geom.leader == "radial":
+        centre = end + geom.leader_gap + reach
+        vertices = ([rim_point[0], end_point[0]],
+                    [rim_point[1], end_point[1]])
+    else:
+        centre = end + reach
+        vertices = None
+    position = (cx + centre * d[0], cy + centre * d[1])
+    return position, "center", "center", vertices
+
+
+def _apply_outside(label: _OutsideLabel, geom: _OutsideGeometry) -> None:
+    """Write :func:`_outside_layout`'s result onto the label and its leader.
+
+    The leader must already exist when the style draws one; its vertices
+    are replaced, so a later pass can call this again after moving the
+    label's mid-ray or geometry and the pair stays consistent.
+    """
+    position, ha, va, vertices = _outside_layout(
+        label.text, label.record, label.mid, geom)
+    label.text.set_ha(ha)
+    label.text.set_va(va)
+    label.text.set_position(position)
+    if label.leader is not None and vertices is not None:
+        label.leader.set_data(*vertices)
 
 
 def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:
@@ -206,20 +411,33 @@ def _wedge_values_strategy(
     *,
     fmt: str,
     anchor,
-    offset: float,
+    offset: Optional[float],
     color,
     pad: float,
     rotation=0.0,
     basis: Optional[str] = None,
+    leader=_LEADER_DEFAULT,
+    leader_gap: Optional[float] = None,
+    elbow_length: Optional[float] = None,
     **text_kws,
 ) -> List[Text]:
     """Label every wedge on ``ax`` with its share, or its formatted value.
 
     ``anchor="inside"`` centres each label in its wedge's radial band;
-    ``"outside"`` puts it ``offset`` millimetres beyond the rim along the
-    wedge's mid-ray, joined to the rim by a leader line in the wedge's
-    own edge colour at ``edgewidth``; ``"auto"`` measures each label
-    inside (:func:`_label_fits`) and moves only the ones that do not fit.
+    ``"outside"`` puts it beyond the rim on the wedge's mid-ray, joined
+    to the rim by a leader line in the wedge's own edge colour at
+    ``edgewidth``; ``"auto"`` measures each label inside
+    (:func:`_label_fits`) and moves only the ones that do not fit, which
+    are then placed exactly as ``"outside"`` places them.
+
+    ``leader`` picks how an outside label hangs off its wedge --
+    ``"radial"``, ``"elbow"`` or ``None`` (``False`` too) for no line --
+    and :func:`_outside_layout` gives the geometry of each. ``offset``
+    runs from the rim to the leader's end (to the label itself, with no
+    leader), ``leader_gap`` from the leader's end to the label, and
+    ``elbow_length`` is an elbow's horizontal tail, all in millimetres.
+    Each defaults to its ``pie.*`` rcParam: ``pie.leader``,
+    ``pie.label_offset``, ``pie.leader_gap`` and ``pie.elbow_length``.
 
     The axis limits are never changed here -- they are whatever
     :func:`publiplots.pieplot` framed, room for ``pull`` included -- so
@@ -227,8 +445,8 @@ def _wedge_values_strategy(
     labels and leaders are unclipped and sit beyond the axes frame, and
     the layout grows the figure around them the way it does for any
     other decoration while the axes keeps its ``axes_size``. Because the
-    axes' millimetre size is fixed, ``offset`` is converted to data units
-    once and renders as exactly that many millimetres.
+    axes' millimetre size is fixed, every length is converted to data
+    units once and renders as exactly that many millimetres.
 
     ``pad`` is accepted for signature parity with the other strategies
     and has **no effect** here: it is a margin between labels and the
@@ -251,6 +469,11 @@ def _wedge_values_strategy(
             f"rotation must be a finite number of degrees or one of "
             f"{sorted(_VALID_ROTATIONS)}; got {rotation!r}"
         )
+    leader = _resolve_leader(leader)
+    offset = _resolve_length("offset", "pie.label_offset", offset)
+    leader_gap = _resolve_length("leader_gap", "pie.leader_gap", leader_gap)
+    elbow_length = _resolve_length("elbow_length", "pie.elbow_length",
+                                   elbow_length)
     # Defensive: the dispatcher always passes `rotation=` explicitly, so
     # text_kws cannot currently carry one and this pop never fires. It
     # stays because the top-level parameter must win if a future caller
@@ -263,17 +486,23 @@ def _wedge_values_strategy(
 
     renderer = _ensure_renderer(ax)
 
-    # Both conversions are made once, for the whole call. Nothing here
+    # Every conversion is made once, for the whole call. Nothing here
     # touches the axis limits and the layout fixes the axes box in
     # millimetres, so a data unit is worth the same number of millimetres
-    # now as when the figure is drawn: an `offset` converted here renders
+    # now as when the figure is drawn: a length converted here renders
     # as exactly that many millimetres, with no framing to settle first.
     # `apply_aspect` first, so that under `aspect="equal"` the box these
     # read is the square matplotlib will draw rather than the full cell
     # -- see `_data_per_pixel`.
     ax.apply_aspect()
-    scale = _data_per_pixel(ax)
-    gap = mm_to_data(offset, ax, "y")
+    geom = _OutsideGeometry(
+        leader=leader,
+        offset=mm_to_data(offset, ax, "y"),
+        leader_gap=mm_to_data(leader_gap, ax, "y"),
+        elbow_length=mm_to_data(elbow_length, ax, "y"),
+        scale=_data_per_pixel(ax),
+        renderer=renderer,
+    )
     # A leader outlines the gap between rim and label rather than being
     # data itself, so it takes `edgewidth`, not `lines.linewidth`.
     edgewidth = resolve_param("edgewidth", None)
@@ -285,6 +514,7 @@ def _wedge_values_strategy(
     text_kws.setdefault("clip_on", False)
 
     texts: List[Text] = []
+    outside: List[_OutsideLabel] = []
     for record in meta.wedges:
         share = (record.fraction_of_total if basis == "total"
                  else record.fraction_of_parent)
@@ -296,10 +526,9 @@ def _wedge_values_strategy(
 
         mid = math.radians((record.theta0 + record.theta1) / 2.0)
         place_outside = anchor == "outside"
-        if place_outside:
-            x, y, ha = _outside_point(record, mid, gap)
-        else:
-            x, y, ha = _inside_point(record, mid)
+        # Every label is born at its inside point. One that ends outside is
+        # laid out from its rendered box, so the Text has to exist first.
+        x, y, ha = _inside_point(record, mid)
 
         text = ax.text(
             x, y, label,
@@ -323,38 +552,45 @@ def _wedge_values_strategy(
         texts.append(text)
 
         # Under `auto` the label is measured where it was born, inside its
-        # wedge, and moved out only if it does not fit there. One pass is
+        # wedge, and moved out only if it does not fit. One pass is
         # enough: the disc no longer shrinks when a label leaves it, so a
         # label that fitted cannot be unseated by another one moving out.
         if anchor == "auto" and not _label_fits(text, record, renderer,
-                                                 scale, mid):
+                                                 geom.scale, mid):
             place_outside = True
-            x, y, ha = _outside_point(record, mid, gap)
-            text.set_position((x, y))
-            text.set_ha(ha)
             text.set_color(resolve_color(
                 record, color, "outside", ax, hue_active=meta.hue_active,
             ))
 
         if not place_outside:
             continue
-        cx, cy = record.patch.center
-        ax.plot(
-            [cx + record.r_outer * math.cos(mid), x],
-            [cy + record.r_outer * math.sin(mid), y],
-            # The wedge's own edge, not the themed `edgecolor`: that
-            # rcParam is None by default, which means "match the fill"
-            # for a wedge outline and would mean "take the next colour
-            # off the property cycle" here -- leaders in colours from no
-            # wedge at all. Reading the drawn patch honours an explicit
-            # edgecolor too, since the patch already carries it.
-            color=record.patch.get_edgecolor(),
-            linewidth=edgewidth,
-            solid_capstyle="butt",
-            zorder=record.patch.get_zorder() + 1,
-            # Line2D clips to the axes by default, which would cut a
-            # leader off at the frame on its way to a label beyond it.
-            clip_on=False,
-        )
+        line = None
+        if leader is not None:
+            (line,) = ax.plot(
+                [], [],
+                # The wedge's own edge, not the themed `edgecolor`: that
+                # rcParam is None by default, which means "match the
+                # fill" for a wedge outline and would mean "take the next
+                # colour off the property cycle" here -- leaders in
+                # colours from no wedge at all. Reading the drawn patch
+                # honours an explicit edgecolor too, since the patch
+                # already carries it.
+                color=record.patch.get_edgecolor(),
+                linewidth=edgewidth,
+                solid_capstyle="butt",
+                # An elbow is one polyline, so its corner is a join; a
+                # round one reads as a single bent stroke.
+                solid_joinstyle="round",
+                zorder=record.patch.get_zorder() + 1,
+                # Line2D clips to the axes by default, which would cut a
+                # leader off at the frame on its way to a label beyond it.
+                clip_on=False,
+            )
+        placed = _OutsideLabel(text=text, leader=line, record=record, mid=mid)
+        _apply_outside(placed, geom)
+        outside.append(placed)
 
+    # `outside` holds every label that left its wedge with its leader. A
+    # pass that moves crowded labels apart belongs here: it adjusts the
+    # pairs together and re-applies them through `_apply_outside`.
     return texts
