@@ -1158,6 +1158,11 @@ class SubplotsAutoLayout:
         title to (:meth:`_matplotlib_title_floor`): below it matplotlib's own
         lift clears them, and growing the pad would switch that lift off.
 
+        On a row whose ``title_space`` is pinned the figure will not grow to
+        hold the lifted title, so the lift stops where the title would leave
+        the canvas: a title cropped out of the saved file is worse than one
+        overlapping a label.
+
         Convergent: registered decorations sit in ``ax``'s data or axes
         coordinates, so their rise above ``ax.y1`` does not depend on the
         title, the legends or the figure size. Skipped for a title the user
@@ -1166,7 +1171,11 @@ class SubplotsAutoLayout:
         """
         dpi = self._fig.dpi
         renderer = None
-        for row in axes_matrix:
+        pinned_rows = (
+            None if "title_space" in self._locked
+            else self._locked_positions.get("title_space", frozenset())
+        )
+        for r, row in enumerate(axes_matrix):
             for ax in row:
                 # Visible siblings, axis on or off: a registered artist is
                 # drawn either way (a pie chart turns its axes off).
@@ -1200,9 +1209,21 @@ class SubplotsAutoLayout:
                     if deco_top > self._matplotlib_title_floor(ax, ax_top)
                     else 0.0
                 )
-                ax._pp_deco_titlepad = (
-                    self._base_title_pad(ax) + rise_px / dpi * 72.0
-                )
+                pad = self._base_title_pad(ax) + rise_px / dpi * 72.0
+                if pinned_rows is None or r in pinned_rows:
+                    # A pinned `title_space` will not grow to hold the
+                    # lifted title, and `savefig.bbox` is "standard", so a
+                    # title lifted past the figure's top edge is cropped
+                    # out of the file. A title lost is worse than one
+                    # overlapping a label: lift only as far as keeps the
+                    # title on the canvas, and never below the user's pad.
+                    cur = ax.titleOffsetTrans._t[1] * 72.0
+                    title_top = max(
+                        t.get_window_extent(renderer).y1 for t in titles
+                    )
+                    room = (self._fig.bbox.y1 - title_top) / dpi * 72.0
+                    pad = max(self._base_title_pad(ax), min(pad, cur + room))
+                ax._pp_deco_titlepad = pad
                 self._apply_title_pad(ax)
 
     def _matplotlib_title_floor(self, ax, ax_top) -> float:
