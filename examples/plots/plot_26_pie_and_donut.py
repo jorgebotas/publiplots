@@ -221,9 +221,13 @@ pp.show()
 # force every label to one placement regardless of fit. An outside label
 # is centred on its wedge's mid-ray, a little past the end of its line.
 # The disc is the same size under all three: a label that leaves it
-# extends past the axes rather than shrinking the pie. Here no two
-# outside labels crowd each other, so each sits on its own wedge's
-# mid-ray; "Crowded labels" below shows what happens when they would.
+# extends past the axes rather than shrinking the pie. On their own
+# mid-rays the 6.0% and 2.0% labels would just overlap, so under
+# ``"outside"`` and ``"auto"`` they are nudged apart round the circle --
+# by less than a degree each, their leaders leaning to follow -- until
+# they are ``label_spacing`` (0.4mm) apart; the other labels stay on
+# their mid-rays. "Crowded labels" below shows this at work on a long
+# tail.
 # Like a tick label, an outside label is a decoration: the axes title
 # above it, and a legend beside it, step past it.
 
@@ -265,10 +269,14 @@ pp.show()
 # and centres the label on it. ``"elbow"`` bends the line into a short
 # horizontal tail, ``elbow_length`` millimetres long (``2`` by default),
 # and sets the label beside it, aligned away from the disc, so the text
-# starts ``leader_gap`` past the end of its tail. Each label hangs off
-# its own wedge's mid-ray: elbow labels are not lined up into a column.
-# ``None`` (or ``False``) draws no line and centres the label with its
-# nearest point ``offset`` from the rim.
+# starts ``leader_gap`` past the end of its tail. Every leader starts
+# on its own wedge's rim at the mid-ray, and elbow labels are not lined
+# up into a column. ``None`` (or ``False``) draws no line and centres
+# the label with its nearest point ``offset`` from the rim. The radial
+# labels here each sit on their own mid-ray. The two thin wedges'
+# elbow labels would touch there, so they are moved apart, 0.6mm each,
+# up and down their column (see "Crowded labels"); and the unled ones,
+# 0.375mm apart, are nudged a tenth of a degree to make 0.4mm.
 
 fig, axes = pp.subplots(ncols=3, axes_size=(36, 36))
 for ax, leader in zip(axes, ["radial", "elbow", None]):

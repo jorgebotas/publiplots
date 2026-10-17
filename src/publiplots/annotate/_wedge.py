@@ -1506,7 +1506,8 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
     separations are estimated at each pair's middle and relaxed stretch
     by stretch, so on some pies a tight packing within the bounds
     exists -- always with leaders near the rim's tangent -- that the
-    solve does not find. Over the 3,870-chart sweep that was 82 of 498
+    solve does not find. On the 2,430 radial and unled charts a review
+    checked against a separate greedy packer, that was 80 of 496
     fallbacks; elbow labels read better there anyway.
 
     **Verification.** The separations are right for each pair's middle,
@@ -1614,15 +1615,20 @@ def _spread_on_circle(labels: List[_OutsideLabel], geom: _OutsideGeometry,
     for k in range(n):
         a, b = pair(k)
         middle = angles[a] + 0.5 * sep[k]
-        estimate = requirement(chain[a], chain[b], middle, sep[k])
-        if _box_gap(unmoved[a], unmoved[b]) < spacing - tol:
+        # With two labels the cut pair is the same two labels, seen the
+        # wide way round: their boxes overlap the short way, but the
+        # wide way they need only what the boxes need there. Judging it
+        # by the short way's overlap, or bracketing its bisection from
+        # its present separation -- where, the wide way round, the boxes
+        # meet again -- would ask for the whole separation, leave the cut
+        # no slack, and pin both labels on their mid-rays.
+        wide = n == 2 and k == 1
+        estimate = requirement(chain[a], chain[b], middle,
+                               0.0 if wide else sep[k])
+        if not wide and _box_gap(unmoved[a], unmoved[b]) < spacing - tol:
             need.append(max(estimate, sep[k]))
         else:
             need.append(min(estimate, sep[k]))
-    if n == 2:
-        # Two labels are one pair, seen from both sides: the cut pair is
-        # the wide way round and must not be pressed.
-        need[1] = min(need[1], sep[1])
 
     def bounds_for(lam, needs):
         lower = [angles[k] - bound[k] for k in range(n)]

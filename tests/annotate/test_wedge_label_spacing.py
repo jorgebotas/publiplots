@@ -1138,3 +1138,66 @@ def test_relaxing_the_gaps_is_feasible_and_as_little_as_needed(seed):
             raised = list(lam)
             raised[k] = min(1.0, lam[k] + 1e-7 / extra[k] + 1e-9)
             assert window(raised) is not None, k
+
+
+# --- two outside labels -----------------------------------------------------
+#
+# With two outside labels the pair the circle is cut between is the same
+# two labels as their ordinary pair, seen the wide way round. It was once
+# judged by the short way's overlap, which left the cut no slack and
+# pinned both labels on their mid-rays: two labels that only needed
+# nudging apart were reported not cleared and fell back to elbow labels.
+
+THIN = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
+
+
+@pytest.mark.parametrize("leader", ["radial", None])
+def test_the_gallery_anchors_chart_clears_its_two_outside_labels(leader):
+    """The gallery's chart: under ``auto`` only 6.0% and 2.0% go out,
+    and they are kept apart round the circle, not sent to elbows."""
+    ax, renderer = _pie(THIN, size=38.0, anchor="auto", leader=leader)
+    outside = [t for t in ax.texts if t.get_ha() != "center"
+               or math.hypot(*t.get_position()) > 1.0]
+    assert sorted(t.get_text() for t in outside) == ["2.0%", "6.0%"]
+    assert RESULTS and RESULTS[0][1], "the circle pass must clear them"
+    assert all(t.get_ha() == "center" for t in ax.texts)
+    assert all(len(line.get_xdata()) == 2 for line in ax.lines)
+    assert _min_gap_mm(ax, renderer) >= pp.rcParams["pie.label_spacing"] \
+        - TOL_MM
+
+
+@pytest.mark.parametrize("size", [25.0, 38.0, 60.0])
+@pytest.mark.parametrize("start", range(0, 360, 45))
+@pytest.mark.parametrize("leader", ["radial", None])
+@pytest.mark.parametrize("anchor, values", [
+    ("auto", [80.0, 12.0, 6.0, 2.0]),
+    ("auto", [90.0, 6.0, 4.0]),
+    ("outside", [97.0, 3.0]),
+    ("outside", [50.0, 50.0]),
+])
+def test_two_outside_labels_are_kept_apart_round_the_circle(
+    anchor, values, leader, start, size,
+):
+    """Every pie here has room on the circle: no fallback, and the
+    outside labels end ``label_spacing`` apart. Two go outside in all but
+    a few of the ``auto`` cases, where the 12% wedge's label joins them
+    (or, at 60mm, where one of the two fits inside); the two
+    ``"outside"`` pies always have exactly two."""
+    frame = pd.DataFrame({"kind": [f"k{i}" for i in range(len(values))],
+                          "n": values})
+    ax, renderer = _pie(frame, size=size, anchor=anchor, leader=leader,
+                        pie_kws={"start_angle": start})
+    outside = [i for i, (record, text) in enumerate(
+                   zip(ax._publiplots_wedge_meta.wedges, ax.texts))
+               if math.dist(text.get_position(), record.patch.center)
+               > record.r_outer]
+    if anchor == "outside":
+        assert len(outside) == 2
+    elif len(outside) < 2:
+        return  # at 60mm the larger sliver's label may fit inside
+    assert all(complete for _, complete in RESULTS)
+    assert all(text.get_ha() == "center" for text in ax.texts)
+    boxes = _boxes(ax, renderer)
+    gap = min(_mm(ax, _gap(boxes[a], boxes[b]))
+              for a, b in itertools.combinations(outside, 2))
+    assert gap >= pp.rcParams["pie.label_spacing"] - TOL_MM
