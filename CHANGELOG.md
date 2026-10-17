@@ -90,10 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own light ramp from near-white up to `color`; `scatterplot`'s
   `None` gives seaborn's default ramp whatever `color` is.
 
-  Four known gaps. Outside labels do not de-collide, so those of adjacent
-  thin wedges can overlap under `anchor="outside"` and the default
-  `anchor="auto"` alike: on the gallery's anchors comparison, `"6.0%"`
-  and `"2.0%"` overlap by 0.95x1.47mm under both. The key that
+  Three known gaps. The key that
   `legend=True` draws beside the axes — a legend, or a colorbar for a
   numeric `hue` — is placed 2mm from the axes frame, not past the labels
   on that side, so a label on the right of the pie can overprint it. On
@@ -193,16 +190,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with no leader the label's nearest point is `offset` from the rim. A
   rotated label is placed by its rotated box. These are exact at
   `figure.dpi`; text metrics at `savefig.dpi` 600 can put the gap up to
-  about 0.05mm off. Labels are not yet lined up into columns or moved
-  apart. A non-number or bool `offset`, `leader_gap`, `elbow_length` or
+  about 0.05mm off. Labels are not lined up into columns; crowded ones
+  are moved apart (below). A non-number or bool `offset`, `leader_gap`, `elbow_length` or
   `gap` raises `TypeError`, and a negative, NaN or infinite one
   `ValueError`, in one message style.
 
+- **Crowded outside wedge labels are moved apart: `avoid_overlap` and
+  `label_spacing`.** On a long tail the outside labels of adjacent
+  slivers landed on one another — on a 40/30/20/5/3/1/0.5/0.5 pie in a
+  40mm cell the last four overlapped, by as much as 2.35mm, under every
+  leader style. `avoid_overlap=True` (the default) now moves them by as
+  little as keeps every two labels' boxes `label_spacing` mm apart
+  (0.4), keeping their order. `"elbow"` labels move up or down their
+  column, the elbow moving with them so the tail stays level, held off
+  the disc, and with a moved label's leader kept from running through
+  another label.
+  `"radial"` and unled labels move round the circle onto a ray off
+  their wedge's mid-ray, a radial leader leaning from the same rim
+  point to follow — but never further than `acos(R / (R + offset))`
+  from the mid-ray, the furthest a leader can lean without cutting back
+  across the chart (about 25 degrees at 40mm). Each is solved exactly,
+  as an isotonic regression by pool-adjacent-violators with those
+  bounds, for the least total squared move; the circle pass re-measures
+  the rendered boxes, the pair the circle is cut between included, and
+  re-solves, at most eight rounds. A label that crowds nothing is not
+  moved — a chart with nothing crowded renders byte-for-byte as with
+  `avoid_overlap=False`, which runs neither pass — and inside labels
+  never move.
+
+  **When the bounded solve does not clear every conflict**, every
+  outside label of that pie is laid out as a `"elbow"` label
+  instead and spread up and down its column, which always has room: the
+  leader asked for is overridden, leader lines are drawn even for
+  `leader=None`, and the `offset`, `leader_gap` and `elbow_length` in
+  effect are used. No warning is issued. A pie the circle can clear
+  keeps the style asked for and draws exactly as before;
+  `avoid_overlap=False` never falls back. `min_share` pools the
+  slivers where the radial style matters more. The fallback fires on a
+  whole circle of 24 or more equal wedges at 25mm, and on a run of
+  slivers whose length depends on where it sits and on the chart's
+  size: on a 25 to 40mm pie, four to six 0.5% wedges near twelve or six
+  o'clock, where labels stand side by side, nine to eleven near three or
+  nine, where they stack (seven and seventeen at 80mm). It also fires on
+  some pies a tight radial packing could have held, but only with
+  leaders lying near the rim's tangent: of 2,430 radial and unled
+  charts checked against a separate greedy packer, 496 fell back, and
+  in 80 of them such a packing existed within the bound. That is
+  deliberate — those leaders read as lying on the rim — not a sign that
+  separation was impossible.
+  Across a sweep of 3,870 charts — ten data sets from two wedges to 40,
+  25 to 80mm cells, every start angle in 30-degree steps, donuts, gaps,
+  scalar and dict `pull`, rotated labels and `anchor="auto"` — every
+  chart keeps `label_spacing` (the closest pair anywhere is 0.399mm),
+  no leader enters the disc, no radial or unled label left on the circle
+  moves past its bound (31.1 degrees on a plain 25mm pie, R = 11.90mm;
+  the furthest move, 33.6 degrees, is the bound of a wedge pulled out
+  by a dict `pull` on a 25mm chart), and no label ends on a wedge it
+  did not touch unmoved.
+  Elbow labels, asked for or fallen back to, that are rotated across
+  their tail near twelve or six o'clock — taller than the space the
+  `offset` leaves — are moved clear of the wedge they would overlap.
+  Only beside a dict `pull`, whose pulled wedge and leader reach into
+  its neighbours' room, does one leader cross another (on 30 of its 216
+  charts). A leader runs through another label on 8 of the dict-pull
+  charts, and on 5 without one — four with rotated elbow labels (the
+  8- and 13-wedge tails at 40 and 80mm) and 40 equal wedges at 80mm
+  under `anchor="auto"` — each with no more such leaders than
+  unmoved.
+  Anything but a bool `avoid_overlap` raises `TypeError`;
+  `label_spacing` is validated as `leader_gap` is.
+
 - **`pie.*` rcParams.** `pie.gap` (0.0), `pie.leader` (`"radial"`),
-  `pie.label_offset` (2.0), `pie.leader_gap` (0.8) and
-  `pie.elbow_length` (2.0) set the defaults of the arguments of the same
-  name — `offset` for `pie.label_offset` — so a figure set can restyle
-  every pie at once.
+  `pie.label_offset` (2.0), `pie.leader_gap` (0.8),
+  `pie.elbow_length` (2.0), `pie.avoid_overlap` (`True`) and
+  `pie.label_spacing` (0.4) set the defaults of the arguments of the
+  same name — `offset` for `pie.label_offset` — so a figure set can
+  restyle every pie at once.
 
 - **The default outside wedge-label offset is `pie.label_offset`,
   2mm.** `wedge_values` does not take the 1mm default the other
