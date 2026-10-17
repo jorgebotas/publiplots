@@ -122,6 +122,14 @@ class BoxStatsRecord:
         hue_color: palette color assigned by boxplot/violinplot.
         category/hue_value/hatch_value/draw_index/frame_row_index: same
             semantics as in BarRecord; populated by the builder.
+        face_color: the artist's drawn facecolor, alpha included — what a
+            label inside the mark actually sits on. Differs from hue_color,
+            the palette colour at full opacity.
+        artist: the drawn mark — a violin's PolyCollection or a box's
+            PathPatch. Pairs per-mark decorations to their mark explicitly.
+        half: for a half-body (split violin, side= violin), which side of
+            its seam it occupies on the categorical axis, in data
+            coordinates; None for a full body.
     """
     center_pos: float
     cat_half_width: float
@@ -132,6 +140,9 @@ class BoxStatsRecord:
     hatch_value: Optional[Hashable] = None
     draw_index: int = 0
     frame_row_index: Optional[int] = None
+    face_color: Optional[RGBA] = None
+    artist: Optional[Any] = None
+    half: Optional[Literal["low", "high"]] = None
 
 
 @dataclass
@@ -143,6 +154,8 @@ class BoxStatsMeta:
     source_frame: Optional[Any] = None
     group_keys: Optional[Tuple[str, ...]] = None
     group_dims: Optional[Tuple[str, ...]] = None
+    # True when some category has two or more full bodies side by side.
+    dodged: bool = False
 
 
 def _is_bar_rect(p) -> bool:

@@ -170,11 +170,13 @@ pp.show()
 # %%
 # Violin Plot with Different Inner Representations
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Compare different inner representations: box, quart, stick, point.
+# ``"median"`` (the default) draws one line across the body at the median,
+# in the outline's own colour. ``"box"``, ``"quart"``, ``"stick"`` and
+# ``"point"`` are seaborn's.
 
-fig, axes = pp.subplots(2, 2, axes_size=(70, 55))
+fig, axes = pp.subplots(1, 5, axes_size=(45, 55))
 
-inner_types = ['box', 'quart', 'stick', 'point']
+inner_types = ['median', 'box', 'quart', 'stick', 'point']
 for ax, inner in zip(axes.flat, inner_types):
     pp.violinplot(
         data=violin_data[violin_data['group'] == 'Group 1'],
@@ -187,6 +189,38 @@ for ax, inner in zip(axes.flat, inner_types):
         ylabel='Value',
     )
 
+pp.show()
+
+# %%
+# Median Labels Inside the Violin
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ``annotate=True`` prints each median on the forward side of its line —
+# above it for vertical violins, right of it for horizontal ones. Split
+# halves put their labels against the seam, each on its own side.
+
+fig, axes = pp.subplots(1, 2, axes_size=(70, 55))
+pp.violinplot(
+    data=violin_data[violin_data['group'] == 'Group 1'],
+    x='category',
+    y='value',
+    annotate=True,
+    ax=axes[0],
+    title='Vertical',
+    xlabel='Category',
+    ylabel='Value',
+)
+pp.violinplot(
+    data=violin_data,
+    y='category',
+    x='value',
+    hue='group',
+    split=True,
+    annotate=True,
+    ax=axes[1],
+    title='Horizontal, split',
+    xlabel='Value',
+    ylabel='Category',
+)
 pp.show()
 
 # %%
@@ -231,10 +265,11 @@ pp.show()
 # %%
 # Annotated violin stats
 # ~~~~~~~~~~~~~~~~~~~~~~
-# Violinplots share the ``box_stats`` annotation strategy with boxplots:
-# ``annotate=True`` labels the median by default; pass
-# ``stats=[...]`` to label multiple statistics per violin. See the
-# dedicated :doc:`annotations gallery <plot_23_annotate>` for more.
+# Violinplots annotate with ``violin_stats``: the same statistics as a
+# boxplot's ``box_stats``, labelled from inside the body. ``annotate=True``
+# labels the median by default; pass ``stats=[...]`` to label multiple
+# statistics per violin. See the dedicated
+# :doc:`annotations gallery <plot_23_annotate>` for more.
 
 ax = pp.violinplot(
     data=violin_data,

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import warnings
 from numbers import Number
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -826,6 +826,35 @@ def _iter_box_group_keys(spec, data, hue_outer: bool,
             yield cat, h_val
 
 
+def _is_singular(vals: np.ndarray) -> bool:
+    """True when seaborn's violin KDE cannot fit ``vals``.
+
+    seaborn then draws the group as a bare line instead of a body
+    (``KDE._transform`` in ``seaborn/_stats/density.py``): fewer than two
+    finite observations, or values whose density estimate cannot be fitted
+    (in practice, identical values whose covariance comes out exactly zero).
+    The fit is repeated here rather than approximated, because a constant
+    group's weighted covariance is often a tiny nonzero float, and seaborn
+    then draws a body.
+
+    Bandwidth cannot change the outcome: ``gaussian_kde`` raises only from
+    the Cholesky factor of the raw data covariance, and ``bw_method`` /
+    ``bw_adjust`` merely rescale that factor afterwards.
+    """
+    # The same symbol seaborn fits with: scipy's, or seaborn's own fallback.
+    from seaborn._stats.density import gaussian_kde
+
+    finite = vals[np.isfinite(vals)]
+    if finite.size < 2:
+        return True
+    try:
+        # seaborn's violin path fits with a unit "weight" column.
+        gaussian_kde(finite, weights=np.ones(finite.size))
+    except np.linalg.LinAlgError:
+        return True
+    return False
+
+
 def _aggregate_box_stats(
     data,
     x: str,
@@ -838,6 +867,7 @@ def _aggregate_box_stats(
     hue_outer: bool = True,
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
+    skip_singular: bool = False,
 ) -> List[Dict]:
     """Group by (categorical_axis [, hue]) and compute box stats per group.
 
@@ -853,6 +883,9 @@ def _aggregate_box_stats(
     ``source_frame.iloc[frame_row_index]`` resolves the caller's row for
     any index kind. When ``source_frame`` is ``None`` or the label does
     not map (rare), ``frame_row_index`` is ``None``.
+
+    ``skip_singular`` drops groups seaborn's violin plotter draws without a
+    body; see `_is_singular`.
     """
     value_col = y if categorical_axis == x else x
     spec = BarSplitSpec.resolve(
@@ -865,8 +898,14 @@ def _aggregate_box_stats(
         mask = data[categorical_axis] == cat
         if spec.split_hue is not None:
             mask = mask & (data[spec.split_hue] == h_val)
-        vals = data.loc[mask, value_col].to_numpy()
+        vals = data.loc[mask, value_col].to_numpy(dtype=float, na_value=np.nan)
+        # seaborn drops non-finite values before drawing, and np.median /
+        # np.percentile are not NaN-aware: one NaN would poison every stat.
+        # An all-NaN group then draws nothing, exactly like an empty one.
+        vals = vals[np.isfinite(vals)]
         if len(vals) == 0:
+            continue
+        if skip_singular and _is_singular(vals):
             continue
         stats = _compute_box_stats(vals, whis)
         # Position within source_frame of the first row matching this group.
@@ -913,6 +952,19 @@ def _facecolor_of(artist) -> Tuple[float, float, float, float]:
     return tuple(float(c) for c in fc[:4])
 
 
+def _drawn_face_of(artist) -> Tuple[float, float, float, float]:
+    """The face a label inside ``artist`` actually sits on, alpha included.
+
+    An unfilled box outline paints nothing inside it, so its face is fully
+    transparent and contrast is judged against the axes background. The
+    stroke colour still serves as the box's colour via `_facecolor_of`.
+    """
+    if isinstance(artist, Line2D):
+        r, g, b, _ = to_rgba(artist.get_color())
+        return (r, g, b, 0.0)
+    return _facecolor_of(artist)
+
+
 def _build_box_stats_meta(
     ax: Axes,
     data,
@@ -928,6 +980,8 @@ def _build_box_stats_meta(
     hue_outer: bool = True,
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
+    half_of: Optional[Callable[[Dict], Optional[str]]] = None,
+    skip_singular: bool = False,
 ) -> BoxStatsMeta:
     """Shared builder for pp.boxplot / pp.violinplot.
 
@@ -947,7 +1001,7 @@ def _build_box_stats_meta(
         data, x=x, y=y, hue=hue,
         categorical_axis=categorical_axis, whis=whis,
         source_frame=source_frame, hue_outer=hue_outer,
-        order=order, hue_order=hue_order,
+        order=order, hue_order=hue_order, skip_singular=skip_singular,
     )
     if len(artists) != len(agg):
         n = min(len(artists), len(agg))
@@ -974,7 +1028,15 @@ def _build_box_stats_meta(
             hatch_value=row["hatch_value"],
             draw_index=i,
             frame_row_index=row["frame_row_index"],
+            face_color=_drawn_face_of(artist),
+            artist=artist,
+            half=half_of(row) if half_of is not None else None,
         ))
+
+    # Two or more full bodies in one category means the plotter dodged them
+    # side by side; split and side= halves share their slot by design.
+    full_cats = [b.category for b in boxes if b.half is None]
+    dodged = len(full_cats) != len(set(full_cats))
 
     spec = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
@@ -993,6 +1055,7 @@ def _build_box_stats_meta(
         source_frame=source_frame,
         group_keys=tuple(keys),
         group_dims=tuple(dims),
+        dodged=dodged,
     )
 
 
@@ -1075,6 +1138,8 @@ def build_from_violinplot_call(
     drawn_artists: Optional[List] = None,
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
+    split: bool = False,
+    side: str = "both",
 ) -> BoxStatsMeta:
     """Build a BoxStatsMeta paired with the violinplot's fill collections.
 
@@ -1089,10 +1154,35 @@ def build_from_violinplot_call(
     ``pp.kdeplot`` emits a ``FillBetweenPolyCollection``, which is a
     ``PolyCollection`` subclass and took a violin's slot (issue #241).
     Defaults to scanning ``ax.collections``.
+
+    ``split`` / ``side`` are the violinplot call's own; they decide each
+    record's ``half``.
     """
     from matplotlib.collections import PolyCollection
     candidates = ax.collections if drawn_artists is None else drawn_artists
     artists = [c for c in candidates if isinstance(c, PolyCollection)]
+    hue_levels = _categorical_order(data[hue], hue_order) if hue is not None else []
+
+    def half_of(row) -> Optional[str]:
+        # seaborn puts even hue levels on the low side of a split violin's
+        # seam (`right_side = levels.index(hue) % 2`, categorical.py). Take
+        # parity from the level index, never from draw order, which stops
+        # alternating as soon as one (category, hue) combination is empty.
+        if split and hue is not None:
+            # A hue that repeats the categorical axis records no hue value;
+            # its level is the category, and seaborn still halves the body.
+            level = row["category"] if hue == categorical_axis else row["hue_value"]
+            return ("low", "high")[hue_levels.index(level) % 2]
+        if split:
+            # Without a hue, seaborn takes `right_side = 0` for every body,
+            # so each is a low half with its seam on the slot's high edge.
+            return "low"
+        if side == "left":
+            return "low"
+        if side == "right":
+            return "high"
+        return None
+
     return _build_box_stats_meta(
         ax, data, x, y, hue, categorical_axis, palette, whis, artists,
         source_frame=source_frame,
@@ -1100,4 +1190,8 @@ def build_from_violinplot_call(
         # `bxp`, which boxplot delegates to. See issue #254.
         hue_outer=False,
         order=order, hue_order=hue_order,
+        half_of=half_of,
+        # seaborn draws a singular group as a bare line, not a body, so a
+        # record for it would take the next group's body.
+        skip_singular=True,
     )

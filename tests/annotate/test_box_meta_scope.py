@@ -105,17 +105,18 @@ def test_violin_meta_ignores_a_filled_kdeplots_collection():
 
     That is a ``PolyCollection`` subclass, so it matched the violin
     builder's filter and took category A's slot — reporting a centre of 3.5
-    and a half-extent of 5.7555 where A should be -0.0 and 0.4. B was
-    displaced onto A's violin at the same time, and the second violin's
-    record was dropped outright by the length-truncating zip, so the whole
-    summary is asserted rather than just A's row.
+    and a half-extent of 5.7555 where A should be -0.0 and 0.4 (at the
+    then-default width of 0.8). B was displaced onto A's violin at the same
+    time, and the second violin's record was dropped outright by the
+    length-truncating zip, so the whole summary is asserted rather than just
+    A's row.
     """
     df = _ab()
     fig, ax = pp.subplots()
     pp.kdeplot(data=df, x="v", fill=True, legend=False, ax=ax)
     pp.violinplot(data=df, x="cat", y="v", legend=False, ax=ax)
 
-    assert _summary(ax) == [("A", -0.0, 0.4), ("B", 1.0, 0.4)]
+    assert _summary(ax) == [("A", -0.0, 0.45), ("B", 1.0, 0.45)]
 
 
 def test_second_violin_call_pairs_with_its_own_violins():
@@ -161,7 +162,7 @@ def test_boxplot_hue_dodge_is_unchanged():
 def test_violinplot_alone_is_unchanged():
     fig, ax = pp.subplots()
     pp.violinplot(data=_ab(), x="cat", y="v", legend=False, ax=ax)
-    assert _summary(ax) == [("A", -0.0, 0.4), ("B", 1.0, 0.4)]
+    assert _summary(ax) == [("A", -0.0, 0.45), ("B", 1.0, 0.45)]
 
 
 def test_raincloud_still_builds_its_meta():
@@ -269,7 +270,7 @@ def test_violin_drawn_artists_none_still_scans_the_whole_axes():
         ax=ax, data=df, x="cat", y="v", hue=None, categorical_axis="cat",
         palette=None, source_frame=df,
     )
-    assert round(meta.boxes[0].cat_half_width, 4) != 0.4, (
+    assert round(meta.boxes[0].cat_half_width, 4) != 0.45, (
         "fallback no longer scans the whole axes — this pin is now vacuous"
     )
 
@@ -278,7 +279,7 @@ def test_violin_drawn_artists_none_still_scans_the_whole_axes():
         ax=ax, data=df, x="cat", y="v", hue=None, categorical_axis="cat",
         palette=None, source_frame=df, drawn_artists=own,
     )
-    assert [round(b.cat_half_width, 4) for b in scoped.boxes] == [0.4, 0.4]
+    assert [round(b.cat_half_width, 4) for b in scoped.boxes] == [0.45, 0.45]
 
 
 def test_hist_drawn_artists_none_still_scans_the_whole_axes():

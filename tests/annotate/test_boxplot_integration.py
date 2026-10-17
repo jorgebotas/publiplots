@@ -2,6 +2,7 @@
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -58,3 +59,20 @@ def test_violinplot_annotate_kind_forwarded():
     )
     labels = [t.get_text() for t in ax.texts]
     assert labels == ["n=10", "n=20", "n=30"]
+
+
+def test_boxplot_nan_group_gets_a_finite_median_label():
+    df = _box_df()
+    df.loc[0, "value"] = np.nan   # group A: median of [2, 3] is 2.5
+    ax = pp.boxplot(data=df, x="cat", y="value", annotate=True)
+    assert [t.get_text() for t in ax.texts] == ["2.50", "3.00", "4.00"]
+
+
+def test_boxplot_all_nan_group_is_skipped_like_an_empty_one():
+    df = _box_df()
+    df.loc[df["cat"] == "B", "value"] = np.nan
+    ax = pp.boxplot(data=df, x="cat", y="value", annotate=True)
+    boxes = ax._publiplots_box_meta.boxes
+    assert [b.category for b in boxes] == ["A", "C"]
+    assert [b.center_pos for b in boxes] == pytest.approx([0, 2], abs=1e-9)
+    assert [t.get_text() for t in ax.texts] == ["2.00", "4.00"]

@@ -126,7 +126,7 @@ def test_violin_hue_record_order_is_cat_outer():
     assert got == [("A", "x"), ("A", "y"), ("B", "x"), ("B", "y")]
 
     centres = [b.center_pos for b in ax._publiplots_box_meta.boxes]
-    assert centres == pytest.approx([-0.2, 0.2, 0.8, 1.2], abs=1e-6)
+    assert centres == pytest.approx([-0.225, 0.225, 0.775, 1.225], abs=1e-6)
 
 
 def test_violin_hue_split_takes_its_own_position():
@@ -178,7 +178,7 @@ def test_violin_hue_horizontal_orient():
     got = [(b.category, b.hue_value) for b in ax._publiplots_box_meta.boxes]
     assert got == [("A", "x"), ("A", "y"), ("B", "x"), ("B", "y")]
     centres = [b.center_pos for b in ax._publiplots_box_meta.boxes]
-    assert centres == pytest.approx([-0.2, 0.2, 0.8, 1.2], abs=1e-6)
+    assert centres == pytest.approx([-0.225, 0.225, 0.775, 1.225], abs=1e-6)
 
 
 def test_violin_custom_labels_land_on_their_own_violin():
@@ -195,7 +195,7 @@ def test_violin_custom_labels_land_on_their_own_violin():
     texts = pp.annotate(ax, kind="violin_custom", labels="n")
 
     # n identifies the group: 11=A/x, 22=A/y, 33=B/x, 44=B/y.
-    expected_x = {"11": -0.2, "22": 0.2, "33": 0.8, "44": 1.2}
+    expected_x = {"11": -0.225, "22": 0.225, "33": 0.775, "44": 1.225}
     for t in texts:
         assert t.get_position()[0] == pytest.approx(
             expected_x[t.get_text()], abs=1e-6), (

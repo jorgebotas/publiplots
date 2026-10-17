@@ -71,6 +71,9 @@ class _CustomStrategy:
     axes_to_expand: Callable[[str, str, float], List[str]] = field(
         default=_default_axes_to_expand
     )
+    # The kind named in error messages, when it differs from the one
+    # `meta_attr` implies (violin_custom shares box_custom's meta).
+    kind_name: Optional[str] = None
 
     def __call__(
         self,
@@ -234,6 +237,8 @@ class _CustomStrategy:
 
     def _kind_name(self) -> str:
         """e.g. '_publiplots_bar_meta' -> 'bar_custom'."""
+        if self.kind_name is not None:
+            return self.kind_name
         core = self.meta_attr.removeprefix("_publiplots_").removesuffix("_meta")
         return f"{core}_custom"
 
@@ -255,7 +260,8 @@ class _ColorShim:
     def __init__(self, record):
         self._record = record
         self.hue_color = getattr(record, "hue_color", None)
-        self.patch = getattr(record, "patch", None) or _DummyPatch(self.hue_color)
+        face = getattr(record, "face_color", None) or self.hue_color
+        self.patch = getattr(record, "patch", None) or _DummyPatch(face, self.hue_color)
 
     @classmethod
     def wrap(cls, record):
@@ -267,11 +273,12 @@ class _ColorShim:
 
 
 class _DummyPatch:
-    def __init__(self, rgba):
-        self._rgba = rgba or (0, 0, 0, 1)
+    def __init__(self, face, edge):
+        self._face = face or (0, 0, 0, 1)
+        self._edge = edge or self._face
 
     def get_facecolor(self):
-        return self._rgba
+        return self._face
 
     def get_edgecolor(self):
-        return self._rgba
+        return self._edge
