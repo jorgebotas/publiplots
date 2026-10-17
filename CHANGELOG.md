@@ -228,9 +228,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `avoid_overlap=False` never falls back. `min_share` pools the
   slivers where the radial style matters more. The fallback fires on a
   whole circle of 24 or more equal wedges at 25mm, and on a run of
-  slivers whose length depends on where it sits: four to six 0.5%
-  wedges near twelve or six o'clock, where labels stand side by side,
-  nine to eleven near three or nine, where they stack. It also fires on
+  slivers whose length depends on where it sits and on the chart's
+  size: on a 25 to 40mm pie, four to six 0.5% wedges near twelve or six
+  o'clock, where labels stand side by side, nine to eleven near three or
+  nine, where they stack (seven and seventeen at 80mm). It also fires on
   some pies a tight radial packing could have held, but only with
   leaders lying near the rim's tangent: of 2,430 radial and unled
   charts checked against a separate greedy packer, 496 fell back, and

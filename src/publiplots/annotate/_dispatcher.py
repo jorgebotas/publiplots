@@ -253,10 +253,11 @@ def annotate(
         leader and all (drawn too when ``leader=None``), using the
         ``offset``, ``leader_gap`` and ``elbow_length`` in effect, and
         spread up and down its column, which always has room. How many
-        slivers that takes depends on where they sit: near twelve or six
-        o'clock, where labels stand side by side, four to six 0.5%
-        wedges already do; near three or nine, where they stack, nine to
-        eleven. No warning is issued; pass ``min_share`` to
+        slivers that takes depends on where they sit and on the chart's
+        size: on a 25 to 40mm pie, four to six 0.5% wedges already do
+        near twelve or six o'clock, where labels stand side by side, and
+        nine to eleven near three or nine, where they stack; a larger pie
+        takes more. No warning is issued; pass ``min_share`` to
         :func:`publiplots.pieplot` to pool the slivers if the radial
         style matters more, or ``avoid_overlap=False`` to keep every
         label on its mid-ray whatever overlaps. A pie the circle pass

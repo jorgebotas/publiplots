@@ -276,7 +276,7 @@ pp.show()
 # labels here each sit on their own mid-ray. The two thin wedges'
 # elbow labels would touch there, so they are moved apart, 0.6mm each,
 # up and down their column (see "Crowded labels"); and the unled ones,
-# 0.375mm apart, are nudged a tenth of a degree to make 0.4mm.
+# 0.375mm apart, are nudged about a hundredth of a degree to make 0.4mm.
 
 fig, axes = pp.subplots(ncols=3, axes_size=(36, 36))
 for ax, leader in zip(axes, ["radial", "elbow", None]):
@@ -317,8 +317,9 @@ pp.rcParams["pie.leader"] = default_leader
 #
 # A radial or unled label moves at most as far round as its leader can
 # lean without cutting back across the chart. Where the slivers need
-# more room than that -- four to six 0.5% wedges side by side near
-# twelve or six o'clock, nine to eleven stacked near three or nine --
+# more room than that -- on a 25 to 40mm pie, four to six 0.5% wedges
+# side by side near twelve or six o'clock, nine to eleven stacked near
+# three or nine; more on a larger pie --
 # the pie is drawn with elbow labels instead (next figure).
 
 long_tail = pd.DataFrame({
