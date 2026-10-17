@@ -1158,6 +1158,11 @@ class SubplotsAutoLayout:
         title to (:meth:`_matplotlib_title_floor`): below it matplotlib's own
         lift clears them, and growing the pad would switch that lift off.
 
+        On a row whose ``title_space`` is pinned the figure will not grow to
+        hold the lifted title, so the lift stops where the title would leave
+        the canvas: a title cropped out of the saved file is worse than one
+        overlapping a label.
+
         Convergent: registered decorations sit in ``ax``'s data or axes
         coordinates, so their rise above ``ax.y1`` does not depend on the
         title, the legends or the figure size. Skipped for a title the user
@@ -1166,10 +1171,17 @@ class SubplotsAutoLayout:
         """
         dpi = self._fig.dpi
         renderer = None
-        for row in axes_matrix:
+        pinned_rows = (
+            None if "title_space" in self._locked
+            else self._locked_positions.get("title_space", frozenset())
+        )
+        for r, row in enumerate(axes_matrix):
             for ax in row:
+                # Visible siblings, axis on or off: a registered artist is
+                # drawn either way (a pie chart turns its axes off).
                 decorations = [
-                    a for sibling in self._drawn_siblings(ax)
+                    a for sibling in self._cell_siblings(ax)
+                    if sibling.get_visible()
                     for a in _registered_decorations(sibling)
                 ]
                 if not decorations and getattr(
@@ -1197,9 +1209,21 @@ class SubplotsAutoLayout:
                     if deco_top > self._matplotlib_title_floor(ax, ax_top)
                     else 0.0
                 )
-                ax._pp_deco_titlepad = (
-                    self._base_title_pad(ax) + rise_px / dpi * 72.0
-                )
+                pad = self._base_title_pad(ax) + rise_px / dpi * 72.0
+                if pinned_rows is None or r in pinned_rows:
+                    # A pinned `title_space` will not grow to hold the
+                    # lifted title, and `savefig.bbox` is "standard", so a
+                    # title lifted past the figure's top edge is cropped
+                    # out of the file. A title lost is worse than one
+                    # overlapping a label: lift only as far as keeps the
+                    # title on the canvas, and never below the user's pad.
+                    cur = ax.titleOffsetTrans._t[1] * 72.0
+                    title_top = max(
+                        t.get_window_extent(renderer).y1 for t in titles
+                    )
+                    room = (self._fig.bbox.y1 - title_top) / dpi * 72.0
+                    pad = max(self._base_title_pad(ax), min(pad, cur + room))
+                ax._pp_deco_titlepad = pad
                 self._apply_title_pad(ax)
 
     def _matplotlib_title_floor(self, ax, ax_top) -> float:
@@ -1274,15 +1298,6 @@ class SubplotsAutoLayout:
             if text.get_visible() and text.get_text():
                 boxes.append(text.get_window_extent(renderer))
         return boxes
-
-    def _drawn_siblings(self, ax) -> list:
-        """:meth:`_cell_siblings` that are drawn with their axes on: a
-        hidden axes, or one after ``ax.axis("off")``, draws no tick labels or
-        axis labels, and ``Axes.get_tightbbox`` skips them too."""
-        return [
-            a for a in self._cell_siblings(ax)
-            if a.get_visible() and a.axison
-        ]
 
     def _offset_inside_legend_past_decorations(
         self, group, axes_matrix, ref_axes=None, ref_idx=None
@@ -1475,13 +1490,19 @@ class SubplotsAutoLayout:
         """How far (mm) the decorations publiplots knows of reach past the
         reference axes' edge on ``side``; ``-inf`` when there are none.
 
-        Known decorations are the axis along that side — x for 'top' /
-        'bottom', y for 'left' / 'right' — of each reference axes and each of
-        its twins that is drawn with its axes on (:meth:`_drawn_siblings`):
-        tick labels, offset text and the axis label while matplotlib
-        positions it (:meth:`_axis_boxes`), at their true extent; and every
-        artist registered on them with :func:`register_decoration`. All are
-        fixed relative to the axes:
+        Known decorations belong to each reference axes and each of its
+        visible twins (a hidden axes draws nothing):
+
+        - the axis along that side -- x for 'top' / 'bottom', y for 'left' /
+          'right' -- while the axes draws it, so not after
+          ``ax.axis("off")``, which ``Axes.get_tightbbox`` skips too: its tick
+          labels, offset text and the axis label while matplotlib positions
+          it (:meth:`_axis_boxes`), at their true extent;
+        - every artist registered on it with :func:`register_decoration`,
+          axis on or off -- a pie chart turns its axes off and still draws
+          its labels.
+
+        All are fixed relative to the axes:
         nothing the layout places — a legend, a colorbar, the figure size —
         moves them, so a band stepping past them settles in one pass.
 
@@ -1495,10 +1516,17 @@ class SubplotsAutoLayout:
         for ax in ref_axes:
             edge = ax.get_window_extent()
             artists = []
-            for sibling in self._drawn_siblings(ax):
-                artists.append(
-                    sibling.yaxis if side in ("left", "right") else sibling.xaxis
-                )
+            for sibling in self._cell_siblings(ax):
+                if not sibling.get_visible():
+                    continue
+                # Axis decorations only while the axes draws them; an
+                # artist registered on it is drawn after `axis("off")`
+                # too -- a pie chart turns its axes off.
+                if sibling.axison:
+                    artists.append(
+                        sibling.yaxis if side in ("left", "right")
+                        else sibling.xaxis
+                    )
                 artists.extend(_registered_decorations(sibling))
             for bb in self._decoration_boxes(artists, renderer, span):
                 best = max(best, overhang_fn(edge, bb) / self._fig.dpi * 25.4)

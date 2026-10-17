@@ -666,3 +666,53 @@ def test_the_line_cases_really_have_a_right_overhang(plot):
     assert _mm(fig, xaxis.x1 - ax.get_window_extent().x1) > 0.5
     if plot == "tall_line":
         assert _extent(fig, _legend(fig)).y0 < xaxis.y1
+
+
+def test_a_registered_decoration_on_an_axes_turned_off_is_still_cleared(df):
+    """``ax.axis("off")`` hides the axis decorations, not the artists
+    registered on the axes: a pie chart turns its axes off and still draws
+    its outside labels, which the legend and the title must clear."""
+    fig, ax = _bar(df)
+    ax.set_title("Title")
+    right = ax.text(1.02, 0.9, "RIGHT", transform=ax.transAxes, clip_on=False)
+    above = ax.text(0.5, 1.08, "ABOVE", transform=ax.transAxes, ha="center",
+                    clip_on=False)
+    register_decoration(ax, right, above)
+    ax.axis("off")
+    _assert_settled(_save(fig))
+
+    leg = _extent(fig, _legend(fig))
+    assert _mm(fig, leg.x0 - _extent(fig, right).x1) == pytest.approx(
+        GAP_MM, abs=0.01
+    )
+    assert _extent(fig, ax.title).y0 > _extent(fig, above).y1
+
+
+@pytest.mark.parametrize("pin", [2.0, 4.0])
+def test_a_pinned_title_space_keeps_the_lifted_title_on_the_canvas(df, pin):
+    """A pinned ``title_space`` will not grow, so a title lifted over a
+    registered decoration stops at the figure's top edge rather than being
+    cropped out of the saved file (it went 1.57 mm off the canvas at 2 mm)."""
+    fig, ax = pp.subplots(axes_size=AXES_MM, title_space=pin)
+    pp.barplot(data=df, x="k", y="v", hue="g", ax=ax, legend=False)
+    ax.set_title("A longer panel title")
+    text = ax.text(0.5, 1.12, "ABOVE", transform=ax.transAxes, ha="center",
+                   clip_on=False)
+    register_decoration(ax, text)
+    _assert_settled(_save(fig))
+
+    title = _extent(fig, ax.title)
+    assert title.y1 <= fig.get_window_extent().y1 + 1e-6
+    # Lifted as far as the canvas allows, not left at the user's pad.
+    assert ax.titleOffsetTrans._t[1] * 72.0 > 6.0
+
+
+def test_an_unpinned_title_space_still_lifts_the_title_clear(df):
+    fig, ax = pp.subplots(axes_size=AXES_MM)
+    pp.barplot(data=df, x="k", y="v", hue="g", ax=ax, legend=False)
+    ax.set_title("A longer panel title")
+    text = ax.text(0.5, 1.12, "ABOVE", transform=ax.transAxes, ha="center",
+                   clip_on=False)
+    register_decoration(ax, text)
+    _assert_settled(_save(fig))
+    assert _extent(fig, ax.title).y0 > _extent(fig, text).y1

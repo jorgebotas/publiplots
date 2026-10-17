@@ -55,6 +55,7 @@ def test_registry_contains_known_strategies():
         "box_stats", "box_custom",
         "point_values", "point_custom",
         "violin_custom",
+        "wedge_values",
     }
 
 

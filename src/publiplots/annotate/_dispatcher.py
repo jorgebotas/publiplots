@@ -7,11 +7,17 @@ register it in `_STRATEGIES` below.
 from __future__ import annotations
 
 import math
+import numbers
 from typing import Callable, List, Optional, Union
 
 from matplotlib.axes import Axes
 from matplotlib.text import Text
 
+from publiplots.annotate._wedge import (
+    _LEADER_DEFAULT,
+    _WEDGE_DEFAULT_FMT,
+    _wedge_values_strategy,
+)
 from publiplots.annotate.bar_custom import _bar_custom_strategy
 from publiplots.annotate.bar_values import _bar_values_strategy
 from publiplots.annotate.box_custom import _box_custom_strategy
@@ -29,7 +35,19 @@ _STRATEGIES: dict[str, Callable] = {
     "point_values": _point_values_strategy,
     "point_custom": _point_custom_strategy,
     "violin_custom": _violin_custom_strategy,
+    "wedge_values": _wedge_values_strategy,
 }
+
+
+# Kinds whose rotation may also be named rather than numeric, and the only
+# kinds that accept `basis=`, `leader=`, `leader_gap=` and `elbow_length=`.
+# All are wedge geometry: there is no tangent to a bar, no parent to take
+# a share of, and no rim for a leader to leave.
+_WEDGE_KINDS = {"wedge_values"}
+
+# `offset` for every kind but the wedge ones, which read
+# `pp.rcParams["pie.label_offset"]` in their strategy instead.
+_DEFAULT_OFFSET = 1.0
 
 
 # Per-strategy default for `fmt` when the caller did not pass one explicitly.
@@ -41,6 +59,7 @@ _DEFAULT_FMT: dict[str, str] = {
     "point_values": ".2f",
     "point_custom": "{}",
     "violin_custom": "{}",
+    "wedge_values": _WEDGE_DEFAULT_FMT,
 }
 
 
@@ -50,12 +69,16 @@ def annotate(
     *,
     fmt: Optional[str] = None,
     anchor: Optional[str] = None,
-    offset: float = 1.0,
+    offset: Optional[float] = None,
     color: Union[str, tuple] = "auto",
     pad: Optional[float] = None,
-    rotation: float = 0.0,
+    rotation: Union[float, str] = 0.0,
     labels=None,
     data=None,
+    basis=None,
+    leader=_LEADER_DEFAULT,
+    leader_gap: Optional[float] = None,
+    elbow_length: Optional[float] = None,
     **text_kws,
 ) -> List[Text]:
     """Add value labels to plot marks on ``ax``.
@@ -86,6 +109,25 @@ def annotate(
         - ``'point_values'`` — label scatter or line-plot points;
           anchor vocabulary
           ``{"top", "bottom", "left", "right", "center"}``.
+        - ``'wedge_values'`` — label pie and donut wedges with their
+          share; anchor vocabulary ``{"inside", "outside", "auto"}``.
+          Under ``'auto'`` each label is measured against the room its
+          own wedge has and pushed outside when it does not fit. An
+          outside label hangs off its wedge's mid-ray in the ``leader``
+          style: ``'radial'`` (the default) runs a line ``offset`` mm
+          straight out from the rim and centres the label on the mid-ray
+          ``leader_gap`` mm beyond its end; ``'elbow'`` bends that line
+          into a horizontal tail ``elbow_length`` mm long, with the label
+          beside it; ``None`` draws no line and centres the label so its
+          nearest point is ``offset`` mm from the rim. Outside labels
+          are decorations, like a title: the axis limits are left alone,
+          so the disc is the same size whichever anchor is used, and the
+          labels extend beyond the axes. On an axes from
+          :func:`publiplots.subplots` the layout grows the figure to
+          hold them; on any other axes nothing does, and labels that
+          reach past the figure edge are cut off. Crowded outside labels
+          are not moved apart. ``pad`` has no effect for this kind, and
+          is not validated for it.
     fmt : str, optional
         Either a bare format spec (e.g. ``".2f"``, ``",.0f"``) or a
         format-string template containing ``{}`` (e.g.
@@ -93,14 +135,21 @@ def annotate(
         its own default: ``bar_values``, ``box_stats``, and
         ``point_values`` default to ``'.2f'``; ``bar_custom`` defaults
         to ``'{}'`` (raw passthrough of the supplied labels).
+        ``wedge_values`` defaults to the wedge's share as a percentage
+        to one decimal; passing any spec switches it to formatting the
+        wedge's own value instead.
     anchor : str, optional
         Where to place the label relative to the mark.
         Strategy-specific — see ``kind`` above. If ``None``, each
         strategy picks its own default.
-    offset : float, default ``1.0``
+    offset : float, optional
         Gap in millimetres between the mark (or errorbar cap, when
         present) and the label, applied outward in the anchor
-        direction.
+        direction. ``1.0`` when not given, except for ``wedge_values``,
+        where it is the distance from the rim to the leader's end (to
+        the nearest point of the label, in a straight line, with
+        ``leader=None``) and defaults to
+        ``pp.rcParams["pie.label_offset"]`` (``2.0``).
     color : str or tuple, default ``'auto'``
         Label color. Accepted values:
 
@@ -114,7 +163,10 @@ def annotate(
         so the geometry reads:
 
         ``mark → offset → label → pad → axis edge``.
-    rotation : float, default ``0.0``
+
+        Ignored by ``wedge_values``, whose outside labels sit beyond
+        the axes edge rather than inside it.
+    rotation : float or str, default ``0.0``
         Label rotation in degrees, counter-clockwise. For right-angle
         multiples (0, 90, 180, 270) the ``(ha, va)`` alignment is
         auto-remapped so the rotated label still sits at the expected
@@ -122,6 +174,11 @@ def annotate(
         so rotated labels do not clip neighbouring marks. Non-right-angle
         rotations are passed through to matplotlib as-is; fine-tuning
         alignment is the caller's responsibility in that case.
+
+        ``wedge_values`` additionally accepts ``'tangential'`` (along
+        the wedge's arc) and ``'radial'`` (along its mid-ray), each
+        flipped where needed so no label reads upside-down. Those names
+        need a mid-ray to be taken from, so any other kind rejects them.
     labels : str or callable, optional
         ``bar_custom`` only. Either a column name to look up in the
         cached ``pp.barplot`` source frame (or in ``data=`` when given),
@@ -133,6 +190,38 @@ def annotate(
         ``bar_custom`` only. Overrides the cached source frame for
         column-based labels. Useful when labels live in a different
         DataFrame than the one passed to ``pp.barplot``.
+    basis : {'total', 'parent'}, optional
+        ``wedge_values`` only: whether a percentage is of the whole
+        chart or of the wedge's parent. Identical on a pie, which has
+        one parent. Default ``'total'``. Passing it with any other kind
+        is a ``TypeError``.
+    leader : {'radial', 'elbow', None}, optional
+        ``wedge_values`` only: how an outside label is joined to its
+        wedge. ``'radial'`` is a straight line along the mid-ray, with
+        the label centred on that ray; ``'elbow'`` adds a horizontal
+        tail toward the label's side (right for a mid-ray pointing
+        straight up or down), with the label left- or right-aligned
+        beside it; ``None`` or ``False`` draws no line. Defaults to
+        ``pp.rcParams["pie.leader"]`` (``'radial'``). A rotated label
+        is placed by its rotated bounding box in every style. Passing it
+        with any other kind is a ``TypeError``.
+    leader_gap : float, optional
+        ``wedge_values`` only: millimetres from the leader's end to the
+        label -- the straight-line distance to the nearest point of the
+        label's box, so it reads the same at every angle. For
+        ``'elbow'`` that is horizontal, from the end of the tail.
+        Defaults to ``pp.rcParams["pie.leader_gap"]`` (``0.8``); unused
+        with ``leader=None``. Passing it with any other kind is a
+        ``TypeError``. For ``'radial'``, and for ``offset`` with
+        ``leader=None``, the label's box is measured with the renderer
+        at ``figure.dpi``, so the gap is exact there; text metrics at
+        another resolution differ slightly, and a figure saved at
+        ``savefig.dpi`` 600 can show the gap up to about 0.05 mm off.
+    elbow_length : float, optional
+        ``wedge_values`` only: millimetres of an ``'elbow'`` leader's
+        horizontal tail. Defaults to ``pp.rcParams["pie.elbow_length"]``
+        (``2.0``); unused by the other styles. Passing it with any other
+        kind is a ``TypeError``.
     **text_kws
         Forwarded to :meth:`matplotlib.axes.Axes.text` (e.g.
         ``fontsize``, ``fontweight``).
@@ -146,7 +235,13 @@ def annotate(
     ------
     ValueError
         If ``kind`` is not one of the registered strategies, or if
-        ``offset`` / ``pad`` is negative.
+        ``offset`` is negative, or ``pad`` is negative for any kind but
+        ``wedge_values``.
+    TypeError
+        If an option belonging to one strategy is passed with a
+        ``kind`` that does not take it: ``basis=``, ``leader=``,
+        ``leader_gap=`` or ``elbow_length=`` outside the wedge kinds, or
+        ``labels=`` / ``data=`` outside the custom-label kinds.
 
     Notes
     -----
@@ -194,18 +289,55 @@ def annotate(
     >>> pp.scatterplot(data=df, x='x', y='y', hue='group', ax=ax)
     >>> pp.annotate(ax, kind='point_values',
     ...             anchor='right', color='hue')
+
+    Label pie wedges with their share, laid along each arc:
+
+    >>> fig, ax = pp.subplots()
+    >>> pp.pieplot(data=df, x='kind', y='n', ax=ax)
+    >>> pp.annotate(ax, kind='wedge_values', rotation='tangential')
+
+    Put every wedge label outside, on elbow leaders:
+
+    >>> pp.annotate(ax, kind='wedge_values', anchor='outside',
+    ...             leader='elbow')
     """
     if kind not in _STRATEGIES:
         raise ValueError(
             f"unknown kind={kind!r}; known: {sorted(_STRATEGIES)}"
         )
-    if offset < 0:
-        raise ValueError("offset must be >= 0")
+    # The wedge kinds resolve an omitted `offset` from their own rcParam,
+    # so it reaches them as None. Every other kind keeps its 1.0, and
+    # `pad` still falls back to the offset actually in effect.
+    if offset is None and kind not in _WEDGE_KINDS:
+        offset = _DEFAULT_OFFSET
+    # The wedge kinds validate `offset` in their strategy, with their
+    # other lengths and after the rcParam default is read, so every
+    # wedge length reports a bad value the same way.
+    if offset is not None and kind not in _WEDGE_KINDS:
+        if not isinstance(offset, numbers.Real):
+            raise TypeError(
+                f"offset must be a number of millimetres; got "
+                f"{type(offset).__name__} {offset!r}"
+            )
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
     if pad is None:
-        pad = offset
-    if pad < 0:
+        pad = offset if offset is not None else _DEFAULT_OFFSET
+    # `pad` has no effect for the wedge kinds, so a value there is not
+    # validated: refusing an argument that changes nothing would only make
+    # a call shared across kinds fail on the pie.
+    if kind not in _WEDGE_KINDS and pad < 0:
         raise ValueError("pad must be >= 0")
-    if not math.isfinite(rotation):
+    # Wedge charts add two named orientations, `"tangential"` and
+    # `"radial"`, which only mean anything where there is a mid-ray to
+    # take them from. Every other kind still requires a finite number.
+    if isinstance(rotation, str):
+        if kind not in _WEDGE_KINDS:
+            raise ValueError(
+                f"rotation must be a finite number of degrees for "
+                f"kind={kind!r}; the named orientations are wedge-only"
+            )
+    elif not math.isfinite(rotation):
         raise ValueError("rotation must be a finite number of degrees")
 
     resolved_fmt = fmt if fmt is not None else _DEFAULT_FMT[kind]
@@ -223,6 +355,31 @@ def annotate(
             f"labels= and data= are only supported for custom-label kinds "
             f"({sorted(_custom_kinds)}); got kind={kind!r}"
         )
+
+    if basis is not None:
+        if kind not in _WEDGE_KINDS:
+            raise TypeError(
+                f"basis= is only supported for {sorted(_WEDGE_KINDS)}; "
+                f"got kind={kind!r}"
+            )
+        extra["basis"] = basis
+
+    leader_options = {
+        name: value
+        for name, value, unset in (("leader", leader, _LEADER_DEFAULT),
+                                   ("leader_gap", leader_gap, None),
+                                   ("elbow_length", elbow_length, None))
+        if value is not unset
+    }
+    if leader_options:
+        if kind not in _WEDGE_KINDS:
+            names = ", ".join(f"{name}=" for name in leader_options)
+            verb = "is" if len(leader_options) == 1 else "are"
+            raise TypeError(
+                f"{names} {verb} only supported for {sorted(_WEDGE_KINDS)}; "
+                f"got kind={kind!r}"
+            )
+        extra.update(leader_options)
 
     return _STRATEGIES[kind](
         ax, fmt=resolved_fmt, anchor=anchor, offset=offset, color=color, pad=pad,

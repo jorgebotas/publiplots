@@ -33,6 +33,21 @@ publiplots-specific keys (not in matplotlib) include:
   :func:`publiplots.set_hatch_mode` to mutate it.
 - ``scatter.size_min`` / ``scatter.size_max`` — size mapping bounds
   for :func:`publiplots.scatterplot` (points^2).
+- ``sunburst.depth_range`` / ``sunburst.sibling_range`` — **reserved,
+  and read by nothing today** (``0.45`` / ``0.14``). They are the colour
+  derivation spans for a future multi-ring part-of-whole chart; the
+  derivation itself already takes them, but the only caller there is,
+  :func:`publiplots.pieplot`, passes ``0.0`` for both because a
+  single-ring chart has no descendants to shade. Changing either has no
+  effect on any chart publiplots currently draws.
+- ``pie.gap`` — uniform gap in mm between neighbouring wedges of
+  :func:`publiplots.pieplot` (``0.0``).
+- ``pie.leader`` / ``pie.label_offset`` / ``pie.leader_gap`` /
+  ``pie.elbow_length`` — how outside wedge labels are placed: the leader
+  style (``"radial"``, ``"elbow"`` or ``None`` for no line), the mm from
+  the rim to the leader's end (to the label itself with no leader), the
+  mm from the leader's end to the label, and the mm length of an elbow
+  leader's horizontal tail (``"radial"`` / ``2.0`` / ``0.8`` / ``2.0``).
 - ``subplots.axes_size`` — default ``(width_mm, height_mm)`` for
   :func:`publiplots.subplots`.
 - ``subplots.title_space`` / ``xlabel_space`` / ``ylabel_space`` /
@@ -199,6 +214,21 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     "scatter.size_min": 50,  # Minimum marker size for size mapping
     "scatter.size_max": 1000,  # Maximum marker size for size mapping
 
+    # Sunburst colour derivation. Both are total spans, not per-ring steps:
+    # the outermost ring lands at `depth_range`, intermediate rings
+    # interpolate. A per-ring step degrades silently as a tree deepens.
+    # Positive blends toward white, negative toward black. Both are inert
+    # for a single-ring chart, so pieplot pays nothing for them.
+    "sunburst.depth_range": 0.45,
+    "sunburst.sibling_range": 0.14,
+
+    # Pie and donut charts (pp.pieplot). Lengths in mm.
+    "pie.gap": 0.0,             # uniform gap between neighbouring wedges
+    "pie.leader": "radial",     # outside-label leader: "radial", "elbow" or None
+    "pie.label_offset": 2.0,    # rim -> leader end (or -> label, with no leader)
+    "pie.leader_gap": 0.8,      # leader end -> label
+    "pie.elbow_length": 2.0,    # horizontal tail of an "elbow" leader
+
     # Bar plot styling
     "bar.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.barplot
     "box.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.boxplot IQR boxes (auto-propagates to pp.raincloudplot)
@@ -336,7 +366,8 @@ class PubliplotsRcParams:
     publiplots-specific parameters. Mimics matplotlib's rcParams but
     also exposes the custom keys listed in this module's docstring
     (``alpha``, ``edgecolor``, ``edgewidth``, ``palette``,
-    ``hatch_mode``, ``scatter.size_*``, ``subplots.*``). Use the module-level
+    ``hatch_mode``, ``scatter.size_*``, ``pie.*``, ``subplots.*``). Use
+    the module-level
     :data:`rcParams` instance — don't instantiate this class yourself.
 
     Writes are routed automatically: publiplots keys update the
