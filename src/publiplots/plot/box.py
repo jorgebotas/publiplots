@@ -277,11 +277,21 @@ def boxplot(
         line_data = line.get_xdata() if categorical_axis == "x" else line.get_ydata()
         if len(line_data) == 0:
             continue
-        pos = np.mean(line_data)
-        closest_pos = min(patch_colors.keys(), key=lambda p: abs(p - pos))
-        base_color = patch_colors[closest_pos]
+        is_flier = line.get_marker() and line.get_marker() != 'None'
+        if patch_colors:
+            pos = np.mean(line_data)
+            closest_pos = min(patch_colors.keys(), key=lambda p: abs(p - pos))
+            base_color = patch_colors[closest_pos]
+        else:
+            # fill=False: seaborn draws no patches (the box outline is a
+            # closed Line2D) and strokes each line in its own box's palette
+            # colour, so read it off the line. A position lookup would
+            # collapse boxes that share a position (dodge=False) to one colour.
+            base_color = to_rgba(
+                line.get_markeredgecolor() if is_flier else line.get_color()
+            )
 
-        if line.get_marker() and line.get_marker() != 'None':
+        if is_flier:
             # Outlier markers: face = palette color, edge = edgecolor or palette
             line.set_markerfacecolor(base_color)
             line.set_markeredgecolor(resolved_edgecolor if resolved_edgecolor else base_color)
@@ -321,12 +331,14 @@ def boxplot(
 
     # Stash legend entries and optionally render per-axis legend.
     # legend may be bool or dict[str, bool]; False short-circuits both.
+    # Unfilled boxes have no face, so their swatches are outlines only:
+    # alpha=0 hides the swatch's fill layer and leaves its edge opaque.
     _stash_legend(
         ax=ax,
         hue=hue,
         palette=palette,
         edgecolor=resolved_edgecolor,
-        alpha=alpha,
+        alpha=alpha if boxplot_kwargs["fill"] else 0,
         linewidth=linewidth,
         legend=legend,
         legend_kws=legend_kws,
@@ -357,10 +369,11 @@ def boxplot(
         # Level order must be seaborn's, which honours these and sorts
         # numeric levels; without them the pairing desyncs (#262).
         order=order, hue_order=hue_order,
-        # Only this call's patches. Re-read here because apply_border_radius
-        # swaps in new objects; get_new_patches() recomputes against the
-        # live axes.
-        drawn_artists=tracker.get_new_patches(),
+        # Only this call's patches, plus its lines for the closed box
+        # outlines fill=False draws instead. Re-read here because
+        # apply_border_radius swaps in new objects; get_new_patches()
+        # recomputes against the live axes.
+        drawn_artists=tracker.get_new_patches() + tracker.get_new_lines(),
     )
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn

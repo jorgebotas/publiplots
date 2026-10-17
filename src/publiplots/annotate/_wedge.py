@@ -45,6 +45,7 @@ from publiplots.annotate._shared import (
 from publiplots.annotate._shared import (
     format_value as _format_value,
 )
+from publiplots.layout.auto_layout import register_decoration
 from publiplots.themes.rcparams import resolve_param
 
 _VALID_ANCHORS = {"inside", "outside", "auto"}
@@ -1915,6 +1916,19 @@ def _wedge_values_strategy(
             if not cleared:
                 elbow = _as_elbows(outside, geom, ax, edgewidth)
                 _spread_in_columns(outside, elbow, ax, meta.wedges)
+
+    # Outside labels and leaders -- where the pass left them, elbow
+    # leaders the fallback drew included -- sit past the disc, where a
+    # per-axes legend and the axes title would otherwise be drawn over
+    # them. Registering them makes both step past them. They are placed
+    # in data coordinates
+    # on an axes whose millimetre size the layout keeps fixed, so neither
+    # the legend nor the figure's growth moves them -- the condition
+    # `register_decoration` asks for.
+    for placed in outside:
+        register_decoration(ax, placed.text)
+        if placed.leader is not None:
+            register_decoration(ax, placed.leader)
     return texts
 
 

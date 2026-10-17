@@ -18,6 +18,7 @@ import warnings
 from typing import Dict, FrozenSet, Optional, Set, Tuple
 
 import matplotlib as mpl
+import matplotlib.axis as maxis
 
 from publiplots.layout.figure_layout import FigureLayout
 
@@ -133,6 +134,31 @@ _SIDE_CALCULATORS = {
     "ylabel_space": ("col", lambda ax_bb, t: ax_bb.x0 - t.x0),
     "right":        ("col", lambda ax_bb, t: t.x1 - ax_bb.x1),
 }
+
+
+def register_decoration(ax, *artists) -> None:
+    """Mark artists publiplots drew on ``ax`` as decorations to clear.
+
+    A per-axes legend on 'right' or 'top', and the axes title, step past
+    the axis decorations of ``ax`` and its twins and past these artists —
+    nothing else. Register only artists whose position is fixed relative to
+    ``ax`` (data or axes coordinates): a decoration that moved with the
+    legend or the figure would push the legend, or the title, outward on
+    every layout pass.
+
+    An artist removed from ``ax`` or hidden is ignored.
+    """
+    registered = ax.__dict__.setdefault("_publiplots_decorations", [])
+    registered.extend(artists)
+
+
+def _registered_decorations(ax) -> list:
+    """The visible artists registered on ``ax`` that are still drawn there."""
+    registered = getattr(ax, "_publiplots_decorations", None)
+    if not registered:
+        return []
+    children = {id(c) for c in ax.get_children()}
+    return [a for a in registered if id(a) in children and a.get_visible()]
 
 
 class SubplotsAutoLayout:
@@ -511,6 +537,10 @@ class SubplotsAutoLayout:
         managed = self._externally_managed_artist_ids()
         measured: Dict[str, Tuple[float, ...]] = {}
 
+        # Before title_space is measured, so it sees each title where it
+        # is drawn.
+        self._lift_titles_above_registered_decorations(axes_matrix)
+
         for side, (axis_kind, calc) in _SIDE_CALCULATORS.items():
             if side in self._locked:
                 continue
@@ -768,17 +798,18 @@ class SubplotsAutoLayout:
             # auto-measurement (which sees the lifted title at its new
             # position) then reserves room for both. _side_extent excludes
             # the legend artist itself, so it never double-counts.
-            if group._anchor_kind == "axes":
+            if (
+                group._anchor_kind == "axes"
+                and group._side in self._FIELD_BY_SIDE
+            ):
+                # Every edge side steps the legend past the tick labels /
+                # axis label on its own side of the axes rectangle (Issue B
+                # for 'left', #212 for 'bottom'); 'top' then lifts the title
+                # above the stepped band, so it runs second. A legend inside
+                # the axes ('center', ...) has no side to clear.
+                self._offset_inside_legend_past_decorations(group, axes_matrix)
                 if group._side == "top":
                     self._lift_title_above_top_legend(group, dpi)
-                elif group._side in ("left", "bottom"):
-                    # A per-axes left or bottom legend must clear the tick
-                    # labels / axis label that live on its own side of the
-                    # axes rectangle, dynamically (Issue B for 'left';
-                    # #212 for 'bottom') rather than at a fixed offset.
-                    self._offset_inside_legend_past_decorations(
-                        group, axes_matrix
-                    )
             return
 
         side = group._side
@@ -1056,23 +1087,217 @@ class SubplotsAutoLayout:
         breathing_px = breathing_mm * dpi / 25.4
         pad_px = band_above_ax_px + breathing_px
         pad_pt = pad_px / dpi * 72.0
-        # Preserve the user's intended ("base") title pad: stash it once,
-        # BEFORE we ever lift, so re-running over convergence iterations
-        # doesn't read our own lifted pad as the baseline (idempotent — the
-        # applied pad converges instead of drifting). Default to
-        # rcParams['axes.titlepad'] when the user never set one.
+        # Composed with the lift over registered decorations
+        # (:meth:`_lift_titles_above_registered_decorations`): the title
+        # takes the larger of the two, never less than the user's own pad.
+        ax._pp_legend_titlepad = pad_pt
+        self._apply_title_pad(ax)
+
+    @staticmethod
+    def _base_title_pad(ax) -> float:
+        """The title pad (points) the user intends, before any lift of ours.
+
+        Stashed once, BEFORE we ever lift, so re-running over convergence
+        iterations doesn't read our own lifted pad as the baseline
+        (idempotent — the applied pad converges instead of drifting).
+        Defaults to rcParams['axes.titlepad'] when the user never set one.
+        Re-read when the current pad is no longer the one we last applied:
+        the user has set a new pad since (``ax.set_title(..., pad=...)``
+        after a draw), and that is the new baseline.
+        """
+        cur = ax.titleOffsetTrans._t[1] * 72.0  # current pad in points
         base_pad = getattr(ax, "_pp_base_titlepad", None)
-        if base_pad is None:
-            cur = ax.titleOffsetTrans._t[1] * 72.0  # current pad in points
+        applied = getattr(ax, "_pp_applied_titlepad", None)
+        if base_pad is None or (
+            applied is not None and abs(cur - applied) > 1e-9
+        ):
             base_pad = cur if cur > 0 else float(
                 mpl.rcParams.get("axes.titlepad", 6.0)
             )
             ax._pp_base_titlepad = base_pad
-        # Only lift; honour a user-set pad larger than the band lift.
-        # Apply via the title offset transform so the title's own
-        # font/color/weight styling is NOT reset (ax.set_title would
-        # re-merge the default fontdict and clobber user styling).
-        ax._set_title_offset_trans(max(base_pad, pad_pt))
+            ax._pp_applied_titlepad = None
+        return base_pad
+
+    def _apply_title_pad(self, ax) -> None:
+        """Set the title pad to the largest lift either source needs.
+
+        The per-axes top legend's lift (``_pp_legend_titlepad``) and the
+        registered decorations' (``_pp_deco_titlepad``), both in points.
+        Only lifts: a user-set pad larger than either is honoured. Applied
+        via the title offset transform so the title's own font/color/weight
+        styling is NOT reset (ax.set_title would re-merge the default
+        fontdict and clobber user styling).
+        """
+        lifts = [
+            p for p in (
+                getattr(ax, "_pp_legend_titlepad", None),
+                getattr(ax, "_pp_deco_titlepad", None),
+            )
+            if p is not None
+        ]
+        if not lifts:
+            return
+        target = max([self._base_title_pad(ax)] + lifts)
+        ax._set_title_offset_trans(target)
+        ax._pp_applied_titlepad = ax.titleOffsetTrans._t[1] * 72.0
+
+    def _lift_titles_above_registered_decorations(self, axes_matrix) -> None:
+        """Lift each axes title above the registered decorations under it.
+
+        matplotlib lifts a title above top tick labels and a top x label,
+        nothing else, so a decoration publiplots draws above the axes top —
+        a pie chart's value label near twelve o'clock — was printed through
+        by the title. Only artists registered with
+        :func:`register_decoration` count; any other artist above the axes
+        is left to the user, as before.
+
+        The pad grows by the decoration's rise above ``ax.y1``, so the title
+        keeps over the decoration the clearance it has over a bare axes top.
+        Only decorations sharing part of the title's horizontal extent count,
+        and only those reaching above the top matplotlib already lifts the
+        title to (:meth:`_matplotlib_title_floor`): below it matplotlib's own
+        lift clears them, and growing the pad would switch that lift off.
+
+        On a row whose ``title_space`` is pinned the figure will not grow to
+        hold the lifted title, so the lift stops where the title would leave
+        the canvas: a title cropped out of the saved file is worse than one
+        overlapping a label.
+
+        Convergent: registered decorations sit in ``ax``'s data or axes
+        coordinates, so their rise above ``ax.y1`` does not depend on the
+        title, the legends or the figure size. Skipped for a title the user
+        placed (``set_title(..., y=...)``), which matplotlib also leaves
+        alone.
+        """
+        dpi = self._fig.dpi
+        renderer = None
+        pinned_rows = (
+            None if "title_space" in self._locked
+            else self._locked_positions.get("title_space", frozenset())
+        )
+        for r, row in enumerate(axes_matrix):
+            for ax in row:
+                # Visible siblings, axis on or off: a registered artist is
+                # drawn either way (a pie chart turns its axes off).
+                decorations = [
+                    a for sibling in self._cell_siblings(ax)
+                    if sibling.get_visible()
+                    for a in _registered_decorations(sibling)
+                ]
+                if not decorations and getattr(
+                    ax, "_pp_deco_titlepad", None
+                ) is None:
+                    continue  # nothing registered, and never lifted
+                titles = [
+                    t for t in (ax.title, ax._left_title, ax._right_title)
+                    if t.get_visible() and t.get_text()
+                ]
+                if not titles or getattr(ax, "_autotitlepos", None) is False:
+                    continue
+                if renderer is None:
+                    renderer = self._fig._get_renderer()
+                ax_top = ax.get_window_extent().y1
+                deco_top = ax_top
+                for title in titles:
+                    ext = title.get_window_extent(renderer)
+                    for bb in self._decoration_boxes(
+                        decorations, renderer, ("x", ext.x0, ext.x1)
+                    ):
+                        deco_top = max(deco_top, bb.y1)
+                rise_px = (
+                    deco_top - ax_top
+                    if deco_top > self._matplotlib_title_floor(ax, ax_top)
+                    else 0.0
+                )
+                pad = self._base_title_pad(ax) + rise_px / dpi * 72.0
+                if pinned_rows is None or r in pinned_rows:
+                    # A pinned `title_space` will not grow to hold the
+                    # lifted title, and `savefig.bbox` is "standard", so a
+                    # title lifted past the figure's top edge is cropped
+                    # out of the file. A title lost is worse than one
+                    # overlapping a label: lift only as far as keeps the
+                    # title on the canvas, and never below the user's pad.
+                    cur = ax.titleOffsetTrans._t[1] * 72.0
+                    title_top = max(
+                        t.get_window_extent(renderer).y1 for t in titles
+                    )
+                    room = (self._fig.bbox.y1 - title_top) / dpi * 72.0
+                    pad = max(self._base_title_pad(ax), min(pad, cur + room))
+                ax._pp_deco_titlepad = pad
+                self._apply_title_pad(ax)
+
+    def _matplotlib_title_floor(self, ax, ax_top) -> float:
+        """The pixel top ``Axes._update_title_position`` lifts titles above.
+
+        The highest x axis among ``ax`` and its twins whose ticks or label
+        are on top — that axis's tight bbox — or the axes top otherwise; the
+        same rule matplotlib applies.
+        """
+        renderer = self._fig._get_renderer()
+        top = ax_top
+        for sibling in self._cell_siblings(ax):
+            xaxis = sibling.xaxis
+            if (
+                xaxis.get_ticks_position() in ("top", "unknown")
+                or xaxis.get_label_position() == "top"
+            ):
+                bb = xaxis.get_tightbbox(renderer)
+                if bb is not None:
+                    top = max(top, bb.y1)
+        return top
+
+    @staticmethod
+    def _decoration_boxes(artists, renderer, span=None) -> list:
+        """Tight bboxes of ``artists`` that have an area, optionally only
+        those sharing part of ``span`` — ``("x" | "y", lo, hi)`` in pixels.
+
+        An Axis contributes :meth:`_axis_boxes`; any other artist its tight
+        bbox — its window extent, clipped when it is. Zero-width or
+        zero-height extents are dropped, as ``Axes.get_tightbbox`` drops
+        them.
+        """
+        boxes = []
+        for artist in artists:
+            if isinstance(artist, maxis.Axis):
+                boxes.extend(SubplotsAutoLayout._axis_boxes(artist, renderer))
+            else:
+                bb = artist.get_tightbbox(renderer)
+                if bb is not None:
+                    boxes.append(bb)
+        kept = []
+        for bb in boxes:
+            if not (bb.width > 0 and bb.height > 0):
+                continue
+            if span is not None:
+                axis, lo, hi = span
+                a0, a1 = (bb.x0, bb.x1) if axis == "x" else (bb.y0, bb.y1)
+                if a1 <= lo or a0 >= hi:
+                    continue
+            kept.append(bb)
+        return kept
+
+    @staticmethod
+    def _axis_boxes(axis, renderer) -> list:
+        """One box per tick label, plus the offset text and the axis label,
+        as ``Axis.get_tightbbox`` measures them.
+
+        Separate boxes, so a band's span is compared with each tick label
+        rather than with the whole axis. The label counts only while
+        matplotlib positions it (``_autolabelpos``): ``set_label_coords``
+        may place it in any coordinates — the figure's, which move as the
+        layout grows the figure — and is then the user's to clear.
+        """
+        if axis.get_tightbbox(renderer) is None:  # hidden; also positions
+            return []                              # the label and offset
+        ticks = axis._update_ticks()
+        tlb1, tlb2 = axis._get_ticklabel_bboxes(ticks, renderer)
+        boxes = [*tlb1, *tlb2]
+        for text in (axis.offsetText, axis.label):
+            if text is axis.label and not getattr(axis, "_autolabelpos", True):
+                continue
+            if text.get_visible() and text.get_text():
+                boxes.append(text.get_window_extent(renderer))
+        return boxes
 
     def _offset_inside_legend_past_decorations(
         self, group, axes_matrix, ref_axes=None, ref_idx=None
@@ -1091,13 +1316,29 @@ class SubplotsAutoLayout:
         share this one implementation; only the side's field and axis differ,
         which ``_FIELD_BY_SIDE`` / ``_OVERHANG_BY_SIDE`` already encode.
 
-        For an in-frame (``external_to_axis=False``) group only 'left' and
-        'bottom' route here: ``side='right'`` needs nothing (no decoration
-        lives past ``ax.x1``) and ``side='top'`` is handled by
-        ``_lift_title_above_top_legend`` instead, because there the title
-        must end up OUTSIDE the band, so the title moves rather than the
-        band. The pinned axes-anchored path in ``_measure_one_group`` also
-        calls this for the remaining sides (see below); the measurement is
+        Every in-frame (``external_to_axis=False``) per-axes group routes
+        here, and how far it steps depends on its side:
+
+        - 'left' / 'bottom' step past everything ``ax.get_tightbbox()``
+          reports on that side, as they always have, plus the axis
+          decorations of any twin (:meth:`_known_decoration_overhang_mm`),
+          plus whatever of the band's own ink hangs inward of its gap (a
+          left colorbar's tick labels, :meth:`_band_near_offset_mm`).
+        - 'right' / 'top' step past the axis decorations on that side —
+          ``tick_right()`` / ``tick_top()`` labels, a twin's tick labels and
+          label — and the artists registered with
+          :func:`register_decoration`, nothing else. These sides had no
+          offset before, on the assumption that nothing lives past
+          ``ax.x1``; the legend was drawn over right tick labels and twins.
+          Any other artist is deliberately NOT measured: an arbitrary
+          artist may be positioned off a legend, a colorbar or the figure,
+          all of which the layout moves, and stepping past something that
+          moves with the step never settles. On 'top' the title is not in
+          the way: ``_lift_title_above_top_legend`` lifts it above the band
+          afterwards.
+
+        The pinned axes-anchored path in ``_measure_one_group`` also calls
+        this, on every side, with the 'left' / 'bottom' measurement; it is
         side-generic — ``_OVERHANG_BY_SIDE`` supplies the direction — and
         collapses to ~0 on a side with no decoration.
 
@@ -1156,6 +1397,27 @@ class SubplotsAutoLayout:
         if ref_axes is None or ref_idx is None:
             ref_axes, ref_idx = self._band_reference(group, axes_matrix)
         ax_bb = self._reference_bbox(ref_axes)
+        in_frame = not getattr(group, "_external_to_axis", True)
+        if in_frame:
+            # Where the band's innermost ink sits with no decoration offset,
+            # against the gap it should keep from what it clears; equal for
+            # an ordinary legend.
+            gap_mm = group._builder._layout.x_offset
+            near_mm = self._band_near_offset_mm(group, side, dpi)
+
+        if in_frame and side in ("right", "top"):
+            # Take the LARGER of the band's own placement and "innermost ink
+            # the gap past the decoration", not their sum: a band already
+            # further out than that stays where it was. A lineplot legend
+            # taller than its axes starts at x_offset + column_spacing =
+            # 7.0 mm, and adding a decoration's overhang on top would move
+            # it for no collision.
+            overhang_mm = self._known_decoration_overhang_mm(
+                group, side, ref_axes, span=self._band_span(group, side)
+            )
+            offset_mm = max(overhang_mm, 0.0) + gap_mm - near_mm
+            self._set_clamped_offset(group, side, ref_idx, ax_bb, offset_mm)
+            return
 
         # Pure decoration extent past the axes edge on this side, EXCLUDING
         # our legend (and any other externally-managed overlay). Mirrors
@@ -1194,8 +1456,24 @@ class SubplotsAutoLayout:
             )
         if pure_decoration_mm is None:
             return
+        # A twin's axis decorations are in its own tight bbox, not ax's.
+        pure_decoration_mm = max(
+            pure_decoration_mm,
+            self._known_decoration_overhang_mm(group, side, ref_axes),
+        )
 
         offset_mm = pure_decoration_mm
+        if in_frame:
+            # Plus whatever ink hangs inward of the gap: a left colorbar's
+            # tick labels sit between its strip and the axes, and were
+            # drawn over the y tick labels.
+            offset_mm += max(0.0, gap_mm - near_mm)
+        self._set_clamped_offset(group, side, ref_idx, ax_bb, offset_mm)
+
+    def _set_clamped_offset(self, group, side, ref_idx, ax_bb, offset_mm):
+        """Bake ``offset_mm`` as the band's decoration offset, clamped to
+        the canvas when its cell is pinned and floored at 0."""
+        dpi = self._fig.dpi
         if self._is_pinned_cell(side, ref_idx):
             offset_mm = min(
                 offset_mm, self._max_onscreen_offset_mm(group, side, ax_bb, dpi)
@@ -1205,6 +1483,119 @@ class SubplotsAutoLayout:
         # small for the band alone makes the clamp negative. Either way the
         # band must not be pulled INWARD of the pre-#222 placement.
         group._set_decoration_offset(max(0.0, offset_mm))
+
+    def _known_decoration_overhang_mm(
+        self, group, side, ref_axes, span=None
+    ) -> float:
+        """How far (mm) the decorations publiplots knows of reach past the
+        reference axes' edge on ``side``; ``-inf`` when there are none.
+
+        Known decorations belong to each reference axes and each of its
+        visible twins (a hidden axes draws nothing):
+
+        - the axis along that side -- x for 'top' / 'bottom', y for 'left' /
+          'right' -- while the axes draws it, so not after
+          ``ax.axis("off")``, which ``Axes.get_tightbbox`` skips too: its tick
+          labels, offset text and the axis label while matplotlib positions
+          it (:meth:`_axis_boxes`), at their true extent;
+        - every artist registered on it with :func:`register_decoration`,
+          axis on or off -- a pie chart turns its axes off and still draws
+          its labels.
+
+        All are fixed relative to the axes:
+        nothing the layout places — a legend, a colorbar, the figure size —
+        moves them, so a band stepping past them settles in one pass.
+
+        ``span`` (:meth:`_band_span`) keeps only the decorations sharing part
+        of the band's along-edge extent: a band can only collide with what
+        lies beside it.
+        """
+        renderer = self._fig._get_renderer()
+        overhang_fn = self._OVERHANG_BY_SIDE[side]
+        best = float("-inf")
+        for ax in ref_axes:
+            edge = ax.get_window_extent()
+            artists = []
+            for sibling in self._cell_siblings(ax):
+                if not sibling.get_visible():
+                    continue
+                # Axis decorations only while the axes draws them; an
+                # artist registered on it is drawn after `axis("off")`
+                # too -- a pie chart turns its axes off.
+                if sibling.axison:
+                    artists.append(
+                        sibling.yaxis if side in ("left", "right")
+                        else sibling.xaxis
+                    )
+                artists.extend(_registered_decorations(sibling))
+            for bb in self._decoration_boxes(artists, renderer, span):
+                best = max(best, overhang_fn(edge, bb) / self._fig.dpi * 25.4)
+        return best
+
+    def _band_span(self, group, side):
+        """The band's along-edge pixel extent, as a ``span`` for measurement.
+
+        ``("y", y0, y1)`` for a 'left'/'right' band, ``("x", x0, x1)`` for a
+        'top'/'bottom' one; ``None`` before any element has an extent, which
+        measures every decoration on the side. The along-edge position does
+        not depend on the outward offset this span is used to compute, so
+        the measurement does not feed back into itself.
+        """
+        from matplotlib.transforms import Bbox
+
+        boxes = []
+        for _, obj in group._builder.elements:
+            extent = self._artist_window_extent(obj)
+            if extent is not None and extent.width > 0 and extent.height > 0:
+                boxes.append(extent)
+        if not boxes:
+            return None
+        u = Bbox.union(boxes)
+        if side in ("left", "right"):
+            return ("y", u.y0, u.y1)
+        return ("x", u.x0, u.x1)
+
+    def _band_near_offset_mm(self, group, side, dpi) -> float:
+        """Outward mm of the band's innermost ink, before any decoration
+        offset — where the reactor puts it with nothing to clear.
+
+        Each element is placed at ``mm_x_from_right`` from the axes edge, but
+        a colorbar's tick labels can hang INWARD of that point: on a top band
+        ``add_colorbar`` already pushed the strip out by them (#213, the
+        builder's ``_colorbar_inward_pad``), and on a left band they sit
+        between the strip and the axes. The overhang is measured against the
+        strip's own rectangle, which is what the reactor places, so it does
+        not depend on where the band currently is.
+        """
+        element_ids = {id(obj) for _, obj in group._builder.elements}
+        near = []
+        for reg in group._builder._reactor._registrations:
+            if id(reg.artist) not in element_ids:
+                continue
+            near.append(
+                reg.mm_x_from_right
+                - self._colorbar_inward_overhang_mm(reg.artist, side, dpi)
+            )
+        return min(near) if near else group._builder._layout.x_offset
+
+    @staticmethod
+    def _colorbar_inward_overhang_mm(artist, side, dpi) -> float:
+        """mm a colorbar's decorations reach inward (toward the axes) of its
+        colour strip; 0 for anything that is not a colorbar."""
+        cax = getattr(artist, "ax", None)
+        if cax is None or not hasattr(cax, "get_tightbbox"):
+            return 0.0
+        strip = cax.get_window_extent()
+        tight = cax.get_tightbbox()
+        if tight is None:
+            return 0.0
+        overhang_px = {
+            "right": strip.x0 - tight.x0,
+            "left": tight.x1 - strip.x1,
+            "top": strip.y0 - tight.y0,
+            "bottom": tight.y1 - strip.y1,
+        }[side]
+        return max(0.0, overhang_px / dpi * 25.4)
 
     def _is_pinned_cell(self, side, idx) -> bool:
         """True when the reservation the band draws into is user-pinned.

@@ -4,7 +4,7 @@ PubliPlots Documentation
 **PubliPlots** is a Python library for creating publication-ready plots with a clean, modular API.
 It provides a seaborn-like interface with sensible defaults and extensive customization options.
 
-.. image:: https://img.shields.io/badge/python-3.9+-blue.svg
+.. image:: https://img.shields.io/badge/python-3.10+-blue.svg
    :target: https://www.python.org/downloads/
    :alt: Python Version
 
