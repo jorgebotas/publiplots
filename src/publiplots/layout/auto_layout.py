@@ -1168,8 +1168,11 @@ class SubplotsAutoLayout:
         renderer = None
         for row in axes_matrix:
             for ax in row:
+                # Visible siblings, axis on or off: a registered artist is
+                # drawn either way (a pie chart turns its axes off).
                 decorations = [
-                    a for sibling in self._drawn_siblings(ax)
+                    a for sibling in self._cell_siblings(ax)
+                    if sibling.get_visible()
                     for a in _registered_decorations(sibling)
                 ]
                 if not decorations and getattr(
@@ -1274,15 +1277,6 @@ class SubplotsAutoLayout:
             if text.get_visible() and text.get_text():
                 boxes.append(text.get_window_extent(renderer))
         return boxes
-
-    def _drawn_siblings(self, ax) -> list:
-        """:meth:`_cell_siblings` that are drawn with their axes on: a
-        hidden axes, or one after ``ax.axis("off")``, draws no tick labels or
-        axis labels, and ``Axes.get_tightbbox`` skips them too."""
-        return [
-            a for a in self._cell_siblings(ax)
-            if a.get_visible() and a.axison
-        ]
 
     def _offset_inside_legend_past_decorations(
         self, group, axes_matrix, ref_axes=None, ref_idx=None
@@ -1475,13 +1469,19 @@ class SubplotsAutoLayout:
         """How far (mm) the decorations publiplots knows of reach past the
         reference axes' edge on ``side``; ``-inf`` when there are none.
 
-        Known decorations are the axis along that side — x for 'top' /
-        'bottom', y for 'left' / 'right' — of each reference axes and each of
-        its twins that is drawn with its axes on (:meth:`_drawn_siblings`):
-        tick labels, offset text and the axis label while matplotlib
-        positions it (:meth:`_axis_boxes`), at their true extent; and every
-        artist registered on them with :func:`register_decoration`. All are
-        fixed relative to the axes:
+        Known decorations belong to each reference axes and each of its
+        visible twins (a hidden axes draws nothing):
+
+        - the axis along that side -- x for 'top' / 'bottom', y for 'left' /
+          'right' -- while the axes draws it, so not after
+          ``ax.axis("off")``, which ``Axes.get_tightbbox`` skips too: its tick
+          labels, offset text and the axis label while matplotlib positions
+          it (:meth:`_axis_boxes`), at their true extent;
+        - every artist registered on it with :func:`register_decoration`,
+          axis on or off -- a pie chart turns its axes off and still draws
+          its labels.
+
+        All are fixed relative to the axes:
         nothing the layout places — a legend, a colorbar, the figure size —
         moves them, so a band stepping past them settles in one pass.
 
@@ -1495,10 +1495,17 @@ class SubplotsAutoLayout:
         for ax in ref_axes:
             edge = ax.get_window_extent()
             artists = []
-            for sibling in self._drawn_siblings(ax):
-                artists.append(
-                    sibling.yaxis if side in ("left", "right") else sibling.xaxis
-                )
+            for sibling in self._cell_siblings(ax):
+                if not sibling.get_visible():
+                    continue
+                # Axis decorations only while the axes draws them; an
+                # artist registered on it is drawn after `axis("off")`
+                # too -- a pie chart turns its axes off.
+                if sibling.axison:
+                    artists.append(
+                        sibling.yaxis if side in ("left", "right")
+                        else sibling.xaxis
+                    )
                 artists.extend(_registered_decorations(sibling))
             for bb in self._decoration_boxes(artists, renderer, span):
                 best = max(best, overhang_fn(edge, bb) / self._fig.dpi * 25.4)

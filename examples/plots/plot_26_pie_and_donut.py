@@ -223,14 +223,13 @@ pp.show()
 # The disc is the same size under all three: a label that leaves it
 # extends past the axes rather than shrinking the pie. Outside labels are
 # not moved apart from one another, so those of adjacent thin wedges can
-# overlap. ``start_angle=0`` only turns the chart, so the slivers point
-# right.
+# overlap. Like a tick label, an outside label is a decoration: the axes
+# title above it, and a legend beside it, step past it.
 
 thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
 fig, axes = pp.subplots(ncols=3, axes_size=(38, 38))
 for ax, anchor in zip(axes, ["inside", "outside", "auto"]):
-    pp.pieplot(data=thin, x="kind", y="n", legend=False, start_angle=0,
-               ax=ax)
+    pp.pieplot(data=thin, x="kind", y="n", legend=False, ax=ax)
     pp.annotate(ax, "wedge_values", anchor=anchor)
     ax.set_title(anchor)
 pp.show()
@@ -270,14 +269,11 @@ pp.show()
 # column, nor moved apart where they crowd. ``None`` (or ``False``)
 # draws no line and centres the label with its nearest point ``offset``
 # from the rim.
-# ``start_angle=120`` only turns the chart, so the thin wedges point up
-# and to the left.
 
 fig, axes = pp.subplots(ncols=3, axes_size=(36, 36))
 for ax, leader in zip(axes, ["radial", "elbow", None]):
     pp.pieplot(data=df, x="kind", y="n", palette=palette, legend=False,
-               start_angle=120, ax=ax,
-               annotate={"anchor": "outside", "leader": leader},
+               ax=ax, annotate={"anchor": "outside", "leader": leader},
                title=f"leader={leader!r}")
 pp.show()
 

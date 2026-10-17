@@ -621,13 +621,6 @@ def test_a_row_of_pies_keeps_outside_labels_off_their_neighbours():
                     assert not _boxes_overlap(box, their), (i, j)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="The per-axes legend is pinned 2mm from the axes frame rather "
-           "than past the decorations on that side, so an outside label on "
-           "the right of the pie overprints it.",
-)
 def test_outside_labels_do_not_overlap_the_default_legend():
     """`legend=True` puts the legend to the right of the axes, where the
     labels of wedges pointing right now are.
@@ -656,13 +649,6 @@ def test_outside_labels_do_not_overlap_the_default_legend():
                                   legend), artist
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="matplotlib places an axes title against the axes frame rather "
-           "than above the decorations, so an outside label near twelve "
-           "o'clock runs into it.",
-)
 def test_outside_labels_do_not_overlap_the_axes_title():
     """The top label of a pie whose last wedge ends at twelve o'clock
     climbs into the title as ``offset`` grows.

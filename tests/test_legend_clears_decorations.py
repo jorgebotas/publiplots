@@ -666,3 +666,23 @@ def test_the_line_cases_really_have_a_right_overhang(plot):
     assert _mm(fig, xaxis.x1 - ax.get_window_extent().x1) > 0.5
     if plot == "tall_line":
         assert _extent(fig, _legend(fig)).y0 < xaxis.y1
+
+
+def test_a_registered_decoration_on_an_axes_turned_off_is_still_cleared(df):
+    """``ax.axis("off")`` hides the axis decorations, not the artists
+    registered on the axes: a pie chart turns its axes off and still draws
+    its outside labels, which the legend and the title must clear."""
+    fig, ax = _bar(df)
+    ax.set_title("Title")
+    right = ax.text(1.02, 0.9, "RIGHT", transform=ax.transAxes, clip_on=False)
+    above = ax.text(0.5, 1.08, "ABOVE", transform=ax.transAxes, ha="center",
+                    clip_on=False)
+    register_decoration(ax, right, above)
+    ax.axis("off")
+    _assert_settled(_save(fig))
+
+    leg = _extent(fig, _legend(fig))
+    assert _mm(fig, leg.x0 - _extent(fig, right).x1) == pytest.approx(
+        GAP_MM, abs=0.01
+    )
+    assert _extent(fig, ax.title).y0 > _extent(fig, above).y1
