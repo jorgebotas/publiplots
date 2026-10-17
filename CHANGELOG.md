@@ -9,6 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A per-axes legend now steps past the axis decorations on its side.**
+  The legend a plot call draws (`pp.legend(ax)`, or the plot's own
+  `legend_kws`) sat a fixed 2mm past the axes edge on `side="right"` and
+  `side="top"`, on the assumption that nothing else lives there. Tick labels
+  moved to that side and a twin's tick labels and label do, and the legend
+  was drawn over them. Measured on a 40x30mm barplot, legend near edge minus
+  the decoration's far edge:
+  - **-1.99mm** with `ax.yaxis.tick_right()`
+  - **-9.90mm** over a `twinx()`'s tick labels and label
+  - **-1.78mm** over a twin's label with no tick labels
+  - **-1.61mm** for a `side="top"` legend over `tick_top()` labels; the
+    title still sits the same distance above the legend
+
+  All are now **+2.00mm**, the gap the legend keeps from a bare axes edge.
+  `side="left"` and `side="bottom"` already measured their side (Issue B,
+  #212), but not twins: a left legend beside a twin's left tick labels
+  overlapped them by 5.91mm and now clears them by 2.00mm.
+
+  A colorbar band's own tick labels can hang inward of its strip, between
+  the strip and the axes, and they now count as the band's near edge. A
+  left colorbar's tick labels sat on the y tick labels by 3.34mm. A top one
+  overlapped `tick_top()` labels by 1.61mm, and a right one overlapped
+  `tick_right()` labels by 2.05mm. All three now clear them by 2.00mm.
+
+  On 'right' and 'top' the band moves only as far as clearing needs: a band
+  already further out stays where it was. Only decorations level with the
+  legend count, and only the y axis on 'left'/'right' and the x axis on
+  'top'/'bottom'. So a lineplot's last x tick label, which overhangs the
+  right edge at the bottom of the axes, leaves a right legend where it was.
+
+  **What counts is deliberately narrow.** On 'right' and 'top' the legend
+  clears the axis decorations of the axes and its twins, and nothing else.
+  It does not clear an arbitrary text, patch or annotation you place past
+  the edge: such an artist can be positioned off the legend itself, a
+  colorbar or the figure, which the layout moves, and stepping past
+  something that moves with the step never settles. For the same reason an
+  axis label you placed with `set_label_coords` is not cleared, though its
+  tick labels are. Axes that are hidden or have `ax.axis("off")` draw no
+  decorations, and none are measured. 'left' and 'bottom' measure exactly
+  what they measured before, plus twins. The same rule holds for the
+  title: matplotlib lifts it above top tick labels, and publiplots adds
+  nothing to that for your own artists.
+
+  With a `side="top"` legend, a title pad set after the figure was first
+  drawn (`ax.set_title(..., pad=60)`) is now honoured. The legend's title
+  lift used to keep the pad from the first draw and overwrite the new one.
+
+  Across two corpora of 43 and 57 default figures, every legend, title and
+  axes box is identical to before to 0.0000mm except the two cases above
+  that changed on purpose: a plain `twinx()` with a right-side label, whose
+  legend moves 9.14mm off it, and a left colorbar, which moves 5.34mm off
+  the y tick labels.
+
 - **The package metadata now declares the Python and matplotlib versions
   publiplots actually runs on: `requires-python = ">=3.10"` and
   `matplotlib>=3.10.0`** (were `>=3.9` and `>=3.7.0`). This makes the

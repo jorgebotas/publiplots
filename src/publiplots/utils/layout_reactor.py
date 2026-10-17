@@ -60,9 +60,10 @@ class _Registration:
     # SubplotsAutoLayout._measure_one_group so the reactor's per-draw
     # refresh stays free of ``get_tightbbox`` / ``set_in_layout`` calls
     # (those inside the reactor were the source of the sphinx-gallery
-    # blank-PNG regression; see revert 582d754). For side='right' there
-    # is no decoration past the axes edge so the value stays 0 and the
-    # classic placement is preserved.
+    # blank-PNG regression; see revert 582d754). On side='right' it is 0
+    # unless an axis decoration sits past the axes edge level with the band
+    # (tick_right() labels, a twin's ticks or label), so the classic
+    # placement is preserved for an ordinary plot.
     mm_outward_decoration_offset: float = 0.0
 
 
