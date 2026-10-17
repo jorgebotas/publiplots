@@ -25,6 +25,207 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `0.12` for a detached tick), `color`, `linewidth`, `solid_capstyle`. On a
   fill too dark for the outline colour it turns white. (#275)
 
+- **`pp.pieplot` — pie and donut charts in the publiplots visual
+  language** (#268). `matplotlib.axes.Axes.pie` ignores the palette, the
+  theme edge and `pp.legend`, so a composition panel could not be drawn to
+  match its siblings; the legend in particular could not be worked around,
+  because wedges were never stashed and so could not join a shared band.
+
+  `x` names the category column, `y` the value (omitted, rows are
+  counted), and `hue` what determines colour — defaulting to `x`, which is
+  what every pie does. A pie is a one-level sunburst, and `hue` means
+  colour and nothing else: unlike `barplot`, where `hue` also controls how
+  marks group, a wedge chart keeps its structure in `x`.
+
+  `donut=` opens a hole and `center_label=` fills it, only when `donut` is
+  non-zero. `pull=` pops wedges out when keyed by category — never
+  positionally — and explodes the whole chart evenly as a float
+  (below). `min_share=` collapses the long tail into one `"Other"`
+  wedge, but only when at least two categories fall below the threshold,
+  so a single small category is never relabelled on its own; it cannot be
+  combined with `order=`, since the `"Other"` bucket is not a category of
+  the data and so cannot be named in an explicit order. `order=` and
+  `sort=` are themselves mutually exclusive, and `sort` is **off** by
+  default so a pie keeps the category order of a bar panel drawn from the
+  same frame — the correspondence #268 is about.
+
+  Labels come from `pp.annotate(ax, "wedge_values")` or `annotate=True`,
+  defaulting to the wedge's share as a percentage rather than its raw
+  value, with `anchor="auto"` (the default) measuring each label against
+  the room its own wedge has and moving it out with a leader line when it
+  does not fit. Labels that leave the disc are decorations, like a title
+  or tick labels: the axis limits stay as `pieplot` framed them, so the
+  disc is the same size whichever anchor is used, and the labels and their
+  leaders extend past the axes while the layout grows the figure to hold
+  them — the axes keeps its `axes_size`. On the gallery's three-anchor
+  comparison (38x38mm cells) the disc renders at 36.19mm under `inside`,
+  `outside` and `auto` alike. `offset` is exact in millimetres — 3.000mm
+  rendered for `offset=3` on 25, 40 and 80mm charts and on 70x40 and
+  40x70mm cells, under either `aspect` — and `pad` has no effect for this
+  kind.
+
+  The chart is circular without losing cell area. `ax.set_aspect("equal")`
+  collapses the drawn box to a square of side `min(w, h)`, keeping exactly
+  `min(w, h) / max(w, h)` of the allocated *area* and cutting whichever
+  dimension is longer — on a cell **wider than tall** the width is cut
+  (two sevenths lost on a 70x50mm cell, over half on a 90x40 one); on a
+  cell **taller than wide** the width is kept in full and the height is
+  cut by that same ratio instead (#101). publiplots' own layout fixes the
+  axes box in millimetres, so `ax.get_position()` reports the cell's exact
+  millimetres before any draw; by default (`aspect="cell"`) the limits are
+  matched to that cell rather than left to `set_aspect` — the disc sized
+  to the **shorter** side and the longer side's limits stretched to the
+  cell's ratio, so the axes box keeps its whole allocation on both axes
+  and the surplus on the longer side stays free, which is where outside
+  labels and leader lines want to be.
+
+  Measured by rendering a pie to an Agg buffer and reading the ink
+  bounding box, over 70x50, 90x40, 40x70, 30x80 and 60x60mm cells: the
+  ink is round to within a rendering pixel every time (width/height
+  0.9942 to 1.0044) and the drawn box is 1.0000 x 1.0000 of the
+  allocation every time. Under `aspect="equal"` the same discs are drawn
+  but the box keeps only 0.7143, 0.4444, 0.5714, 0.3750 and 1.0000 of
+  the allocation on whichever axis is longer. `aspect="equal"` selects
+  that matplotlib behaviour, for anyone who needs the circle to survive
+  an interactive resize.
+
+  Each annotate record holds its artist from construction: there is no
+  step that recovers artists from the axes by scanning and pairing them
+  positionally, which is where issues #103, #199, #236, #241, #254 and
+  #262 all lived. For the same reason there is no introspection fallback
+  — `wedge_values` on an axes publiplots did not draw raises and says so.
+
+  `linewidth` sets the hatch strokes as well as the outlines, in the
+  wedges and their legend swatches alike, since a pattern stroke outlines
+  the shape it fills: 0.75 (the `edgewidth`) by default and 1.5 for
+  `linewidth=1.5`, rather than `rcParams["hatch.linewidth"]` (1.0).
+
+  A numeric `hue` maps through a colormap and draws a colorbar. As for
+  `scatterplot`, `palette=` then takes a colormap name or a `Colormap`,
+  and a dict or list raises `TypeError`. Left as `None`, `pieplot` builds
+  its own light ramp from near-white up to `color`; `scatterplot`'s
+  `None` gives seaborn's default ramp whatever `color` is.
+
+  Four known gaps. Outside labels do not de-collide, so those of adjacent
+  thin wedges can overlap under `anchor="outside"` and the default
+  `anchor="auto"` alike: on the gallery's anchors comparison, `"6.0%"`
+  and `"2.0%"` overlap by 0.95x1.47mm under both. The key that
+  `legend=True` draws beside the axes — a legend, or a colorbar for a
+  numeric `hue` — is placed 2mm from the axes frame, not past the labels
+  on that side, so a label on the right of the pie can overprint it. On
+  40x40mm cells, `"30.0%"` does on a 30/70 pie with
+  `annotate={"anchor": "outside"}`, and `"3.0%"` on a 15/3/82 pie with
+  `annotate=True`, over the legend and, with a numeric `hue`, over the
+  colorbar; `"50.2%"`, at three o'clock, overprints the colorbar on a
+  52.2/41.8/6/4 pie with `anchor="outside"`. Over pies of two to eight
+  wedges, the labels that overprint the key point anywhere from about
+  half past one to about three o'clock for a colorbar, and to about four
+  for an eight-entry legend, which reaches further down. And matplotlib
+  places an axes title against the axes frame rather than above the
+  labels, so a label near twelve o'clock can run into it: on the
+  gallery's 38x38mm anchors comparison the top label clears the title by
+  0.37mm at the default `offset`, and overlaps it by 1.63mm at
+  `offset=3`. Finally, under `aspect="equal"` on a cell wider than tall
+  the layout measures a label's overhang from the drawn square rather
+  than from the cell, so it reserves room the cell already had and the
+  figure over-grows: `anchor="outside"` on a 70x40mm cell gives an
+  85.92mm-wide figure against 74.00mm under `aspect="cell"`, for the
+  same data. That is how the layout treats any decoration on an
+  `aspect="equal"` axes, not something particular to these labels.
+
+- **`pp.pieplot(gap=...)` — an even gap between every pair of
+  neighbouring wedges, in millimetres.** A translation along each
+  wedge's own mid-ray, as matplotlib's `explode` does, opens a sideways
+  gap of `pull * sin(half-span)` to a neighbour: wide wedges part widely
+  and a 4–6% sliver barely at all. `gap` instead
+  insets each wedge's two straight edges by `gap / 2`, parallel to
+  themselves, leaving the arcs on their radii, so two neighbours sit
+  exactly `gap` apart along the whole of the edge they share. Measured
+  on the rendered paths of the gallery's 52.2/41.8/6/4 pie, every pair
+  of neighbouring edges is 1.000mm apart for `gap=1` as a pie, as a
+  donut and under `aspect="equal"` on 70x40 and 40x70mm cells, 0.400mm
+  for `gap=0.4`, and 1.500mm on a 70/30 pie whose 252-degree wedge is
+  reflex. The width runs between the outlines' centre lines, so the
+  unpainted band is one outline narrower. It defaults to
+  `rcParams["pie.gap"]` (0.0) and composes with `pull` (adding to a
+  float `pull`'s even gap), `donut`, hatches, `alpha`, `edgecolor` and
+  `linewidth`; at 0 every wedge is matplotlib's own `Wedge` path, vertex
+  for vertex. A negative or non-finite `gap` raises `ValueError`, and a
+  non-number `TypeError`.
+
+  **No wedge is inset out of existence.** A wedge of at most 180 degrees
+  is inset by at most `R * sin(half-span / 2)`, `R` its drawn outer
+  radius, so its rim arc keeps at least half its angular span — half its
+  rim length, and at least half its rim chord. A wedge that thin is drawn
+  narrowed, and only the bands beside it narrow, to `h + h_i` next to a
+  full-inset neighbour (`h` the full inset per edge, `h_i` the capped
+  one) and `h_i + h_j` between two capped wedges; every other pair keeps
+  the full width. A reflex wedge is never capped. Measured in mm: at
+  `gap=1` a 0.1% wedge on a 40x40mm pie keeps a 0.060mm rim chord of its
+  0.120mm, with 0.530mm gaps beside it, and a 0.5% wedge on a 20x20mm
+  pie keeps 0.150 of 0.299mm, with 0.575mm gaps, while the other pair
+  stays 1.000mm apart. At `pull=0.1, gap=1` the gallery pie's 3.8% wedge
+  keeps 2.310 of 4.612mm, with its own gaps at 3.394 and 2.886mm (the
+  6% wedge is capped too) and the wide pair at 4.478mm. On a
+  40/30/20/5/3/1/0.5/0.5 pie at `gap=1.5` the five widest wedges' pairs
+  stay 1.500mm apart, and the two 0.5% wedges sit 0.299mm apart.
+
+  Wedge outlines are drawn with round joins. With matplotlib's default
+  miter join the two edges of a thin wedge, meeting at an acute angle,
+  spiked past the centre into the neighbouring wedges, visibly so at
+  600 dpi on the 6% wedge of the same pie.
+
+- **A float `pull` explodes a pie evenly.** `pull=0.05` used to
+  translate every wedge along its own mid-ray, so neighbours parted by
+  only `pull * sin(half-span)` per side and thin wedges barely
+  separated. A float `pull` now moves nothing: with `t` that fraction of
+  the outer radius, every wedge's inner boundary moves out to
+  `r_inner + t` and its rim to `r_outer + t`, and its straight edges are
+  inset so that every pair of neighbours is `2t` apart (plus any `gap`).
+  A pie opens a central hole of radius `t`, a donut's hole grows by `t`,
+  and labels, the framing and `center_label` follow. On the gallery's
+  52.2/41.8/6/4 pie in a 50x50mm cell (radius 22.73mm, so `t` =
+  1.136mm at `pull=0.05`) every pair of neighbours measures 2.273mm
+  apart, 3.273mm with `gap=1`, every rim sits at 23.864mm, and a
+  `donut=0.55` hole at 13.636mm. Wedges keep the same separation but not
+  their shape: even for a half-disc, whose halves match a translation by
+  `t` in their edges and gap, the rim is an arc about the chart's centre
+  and reaches up to 0.98`t` further at its ends. A wedge too narrow at
+  its rim for the full `2t` gap is capped, as for `gap`, rather than
+  dropped, and stays outside the central hole; a lone category's wedge
+  becomes a full ring from `r_inner + t` to `r_outer + t`. A dict
+  `pull` is unchanged: it still translates the wedges it names. A float
+  `pull` that is not a number raises `TypeError`, and a negative or
+  non-finite one `ValueError`.
+
+- **Leader styles for outside wedge labels: `leader`, `leader_gap` and
+  `elbow_length`.** `pp.annotate(ax, "wedge_values")` — and
+  `pieplot(annotate={...})` — take `leader="radial"` (a line straight
+  out along the mid-ray, the label centred on it), `"elbow"` (a line
+  that bends into a horizontal tail `elbow_length` mm long, the label
+  left- or right-aligned beside it) or `None`/`False` (no line).
+  `leader_gap` is the visible distance from the leader's end to the
+  nearest point of the label's box, so it reads the same at every angle;
+  with no leader the label's nearest point is `offset` from the rim. A
+  rotated label is placed by its rotated box. These are exact at
+  `figure.dpi`; text metrics at `savefig.dpi` 600 can put the gap up to
+  about 0.05mm off. Labels are not yet lined up into columns or moved
+  apart. A non-number or bool `offset`, `leader_gap`, `elbow_length` or
+  `gap` raises `TypeError`, and a negative, NaN or infinite one
+  `ValueError`, in one message style.
+
+- **`pie.*` rcParams.** `pie.gap` (0.0), `pie.leader` (`"radial"`),
+  `pie.label_offset` (2.0), `pie.leader_gap` (0.8) and
+  `pie.elbow_length` (2.0) set the defaults of the arguments of the same
+  name — `offset` for `pie.label_offset` — so a figure set can restyle
+  every pie at once.
+
+- **The default outside wedge-label offset is `pie.label_offset`,
+  2mm.** `wedge_values` does not take the 1mm default the other
+  annotate kinds use: an omitted `offset` reads
+  `rcParams["pie.label_offset"]` (2.0), the length of a radial leader.
+  Every other kind still defaults to 1mm.
+
 ### Changed
 
 - **`pp.violinplot(annotate=True)` labels medians from inside the body**, via
@@ -53,6 +254,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and is unchanged. (#275)
 
 ### Fixed
+
+- **A rectangle legend swatch keeps the hatch width its handle was
+  created with.** `HandlerRectangle`, the swatch handler every
+  rectangle-swatch plotter shares, read `rcParams["hatch.linewidth"]`
+  when the legend was built, so the width depended on when that
+  happened: a plot drawn inside
+  `matplotlib.rc_context({"hatch.linewidth": ...})` lost the width in a
+  legend built after the context exited. For a hatched `barplot` drawn
+  inside `rc_context({"hatch.linewidth": 3.0})`, the per-axes legend,
+  built inside the context, drew 3.0 swatches before and after; a
+  `pp.legend` band, built at draw once the context had exited, drew 1.0
+  before and 3.0 now. Outside such a context nothing changes — both
+  drew 1.0 before and after.
+
+- **A per-axes legend now steps past the axis decorations on its side.**
+  The legend a plot call draws (`pp.legend(ax)`, or the plot's own
+  `legend_kws`) sat a fixed 2mm past the axes edge on `side="right"` and
+  `side="top"`, on the assumption that nothing else lives there. Tick labels
+  moved to that side and a twin's tick labels and label do, and the legend
+  was drawn over them. Measured on a 40x30mm barplot, legend near edge minus
+  the decoration's far edge:
+  - **-1.99mm** with `ax.yaxis.tick_right()`
+  - **-9.90mm** over a `twinx()`'s tick labels and label
+  - **-1.78mm** over a twin's label with no tick labels
+  - **-1.61mm** for a `side="top"` legend over `tick_top()` labels; the
+    title still sits the same distance above the legend
+
+  All are now **+2.00mm**, the gap the legend keeps from a bare axes edge.
+  `side="left"` and `side="bottom"` already measured their side (Issue B,
+  #212), but not twins: a left legend beside a twin's left tick labels
+  overlapped them by 5.91mm and now clears them by 2.00mm.
+
+  A colorbar band's own tick labels can hang inward of its strip, between
+  the strip and the axes, and they now count as the band's near edge. A
+  left colorbar's tick labels sat on the y tick labels by 3.34mm. A top one
+  overlapped `tick_top()` labels by 1.61mm, and a right one overlapped
+  `tick_right()` labels by 2.05mm. All three now clear them by 2.00mm.
+
+  On 'right' and 'top' the band moves only as far as clearing needs: a band
+  already further out stays where it was. Only decorations level with the
+  legend count, and only the y axis on 'left'/'right' and the x axis on
+  'top'/'bottom'. So a lineplot's last x tick label, which overhangs the
+  right edge at the bottom of the axes, leaves a right legend where it was.
+
+  **What counts is deliberately narrow.** On 'right' and 'top' the legend
+  clears the axis decorations of the axes and its twins, and nothing else.
+  It does not clear an arbitrary text, patch or annotation you place past
+  the edge: such an artist can be positioned off the legend itself, a
+  colorbar or the figure, which the layout moves, and stepping past
+  something that moves with the step never settles. For the same reason an
+  axis label you placed with `set_label_coords` is not cleared, though its
+  tick labels are. Axes that are hidden or have `ax.axis("off")` draw no
+  decorations, and none are measured. 'left' and 'bottom' measure exactly
+  what they measured before, plus twins. The same rule holds for the
+  title: matplotlib lifts it above top tick labels, and publiplots adds
+  nothing to that for your own artists.
+
+  With a `side="top"` legend, a title pad set after the figure was first
+  drawn (`ax.set_title(..., pad=60)`) is now honoured. The legend's title
+  lift used to keep the pad from the first draw and overwrite the new one.
+
+  Across two corpora of 43 and 57 default figures, every legend, title and
+  axes box is identical to before to 0.0000mm except the two cases above
+  that changed on purpose: a plain `twinx()` with a right-side label, whose
+  legend moves 9.14mm off it, and a left colorbar, which moves 5.34mm off
+  the y tick labels.
 
 - **The package metadata now declares the Python and matplotlib versions
   publiplots actually runs on: `requires-python = ">=3.10"` and
