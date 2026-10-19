@@ -42,7 +42,8 @@ _STRATEGIES: dict[str, Callable] = {
 
 
 # Kinds whose rotation may also be named rather than numeric, and the only
-# kinds that accept `basis=`, `leader=`, `leader_gap=` and `elbow_length=`.
+# kinds that accept `basis=`, `leader=`, `leader_gap=`, `elbow_length=`,
+# `avoid_overlap=` and `label_spacing=`.
 # All are wedge geometry: there is no tangent to a bar, no parent to take
 # a share of, and no rim for a leader to leave.
 _WEDGE_KINDS = {"wedge_values"}
@@ -87,6 +88,8 @@ def annotate(
     leader=_LEADER_DEFAULT,
     leader_gap: Optional[float] = None,
     elbow_length: Optional[float] = None,
+    avoid_overlap: Optional[bool] = None,
+    label_spacing: Optional[float] = None,
     **text_kws,
 ) -> List[Text]:
     """Add value labels to plot marks on ``ax``.
@@ -138,8 +141,8 @@ def annotate(
           :func:`publiplots.subplots` the layout grows the figure to
           hold them; on any other axes nothing does, and labels that
           reach past the figure edge are cut off. Crowded outside labels
-          are not moved apart. ``pad`` has no effect for this kind, and
-          is not validated for it.
+          are moved apart (``avoid_overlap``). ``pad`` has no effect for
+          this kind, and is not validated for it.
     fmt : str, optional
         Either a bare format spec (e.g. ``".2f"``, ``",.0f"``) or a
         format-string template containing ``{}`` (e.g.
@@ -216,7 +219,11 @@ def annotate(
         tail toward the label's side (right for a mid-ray pointing
         straight up or down), with the label left- or right-aligned
         beside it; ``None`` or ``False`` draws no line. Defaults to
-        ``pp.rcParams["pie.leader"]`` (``'radial'``). A rotated label
+        ``pp.rcParams["pie.leader"]`` (``'radial'``). With
+        ``avoid_overlap`` on, a pie whose outside labels the bounded
+        circle pass does not keep apart draws ``'elbow'`` labels, with
+        their lines, whichever of ``'radial'`` or ``None`` was asked for
+        (see ``avoid_overlap``). A rotated label
         is placed by its rotated bounding box in every style. Passing it
         with any other kind is a ``TypeError``.
     leader_gap : float, optional
@@ -236,6 +243,48 @@ def annotate(
         horizontal tail. Defaults to ``pp.rcParams["pie.elbow_length"]``
         (``2.0``); unused by the other styles. Passing it with any other
         kind is a ``TypeError``.
+    avoid_overlap : bool, optional
+        ``wedge_values`` only: move outside labels that would overlap
+        apart, by as little as keeps every pair ``label_spacing`` apart.
+        ``'elbow'`` labels move up or down their column, the elbow
+        moving with them so the tail stays level, and a moved label's
+        leader is kept from running through another label (a leader
+        that already did so unmoved, as a rotated label's can, is not
+        always cleared). ``'radial'`` and unled labels
+        move round the circle onto a ray off their wedge's mid-ray, a
+        radial leader leaning to follow -- but never further than
+        ``acos(R / (R + offset))`` from the mid-ray, ``R`` the wedge's
+        radius, the furthest a leader can lean without cutting back
+        across the chart (about 25 degrees at 40mm and the default
+        ``offset``). Their order is kept, a label that crowds nothing
+        does not move, inside labels never move, and no leader enters
+        the disc. **When the bounded solve does not clear every
+        conflict** -- a run of slivers side by side, or more labels than
+        fit round the circle, and also some pies where a tight radial
+        packing exists but only with leaders lying close to the rim's
+        tangent, which this solve does not reach for -- every outside
+        label of the axes is laid out as an ``'elbow'`` label instead,
+        leader and all (drawn too when ``leader=None``), using the
+        ``offset``, ``leader_gap`` and ``elbow_length`` in effect, and
+        spread up and down its column, which always has room. How many
+        slivers that takes depends on where they sit and on the chart's
+        size: on a 25 to 40mm pie, four to six 0.5% wedges already do
+        near twelve or six o'clock, where labels stand side by side, and
+        nine to eleven near three or nine, where they stack; a larger pie
+        takes more. No warning is issued; pass ``min_share`` to
+        :func:`publiplots.pieplot` to pool the slivers if the radial
+        style matters more, or ``avoid_overlap=False`` to keep every
+        label on its mid-ray whatever overlaps. A pie the circle pass
+        clears keeps the style asked for. Defaults to ``pp.rcParams["pie.avoid_overlap"]`` (``True``);
+        ``False`` places every label on its own mid-ray. Anything but a
+        bool is a ``TypeError``, as is passing it with any other kind.
+    label_spacing : float, optional
+        ``wedge_values`` only: the least gap in millimetres kept between
+        two outside labels' boxes -- the straight-line distance between
+        their nearest points -- and between a moved elbow label and the
+        disc. Defaults to ``pp.rcParams["pie.label_spacing"]``
+        (``0.4``); unused with ``avoid_overlap=False``. Validated as
+        ``leader_gap`` is, and a ``TypeError`` with any other kind.
     **text_kws
         Forwarded to :meth:`matplotlib.axes.Axes.text` (e.g.
         ``fontsize``, ``fontweight``).
@@ -254,7 +303,8 @@ def annotate(
     TypeError
         If an option belonging to one strategy is passed with a
         ``kind`` that does not take it: ``basis=``, ``leader=``,
-        ``leader_gap=`` or ``elbow_length=`` outside the wedge kinds, or
+        ``leader_gap=``, ``elbow_length=``, ``avoid_overlap=`` or
+        ``label_spacing=`` outside the wedge kinds, or
         ``labels=`` / ``data=`` outside the custom-label kinds.
 
     Notes
@@ -384,7 +434,9 @@ def annotate(
         name: value
         for name, value, unset in (("leader", leader, _LEADER_DEFAULT),
                                    ("leader_gap", leader_gap, None),
-                                   ("elbow_length", elbow_length, None))
+                                   ("elbow_length", elbow_length, None),
+                                   ("avoid_overlap", avoid_overlap, None),
+                                   ("label_spacing", label_spacing, None))
         if value is not unset
     }
     if leader_options:

@@ -48,6 +48,12 @@ publiplots-specific keys (not in matplotlib) include:
   the rim to the leader's end (to the label itself with no leader), the
   mm from the leader's end to the label, and the mm length of an elbow
   leader's horizontal tail (``"radial"`` / ``2.0`` / ``0.8`` / ``2.0``).
+- ``pie.avoid_overlap`` / ``pie.label_spacing`` — whether crowded outside
+  wedge labels are moved apart, and the least gap in mm kept between two
+  of their boxes (``True`` / ``0.4``). A pie whose radial or unled
+  labels the bounded circle pass does not clear draws elbow labels
+  instead -- including some that a tight radial packing, with leaders
+  near the rim's tangent, could have held.
 - ``subplots.axes_size`` — default ``(width_mm, height_mm)`` for
   :func:`publiplots.subplots`.
 - ``subplots.title_space`` / ``xlabel_space`` / ``ylabel_space`` /
@@ -228,6 +234,8 @@ PUBLIPLOTS_RCPARAMS: Dict[str, Any] = {
     "pie.label_offset": 2.0,    # rim -> leader end (or -> label, with no leader)
     "pie.leader_gap": 0.8,      # leader end -> label
     "pie.elbow_length": 2.0,    # horizontal tail of an "elbow" leader
+    "pie.avoid_overlap": True,  # move crowded outside labels apart
+    "pie.label_spacing": 0.4,   # least gap between two outside labels
 
     # Bar plot styling
     "bar.border_radius": (0.0, 0.0),   # (top_mm, bottom_mm); scalar or tuple — rounded corners for pp.barplot
@@ -366,7 +374,10 @@ class PubliplotsRcParams:
     publiplots-specific parameters. Mimics matplotlib's rcParams but
     also exposes the custom keys listed in this module's docstring
     (``alpha``, ``edgecolor``, ``edgewidth``, ``palette``,
-    ``hatch_mode``, ``scatter.size_*``, ``pie.*``, ``subplots.*``). Use
+    ``hatch_mode``, ``scatter.size_*``, ``pie.*`` -- the wedge gap, the
+    outside-label leader and offsets, and ``pie.avoid_overlap`` /
+    ``pie.label_spacing`` for moving crowded labels apart --
+    ``subplots.*``). Use
     the module-level
     :data:`rcParams` instance — don't instantiate this class yourself.
 

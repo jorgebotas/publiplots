@@ -394,8 +394,10 @@ def pieplot(
         ``color``, ``rotation`` (degrees, or ``"tangential"`` /
         ``"radial"``), ``basis`` (``"total"``/``"parent"``), ``leader``
         (``"radial"``/``"elbow"``/``None``), ``leader_gap`` and
-        ``elbow_length`` (mm). ``offset`` and the leader options default
-        to the ``pie.*`` rcParams.
+        ``elbow_length`` (mm), ``avoid_overlap`` (move crowded outside
+        labels apart) and ``label_spacing`` (mm between them).
+        ``offset`` and the leader options default to the ``pie.*``
+        rcParams.
     title : str or None, default=""
         Plot title. Pass ``None`` to leave the existing title unchanged.
 
