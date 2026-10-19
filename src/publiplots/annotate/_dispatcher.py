@@ -119,7 +119,8 @@ def annotate(
           summary statistics.
         - ``'violin_stats'`` — the same statistics for violin plots, with
           default anchor ``"inside"``: on the forward side of the median
-          line, inside the body. Labels on dodged vertical violins turn
+          line, inside the body. Labels on vertical violins narrower than
+          their slot — dodged, split by hue, or halved by ``side=`` — turn
           90° to fit their body unless ``rotation`` is given.
         - ``'point_values'`` — label scatter or line-plot points;
           anchor vocabulary
@@ -183,8 +184,9 @@ def annotate(
         the axes edge rather than inside it.
     rotation : float or str, optional
         Label rotation in degrees, counter-clockwise. Defaults to ``0``,
-        except ``kind='violin_stats'``, which turns labels on dodged
-        vertical violins 90°. For right-angle
+        except ``kind='violin_stats'``, which turns labels 90° on
+        vertical violins narrower than their slot (dodged, split by hue,
+        or halved by ``side=``). For right-angle
         multiples (0, 90, 180, 270) the ``(ha, va)`` alignment is
         auto-remapped so the rotated label still sits at the expected
         offset from the mark, and the categorical axis is also expanded
