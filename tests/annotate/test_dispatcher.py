@@ -54,7 +54,7 @@ def test_registry_contains_known_strategies():
         "bar_values", "bar_custom",
         "box_stats", "box_custom",
         "point_values", "point_custom",
-        "violin_custom",
+        "violin_stats", "violin_custom",
         "wedge_values",
     }
 

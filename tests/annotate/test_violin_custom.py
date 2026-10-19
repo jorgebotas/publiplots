@@ -64,7 +64,7 @@ def test_column_labels_hue_split():
     # boxplot order, which put B/x's label on the A/y violin. Assert the
     # positions too, since order alone did not catch that.
     assert [t.get_text() for t in texts] == ["11", "22", "33", "44"]
-    expected_x = {"11": -0.2, "22": 0.2, "33": 0.8, "44": 1.2}
+    expected_x = {"11": -0.225, "22": 0.225, "33": 0.775, "44": 1.225}
     for t in texts:
         assert t.get_position()[0] == pytest.approx(
             expected_x[t.get_text()], abs=1e-6)
@@ -153,3 +153,9 @@ def test_end_to_end_via_pp_violinplot_annotate():
         annotate={"kind": "violin_custom", "labels": "n", "fmt": "n={}"},
     )
     assert [t.get_text() for t in ax.texts] == ["n=10", "n=20", "n=30"]
+
+
+def test_bad_anchor_names_violin_custom():
+    ax = pp.violinplot(data=_simple_df(), x="cat", y="value")
+    with pytest.raises(ValueError, match="violin_custom anchor"):
+        pp.annotate(ax, kind="violin_custom", labels="n", anchor="nowhere")

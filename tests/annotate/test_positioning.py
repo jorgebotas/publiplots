@@ -258,6 +258,6 @@ def test_anchor_resolver_vocabularies():
     })
     assert PointAnchorResolver.DEFAULT_ANCHOR == "top"
     assert BoxAnchorResolver.VALID_ANCHORS == frozenset({
-        "top", "bottom", "left", "right", "center",
+        "top", "bottom", "left", "right", "center", "inside",
     })
     assert BoxAnchorResolver.DEFAULT_ANCHOR == "top"

@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`anchor="inside"` for `box_stats`, `box_custom` and `violin_custom`.**
+  The label sits on the forward side of the median line — above it for
+  vertical marks, right of it for horizontal ones — inside the body, and
+  never flips side near the axis end. Split violins and `side=` halves put
+  each label against the seam on its own half's side. `color="auto"`
+  contrasts with the drawn fill.
+
+- **`kind="violin_stats"`** — box_stats' statistics with `"inside"` as the
+  default anchor. On a dodged vertical violin, whose body is narrower than a
+  7 pt label, labels turn 90°; an explicit `rotation=` wins.
+
+- **`inner="median"` for `pp.violinplot`** — one line across each violin
+  at its median, spanning the body's thickness at that point rather than
+  its widest, in the outline's colour and `linewidth`. `inner_kws` tunes it:
+  `inset` (`"auto"`; `0` for a border-to-border chord; or a fraction such as
+  `0.12` for a detached tick), `color`, `linewidth`, `solid_capstyle`. On a
+  fill too dark for the outline colour it turns white. (#275)
+
+### Changed
+
+- **`pp.violinplot(annotate=True)` labels medians from inside the body**, via
+  `violin_stats`. Vertical labels sat beside the violin, often closer to the
+  neighbouring violin than to their own. Labels on dodged vertical violins
+  turn 90°, and split and `side=` halves put their labels against the seam.
+  `violin_custom`'s default anchor moves from `"top"` to `"inside"`:
+  unchanged for full vertical violins on a light fill, while horizontal
+  labels move from above the row to right of the median, split and `side=`
+  halves move against their seam, and `color="auto"` turns white on a dark
+  fill.
+
+- **`color="auto"` picks label ink by WCAG contrast ratio.** It compared HLS
+  lightness against 0.408, which put black text on pure blue (contrast 2.4,
+  against 8.6 for white) and white text on tab:green (3.4, against 6.2).
+  Ink is now whichever of white or `text.color` has the higher WCAG 2.x
+  contrast ratio against the composited fill — white below relative luminance
+  ≈0.179. Labels on default `alpha=0.1` fills are unaffected: every fill
+  composites to near-white and keeps its ink.
+
+- **`pp.violinplot` defaults to `inner="median"`**, replacing seaborn's
+  `"box"`, whose whiskers and caps restate quartiles the silhouette already
+  shows. `inner="box"` remains available. Box-styling `inner_kws`
+  (`box_width`, `whis_width`, `marker`) now need `inner="box"`; under the default
+  they raise a `ValueError` saying so. (#275)
+
+- **`pp.violinplot` defaults to `width=0.9`** (was seaborn's 0.8), so
+  neighbouring violins sit closer. `pp.raincloudplot` pins its cloud at 0.8
+  and is unchanged. (#275)
+
+### Fixed
+
+- **Violin labels no longer shift onto the next violin after a group seaborn
+  could not draw.** seaborn draws a group as a bare line rather than a body
+  when it has fewer than two observations, or when its density estimate
+  cannot be fitted (in practice, identical values whose covariance comes out
+  exactly zero), but the box-stats builder paired records to bodies by index.
+  With groups A (n=1), B and C, A's median was printed on B's violin and B's
+  on C's, and C's label was dropped. Such groups are now skipped, decided by
+  repeating seaborn's own fit, so every other group labels its own body.
+  `pp.boxplot` is unchanged: matplotlib draws a box for n=1.
+
+- **Box and violin statistics ignore NaN values.** seaborn drops them before
+  drawing, but the statistics behind `box_stats` / `violin_stats` labels and
+  the median line did not: one NaN made its group's label read "nan" and,
+  under `inner="median"`, removed that violin's median line. An all-NaN
+  group is now skipped like an empty one, where `pp.boxplot` paired it with
+  the next group's box.
+
+- **Custom labels on box and violin plots judge contrast against the drawn
+  fill.** `box_custom` / `violin_custom` with `anchor="center"` and
+  `color="auto"` compared against the palette colour at full opacity, so a
+  saturated palette entry could put white text on a body drawn at
+  `alpha=0.1`. They now use the body's drawn face.
+
 ### Docs
 
 - **The `annotate=` examples in `pp.boxplot` and `pp.violinplot` now run.**
