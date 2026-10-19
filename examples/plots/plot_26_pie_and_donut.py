@@ -221,10 +221,15 @@ pp.show()
 # force every label to one placement regardless of fit. An outside label
 # is centred on its wedge's mid-ray, a little past the end of its line.
 # The disc is the same size under all three: a label that leaves it
-# extends past the axes rather than shrinking the pie. Outside labels are
-# not moved apart from one another, so those of adjacent thin wedges can
-# overlap. Like a tick label, an outside label is a decoration: the axes
-# title above it, and a legend beside it, step past it.
+# extends past the axes rather than shrinking the pie. On their own
+# mid-rays the 6.0% and 2.0% labels would just overlap, so under
+# ``"outside"`` and ``"auto"`` they are nudged apart round the circle --
+# by less than a degree each, their leaders leaning to follow -- until
+# they are ``label_spacing`` (0.4mm) apart; the other labels stay on
+# their mid-rays. "Crowded labels" below shows this at work on a long
+# tail.
+# Like a tick label, an outside label is a decoration: the axes title
+# above it, and a legend beside it, step past it.
 
 thin = pd.DataFrame({"kind": list("ABCD"), "n": [80.0, 12.0, 6.0, 2.0]})
 fig, axes = pp.subplots(ncols=3, axes_size=(38, 38))
@@ -264,11 +269,14 @@ pp.show()
 # and centres the label on it. ``"elbow"`` bends the line into a short
 # horizontal tail, ``elbow_length`` millimetres long (``2`` by default),
 # and sets the label beside it, aligned away from the disc, so the text
-# starts ``leader_gap`` past the end of its tail. Each label still hangs
-# off its own wedge's mid-ray: elbow labels are not lined up into a
-# column, nor moved apart where they crowd. ``None`` (or ``False``)
-# draws no line and centres the label with its nearest point ``offset``
-# from the rim.
+# starts ``leader_gap`` past the end of its tail. Every leader starts
+# on its own wedge's rim at the mid-ray, and elbow labels are not lined
+# up into a column. ``None`` (or ``False``) draws no line and centres
+# the label with its nearest point ``offset`` from the rim. The radial
+# labels here each sit on their own mid-ray. The two thin wedges'
+# elbow labels would touch there, so they are moved apart, 0.6mm each,
+# up and down their column (see "Crowded labels"); and the unled ones,
+# 0.375mm apart, are nudged about a hundredth of a degree to make 0.4mm.
 
 fig, axes = pp.subplots(ncols=3, axes_size=(36, 36))
 for ax, leader in zip(axes, ["radial", "elbow", None]):
@@ -291,6 +299,72 @@ pp.pieplot(data=df, x="kind", y="n", donut=0.55, palette=palette,
            annotate={"anchor": "outside"})
 pp.show()
 pp.rcParams["pie.leader"] = default_leader
+
+# %%
+# Crowded labels
+# --------------
+# A long tail puts several slivers side by side, and their outside
+# labels would land on top of one another. ``avoid_overlap`` (on by
+# default, ``pp.rcParams["pie.avoid_overlap"]``) moves them apart by as
+# little as keeps every two labels ``label_spacing`` millimetres apart
+# (``0.4`` by default, ``pp.rcParams["pie.label_spacing"]``), keeping
+# their order. Elbow labels move up or down their column, and the
+# elbow moves with them so the tail stays level; radial labels move
+# round the circle, their leaders leaning to follow; labels with no
+# leader move round the circle too. A label that crowds nothing stays
+# exactly where it was, and no leader enters the disc. The top row is
+# the same chart with ``avoid_overlap=False``.
+#
+# A radial or unled label moves at most as far round as its leader can
+# lean without cutting back across the chart. Where the slivers need
+# more room than that -- on a 25 to 40mm pie, four to six 0.5% wedges
+# side by side near twelve or six o'clock, nine to eleven stacked near
+# three or nine; more on a larger pie --
+# the pie is drawn with elbow labels instead (next figure).
+
+long_tail = pd.DataFrame({
+    "kind": ["A", "B", "C", "D", "E", "F", "G", "H"],
+    "n": [40.0, 30.0, 20.0, 5.0, 3.0, 1.0, 0.5, 0.5],
+})
+fig, axes = pp.subplots(nrows=2, ncols=3, axes_size=(36, 36),
+                        hspace=10)
+for row, avoid in zip(axes, [False, True]):
+    for ax, leader in zip(row, ["radial", "elbow", None]):
+        pp.pieplot(data=long_tail, x="kind", y="n", legend=False,
+                   start_angle=30, ax=ax,
+                   annotate={"anchor": "outside", "leader": leader,
+                             "avoid_overlap": avoid})
+        ax.set_title(f"leader={leader!r}\navoid_overlap={avoid}")
+pp.show()
+
+# %%
+# The thirteen-wedge tail below, at 30mm, is too much for that room:
+# with its slivers side by side at twelve o'clock, the bounded circle
+# pass does not keep its radial labels apart. So although both panels
+# ask for ``leader="radial"`` (the default), the left one comes out
+# with elbow labels: whenever that pass does not clear every overlap,
+# every outside label of the pie is laid out as an elbow label and
+# spread up and down its column, with the ``offset``, ``leader_gap``
+# and ``elbow_length`` in effect -- and with leader lines even if
+# ``leader=None`` was asked for. That includes some pies a tight radial
+# packing could hold, but only with leaders lying along the rim's
+# tangent; elbow labels read better there. No warning is issued. Where
+# the radial style matters more, ``min_share`` (right, ``0.02``) pools
+# the slivers into one wedge, leaving labels the circle can keep apart;
+# ``avoid_overlap=False`` keeps every label on its mid-ray, overlaps and
+# all.
+
+tail13 = pd.DataFrame({
+    "kind": [f"k{i}" for i in range(13)],
+    "n": [50.0, 20.0, 10.0, 5.0, 3.0, 2.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.3,
+          0.2],
+})
+fig, axes = pp.subplots(ncols=2, axes_size=(30, 30))
+for ax, pie_kws in zip(axes, [{}, {"min_share": 0.02}]):
+    pp.pieplot(data=tail13, x="kind", y="n", legend=False, ax=ax,
+               annotate={"anchor": "outside", "leader": "radial"},
+               **pie_kws)
+pp.show()
 
 # %%
 # Formatting and rotating the labels
