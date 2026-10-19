@@ -208,6 +208,9 @@ def raincloudplot(
         palette=palette,
         saturation=saturation,
         inner=None,
+        # The cloud's proportions are tuned against box_width and the rain
+        # offset; keep it at 0.8 whatever violinplot's own default.
+        width=0.8,
         dodge=dodge,
         linewidth=linewidth,
         edgecolor=edgecolor,

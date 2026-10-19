@@ -231,8 +231,9 @@ pp.show()
 # %%
 # Violinplot: same stats API
 # --------------------------
-# pp.violinplot shares the box_stats strategy — violins are a different
-# visual but the same stats (median, quartiles) apply.
+# pp.violinplot annotates with ``violin_stats``: the same stats as
+# box_stats (median, quartiles; ``stats=[...]`` still works), labelled
+# from inside the body.
 ax = pp.violinplot(
     data=box_df, x="g", y="y",
     annotate={"stats": ["median"], "fmt": ".2f"},

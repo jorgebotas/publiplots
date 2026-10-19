@@ -24,6 +24,9 @@ from publiplots.utils import is_categorical
 from publiplots.utils.plot_legend import stash_hue_legend
 from publiplots.utils.transparency import ArtistTracker
 
+# inner_kws that only seaborn's inner="box" understands.
+_BOX_ONLY_INNER_KWS = frozenset({"box_width", "whis_width", "marker"})
+
 
 def violinplot(
     data: pd.DataFrame,
@@ -38,9 +41,9 @@ def violinplot(
     palette: Optional[Union[str, Dict, List]] = None,
     saturation: float = 1.0,
     fill: bool = False,
-    inner: Optional[str] = "box",
+    inner: Optional[str] = "median",
     split: bool = False,
-    width: float = 0.8,
+    width: float = 0.9,
     dodge: Union[bool, str] = "auto",
     gap: float = 0,
     linewidth: Optional[float] = None,
@@ -96,14 +99,24 @@ def violinplot(
         Proportion of the original saturation to draw colors at.
     fill : bool, default=False
         Whether to fill the violin interior.
-    inner : str, optional, default="box"
-        Representation of the data in the violin interior.
-        Options: "box", "quart", "point", "stick", None.
+    inner : str, optional, default="median"
+        Representation of the data in the violin interior. Options:
+        "median", "box", "quart", "point", "stick", None.
+        ``"median"`` (publiplots-specific) draws one line across the body at
+        the group median, spanning the body's thickness at that point, in
+        the body's edge colour at ``linewidth``. Tune it with ``inner_kws``:
+        ``inset`` (``"auto"``; ``0`` for a flush border-to-border chord; or
+        the fraction of the local half-thickness trimmed from each end, e.g.
+        ``0.12``), ``color`` (``"auto"`` follows the edge and turns white on
+        a fill too dark for it), ``linewidth``, ``solid_capstyle``. The
+        other options are seaborn's; use ``"box"`` when the quartiles are
+        the point.
     split : bool, default=False
         When using hue nesting with a variable that takes two levels,
         setting split to True will draw half of a violin for each level.
-    width : float, default=0.8
-        Width of the violins.
+    width : float, default=0.9
+        Width of the violins. Wider than seaborn's 0.8, so neighbouring
+        violins sit closer together.
     dodge : bool or "auto", default="auto"
         When hue nesting is used, whether elements should be shifted along
         the categorical axis.
@@ -116,7 +129,10 @@ def violinplot(
         Deprecated. Use ``edgecolor`` instead. Kept for backward
         compatibility; when ``edgecolor`` is also set, ``edgecolor`` wins.
     cut : float, default=2
-        Distance past extreme data points to extend density estimate.
+        Distance past extreme data points to extend the density estimate,
+        in units of bandwidth. ``cut=0`` is the right choice for a bounded
+        measure (an AUC, a proportion): the silhouette then stops at the
+        observed data instead of drawing density past the bound.
     gridsize : int, default=100
         Number of points in the discrete grid used to evaluate KDE.
     bw_method : str, default="scott"
@@ -144,9 +160,10 @@ def violinplot(
     legend_kws : dict, optional
         Additional keyword arguments for legend.
     annotate : bool or dict, optional
-        If truthy, run :func:`publiplots.annotate` with ``kind="box_stats"``
-        on the resulting axes. A dict is forwarded as keyword arguments to
-        the annotate call (e.g., ``annotate={"comparisons": [("A", "B")]}``).
+        If truthy, run :func:`publiplots.annotate` with
+        ``kind="violin_stats"``, which labels each median from inside its
+        body. A dict is forwarded as keyword arguments to the annotate call
+        (e.g., ``annotate={"stats": ["median", "q1", "q3"]}``).
     side : str, default="both"
         Publiplots-specific: which side of the categorical position to draw
         the violin on. Options: ``"both"``, ``"left"``, ``"right"``. When
@@ -248,8 +265,24 @@ def violinplot(
             palette=palette,
         )
 
-    # Resolve linewidth for box whiskers
+    # "median" is publiplots-owned and seaborn rejects it: pass inner=None
+    # down and draw the line ourselves once the body geometry is final.
     inner_kws = kwargs.pop("inner_kws", {})
+    median_inner = inner == "median"
+    median_kws: Dict = {}
+    if median_inner:
+        median_kws, inner_kws = dict(inner_kws), {}
+        # seaborn's inner="box" styling keys mean nothing to a median line,
+        # and would otherwise fail deep inside ax.plot.
+        box_only = sorted(set(median_kws) & _BOX_ONLY_INNER_KWS)
+        if box_only:
+            raise ValueError(
+                f"inner_kws {box_only} style seaborn's box inner; pass "
+                f"inner='box' to use them (the default inner='median' "
+                f"accepts inset, color, linewidth and other Line2D styling, "
+                f"but not marker)"
+            )
+    # Resolve linewidth for box whiskers
     if inner == "box":
         inner_kws["whis_width"] = inner_kws.get("whis_width", linewidth)
 
@@ -266,7 +299,7 @@ def violinplot(
         "palette": palette if hue else None,
         "saturation": saturation,
         "fill": fill,
-        "inner": inner,
+        "inner": None if median_inner else inner,
         "split": split,
         "width": width,
         "dodge": dodge,
@@ -342,7 +375,7 @@ def violinplot(
         categorical_axis = y
     else:
         categorical_axis = x
-    ax._publiplots_box_meta = build_from_violinplot_call(
+    meta = build_from_violinplot_call(
         ax=ax, data=data, x=x, y=y, hue=hue,
         categorical_axis=categorical_axis,
         palette=palette if isinstance(palette, dict) else None,
@@ -350,14 +383,22 @@ def violinplot(
         # Level order must be seaborn's, which honours these and sorts
         # numeric levels; without them the pairing desyncs (#262).
         order=order, hue_order=hue_order,
+        split=split, side=side,
         # Only this call's collections: the PolyCollection filter is broad
         # enough to catch a filled kdeplot's fill.
         drawn_artists=tracker.get_new_collections(),
     )
+    ax._publiplots_box_meta = meta
+    if median_inner:
+        # After side-clipping, the edgecolor override and the meta: the line
+        # reads each body's final polygon and colour, and its value is the
+        # median pp.annotate prints.
+        from publiplots.plot._violin_median import draw_median_inner
+        draw_median_inner(ax, meta, median_kws, linewidth=linewidth)
     if annotate:
         from publiplots.annotate import annotate as _annotate_fn
         opts = dict(annotate) if isinstance(annotate, dict) else {}
-        kind = opts.pop("kind", "box_stats")
+        kind = opts.pop("kind", "violin_stats")
         _annotate_fn(ax, kind=kind, **opts)
 
     if _hide_axis == "x":

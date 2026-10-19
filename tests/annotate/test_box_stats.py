@@ -122,7 +122,7 @@ def test_boxplot_annotate_anchor_center_on_median():
 def test_boxplot_annotate_invalid_anchor_raises():
     with pytest.raises(ValueError, match="box_stats anchor"):
         pp.boxplot(data=_box_df(), x="g", y="y",
-                   annotate={"anchor": "inside"})
+                   annotate={"anchor": "outside"})
 
 
 def test_boxplot_annotate_invalid_stat_raises():
