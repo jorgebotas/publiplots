@@ -163,7 +163,7 @@ def violinplot(
         If truthy, run :func:`publiplots.annotate` with
         ``kind="violin_stats"``, which labels each median from inside its
         body. A dict is forwarded as keyword arguments to the annotate call
-        (e.g., ``annotate={"fmt": ".3f"}``).
+        (e.g., ``annotate={"stats": ["median", "q1", "q3"]}``).
     side : str, default="both"
         Publiplots-specific: which side of the categorical position to draw
         the violin on. Options: ``"both"``, ``"left"``, ``"right"``. When

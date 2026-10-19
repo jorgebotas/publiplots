@@ -82,6 +82,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saturated palette entry could put white text on a body drawn at
   `alpha=0.1`. They now use the body's drawn face.
 
+### Docs
+
+- **The `annotate=` examples in `pp.boxplot` and `pp.violinplot` now run.**
+  They showed `annotate={"comparisons": [("A", "B")]}`, but `box_stats`
+  has no comparisons option, so the key fell through to matplotlib and
+  raised `AttributeError: 'Text' object has no property 'comparisons'`.
+  They now show `annotate={"stats": ["median", "q1", "q3"]}`, which labels
+  each box with its median and quartiles. A test extracts every
+  `annotate=` example from both docstrings and runs it, so the next one
+  that names a missing option fails the test suite instead of the reader.
+
 ## [0.20.0] - 2026-10-19
 
 ### Added
