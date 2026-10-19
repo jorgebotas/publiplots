@@ -146,7 +146,7 @@ def violinplot(
     annotate : bool or dict, optional
         If truthy, run :func:`publiplots.annotate` with ``kind="box_stats"``
         on the resulting axes. A dict is forwarded as keyword arguments to
-        the annotate call (e.g., ``annotate={"comparisons": [("A", "B")]}``).
+        the annotate call (e.g., ``annotate={"stats": ["median", "q1", "q3"]}``).
     side : str, default="both"
         Publiplots-specific: which side of the categorical position to draw
         the violin on. Options: ``"both"``, ``"left"``, ``"right"``. When
