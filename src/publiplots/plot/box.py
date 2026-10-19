@@ -124,7 +124,7 @@ def boxplot(
     annotate : bool or dict, optional
         If truthy, run :func:`publiplots.annotate` with ``kind="box_stats"``
         on the resulting axes. A dict is forwarded as keyword arguments to
-        the annotate call (e.g., ``annotate={"comparisons": [("A", "B")]}``).
+        the annotate call (e.g., ``annotate={"stats": ["median", "q1", "q3"]}``).
     **kwargs
         Additional keyword arguments passed to seaborn.boxplot.
 
@@ -146,11 +146,11 @@ def boxplot(
     ...     data=df, x="category", y="value", hue="group"
     ... )
 
-    Box plot with statistical annotations between groups:
+    Box plot labelled with each box's median and quartiles:
 
     >>> ax = pp.boxplot(
     ...     data=df, x="category", y="value",
-    ...     annotate={"comparisons": [("A", "B"), ("B", "C")]}
+    ...     annotate={"stats": ["median", "q1", "q3"], "fmt": ".1f"}
     ... )
 
     See Also
