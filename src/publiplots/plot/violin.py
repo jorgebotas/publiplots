@@ -279,7 +279,8 @@ def violinplot(
             raise ValueError(
                 f"inner_kws {box_only} style seaborn's box inner; pass "
                 f"inner='box' to use them (the default inner='median' "
-                f"accepts inset, color, linewidth and other Line2D keywords)"
+                f"accepts inset, color, linewidth and other Line2D styling, "
+                f"but not marker)"
             )
     # Resolve linewidth for box whiskers
     if inner == "box":

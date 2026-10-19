@@ -247,7 +247,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`pp.violinplot` defaults to `inner="median"`**, replacing seaborn's
   `"box"`, whose whiskers and caps restate quartiles the silhouette already
   shows. `inner="box"` remains available. Box-styling `inner_kws`
-  (`box_width`, `whis_width`) now need `inner="box"`; under the default
+  (`box_width`, `whis_width`, `marker`) now need `inner="box"`; under the default
   they raise a `ValueError` saying so. (#275)
 - **`pp.violinplot` defaults to `width=0.9`** (was seaborn's 0.8), so
   neighbouring violins sit closer. `pp.raincloudplot` pins its cloud at 0.8

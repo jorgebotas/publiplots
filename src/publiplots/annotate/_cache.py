@@ -125,8 +125,9 @@ class BoxStatsRecord:
         face_color: the artist's drawn facecolor, alpha included — what a
             label inside the mark actually sits on. Differs from hue_color,
             the palette colour at full opacity.
-        artist: the drawn mark — a violin's PolyCollection or a box's
-            PathPatch. Pairs per-mark decorations to their mark explicitly.
+        artist: the drawn mark — a violin's PolyCollection, a filled box's
+            PathPatch, or an unfilled box's closed Line2D outline. Pairs
+            per-mark decorations to their mark explicitly.
         half: for a half-body (split violin, side= violin), which side of
             its seam it occupies on the categorical axis, in data
             coordinates; None for a full body.
