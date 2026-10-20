@@ -11,7 +11,11 @@ from matplotlib.path import Path
 
 from publiplots.annotate._cache import WedgeMeta, WedgeRecord
 from publiplots.annotate._positioning import mm_to_data
-from publiplots.plot.wedge.geometry import WedgePlacement
+from publiplots.plot.wedge.geometry import (
+    WedgeNode,
+    WedgePlacement,
+    has_children,
+)
 
 MM_PER_INCH = 25.4
 
@@ -339,6 +343,12 @@ def draw_wedges(
     of them move out by the same distance and every pair of neighbours
     sits ``2 * explode`` apart (see :func:`even_explode`).
 
+    On a sunburst every ring keeps its width and moves out by ``2 *
+    explode`` more than the ring inside it: a depth-``k`` wedge's outer
+    radius grows by ``(2 * k + 1) * explode``, so every ring boundary opens
+    to ``2 * explode`` as every seam does. Depth 0 is the pie's ``r +
+    explode``.
+
     The wedges start inset by ``explode`` alone; :func:`apply_gap` adds
     the gap once the limits are framed.
     """
@@ -347,7 +357,7 @@ def draw_wedges(
         dx, dy = pull_offset(place, pull.get(place.node.path, 0.0))
         patch = GappedWedge(
             (center[0] + dx, center[1] + dy),
-            place.r_outer + explode,
+            place.r_outer + (2 * place.node.depth + 1) * explode,
             place.theta0,
             place.theta1,
             width=place.r_outer - place.r_inner,
@@ -500,8 +510,54 @@ def apply_cell_limits(ax: Axes, *, radius: float, aspect: str) -> None:
         ax.set_ylim(-radius / ratio, radius / ratio)
 
 
+def ray_key(angle: float) -> float:
+    """The ray at ``angle`` degrees as a key in ``[0, 360)``.
+
+    Angles a whole number of turns apart, or apart by float noise (the
+    child and parent edges on one ray are computed from different sums),
+    give the same key: ``-1e-13`` and ``360 - 1e-13`` both give ``0.0``.
+    """
+    key = round(float(angle) % 360.0, 9)
+    return 0.0 if key == 360.0 else key
+
+
+def _cap_eligible_half(patch: GappedWedge) -> Optional[float]:
+    """The half-span in radians of a wedge the never-vanish cap applies
+    to (at most 180 degrees), or None -- the same test as
+    :meth:`GappedWedge.get_drawn_insets`."""
+    span = patch.theta2 - patch.theta1
+    if abs(span - 360.0) <= 1e-12:
+        return None
+    half = math.radians(span) / 2.0
+    return half if half <= math.pi / 2.0 else None
+
+
+def ray_side_caps(
+    patches: Sequence[GappedWedge],
+) -> Dict[Tuple[float, int], float]:
+    """The never-vanish cap on each side of every ray, in data units.
+
+    Keyed by ``(ray_key(angle), side)``: side ``+1`` is the edge at a
+    patch's ``theta1``, whose wedge lies counterclockwise of the ray, and
+    ``-1`` the edge at its ``theta2``. Each value is the smallest
+    ``r * sin(half / 2)`` over the patches of at most 180 degrees with an
+    edge there, read from each patch's current outer radius; ``inf``
+    where only wider patches, or full circles, touch that side.
+    """
+    caps: Dict[Tuple[float, int], float] = {}
+    for patch in patches:
+        half = _cap_eligible_half(patch)
+        cap = (patch.r * math.sin(half / 2.0) if half is not None
+               else math.inf)
+        for key in ((ray_key(patch.theta1), 1), (ray_key(patch.theta2), -1)):
+            caps[key] = min(caps.get(key, math.inf), cap)
+    return caps
+
+
 def apply_gap(ax: Axes, patches: Sequence[GappedWedge], gap: float,
-              *, explode: float = 0.0) -> None:
+              *, explode: float = 0.0,
+              nodes: Optional[Sequence[WedgeNode]] = None,
+              n_levels: int = 1) -> None:
     """Inset every wedge so neighbours sit ``gap`` millimetres apart.
 
     Each straight edge moves ``gap / 2`` millimetres into its wedge, so
@@ -518,10 +574,62 @@ def apply_gap(ax: Axes, patches: Sequence[GappedWedge], gap: float,
     changes nothing. Both aspects give equal x and y scales, so the
     y-axis conversion holds in every direction. A ``gap`` of 0 returns
     before touching the axes, leaving the drawing exactly as it was.
+
+    ``nodes`` (one per patch, in the same order) makes the patches the
+    rings of a sunburst, ``n_levels`` deep; ``None`` is a pie, drawn as
+    above. With rings:
+
+    - **Between rings** each band moves its inner radius out (below the
+      root ring) and its rim in (where it has children) by ``gap / 2``,
+      but never past half its width: at most ``w / 4`` a side when both
+      sides move, ``w / 2`` when one does. The rim of a leaf, ragged or
+      not, and the edge of the hole stay put. This runs first, so the
+      caps below see each wedge's final outer radius.
+    - **Between siblings** each side of every ray is capped as a whole:
+      an edge is inset by ``min(gap / 2 + explode, cap)``, with ``cap``
+      the smallest ``r * sin(half / 2)`` over the wedges of at most 180
+      degrees on that side of that ray, in every ring. A parent and its
+      first or last child share a side, so the seam runs straight
+      through the rings even where a thin wedge narrows it.
+
+    An explode without a gap still runs this, so exploded slivers share
+    their caps too; the radial insets are then 0.
     """
-    if not gap:
+    if nodes is None:
+        if not gap:
+            return
+        ax.apply_aspect()
+        inset = abs(mm_to_data(gap / 2.0, ax, "y")) + explode
+        for patch in patches:
+            patch.set_inset(inset)
         return
-    ax.apply_aspect()
-    inset = abs(mm_to_data(gap / 2.0, ax, "y")) + explode
+
+    if not gap and not explode:
+        return
+    if len(nodes) != len(patches):
+        raise AssertionError(
+            f"apply_gap: {len(nodes)} nodes against {len(patches)} patches")
+    if any(node.depth >= n_levels for node in nodes):
+        raise AssertionError(
+            f"apply_gap: a node lies deeper than the {n_levels} rings")
+    h = 0.0
+    if gap:
+        ax.apply_aspect()
+        h = abs(mm_to_data(gap / 2.0, ax, "y"))
+
+    parents = has_children(list(nodes))
+    for patch, node in zip(patches, nodes):
+        inner_side = node.depth > 0
+        outer_side = node.path in parents
+        sides = int(inner_side) + int(outer_side)
+        if not sides or not h:
+            continue
+        step = min(h, patch.width / (2.0 * sides))
+        patch.set_radial_insets(step if inner_side else 0.0,
+                                step if outer_side else 0.0)
+
+    caps = ray_side_caps(patches)
+    full = h + explode
     for patch in patches:
-        patch.set_inset(inset)
+        patch.set_insets(min(full, caps[(ray_key(patch.theta1), 1)]),
+                         min(full, caps[(ray_key(patch.theta2), -1)]))

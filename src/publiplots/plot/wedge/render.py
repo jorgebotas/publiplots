@@ -301,13 +301,18 @@ def render_wedge_chart(
                    else {n.path: float(pull) for n in nodes})
 
     # Room for the furthest rim: a translated wedge reaches `pull` past
-    # the radius, and an evenly exploded one has its rim at r + t.
+    # the radius, and an evenly exploded one has its rim at r + t on a
+    # pie, r + (2n - 1)t on n rings.
     max_pull = max(pull_map.values(), default=0.0)
-    apply_cell_limits(ax, radius=r_outer + max(max_pull, explode) + 0.05,
+    explode_reach = (2 * len(levels) - 1) * explode
+    apply_cell_limits(ax,
+                      radius=r_outer + max(max_pull, explode_reach) + 0.05,
                       aspect=aspect)
     # Only once the limits are framed does a data unit have a fixed size
     # in millimetres to convert the gap with.
-    apply_gap(ax, patches, gap, explode=explode)
+    apply_gap(ax, patches, gap, explode=explode,
+              nodes=nodes if len(levels) > 1 else None,
+              n_levels=len(levels))
 
     # Built last, so the records are read off the patches as they are
     # finally drawn: after the gap, and after any explode.

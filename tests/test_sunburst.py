@@ -1,0 +1,279 @@
+import math
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pytest
+
+import publiplots as pp
+
+MM = 25.4
+
+
+@pytest.fixture(autouse=True)
+def _close():
+    yield
+    plt.close("all")
+
+
+# Three rings, full depth, 2 + 4 + 6 nodes.
+TREE = pd.DataFrame({
+    "a": ["P", "P", "P", "Q", "Q", "Q"],
+    "b": ["p1", "p1", "p2", "q1", "q1", "q2"],
+    "c": ["x", "y", "z", "u", "v", "w"],
+    "n": [10.0, 5.0, 15.0, 20.0, 10.0, 40.0],
+})
+
+# Ragged: Q's "q2" row ends at ring 1; P is a parent-leaf with a row of its
+# own.
+RAGGED = pd.DataFrame({
+    "a": ["P", "P", "P", "Q", "Q"],
+    "b": ["p1", "p1", None, "q1", "q2"],
+    "c": ["x", "y", None, "u", None],
+    "n": [10.0, 5.0, 15.0, 20.0, 40.0],
+})
+
+
+def _mm_per_unit(ax):
+    ax.apply_aspect()
+    inv = ax.transData.inverted()
+    y0 = inv.transform((0.0, 0.0))[1]
+    y1 = inv.transform((0.0, ax.figure.dpi / MM))[1]   # 1 mm in pixels
+    return 1.0 / abs(y1 - y0)
+
+
+from publiplots.plot.wedge.render import render_wedge_chart
+
+
+def _draw(df, levels, **overrides):
+    fig, ax = pp.subplots(axes_size=(50, 50))
+    kwargs = dict(
+        owner="sunburstplot", source_frame=df, y="n", hue=None,
+        order_map=None, sort=False, hue_order=None, start_angle=90.0,
+        direction="clockwise", donut=0.0, pull=None, gap=0.0, palette=None,
+        hatch=None, hatch_map=None, hatch_order=None, color="#5d83c3",
+        edgecolor=None, linewidth=0.75, alpha=0.1, center_label=None,
+        aspect="cell", legend=False, legend_kws=None, title="",
+        depth_range=0.45, sibling_range=0.14,
+    )
+    kwargs.update(overrides)
+    meta = render_wedge_chart(ax, df, levels, **kwargs)
+    fig.canvas.draw()
+    return ax, meta
+
+
+def _radial_gaps_mm(ax, meta):
+    """Gap between each wedge's rim and each child's inner edge, in mm."""
+    mm = _mm_per_unit(ax)
+    by = {r.path: r for r in meta.wedges}
+    gaps = []
+    for r in meta.wedges:
+        if r.depth > 0:
+            parent = by[r.path[:-1]]
+            gaps.append((r.r_inner - parent.r_outer) * mm)
+    return gaps
+
+
+def test_explode_puts_ring_k_at_its_stated_radii():
+    ax, meta = _draw(TREE, ["a", "b", "c"], pull=0.05)
+    t = 0.05 * 1.0
+    w = 1.0 / 3
+    for r in meta.wedges:
+        k = r.depth
+        assert r.r_inner == pytest.approx((2 * k + 1) * t + k * w)
+        assert r.r_outer == pytest.approx((2 * k + 1) * t + (k + 1) * w)
+
+
+@pytest.mark.parametrize("gap", [0.5, 1.0])
+def test_gap_separates_rings_by_gap_mm(gap):
+    ax, meta = _draw(TREE, ["a", "b", "c"], gap=gap)
+    assert _radial_gaps_mm(ax, meta) == pytest.approx(
+        [gap] * len(_radial_gaps_mm(ax, meta)), abs=0.01)
+
+
+def test_explode_and_gap_open_every_ring_boundary_to_two_t_plus_gap():
+    ax, meta = _draw(TREE, ["a", "b", "c"], pull=0.05, gap=1.0)
+    gaps = _radial_gaps_mm(ax, meta)
+    two_t = 2 * 0.05 * _mm_per_unit(ax)
+    assert gaps == pytest.approx([1.0 + two_t] * len(gaps), abs=0.01)
+
+
+def test_a_ragged_leaf_rim_is_not_inset():
+    ax, meta = _draw(RAGGED, ["a", "b", "c"], gap=1.0)
+    by = {r.path: r for r in meta.wedges}
+    w = 1.0 / 3
+    assert by[("Q", "q2")].r_outer == pytest.approx(2 * w)   # not moved in
+    assert by[("P",)].r_outer < w                            # parent-leaf: inset
+
+
+def test_seams_are_collinear_through_rings_even_where_capped():
+    # A 1% sliver caps its side of the ray; its parent must share the inset.
+    df = pd.DataFrame({"a": ["P", "P", "Q"], "b": ["s", "t", "u"],
+                       "n": [1.0, 49.0, 50.0]})
+    ax, meta = _draw(df, ["a", "b"], gap=2.0)
+    by = {r.path: r for r in meta.wedges}
+    child, parent = by[("P", "s")], by[("P",)]
+    # Same side of the shared ray at P's leading edge.
+    assert child.theta1 == pytest.approx(parent.theta1)
+    assert (child.patch.get_drawn_insets()[1]
+            == pytest.approx(parent.patch.get_drawn_insets()[1]))
+
+
+# --- Beyond the brief ------------------------------------------------------
+
+@pytest.mark.parametrize("a, b", [
+    (-1e-13, 360.0 - 1e-13),
+    (-1e-13, 0.0),
+    (0.0, 360.0),
+    (720.0, -360.0),
+    (1e-13, -1e-13),
+    (90.0 + 1e-12, -270.0 - 1e-12),
+])
+def test_a_ray_key_folds_whole_turns_and_float_noise(a, b):
+    from publiplots.plot.wedge.draw import ray_key
+    assert ray_key(a) == ray_key(b)
+    assert 0.0 <= ray_key(a) < 360.0
+
+
+def test_a_ray_key_keeps_distinct_rays_apart():
+    from publiplots.plot.wedge.draw import ray_key
+    assert ray_key(10.0) != ray_key(10.001)
+    assert ray_key(359.999) != ray_key(0.0)
+
+
+def _offset_from_ray(patch, angle):
+    """Smallest perpendicular distance from the ray at ``angle`` (degrees)
+    of the patch's drawn vertices lying along that ray, in data units."""
+    v = patch.get_path().vertices - np.asarray(patch.center)
+    d = np.array([math.cos(math.radians(angle)),
+                  math.sin(math.radians(angle))])
+    along = v @ d
+    across = np.abs(v[:, 0] * d[1] - v[:, 1] * d[0])
+    return float(across[along > 0.05].min())
+
+
+@pytest.mark.parametrize("gap", [0.0, 1.0])
+def test_an_exploded_sliver_and_its_parent_share_the_capped_seam(gap):
+    # Under explode the edge inset is min(h + t, cap): t on top of the cap
+    # would re-cap the sliver on its own and step the seam at its parent.
+    # With no gap at all the explode alone still needs the shared cap.
+    df = pd.DataFrame({"a": ["P", "P", "Q"], "b": ["s", "t", "u"],
+                       "n": [1.0, 49.0, 50.0]})
+    ax, meta = _draw(df, ["a", "b"], pull=0.05, gap=gap)
+    by = {r.path: r for r in meta.wedges}
+    child, parent = by[("P", "s")], by[("P",)]
+    assert child.theta1 == pytest.approx(parent.theta1)
+    cap = child.patch.r * math.sin(math.radians(child.theta1
+                                                - child.theta0) / 4.0)
+    h = (gap / 2.0) / _mm_per_unit(ax)
+    t = 0.05
+    assert cap < h + t                       # the sliver really is capped
+    c1, p1 = child.patch.get_drawn_insets()[1], parent.patch.get_drawn_insets()[1]
+    assert c1 == pytest.approx(cap)
+    assert p1 == pytest.approx(cap)
+    # On the drawn outlines: both edges run at the same offset from the ray.
+    assert (_offset_from_ray(child.patch, child.theta1)
+            == pytest.approx(_offset_from_ray(parent.patch, parent.theta1)))
+    assert _offset_from_ray(child.patch, child.theta1) == pytest.approx(cap)
+    # The parent's other edge is uncapped, at h + t, and so is the far
+    # side of the capped ray: Q and u, whose edge there sits at -270.
+    assert parent.patch.get_drawn_insets()[0] == pytest.approx(h + t)
+    for path in [("Q",), ("Q", "u")]:
+        assert by[path].theta0 == pytest.approx(-270.0)
+        assert by[path].patch.get_drawn_insets()[0] == pytest.approx(h + t)
+
+
+def test_a_thin_parent_caps_its_seam_from_its_inset_rim():
+    # P's rim moves in for the ring gap; the cap must be read from the rim
+    # as drawn, or P's own cap re-bites below the child's inset.
+    df = pd.DataFrame({"a": ["P", "Q"], "b": ["s", "u"], "n": [1.0, 99.0]})
+    ax, meta = _draw(df, ["a", "b"], gap=2.0)
+    by = {r.path: r for r in meta.wedges}
+    child, parent = by[("P", "s")], by[("P",)]
+    assert parent.r_outer < 0.5                        # rim inset
+    cap = parent.r_outer * math.sin(math.radians(3.6) / 4.0)
+    assert cap < 1.0 / _mm_per_unit(ax)                # and capped
+    assert parent.patch.get_drawn_insets() == pytest.approx((cap, cap))
+    assert child.patch.get_drawn_insets() == pytest.approx((cap, cap))
+    for record, angle in [(child, child.theta0), (child, child.theta1),
+                          (parent, parent.theta0), (parent, parent.theta1)]:
+        assert _offset_from_ray(record.patch, angle) == pytest.approx(cap)
+
+
+def test_ray_side_caps_count_only_wedges_of_at_most_180_degrees():
+    from publiplots.plot.wedge.draw import GappedWedge, ray_side_caps
+    thin = GappedWedge((0, 0), 1.0, 0.0, 20.0, width=0.5)
+    half_disc = GappedWedge((0, 0), 0.8, 20.0, 200.0, width=0.5)
+    wedge160 = GappedWedge((0, 0), 0.5, 200.0, 360.0, width=0.5)
+    reflex = GappedWedge((0, 0), 0.4, -160.0, 20.001, width=0.4)
+    full = GappedWedge((0, 0), 0.3, 0.0, 360.0, width=0.3)
+    caps = ray_side_caps([thin, half_disc, wedge160, full])
+    assert caps[(0.0, 1)] == pytest.approx(1.0 * math.sin(math.radians(5)))
+    assert caps[(20.0, -1)] == pytest.approx(1.0 * math.sin(math.radians(5)))
+    assert caps[(20.0, 1)] == pytest.approx(0.8 * math.sin(math.radians(45)))
+    assert caps[(200.0, -1)] == pytest.approx(0.8 * math.sin(math.radians(45)))
+    # The 160-degree wedge from 200 to 360 counts; the full circle does not.
+    assert caps[(200.0, 1)] == pytest.approx(0.5 * math.sin(math.radians(40)))
+    assert caps[(0.0, -1)] == pytest.approx(0.5 * math.sin(math.radians(40)))
+    # Just past 180 degrees a wedge no longer caps its sides.
+    caps = ray_side_caps([reflex, full])
+    assert caps[(200.0, 1)] == math.inf
+    assert caps[(20.001, -1)] == math.inf
+    assert caps[(0.0, 1)] == math.inf
+
+
+def test_an_uncapped_seam_is_half_the_gap_plus_the_explode():
+    ax, meta = _draw(TREE, ["a", "b", "c"], pull=0.05, gap=1.0)
+    h = 0.5 / _mm_per_unit(ax)
+    for r in meta.wedges:
+        assert r.patch.get_drawn_insets() == pytest.approx((h + 0.05,
+                                                            h + 0.05))
+
+
+def test_a_band_is_never_radially_inset_past_half_its_width():
+    # gap/2 far exceeds w/2: one-sided bands keep w/2, two-sided keep w/2
+    # between w/4 insets.
+    fig, ax = pp.subplots(axes_size=(20, 20))
+    meta = render_wedge_chart(
+        ax, TREE, ["a", "b", "c"], owner="sunburstplot", source_frame=TREE,
+        y="n", hue=None, order_map=None, sort=False, hue_order=None,
+        start_angle=90.0, direction="clockwise", donut=0.0, pull=None,
+        gap=10.0, palette=None, hatch=None, hatch_map=None, hatch_order=None,
+        color="#5d83c3", edgecolor=None, linewidth=0.75, alpha=0.1,
+        center_label=None, aspect="cell", legend=False, legend_kws=None,
+        title="", depth_range=0.45, sibling_range=0.14)
+    assert 5.0 / _mm_per_unit(ax) > 1.0 / 6       # h > w/2
+    w = 1.0 / 3
+    expected = {0: (0.0, w / 2), 1: (w + w / 4, 2 * w - w / 4),
+                2: (2 * w + w / 2, 1.0)}
+    for r in meta.wedges:
+        assert (r.r_inner, r.r_outer) == pytest.approx(expected[r.depth])
+
+
+def test_no_gap_and_no_pull_draws_the_plain_rings():
+    ax, meta = _draw(TREE, ["a", "b", "c"])
+    w = 1.0 / 3
+    for r in meta.wedges:
+        assert (r.r_inner, r.r_outer) == pytest.approx(
+            (r.depth * w, (r.depth + 1) * w))
+        assert r.patch.get_drawn_insets() == (0.0, 0.0)
+
+
+def test_the_frame_leaves_room_for_the_outer_ring_under_explode():
+    ax, meta = _draw(TREE, ["a", "b", "c"], pull=0.05)
+    rim = max(r.r_outer for r in meta.wedges)
+    assert rim == pytest.approx(1.0 + 5 * 0.05)
+    assert ax.get_ylim()[1] == pytest.approx(rim + 0.05)
+
+
+def test_apply_gap_refuses_nodes_that_do_not_match_the_patches():
+    from publiplots.plot.wedge.draw import apply_gap
+    from publiplots.plot.wedge.geometry import build_nodes
+    ax, meta = _draw(TREE, ["a", "b", "c"])
+    patches = [r.patch for r in meta.wedges]
+    nodes = build_nodes(TREE, ["a", "b", "c"], "n")
+    with pytest.raises(AssertionError, match="nodes against"):
+        apply_gap(ax, patches[:-1], 1.0, nodes=nodes, n_levels=3)
+    with pytest.raises(AssertionError, match="deeper than the 2 rings"):
+        apply_gap(ax, patches, 1.0, nodes=nodes, n_levels=2)
