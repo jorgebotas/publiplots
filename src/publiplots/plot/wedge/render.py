@@ -239,15 +239,24 @@ def warn_order_omissions(
     order_map: Dict[str, Sequence[Any]],
     *,
     owner: str,
+    root: str,
 ) -> None:
     """Warn when an ``order=`` leaves out categories present in the data.
 
-    Checked for every column in ``order_map``. The omitted categories are
-    filtered out and the wedges that remain renormalise to a full circle,
-    so the chart reads as 100% of a whole it is not showing all of. Dropping
-    a category is a legitimate thing to want, so this warns rather than
-    raising -- but not silently, because an ``annotate=`` share would print
-    the renormalised figure. A column the frame lacks is skipped; the tree
+    Checked for every column in ``order_map``; ``root`` names the root
+    column. The two cases differ, so the messages do.
+
+    - **Root column.** The omitted categories are filtered out and the
+      wedges that remain renormalise to a full circle, so the chart reads
+      as 100% of a whole it is not showing all of -- and an ``annotate=``
+      share would print the renormalised figure.
+    - **Deeper column.** Nothing renormalises: a parent keeps the value of
+      everything beneath it, so an omitted category leaves its share as an
+      empty arc inside the parent wedge, and the ring sums to less than a
+      full circle.
+
+    Dropping a category is a legitimate thing to want, so this warns
+    rather than raising. A column the frame lacks is skipped; the tree
     builder reports it.
 
     Called directly from the public function, so ``stacklevel=3`` points
@@ -261,16 +270,23 @@ def warn_order_omissions(
                    if k not in listed]
         if not dropped:
             continue
-        warnings.warn(
-            f"{owner}: order= omits {len(dropped)} categor"
-            f"{'y' if len(dropped) == 1 else 'ies'} present in the "
-            f"data: {dropped!r}. They are dropped and the remaining "
-            f"wedges renormalise to a full circle, so the chart -- "
-            f"and any annotate= percentage -- reads as 100% of a "
-            f"whole it is not showing all of.",
-            UserWarning,
-            stacklevel=3,
-        )
+        plural = "y" if len(dropped) == 1 else "ies"
+        if column == root:
+            message = (
+                f"{owner}: order= omits {len(dropped)} categor{plural} "
+                f"present in the data: {dropped!r}. They are dropped and "
+                f"the remaining wedges renormalise to a full circle, so "
+                f"the chart -- and any annotate= percentage -- reads as "
+                f"100% of a whole it is not showing all of.")
+        else:
+            message = (
+                f"{owner}: order= omits {len(dropped)} categor{plural} of "
+                f"{column!r} present in the data: {dropped!r}. They are "
+                f"left out of that ring, and their share stays as an "
+                f"empty arc within their parent wedge, so each parent "
+                f"still spans its full value and the ring does not "
+                f"fill the circle.")
+        warnings.warn(message, UserWarning, stacklevel=3)
 
 
 def render_wedge_chart(

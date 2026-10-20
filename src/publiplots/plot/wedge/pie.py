@@ -372,7 +372,8 @@ def pieplot(
     order_map = None
     if order is not None:
         order_map = {levels[0]: list(order)}
-        warn_order_omissions(frame, order_map, owner="pieplot")
+        warn_order_omissions(frame, order_map, owner="pieplot",
+                             root=levels[0])
 
     render_wedge_chart(
         ax, frame, levels,

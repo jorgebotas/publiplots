@@ -116,11 +116,17 @@ def sunburstplot(
         ``ValueError``. A flat sequence is accepted only when ``x`` is
         one column; with several it raises ``TypeError``. Categories
         absent from the data are dropped; categories present in the data
-        but absent from ``order`` are **filtered out, and the wedges that
-        remain renormalise to a full circle** -- the chart then reads as
-        100% of a whole it is not showing all of. A :class:`UserWarning`
-        names the dropped categories when that happens. Cannot be
-        combined with ``sort``.
+        but absent from ``order`` are filtered out, and what happens next
+        depends on the column. Omit a **root** category and the wedges
+        that remain renormalise to a full circle -- the chart then reads
+        as 100% of a whole it is not showing all of. Omit a category of
+        a **deeper** column and nothing renormalises: its parent still
+        spans the full value of everything beneath it, so the omitted
+        share stays as an empty arc inside the parent wedge and that ring
+        sums to less than a full circle. Either way a
+        :class:`UserWarning` names the dropped categories (and, for a
+        deeper column, the column).
+        Cannot be combined with ``sort``.
     hue_order : sequence, optional
         Running order of the legend's colour entries. Levels omitted from
         it keep their colour and are appended after the listed ones --
@@ -356,7 +362,8 @@ def sunburstplot(
         _, ax = _pp_subplots()
 
     if order_map is not None:
-        warn_order_omissions(data, order_map, owner="sunburstplot")
+        warn_order_omissions(data, order_map, owner="sunburstplot",
+                             root=levels[0])
 
     render_wedge_chart(
         ax, data, levels, owner="sunburstplot", chart="sunburst",

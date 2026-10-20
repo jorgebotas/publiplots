@@ -555,12 +555,40 @@ def test_order_omission_warning_points_at_the_callers_line():
     assert [w.filename for w in rec if "omits" in str(w.message)] == [__file__]
 
 
-def test_order_omission_warning_covers_every_ordered_column():
-    with pytest.warns(UserWarning, match="sunburstplot: order= omits 1 category"
-                      ) as rec:
+def test_order_omission_warning_says_what_each_column_does():
+    # Root: renormalises, and the message is pieplot's own wording.
+    with pytest.warns(UserWarning) as rec:
+        pp.sunburstplot(data=TREE, x=["a", "b"], y="n", legend=False,
+                        order={"a": ["P"]})
+    (msg,) = [str(w.message) for w in rec if "omits" in str(w.message)]
+    assert msg.startswith("sunburstplot: order= omits 1 category present in "
+                          "the data: ['Q']. ")
+    assert "renormalise to a full circle" in msg
+    # Deeper column: nothing renormalises; the share stays as an empty arc.
+    with pytest.warns(UserWarning) as rec:
         pp.sunburstplot(data=TREE, x=["a", "b"], y="n", legend=False,
                         order={"a": ["P", "Q"], "b": ["p1", "p2", "q1"]})
-    assert "'q2'" in str(rec[0].message)
+    (msg,) = [str(w.message) for w in rec if "omits" in str(w.message)]
+    assert msg.startswith("sunburstplot: order= omits 1 category of 'b' "
+                          "present in the data: ['q2']. ")
+    assert "empty arc within their parent wedge" in msg
+    assert "renormalise" not in msg
+
+
+def test_omitting_a_deeper_category_leaves_an_empty_arc_in_its_parent():
+    with pytest.warns(UserWarning):
+        ax = pp.sunburstplot(data=TREE, x=["a", "b"], y="n", legend=False,
+                             order={"b": ["p1", "p2", "q1"]})
+    wedges = ax._publiplots_wedge_meta.wedges
+
+    def span(depth):
+        return sum(r.theta1 - r.theta0 for r in wedges if r.depth == depth)
+
+    assert span(0) == pytest.approx(360.0)
+    # q2 is 40 of the 100 total: its 144 degrees stay empty inside Q.
+    assert span(1) == pytest.approx(360.0 * 60 / 100)
+    q = next(r for r in wedges if r.path == ("Q",))
+    assert q.theta1 - q.theta0 == pytest.approx(360.0 * 70 / 100)
 
 
 def test_shading_knobs_reach_the_renderer():
