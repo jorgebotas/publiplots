@@ -49,3 +49,31 @@ def test_messages_name_the_owner():
     _, ax = pp.subplots(axes_size=(40, 40))
     with pytest.raises(TypeError, match=r"^sunburstplot: pull="):
         _render(ax, owner="sunburstplot", pull="wide")
+
+
+@pytest.mark.parametrize("kws", [
+    {}, {"donut": 0.5}, {"pull": 0.05}, {"gap": 1.0},
+    {"pull": {"A": 0.1}}, {"pull": 0.05, "gap": 1.0, "donut": 0.4},
+])
+def test_meta_radii_and_angles_are_read_off_the_drawn_patch(kws):
+    _, ax = pp.subplots(axes_size=(40, 40))
+    meta = _render(ax, **kws)
+    for rec in meta.wedges:
+        assert rec.r_outer == rec.patch.r
+        assert rec.r_inner == pytest.approx(rec.patch.r - rec.patch.width)
+        assert rec.theta0 == rec.patch.theta1
+        assert rec.theta1 == rec.patch.theta2
+
+
+def test_meta_is_built_after_the_gap_is_applied(monkeypatch):
+    """Plan 2's radial insets move radii in apply_gap; the meta must see them."""
+    import publiplots.plot.wedge.render as render
+    order = []
+    real_gap, real_meta = render.apply_gap, render.build_wedge_meta
+    monkeypatch.setattr(render, "apply_gap",
+                        lambda *a, **k: (order.append("gap"), real_gap(*a, **k))[1])
+    monkeypatch.setattr(render, "build_wedge_meta",
+                        lambda *a, **k: (order.append("meta"), real_meta(*a, **k))[1])
+    _, ax = pp.subplots(axes_size=(40, 40))
+    _render(ax, gap=1.0)
+    assert order == ["gap", "meta"]

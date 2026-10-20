@@ -392,8 +392,8 @@ class WedgeRecord:
         fraction_of_parent: share of this node's parent; equal to
             fraction_of_total at depth 0.
         theta0, theta1: angular extent in degrees, theta0 < theta1.
-        r_inner, r_outer: radial band in axes data units, as drawn: an
-            even explode (a scalar ``pull``) is already added to both.
+        r_inner, r_outer: radial band in axes data units, as drawn: read
+            off the patch after the gap and any explode.
         depth: 0 for the innermost ring.
         hue_color: the RGB the wedge was filled with. Named to match
             BarRecord/PointRecord so `_color.resolve_color` accepts a

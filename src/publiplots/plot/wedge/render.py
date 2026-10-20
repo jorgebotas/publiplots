@@ -292,12 +292,6 @@ def render_wedge_chart(
 
     record_pull = (pull_map if not explode
                    else {n.path: float(pull) for n in nodes})
-    ax._publiplots_wedge_meta = build_wedge_meta(
-        places, patches, colors, hatches, record_pull,
-        total=total, donut=donut, center=(0.0, 0.0), levels=levels,
-        hue_active=True, hue_continuous=hue_continuous,
-        source_frame=source_frame, explode=explode,
-    )
 
     # Room for the furthest rim: a translated wedge reaches `pull` past
     # the radius, and an evenly exploded one has its rim at r + t.
@@ -307,6 +301,15 @@ def render_wedge_chart(
     # Only once the limits are framed does a data unit have a fixed size
     # in millimetres to convert the gap with.
     apply_gap(ax, patches, gap, explode=explode)
+
+    # Built last, so the records are read off the patches as they are
+    # finally drawn: after the gap, and after any explode.
+    ax._publiplots_wedge_meta = build_wedge_meta(
+        places, patches, colors, hatches, record_pull,
+        total=total, donut=donut, center=(0.0, 0.0), levels=levels,
+        hue_active=True, hue_continuous=hue_continuous,
+        source_frame=source_frame,
+    )
 
     if donut and center_label is not None:
         text = center_label(total) if callable(center_label) else center_label
