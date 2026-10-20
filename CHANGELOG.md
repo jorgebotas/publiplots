@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`pp.sunburstplot` — multi-ring part-of-whole charts.** `x` lists one
+  column per ring, root first; the root ring splits the whole as a pie
+  would, and each ring outside it splits its parent. `y` is the value
+  (omitted, rows are counted) and `hue` what determines colour, the root
+  column by default; it must be the root column or constant within each
+  root wedge. A one-column `x` draws exactly the wedges `pp.pieplot`
+  draws, and a donut is the same with a hole.
+
+  Hierarchies may be ragged. A row whose deeper columns are `NaN` ends
+  at its last named level, and the rings outside it stay empty over its
+  share; a wedge with children and rows of its own lays its children
+  out from its leading edge and leaves its own share as an empty stretch
+  at its trailing end. `gap=` is a width in millimetres between every
+  pair of neighbours, siblings and rings alike, with each seam running
+  straight through every ring outside it. A float `pull=` explodes the
+  whole chart evenly, every seam and ring boundary opening to the same
+  `2 * pull`, and a dict `pull=` keyed by a root category or a path
+  tuple, such as `("admin", "billing")`, moves that wedge out with its
+  whole subtree, so the chart never tears between rings.
+
+  Outer rings are shaded from their root's colour by two total spans,
+  `depth_range` (toward white at the rim, or toward black when negative)
+  and `sibling_range` (spread across siblings under one parent), with
+  defaults in `pp.rcParams["sunburst.depth_range"]` and
+  `pp.rcParams["sunburst.sibling_range"]`, which until now were
+  reserved and inert. A numeric `hue` maps each root through a colormap,
+  with a colorbar. `hatch=` naming a ring's column patterns that ring
+  and every wedge outside it. The legend lists only the root
+  categories, so a sunburst's key merges with a pie's of the same root
+  in a shared `pp.legend` band. Wedge labels through `annotate=` are not
+  supported yet and raise `NotImplementedError`; they follow in the
+  next release. New gallery example
+  `examples/plots/plot_27_sunburst.py`.
+
 - **`anchor="inside"` for `box_stats`, `box_custom` and `violin_custom`.**
   The label sits on the forward side of the median line — above it for
   vertical marks, right of it for horizontal ones — inside the body, and

@@ -33,13 +33,14 @@ publiplots-specific keys (not in matplotlib) include:
   :func:`publiplots.set_hatch_mode` to mutate it.
 - ``scatter.size_min`` / ``scatter.size_max`` — size mapping bounds
   for :func:`publiplots.scatterplot` (points^2).
-- ``sunburst.depth_range`` / ``sunburst.sibling_range`` — **reserved,
-  and read by nothing today** (``0.45`` / ``0.14``). They are the colour
-  derivation spans for a future multi-ring part-of-whole chart; the
-  derivation itself already takes them, but the only caller there is,
-  :func:`publiplots.pieplot`, passes ``0.0`` for both because a
-  single-ring chart has no descendants to shade. Changing either has no
-  effect on any chart publiplots currently draws.
+- ``sunburst.depth_range`` / ``sunburst.sibling_range`` — how
+  :func:`publiplots.sunburstplot` shades its outer rings (``0.45`` /
+  ``0.14``), both total spans rather than per-ring steps.
+  ``depth_range`` is the total blend toward white (negative: toward
+  black) at the outermost ring; rings between interpolate.
+  ``sibling_range`` is the spread across siblings under one parent.
+  ``|depth_range| + |sibling_range|`` must not exceed 1. Neither affects
+  :func:`publiplots.pieplot`, which draws one ring.
 - ``pie.gap`` — uniform gap in mm between neighbouring wedges of
   :func:`publiplots.pieplot` (``0.0``).
 - ``pie.leader`` / ``pie.label_offset`` / ``pie.leader_gap`` /

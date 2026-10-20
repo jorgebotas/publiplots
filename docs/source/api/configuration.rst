@@ -63,29 +63,27 @@ and each is overridden per call by the argument of the same name
     moved elbow label and the disc. Unused with ``pie.avoid_overlap``
     off.
 
-Sunburst colour derivation (reserved)
--------------------------------------
+Sunburst colour shading
+-----------------------
 
-.. warning::
-
-   These two keys are **reserved and have no effect yet**. Nothing
-   publiplots currently draws reads them: the only part-of-whole chart
-   is :func:`publiplots.pieplot`, which draws one ring and passes
-   ``0.0`` for both, because a single ring has no descendant wedges to
-   shade. They are documented here so the names and their meaning are
-   settled ahead of a multi-ring chart; setting either changes nothing
-   today.
-
-Two ``publiplots.rcParams`` keys are reserved for the colour shading a
-multi-ring part-of-whole chart would derive for descendant wedges. Both
-are expressed as a **total span across the whole tree**, not a per-ring
-step, so the value would need no retuning when a level is added.
+Two ``publiplots.rcParams`` keys set how :func:`publiplots.sunburstplot`
+shades the wedges outside its root ring from their root's colour. Both
+are a **total span across the whole tree**, not a per-ring step, so a
+value needs no retuning when a ring is added, and each is overridden
+per call by the argument of the same name. ``|depth_range| +
+|sibling_range|`` must not exceed 1, or the call raises ``ValueError``,
+whether the values are passed or read from here. Neither has any effect
+on :func:`publiplots.pieplot`, which draws one ring, nor under a numeric
+``hue``.
 
 ``sunburst.depth_range`` : float, default ``0.45``
-    How far the outermost ring would blend toward white, interpolated
-    across intermediate rings. Negative would blend toward black
-    instead. No effect today.
+    The total blend toward white (negative: toward black) at the
+    outermost ring of a :func:`publiplots.sunburstplot`; rings between
+    interpolate, and the root ring keeps the pure palette colour. ``0``
+    shades no ring.
 
 ``sunburst.sibling_range`` : float, default ``0.14``
-    The spread across wedges sharing a parent, interpolated over
-    however many siblings there are. No effect today.
+    The spread across siblings under one parent: the first sibling, in
+    draw order, takes no extra blend and the last the full amount, the
+    rest interpolating between; negative darkens. It adds to the ring's
+    ``depth_range`` blend. ``0`` gives siblings their ring's shade.
