@@ -234,6 +234,45 @@ def numeric_hue_cmap(
     )
 
 
+def warn_order_omissions(
+    frame: pd.DataFrame,
+    order_map: Dict[str, Sequence[Any]],
+    *,
+    owner: str,
+) -> None:
+    """Warn when an ``order=`` leaves out categories present in the data.
+
+    Checked for every column in ``order_map``. The omitted categories are
+    filtered out and the wedges that remain renormalise to a full circle,
+    so the chart reads as 100% of a whole it is not showing all of. Dropping
+    a category is a legitimate thing to want, so this warns rather than
+    raising -- but not silently, because an ``annotate=`` share would print
+    the renormalised figure. A column the frame lacks is skipped; the tree
+    builder reports it.
+
+    Called directly from the public function, so ``stacklevel=3`` points
+    the warning at the user's call.
+    """
+    for column, listed_values in order_map.items():
+        if column not in frame.columns:
+            continue
+        listed = set(listed_values)
+        dropped = [k for k in dict.fromkeys(frame[column].dropna().tolist())
+                   if k not in listed]
+        if not dropped:
+            continue
+        warnings.warn(
+            f"{owner}: order= omits {len(dropped)} categor"
+            f"{'y' if len(dropped) == 1 else 'ies'} present in the "
+            f"data: {dropped!r}. They are dropped and the remaining "
+            f"wedges renormalise to a full circle, so the chart -- "
+            f"and any annotate= percentage -- reads as 100% of a "
+            f"whole it is not showing all of.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 def render_wedge_chart(
     ax: Axes,
     frame: pd.DataFrame,
@@ -268,6 +307,7 @@ def render_wedge_chart(
     sibling_range: float = 0.0,
     bucket_label: Optional[str] = None,
     bucket_color: Optional[str] = None,
+    chart: str = "pie",
 ) -> WedgeMeta:
     """Draw a wedge chart on ``ax`` and stash its legend entries.
 
@@ -277,10 +317,15 @@ def render_wedge_chart(
     style argument arrives resolved (``gap`` in millimetres, already
     validated). ``bucket_label`` names the caller's ``min_share`` bucket,
     which sorts last and is painted ``bucket_color`` unless ``palette``
-    names it; ``None`` means nothing was bucketed.
+    names it; ``None`` means nothing was bucketed. ``chart`` (``"pie"`` or
+    ``"sunburst"``) records on the meta which public function drew the
+    chart; it is stated by the caller and never derived from ``owner``.
 
     Sets ``ax._publiplots_wedge_meta`` and returns it. Does not annotate.
     """
+    if chart not in ("pie", "sunburst"):
+        raise ValueError(
+            f"chart must be 'pie' or 'sunburst'; got {chart!r}")
     if (bucket_label is None) != (bucket_color is None):
         raise ValueError(
             "bucket_label and bucket_color must be given together")
@@ -463,7 +508,7 @@ def render_wedge_chart(
         places, patches, colors, hatches, record_pull,
         total=total, donut=donut, center=(0.0, 0.0), levels=levels,
         hue_active=True, hue_continuous=hue_continuous,
-        source_frame=source_frame,
+        source_frame=source_frame, chart=chart,
     )
 
     if donut and center_label is not None:

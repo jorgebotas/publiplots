@@ -392,6 +392,7 @@ def build_wedge_meta(
     hue_active: bool,
     hue_continuous: bool,
     source_frame: Optional[Any],
+    chart: str = "pie",
 ) -> WedgeMeta:
     """Pair each placement with the artist drawn for it, positionally --
     and safely, because both lists were produced by the loop above in the
@@ -448,6 +449,7 @@ def build_wedge_meta(
         hue_continuous=hue_continuous,
         levels=tuple(levels),
         source_frame=source_frame,
+        chart=chart,
     )
 
 

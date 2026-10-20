@@ -451,3 +451,144 @@ def test_a_root_attribute_hue_colours_every_ring_of_a_root_alike():
     for rec in meta.wedges:
         want = 0.0 if rec.path[0] == "P" else 1.0
         assert rec.hue_color == pytest.approx((want,) * 3)
+
+
+# --- pp.sunburstplot --------------------------------------------------------
+
+def test_one_ring_sunburst_draws_what_pieplot_draws():
+    df = TREE.groupby("a", as_index=False)["n"].sum()
+    for kw in [{}, {"donut": 0.5}, {"gap": 1.0}, {"pull": 0.05}]:
+        _, a = pp.subplots(axes_size=(40, 40))
+        pp.pieplot(data=df, x="a", y="n", legend=False, ax=a, **kw)
+        _, b = pp.subplots(axes_size=(40, 40))
+        pp.sunburstplot(data=df, x="a", y="n", legend=False, ax=b, **kw)
+        assert len(a.patches) == len(b.patches) == 2
+        for pa, pb in zip(a.patches, b.patches):
+            assert pa.get_path().vertices.tolist() == pb.get_path().vertices.tolist()
+            assert tuple(pa.get_facecolor()) == tuple(pb.get_facecolor())
+
+
+def test_spans_close_in_each_full_ring():
+    ax = pp.sunburstplot(data=TREE, x=["a", "b", "c"], y="n", legend=False)
+    meta = ax._publiplots_wedge_meta
+    for depth in range(3):
+        total = sum(r.theta1 - r.theta0 for r in meta.wedges if r.depth == depth)
+        assert total == pytest.approx(360.0)
+
+
+def test_a_parent_leafs_remainder_trails_its_children():
+    ax = pp.sunburstplot(data=RAGGED, x=["a", "b", "c"], y="n", legend=False)
+    by = {r.path: r for r in ax._publiplots_wedge_meta.wedges}
+    p, p1 = by[("P",)], by[("P", "p1")]
+    # Clockwise from twelve o'clock: the child starts at P's leading edge
+    # (theta1, the larger angle) and P's own share is the trailing rest.
+    assert p1.theta1 == pytest.approx(p.theta1)
+    assert p1.theta1 - p1.theta0 == pytest.approx((p.theta1 - p.theta0) * 15 / 30)
+
+
+def test_only_root_categories_are_stashed():
+    from publiplots.utils.legend_entries import get_entries
+    ax = pp.sunburstplot(data=TREE, x=["a", "b", "c"], y="n", legend=False)
+    (entry,) = [e for e in get_entries(ax) if e.kind == "hue"]
+    assert list(entry.labels) == ["P", "Q"]
+
+
+@pytest.mark.parametrize("kwargs,exc", [
+    ({"min_share": 0.1}, TypeError),
+    ({"order": ["P", "Q"]}, TypeError),
+    ({"order": {"zz": ["P"]}}, ValueError),
+    ({"depth_range": 0.9, "sibling_range": 0.2}, ValueError),
+    ({"annotate": True}, NotImplementedError),
+    ({"sort": True, "order": {"a": ["P", "Q"]}}, ValueError),
+])
+def test_sunburstplot_refusals(kwargs, exc):
+    with pytest.raises(exc):
+        pp.sunburstplot(data=TREE, x=["a", "b", "c"], y="n", **kwargs)
+
+
+def test_pieplot_names_sunburstplot_for_several_columns():
+    with pytest.raises(ValueError, match="sunburstplot"):
+        pp.pieplot(data=TREE, x=["a", "b"], y="n")
+
+
+def test_repeated_saves_are_stable():
+    import io, warnings
+    fig, axes = pp.subplots(ncols=2, axes_size=(40, 40))
+    pp.sunburstplot(data=TREE, x=["a", "b", "c"], y="n", ax=axes[0], gap=1.0)
+    pp.sunburstplot(data=RAGGED, x=["a", "b", "c"], y="n", ax=axes[1],
+                    pull=0.05, aspect="equal")
+    sizes = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", pp.LayoutConvergenceWarning)
+        for _ in range(3):
+            fig.savefig(io.BytesIO(), format="png")
+            sizes.append(tuple(fig.get_size_inches()))
+    assert sizes[0] == sizes[1] == sizes[2]
+
+
+def test_wedge_meta_records_which_function_drew_the_chart():
+    df = TREE.groupby("a", as_index=False)["n"].sum()
+    pie = pp.pieplot(data=df, x="a", y="n", legend=False)
+    sun = pp.sunburstplot(data=df, x="a", y="n", legend=False)
+    assert pie._publiplots_wedge_meta.chart == "pie"
+    assert sun._publiplots_wedge_meta.chart == "sunburst"
+
+
+def test_render_wedge_chart_chart_is_explicit_not_derived_from_owner():
+    _, meta = _draw(TREE, ["a", "b", "c"], chart="pie")
+    assert meta.chart == "pie"
+    _, meta = _draw(TREE, ["a", "b", "c"])
+    assert meta.chart == "pie"          # the default; owner is not consulted
+    _, meta = _draw(TREE, ["a", "b", "c"], chart="sunburst")
+    assert meta.chart == "sunburst"
+
+
+def test_order_omission_warning_points_at_the_callers_line():
+    import warnings
+    df = TREE.groupby("a", as_index=False)["n"].sum()
+    with pytest.warns(UserWarning, match="pieplot: order= omits 1 category") as rec:
+        pp.pieplot(data=df, x="a", y="n", order=["P"], legend=False)
+    assert [w.filename for w in rec if "omits" in str(w.message)] == [__file__]
+    with pytest.warns(UserWarning,
+                      match="sunburstplot: order= omits 1 category") as rec:
+        pp.sunburstplot(data=df, x="a", y="n", order={"a": ["P"]}, legend=False)
+    assert [w.filename for w in rec if "omits" in str(w.message)] == [__file__]
+
+
+def test_order_omission_warning_covers_every_ordered_column():
+    with pytest.warns(UserWarning, match="sunburstplot: order= omits 1 category"
+                      ) as rec:
+        pp.sunburstplot(data=TREE, x=["a", "b"], y="n", legend=False,
+                        order={"a": ["P", "Q"], "b": ["p1", "p2", "q1"]})
+    assert "'q2'" in str(rec[0].message)
+
+
+def test_shading_knobs_reach_the_renderer():
+    def colours(**kw):
+        ax = pp.sunburstplot(data=TREE, x=["a", "b", "c"], y="n",
+                             legend=False, **kw)
+        return {r.path: r.hue_color for r in ax._publiplots_wedge_meta.wedges}
+
+    flat = colours(depth_range=0.0, sibling_range=0.0)
+    assert flat[("P", "p1", "x")] == flat[("P",)] == flat[("P", "p2")]
+    deep = colours(depth_range=0.4, sibling_range=0.0)
+    assert deep[("P", "p1", "x")] != deep[("P",)]
+    sibs = colours(depth_range=0.0, sibling_range=0.2)
+    assert sibs[("P", "p1")] != sibs[("P", "p2")]
+    # Left unset, the rcParams defaults (0.45, 0.14) apply.
+    default = colours()
+    assert default[("P", "p1", "x")] != default[("P",)]
+    assert default[("P", "p1")] != default[("P", "p2")]
+
+
+def test_a_refused_call_draws_no_figure():
+    plt.close("all")
+    with pytest.raises(ValueError, match="sunburstplot"):
+        pp.sunburstplot(data=TREE, x=["a", "b", "c"], y="n",
+                        depth_range=0.9, sibling_range=0.2)
+    assert plt.get_fignums() == []
+
+
+def test_render_wedge_chart_refuses_an_unknown_chart_kind():
+    with pytest.raises(ValueError, match="chart must be"):
+        _draw(TREE, ["a", "b", "c"], chart="donut")

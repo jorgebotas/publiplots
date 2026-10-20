@@ -437,3 +437,5 @@ class WedgeMeta:
     hue_continuous: bool
     levels: Tuple[str, ...]
     source_frame: Optional[Any] = None
+    #: Which public function drew the chart: ``"pie"`` or ``"sunburst"``.
+    chart: str = "pie"
