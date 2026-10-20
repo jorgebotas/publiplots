@@ -71,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.13.1, numpy 1.23.0, pandas 1.3.4, scipy 1.10.0). The new test workflow
   now checks that on every pull request.
 
+- **A pie with a scalar `pull`, no gap and a wedge over 180° now places that
+  wedge's label from the wedge as drawn.** The label's fit test read the
+  wedge's inner radius computed separately from the drawn shape, and the two
+  could differ in the last floating-point digit, exactly where the test
+  compares them; at `pull=0.1` on a 95/3/2 pie the 95.0% label was sent
+  outside although it fits inside. Both now read the drawn wedge.
+
 - **Violin labels no longer shift onto the next violin after a group seaborn
   could not draw.** seaborn draws a group as a bare line rather than a body
   when it has fewer than two observations, or when its density estimate

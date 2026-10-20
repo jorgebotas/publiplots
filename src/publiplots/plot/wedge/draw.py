@@ -284,17 +284,16 @@ def build_wedge_meta(
     hue_active: bool,
     hue_continuous: bool,
     source_frame: Optional[Any],
-    explode: float = 0.0,
 ) -> WedgeMeta:
     """Pair each placement with the artist drawn for it, positionally --
     and safely, because both lists were produced by the loop above in the
     same pass. This is the only place the two meet, and neither is
     recovered from the axes.
 
-    Each record describes the wedge as drawn: an even ``explode`` (data
-    units, as passed to :func:`draw_wedges`) is folded into ``r_inner``
-    and ``r_outer``, so a label placed from the record lands on the
-    radii the wedge actually has.
+    Each record describes the wedge as drawn: its angles and radii are
+    read off the patch, after the gap and any even explode have been
+    applied, so a label placed from the record lands on the wedge as it
+    is.
     """
     if len(placements) != len(patches):
         raise AssertionError(
@@ -323,10 +322,10 @@ def build_wedge_meta(
             fraction_of_total=node.value / total if total else 0.0,
             fraction_of_parent=(node.value / parent_total
                                 if parent_total else 0.0),
-            theta0=place.theta0,
-            theta1=place.theta1,
-            r_inner=place.r_inner + explode,
-            r_outer=place.r_outer + explode,
+            theta0=patch.theta1,
+            theta1=patch.theta2,
+            r_inner=patch.r - patch.width,
+            r_outer=patch.r,
             depth=node.depth,
             hue_color=colors[node.path],
             hatch=hatches.get(node.path),

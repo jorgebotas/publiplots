@@ -1004,7 +1004,8 @@ def _colorbar_mappable(ax):
 def _assert_wedges_follow(ax, raw, cmap):
     """Every wedge's fill RGB is cmap(norm(score)), and the stashed colorbar
     maps each score to that same RGB. Fills are drawn at the themed alpha
-    (``_split_face_and_edge_alpha``), so only the RGB channels compare."""
+    (``split_face_and_edge_alpha`` in ``publiplots.plot.wedge.render``),
+    so only the RGB channels compare."""
     from matplotlib.colors import Normalize
     norm = Normalize(vmin=raw["score"].min(), vmax=raw["score"].max())
     score = dict(zip(raw["dept"], raw["score"]))
