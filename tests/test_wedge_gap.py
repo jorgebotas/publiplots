@@ -919,3 +919,118 @@ def test_an_inner_arc_both_insets_together_overrun_ends_in_the_apex():
         ray = np.array([math.cos(math.radians(theta)),
                         math.sin(math.radians(theta))])
         assert abs(_cross(ray, apex)) == pytest.approx(h, abs=1e-12)
+
+
+# ------------------------- closing an unequally inset wedge, near 180
+
+
+def _outline(patch, samples=16):
+    """The drawn outline's points: every corner, and each arc's Bezier
+    segments evaluated along their length (control points are off the
+    curve, so they are not part of the outline)."""
+    points = []
+    for bezier, code in patch.get_path().iter_bezier():
+        if code == Path.CURVE4:
+            points.extend(bezier(np.linspace(0.0, 1.0, samples)[1:]))
+        else:
+            points.append(bezier.control_points[-1])
+    return np.asarray(points) - np.asarray(patch.center)
+
+
+def _normals(patch):
+    a, b = math.radians(patch.theta1), math.radians(patch.theta2)
+    return (np.array([-math.sin(a), math.cos(a)]),
+            np.array([math.sin(b), -math.cos(b)]))
+
+
+_ROOT = dict(r=1.0 / 3.0, width=1.0 / 3.0)
+_SPANS = [160.0, 170.0, 176.0, 178.0, 180.0, 182.0, 190.0, 200.0]
+_ORDERS = [(0.002, 0.04), (0.04, 0.002)]
+
+
+def _root_wedge(span, insets, theta1=-63.0):
+    w = GappedWedge((0.3, -0.2), _ROOT["r"], theta1, theta1 + span,
+                    width=_ROOT["width"])
+    w.set_insets(*insets)
+    assert w.get_drawn_insets() == insets
+    return w
+
+
+@pytest.mark.parametrize("insets", _ORDERS)
+@pytest.mark.parametrize("span", _SPANS)
+def test_an_unequally_inset_wedge_stays_inside_its_rim(span, insets):
+    w = _root_wedge(span, insets)
+    radii = np.linalg.norm(_outline(w), axis=1)
+    assert radii.max() <= _ROOT["r"] * (1.0 + 1e-9)
+
+
+@pytest.mark.parametrize("insets", _ORDERS)
+@pytest.mark.parametrize("span", _SPANS)
+def test_an_unequally_inset_wedge_stays_inside_its_sector(span, insets):
+    w = _root_wedge(span, insets)
+    n0, n1 = _normals(w)
+    points = _outline(w)
+    if span <= 180.0:
+        assert (points @ n0).min() >= -1e-12
+        assert (points @ n1).min() >= -1e-12
+    else:
+        # Not inside the excluded cone, behind both edges at once.
+        assert not np.any((points @ n0 < -1e-12) & (points @ n1 < -1e-12))
+
+
+@pytest.mark.parametrize("insets", _ORDERS)
+@pytest.mark.parametrize("span", _SPANS)
+def test_each_unequal_edge_keeps_its_inset_from_its_corner_out(span,
+                                                               insets):
+    """Edge k runs on its offset line, h_k from its ray, from the corner
+    where the outline turns off it out to the rim."""
+    w = _root_wedge(span, insets)
+    centre = np.asarray(w.center)
+    path = w.get_path()
+    lines = np.flatnonzero(path.codes == Path.LINETO)
+    n0, n1 = _normals(w)
+    a, b = math.radians(w.theta1), math.radians(w.theta2)
+    d0 = np.array([math.cos(a), math.sin(a)])
+    d1 = np.array([math.cos(b), math.sin(b)])
+    h0, h1 = insets
+    rim_end, rim_start = (path.vertices[[lines[0] - 1, 0]] - centre)
+    first, last = path.vertices[[lines[0], lines[-1]]] - centre
+    # The theta2 edge: from the rim in to the first corner.
+    assert rim_end @ n1 == pytest.approx(h1, abs=1e-9)
+    assert first @ n1 == pytest.approx(h1, abs=1e-9)
+    assert first @ d1 <= rim_end @ d1
+    # The theta1 edge: from the last corner out to the rim.
+    assert last @ n0 == pytest.approx(h0, abs=1e-9)
+    assert rim_start @ n0 == pytest.approx(h0, abs=1e-9)
+    assert last @ d0 <= rim_start @ d0
+
+
+def _hausdorff(a, b):
+    d = np.linalg.norm(a[:, None, :] - b[None, :, :], axis=2)
+    return max(d.min(axis=1).max(), d.min(axis=0).max())
+
+
+@pytest.mark.parametrize("insets", _ORDERS)
+@pytest.mark.parametrize("delta", [-1e-6, 1e-6])
+def test_the_closure_is_continuous_through_180_degrees(delta, insets):
+    at = _root_wedge(180.0, insets).get_path().vertices
+    near = _root_wedge(180.0 + delta, insets).get_path().vertices
+    assert at.shape == near.shape
+    assert np.abs(near - at).max() < 1e-5
+
+
+@pytest.mark.parametrize("reflex", [False, True])
+@pytest.mark.parametrize("insets", _ORDERS)
+def test_the_step_and_the_crossing_meet_continuously(insets, reflex):
+    """Where the crossing reaches the larger edge's foot, the step has
+    zero length: the outline on either side of that span is the same."""
+    h_big, h_small = max(insets), min(insets)
+    span = math.degrees(math.acos(-h_small / h_big))
+    if reflex:
+        span = 360.0 - span
+    below = _root_wedge(span * (1.0 - 1e-9), insets)
+    above = _root_wedge(span * (1.0 + 1e-9), insets)
+    corners = {len(np.flatnonzero(w.get_path().codes == Path.LINETO))
+               for w in (below, above)}
+    assert corners == {1, 2}   # one side crosses, the other steps
+    assert _hausdorff(_outline(below), _outline(above)) < 1e-5
