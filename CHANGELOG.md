@@ -59,6 +59,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The pandas floor is now `pandas>=1.3.4`** (was `>=1.3.0`). publiplots
+  requires Python 3.10, and pandas 1.3.0 to 1.3.3 publish no Python 3.10
+  wheel for macOS or Windows; 1.3.0 to 1.3.2 have none for Linux either. A
+  resolver honouring the old floor therefore tried to build pandas 1.3.0
+  from source and failed: on GitHub's Ubuntu runners the build stops in
+  numpy's C sources, which predate Python 3.10. 1.3.4 is the first release
+  with Python 3.10 wheels on Linux, both macOS architectures and Windows.
+  Nothing else changes: the full suite passes with every direct dependency
+  at its lowest declared version (Python 3.10, matplotlib 3.10.0, seaborn
+  0.13.1, numpy 1.23.0, pandas 1.3.4, scipy 1.10.0). The new test workflow
+  now checks that on every pull request.
+
 - **Violin labels no longer shift onto the next violin after a group seaborn
   could not draw.** seaborn draws a group as a bare line rather than a body
   when it has fewer than two observations, or when its density estimate
