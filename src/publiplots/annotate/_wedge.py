@@ -705,12 +705,18 @@ def _drawn_inner_radius(record, inset: float, half_span: float) -> float:
     out -- the same rule :class:`~publiplots.plot.wedge.draw.GappedWedge`
     draws by.
     """
+    # Lazy import to avoid a cycle: importing the plot package pulls in
+    # every plotter, and they import publiplots.annotate.
+    from publiplots.plot.wedge.draw import arc_survives_inset
+
     if inset <= 0.0:
         return record.r_inner
     apex = inset / math.sin(half_span)
     if half_span < math.pi / 2.0:
         return max(record.r_inner, apex)
-    return record.r_inner if record.r_inner > inset else apex
+    if arc_survives_inset(record.r_inner, inset):
+        return record.r_inner
+    return apex
 
 
 def _label_fits(text: Text, record, renderer, scale: float, mid: float) -> bool:

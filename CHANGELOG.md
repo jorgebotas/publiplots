@@ -78,6 +78,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compares them; at `pull=0.1` on a 95/3/2 pie the 95.0% label was sent
   outside although it fits inside. Both now read the drawn wedge.
 
+- **An evenly exploded pie no longer draws a wedge over 180° with a notch
+  or a hole depending on the exact `pull`.** Under a scalar `pull` with no
+  gap, such a wedge's inner radius equals its edge inset, and floating
+  point put one a hair either side of the other: on a 95/3/2 pie the 95%
+  wedge ended in a round hole at `pull=0.1` but in a deep notch reaching
+  most of the way to its rim at `pull=0.13`, and at `pull=0.19` and `0.2`
+  its straight edges were not inset at all, so it sat closer to its
+  neighbours than the explode parts every other pair. A radius within one
+  part in 10⁹ of the inset now counts as equal to it, so every such wedge
+  ends in the hole, and the label placement reads the wedge by the same
+  rule: the 95.0% label at `pull=0.13` and `0.15` now sits inside, like
+  the other pulls.
+
 - **Violin labels no longer shift onto the next violin after a group seaborn
   could not draw.** seaborn draws a group as a bare line rather than a body
   when it has fewer than two observations, or when its density estimate

@@ -461,6 +461,31 @@ def test_the_apex_sits_on_the_mid_ray_at_h_over_sin_half(span):
         assert np.linalg.norm(corner) == pytest.approx(1.0, abs=1e-12)
 
 
+@pytest.mark.parametrize("pull", np.linspace(0.01, 0.2, 39),
+                         ids=lambda p: f"{p:.3f}")
+def test_an_evenly_exploded_reflex_wedge_always_ends_in_its_inner_arc(pull):
+    """Under an even explode a pie wedge's inner radius equals its inset,
+    ``t``, in exact arithmetic; floating point puts the computed one a
+    hair either side. Whichever side, the 95% wedge of a 95/3/2 pie is
+    drawn alike: fully inset by ``t``, ending in an arc on the radius-``t``
+    hole -- never in the apex far out on its mid-ray (a deep notch), and
+    never uninset as though its rim had vanished."""
+    frame = pd.DataFrame({"kind": list("abc"), "n": [95, 3, 2]})
+    ax = _pie(frame, axes_size=(40, 40), pull=float(pull))
+    patch = ax._publiplots_wedge_meta.wedges[0].patch
+    assert patch.theta2 - patch.theta1 > 180.0
+    t = float(pull)
+    assert patch.get_drawn_inset() == pytest.approx(t, rel=1e-9)
+    path = patch.get_path()
+    drawn = path.codes != Path.CLOSEPOLY
+    radii = np.linalg.norm(path.vertices[drawn] - patch.center, axis=1)
+    assert radii.min() >= t * (1.0 - 1e-9)
+    # The outline closes from an inner arc's last curve vertex on the
+    # hole, not from a LINETO in to the apex.
+    assert path.codes[-2] == Path.CURVE4
+    assert radii[-1] == pytest.approx(t, rel=1e-9)
+
+
 @pytest.mark.parametrize("width", [1.0, 0.5])
 def test_a_full_circle_is_not_inset(width):
     plain = Wedge((0.0, 0.0), 1.0, 90.0, 450.0, width=width)

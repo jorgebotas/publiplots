@@ -15,6 +15,27 @@ from publiplots.plot.wedge.geometry import WedgePlacement
 
 MM_PER_INCH = 25.4
 
+#: Relative tolerance at which a radius counts as equal to an edge inset.
+INSET_TOLERANCE = 1e-9
+
+
+def arc_survives_inset(radius: float, inset: float) -> bool:
+    """Whether an arc at ``radius`` reaches past straight edges inset by
+    ``inset``: the comparison that decides whether a wedge ends in an
+    inner arc or in the apex where its inset edges meet.
+
+    Under an even explode a pie wedge's inner radius equals its inset in
+    exact arithmetic, and floating point puts the computed radius a hair
+    to either side, so a strict ``radius > inset`` drew the same wedge
+    with an inner arc at one ``pull`` and an apex at the next. A
+    ``radius`` within ``INSET_TOLERANCE * max(radius, inset)`` of
+    ``inset`` therefore counts as equal, on the side that keeps the arc.
+
+    :class:`GappedWedge` draws by this rule and the wedge label placement
+    reads the drawn wedge by it, so the two cannot disagree.
+    """
+    return radius >= inset - INSET_TOLERANCE * max(radius, inset)
+
 
 def pull_offset(placement: WedgePlacement, pull: float) -> Tuple[float, float]:
     """Displacement along the wedge's mid-angle, as a fraction of radius."""
@@ -85,8 +106,9 @@ class GappedWedge(Wedge):
 
     - the outer arc runs from ``theta1 + asin(h / r)`` to
       ``theta2 - asin(h / r)``;
-    - an inner radius ``r_in > h`` whose inset arc keeps a positive
-      extent (``asin(h / r_in) < half``) is inset the same way;
+    - an inner radius ``r_in >= h`` (to within :func:`arc_survives_inset`'s
+      tolerance) whose inset arc keeps a positive extent
+      (``asin(h / r_in) < half``) is inset the same way;
     - otherwise the two offset edges meet at an apex on the mid-ray, at
       ``h / sin(half)`` from the centre. That holds for a reflex wedge
       too (``90 < half < 180``), whose apex lies past the centre on its
@@ -152,7 +174,8 @@ class GappedWedge(Wedge):
         r_in = (self.r - self.width) if self.width is not None else 0.0
         # Its rim vanishes: past the inset, or split by a slot running
         # past it where the inset edges meet beyond the rim.
-        if self.r <= h or (r_in <= h and h / math.sin(half) >= self.r):
+        if self.r <= h or (not arc_survives_inset(r_in, h)
+                           and h / math.sin(half) >= self.r):
             return 0.0
         return h
 
@@ -171,9 +194,10 @@ class GappedWedge(Wedge):
 
         def arc_angles(radius: float) -> Optional[Tuple[float, float]]:
             """The inset arc's end angles at ``radius``, or None if empty."""
-            if radius <= h:
+            if not arc_survives_inset(radius, h):
                 return None
-            shift = math.asin(h / radius)
+            # Within the tolerance h / radius can be a hair above 1.
+            shift = math.asin(min(h / radius, 1.0))
             if shift >= half:
                 return None
             return (self.theta1 + math.degrees(shift),
