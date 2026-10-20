@@ -167,11 +167,12 @@ pp.show()
 # %%
 # Colouring by a number
 # ---------------------
-# A numeric ``hue`` maps each root wedge through a colormap, and the
-# legend becomes a colorbar. The value must be constant within each
-# root -- here the median wait in days for each kind of visit -- and the
-# wedges further out take their root's colour unshaded, since a lighter
-# shade would read as a different number on the colorbar. With every
+# A numeric ``hue`` colours each root wedge through a colormap, and the
+# legend becomes a colorbar. Each root takes the mean of the value over
+# its rows -- an unweighted mean, so here, where the median wait in days
+# is the same on every row of a kind of visit, it is that wait -- and
+# the wedges further out take their root's colour unshaded, since a
+# lighter shade would read as a different number on the colorbar. With every
 # ring of a branch the same colour, the wedges are filled solid
 # (``alpha=1``) to read against the colorbar, and outlined in white to
 # keep the seams.

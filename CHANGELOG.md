@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   column per ring, root first; the root ring splits the whole as a pie
   would, and each ring outside it splits its parent. `y` is the value
   (omitted, rows are counted) and `hue` what determines colour, the root
-  column by default; it must be the root column or constant within each
-  root wedge. A one-column `x` draws exactly the wedges `pp.pieplot`
+  column by default. A categorical `hue` must be the root column or
+  constant within each root wedge. A one-column `x` draws exactly the wedges `pp.pieplot`
   draws, and a donut is the same with a hole.
 
   Hierarchies may be ragged. A row whose deeper columns are `NaN` ends
@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `sibling_range` (spread across siblings under one parent), with
   defaults in `pp.rcParams["sunburst.depth_range"]` and
   `pp.rcParams["sunburst.sibling_range"]`, which until now were
-  reserved and inert. A numeric `hue` maps each root through a colormap,
-  with a colorbar. `hatch=` naming a ring's column patterns that ring
+  reserved and inert. A numeric `hue` is averaged over each root
+  wedge's rows (an unweighted mean) and mapped through a colormap, with
+  a colorbar; the root's descendants take that colour unshaded. `hatch=` naming a ring's column patterns that ring
   and every wedge outside it. The legend lists only the root
   categories, so a sunburst's key merges with a pie's of the same root
   in a shared `pp.legend` band. Wedge labels through `annotate=` are not
