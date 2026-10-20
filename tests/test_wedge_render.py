@@ -77,3 +77,28 @@ def test_meta_is_built_after_the_gap_is_applied(monkeypatch):
     _, ax = pp.subplots(axes_size=(40, 40))
     _render(ax, gap=1.0)
     assert order == ["gap", "meta"]
+
+
+@pytest.mark.parametrize("kws", [
+    {"bucket_label": "Other"}, {"bucket_color": "#cccccc"},
+])
+def test_bucket_label_and_bucket_color_come_together(kws):
+    _, ax = pp.subplots(axes_size=(40, 40))
+    with pytest.raises(ValueError, match="given together"):
+        _render(ax, **kws)
+
+
+def test_bucket_label_is_single_ring_only():
+    df = pd.DataFrame({"a": list("xxyy"), "b": list("pqpq"),
+                       "n": [1.0, 2.0, 3.0, 4.0]})
+    _, ax = pp.subplots(axes_size=(40, 40))
+    with pytest.raises(AssertionError, match="single ring"):
+        render_wedge_chart(
+            ax, df, ["a", "b"], owner="sunburstplot", source_frame=df,
+            y="n", hue=None, order_map=None, sort=False, hue_order=None,
+            start_angle=90.0, direction="clockwise", donut=0.0, pull=None,
+            gap=0.0, palette=None, hatch=None, hatch_map=None,
+            hatch_order=None, color="#5d83c3", edgecolor=None,
+            linewidth=0.75, alpha=0.1, center_label=None, aspect="cell",
+            legend=False, legend_kws=None, title="",
+            bucket_label="Other", bucket_color="#cccccc")

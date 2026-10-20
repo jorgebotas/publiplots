@@ -153,16 +153,23 @@ def render_wedge_chart(
 
     Sets ``ax._publiplots_wedge_meta`` and returns it. Does not annotate.
     """
+    if (bucket_label is None) != (bucket_color is None):
+        raise ValueError(
+            "bucket_label and bucket_color must be given together")
     hue_column = hue if hue is not None else levels[0]
 
     nodes = build_nodes(frame, levels, y, order=order_map, sort=sort,
                         owner=owner)
+    if bucket_label is not None and len(levels) != 1:
+        raise AssertionError(
+            "bucket_label is only supported on a single ring")
     if bucket_label is not None and any(n.path[0] == bucket_label
                                         for n in nodes):
         # The bucket sorts last whatever the resolver decided, then the
         # sibling indices are renumbered so the colour derivation sees a
-        # consistent run. (Inert on one ring, but wrong indices here would
-        # become wrong colours the moment a nested ring reuses this path.)
+        # consistent run. Single ring only: the renumbering treats every
+        # node as a sibling and reorders by ``path[0]``, which is wrong
+        # for nested rings, hence the guard above.
         ordered = ([n for n in nodes if n.path[0] != bucket_label]
                    + [n for n in nodes if n.path[0] == bucket_label])
         nodes = [
