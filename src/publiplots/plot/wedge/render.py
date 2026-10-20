@@ -175,7 +175,7 @@ def render_wedge_chart(
         nodes = [
             WedgeNode(path=n.path, value=n.value, depth=n.depth,
                       parent=n.parent, sibling_index=i,
-                      sibling_count=len(ordered))
+                      sibling_count=len(ordered), own_value=n.own_value)
             for i, n in enumerate(ordered)
         ]
     total = total_value(nodes)
