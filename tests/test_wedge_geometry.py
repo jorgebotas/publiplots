@@ -265,14 +265,54 @@ def test_categorical_columns_create_only_observed_nodes():
     assert [n.path for n in nodes] == [("A",), ("A", "k1"), ("B",), ("B", "k2")]
 
 
+def _previous_walk(frame, level, value, order=None, sort=False):
+    """The one-level pie walk build_nodes replaced: a pandas groupby sum
+    per category, in ``_categorical_order``, as (path, value, depth,
+    parent, sibling_index, sibling_count) tuples."""
+    from publiplots.annotate._builders import _categorical_order
+    frame = frame.dropna(subset=[value, level])
+    sums = frame.groupby([level], observed=True, dropna=True)[value].sum()
+    keys = list(_categorical_order(frame[level], (order or {}).get(level)))
+    entries = [(k, float(sums.get(k, 0.0))) for k in keys]
+    entries = [(k, v) for k, v in entries if v > 0]
+    if sort:
+        entries.sort(key=lambda kv: kv[1], reverse=True)
+    return [((k,), v, 0, None, i, len(entries))
+            for i, (k, v) in enumerate(entries)]
+
+
+def _as_tuples(nodes):
+    return [(n.path, n.value, n.depth, n.parent, n.sibling_index,
+             n.sibling_count) for n in nodes]
+
+
 def test_one_level_matches_the_previous_walk_exactly():
-    df = pd.DataFrame({"k": pd.Categorical(list("dcab"),
-                                           categories=list("abcd")),
-                       "v": [4.0, 3.0, 1.0, 2.0]})
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame({
+        "k": pd.Categorical(rng.choice(list("dcab"), 5_000),
+                            categories=list("abcde")),
+        "v": rng.random(5_000) * 1e3,
+    })
     for kw in [{}, {"sort": True}, {"order": {"k": list("bdac")}}]:
         nodes = build_nodes(df, ["k"], "v", **kw)
+        assert _as_tuples(nodes) == _previous_walk(df, "k", "v", **kw)
         assert all(n.own_value == n.value for n in nodes)
     assert [n.path[0] for n in build_nodes(df, ["k"], "v")] == list("abcd")
+
+
+def test_one_level_values_are_the_pandas_groupby_sum_bit_for_bit():
+    # Many rows per category: a running Python total drifts from pandas'
+    # compensated sum by several ulps here.
+    rng = np.random.default_rng(2)
+    cats = [f"c{i:02d}" for i in range(20)]
+    df = pd.DataFrame({"k": rng.choice(cats, 200_000),
+                       "v": rng.random(200_000) * 1e3})
+    expected = df.groupby("k", observed=True)["v"].sum()
+    nodes = build_nodes(df, ["k"], "v")
+    assert len(nodes) == 20
+    for n in nodes:
+        assert n.value == float(expected[n.path[0]])
+        assert n.own_value == n.value
 
 
 def test_build_nodes_is_fast_on_large_categorical_trees():
@@ -287,5 +327,4 @@ def test_build_nodes_is_fast_on_large_categorical_trees():
     t0 = time.perf_counter()
     build_nodes(df, ["a", "b", "c"], "n")
     elapsed = time.perf_counter() - t0
-    print(f"build_nodes elapsed: {elapsed:.3f}s")
     assert elapsed < 10.0

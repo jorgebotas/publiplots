@@ -114,14 +114,22 @@ def build_nodes(
                 f"a ring.")
     order = dict(order or {})
 
-    # Path -> summed value of the rows that END there.
+    # Path -> summed value of the rows that END there, one pandas groupby
+    # sum per depth: with a single level that is exactly the sum the pie
+    # has always drawn, bit for bit, where a Python running total drifts
+    # by float rounding over many rows.
     depth_of = frame[list(levels)].notna().sum(axis=1).to_numpy()
     own: Dict[Tuple[Any, ...], float] = {}
-    keys = frame[list(levels)].to_numpy(dtype=object)
-    vals = frame[value].to_numpy(dtype=float)
-    for row_keys, d, v in zip(keys, depth_of, vals):
-        path = tuple(row_keys[:d])
-        own[path] = own.get(path, 0.0) + float(v)
+    for depth in range(1, len(levels) + 1):
+        ending = frame[depth_of == depth]
+        if ending.empty:
+            continue
+        sums = ending.groupby(list(levels[:depth]), observed=True,
+                              sort=False, dropna=True)[value].sum()
+        for key, v in sums.items():
+            # One grouping column gives scalar keys, which may themselves
+            # be tuples; several give one tuple per path.
+            own[(key,) if depth == 1 else tuple(key)] = float(v)
 
     # Subtree totals, and each parent's present child keys, in one pass.
     subtree: Dict[Tuple[Any, ...], float] = {}
