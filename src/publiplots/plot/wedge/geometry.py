@@ -60,6 +60,8 @@ def build_nodes(
     value: Optional[str] = None,
     order: Optional[Dict[str, Sequence]] = None,
     sort: bool = False,
+    *,
+    owner: str = "pieplot",
 ) -> List[WedgeNode]:
     """Aggregate ``data`` into a composition tree, in draw order.
 
@@ -67,6 +69,8 @@ def build_nodes(
     never read from the frame. Rows with a NaN value are dropped, as are
     groups summing to zero -- a zero wedge draws nothing, so a record for
     it would describe no artist.
+
+    ``owner`` names the calling plot function as the prefix of error messages.
     """
     if sort and order:
         raise ValueError(
@@ -82,7 +86,7 @@ def build_nodes(
     frame = frame.dropna(subset=[value] + list(levels))
     if (frame[value] < 0).any():
         raise ValueError(
-            "pieplot: negative values are not supported -- a negative wedge "
+            f"{owner}: negative values are not supported -- a negative wedge "
             "has no meaning in a part-of-whole chart."
         )
 

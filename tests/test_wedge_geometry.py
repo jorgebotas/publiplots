@@ -210,3 +210,14 @@ def test_unknown_direction_raises():
     nodes = build_nodes(_flat(), ["kind"], "n")
     with pytest.raises(ValueError, match="direction"):
         layout(nodes, direction="widdershins", n_levels=1)
+
+
+def test_build_nodes_names_its_owner_in_errors():
+    import pandas as pd
+    import pytest
+    from publiplots.plot.wedge.geometry import build_nodes
+    frame = pd.DataFrame({"k": ["a", "b"], "v": [1.0, -1.0]})
+    with pytest.raises(ValueError, match=r"^sunburstplot: negative values"):
+        build_nodes(frame, ["k"], "v", owner="sunburstplot")
+    with pytest.raises(ValueError, match=r"^pieplot: negative values"):
+        build_nodes(frame, ["k"], "v")
