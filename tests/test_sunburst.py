@@ -384,3 +384,70 @@ def test_a_rigidly_pulled_subtree_keeps_its_capped_seam_under_gap():
     assert parent.patch.get_drawn_insets()[1] == pytest.approx(cap)
     assert (_offset_from_ray(child.patch, child.theta1)
             == pytest.approx(_offset_from_ray(parent.patch, parent.theta1)))
+
+
+def test_the_rim_blends_depth_range_toward_white():
+    from matplotlib.colors import to_rgb
+    ax, meta = _draw(TREE, ["a", "b", "c"], palette={"P": "#000000", "Q": "#000000"},
+                     sibling_range=0.0)
+    for rec in meta.wedges:
+        expected = 0.45 * rec.depth / 2
+        assert rec.hue_color == pytest.approx((expected,) * 3, abs=1e-9)
+
+
+def test_siblings_spread_by_sibling_range():
+    ax, meta = _draw(TREE, ["a", "b", "c"], palette={"P": "#000000", "Q": "#000000"},
+                     depth_range=0.0)
+    by = {r.path: r for r in meta.wedges}
+    assert by[("P", "p1")].hue_color == pytest.approx((0.0,) * 3)
+    assert by[("P", "p2")].hue_color == pytest.approx((0.14,) * 3)
+
+
+def test_negative_depth_range_darkens():
+    ax, meta = _draw(TREE, ["a", "b", "c"], palette={"P": "#ffffff", "Q": "#ffffff"},
+                     depth_range=-0.45, sibling_range=0.0)
+    rim = [r for r in meta.wedges if r.depth == 2][0]
+    assert rim.hue_color == pytest.approx((0.55,) * 3)
+
+
+def test_hue_must_be_a_root_attribute():
+    with pytest.raises(ValueError, match=r"^sunburstplot: hue='b'"):
+        _draw(TREE, ["a", "b", "c"], hue="b")
+    df = TREE.assign(region=["N", "S", "N", "S", "S", "S"])
+    with pytest.raises(ValueError, match="not constant within"):
+        _draw(df, ["a", "b", "c"], hue="region")
+
+
+def test_hatch_on_ring_one_is_inherited_outward_only():
+    ax, meta = _draw(TREE, ["a", "b", "c"], hatch="b")
+    by = {r.path: r for r in meta.wedges}
+    assert by[("P",)].hatch is None
+    assert by[("P", "p1")].hatch is not None
+    assert by[("P", "p1", "x")].hatch == by[("P", "p1")].hatch
+
+
+def test_a_ring_hatch_legend_lists_each_value_once_in_draw_order():
+    from publiplots.utils.legend_entries import get_entries
+    df = pd.DataFrame({
+        "a": ["P", "P", "Q", "Q"],
+        "b": ["s2", "s1", "s1", "s2"],
+        "n": [1.0, 1.0, 1.0, 1.0],
+    })
+    ax, meta = _draw(df, ["a", "b"], hatch="b", legend=True)
+    entry = {e.kind: e for e in get_entries(ax)}["hatch"]
+    assert entry.name == "b"
+    assert list(entry.labels) == ["s2", "s1"]
+    by = {r.path: r for r in meta.wedges}
+    assert by[("P", "s1")].hatch == by[("Q", "s1")].hatch
+    assert by[("P", "s1")].hatch != by[("P", "s2")].hatch
+    assert by[("P",)].hatch is None and by[("Q",)].hatch is None
+
+
+def test_a_root_attribute_hue_colours_every_ring_of_a_root_alike():
+    df = TREE.assign(region=["N", "N", "N", "S", "S", "S"])
+    ax, meta = _draw(df, ["a", "b", "c"], hue="region",
+                     palette={"N": "#000000", "S": "#ffffff"},
+                     depth_range=0.0, sibling_range=0.0)
+    for rec in meta.wedges:
+        want = 0.0 if rec.path[0] == "P" else 1.0
+        assert rec.hue_color == pytest.approx((want,) * 3)

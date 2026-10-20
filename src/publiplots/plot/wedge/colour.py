@@ -54,6 +54,21 @@ def _is_numeric(series: pd.Series) -> bool:
     return _is_seaborn_numeric(series, series.dropna().unique())
 
 
+def check_shading(depth_range: float, sibling_range: float, *,
+                  owner: str) -> None:
+    """Reject a depth/sibling span pair that would leave the colour range.
+
+    The two spans add at the rim of the last sibling, so their absolute
+    sum above 1 would blend past white (or black) and clip.
+    """
+    if abs(depth_range) + abs(sibling_range) > 1:
+        raise ValueError(
+            f"{owner}: depth_range={depth_range!r} and "
+            f"sibling_range={sibling_range!r} together span more than the "
+            f"whole colour range (|depth_range| + |sibling_range| must be "
+            f"at most 1); shrink one of them.")
+
+
 def resolve_hue_values(
     data: pd.DataFrame,
     levels: List[str],
@@ -62,18 +77,28 @@ def resolve_hue_values(
     *,
     param_name: str = "hue",
     bucket_label: Optional[str] = None,
+    owner: str = "pieplot",
+    allow_level: bool = False,
 ) -> Tuple[Dict[Tuple[Any, ...], Any], bool]:
     """Map each node path to its hue value.
 
-    ``hue`` defaults to the root level. A categorical hue must be constant
-    within a node -- otherwise the node's colour is ambiguous, and taking
-    the first silently is how a figure comes to misreport a group. Naming
-    a level other than the root is undefined -- every node shallower than
-    that level would have no resolved value -- so it raises rather than
-    silently half-colouring the chart.
+    ``hue`` defaults to the root level. The column must be a **root
+    attribute**: constant within each root wedge, so that every node of
+    a root takes that root's value and a root's rings share one colour
+    family. A categorical column that varies within a root raises -- the
+    colour would be ambiguous, and taking the first silently is how a
+    figure comes to misreport a group. A continuous column takes the
+    unweighted row mean per root. Resolution is one ``groupby`` over the
+    root level, not a mask walk per node.
 
-    ``param_name`` is the caller's own parameter name, used in every
-    message raised here. The same resolution serves ``hatch=``, and a
+    A column naming a deeper level raises, unless ``allow_level`` is true
+    (``hatch=``): a ring-``k`` column then gives every node of depth
+    ``>= k`` its own ``path[k]`` and leaves shallower nodes out, so the
+    pattern is inherited outward only.
+
+    ``param_name`` is the caller's own parameter name and ``owner`` the
+    caller's function name; every message raised here begins with
+    ``f"{owner}: "``. The same resolution serves ``hatch=``, and a
     ``hatch`` typo reported as ``hue='zzz' is not a column of data``
     sends the reader to the wrong keyword.
 
@@ -87,44 +112,57 @@ def resolve_hue_values(
     """
     column = hue if hue is not None else levels[0]
     if column in levels:
-        if column != levels[0]:
-            raise ValueError(
-                f"{param_name}={column!r} names level "
-                f"{levels.index(column)} of {levels!r}; {param_name} must "
-                f"be the outermost level ({levels[0]!r}) or a column "
-                f"outside the path, not a level in between."
-            )
-        return {n.path: n.path[0] for n in nodes}, False
+        k = levels.index(column)
+        if k == 0:
+            return {n.path: n.path[0] for n in nodes}, False
+        if allow_level:
+            return {n.path: n.path[k] for n in nodes if n.depth >= k}, False
+        raise ValueError(
+            f"{owner}: {param_name}={column!r} names ring {k} of "
+            f"{levels!r}; {param_name} must be the root ring's column "
+            f"({levels[0]!r}) or a column constant within each root "
+            f"wedge.")
 
     if column not in data.columns:
         raise ValueError(
-            f"{param_name}={column!r} is not a column of data")
+            f"{owner}: {param_name}={column!r} is not a column of data")
 
     continuous = _is_numeric(data[column])
+    grouped = data.dropna(subset=[levels[0]]).groupby(
+        levels[0], observed=True, sort=False)[column]
+    if continuous:
+        # Series.mean per group, not GroupBy.mean: the groupby kernel sums
+        # in a different order and differs in the last bits, which would
+        # move a pie's colour and so its output bytes.
+        per_root = {}
+        for key, group in grouped:
+            present = group.dropna()
+            if not present.empty:
+                per_root[key] = float(present.mean())
+    else:
+        counts = grouped.nunique(dropna=True)
+        per_root = {}
+        for key, n_distinct in counts.items():
+            if bucket_label is not None and key == bucket_label:
+                continue
+            present = grouped.get_group(key).dropna()
+            if n_distinct > 1:
+                distinct = list(dict.fromkeys(present.tolist()))
+                raise ValueError(
+                    f"{owner}: {param_name}={column!r} is not constant "
+                    f"within the wedge {(key,)!r}: found {distinct!r}. A "
+                    f"wedge can only take one colour; aggregate the "
+                    f"column or pick a {param_name} that is constant "
+                    f"within each group.")
+            if n_distinct == 1:
+                per_root[key] = present.tolist()[0]
+        if bucket_label is not None:
+            per_root[bucket_label] = bucket_label
+
     values: Dict[Tuple[Any, ...], Any] = {}
     for node in nodes:
-        if (bucket_label is not None and not continuous
-                and node.path[0] == bucket_label):
-            values[node.path] = bucket_label
-            continue
-        mask = pd.Series(True, index=data.index)
-        for i, key in enumerate(node.path):
-            mask &= data[levels[i]] == key
-        present = data.loc[mask, column].dropna()
-        if present.empty:
-            continue
-        if continuous:
-            values[node.path] = float(present.mean())
-            continue
-        distinct = list(dict.fromkeys(present.tolist()))
-        if len(distinct) > 1:
-            raise ValueError(
-                f"{param_name}={column!r} is not constant within the "
-                f"wedge {node.path!r}: found {distinct!r}. A wedge can "
-                f"only take one colour; aggregate the column or pick a "
-                f"{param_name} that is constant within each group."
-            )
-        values[node.path] = distinct[0]
+        if node.path[0] in per_root:
+            values[node.path] = per_root[node.path[0]]
     return values, continuous
 
 

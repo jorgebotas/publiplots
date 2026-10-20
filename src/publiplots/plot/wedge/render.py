@@ -312,7 +312,7 @@ def render_wedge_chart(
 
     hue_values, hue_continuous = resolve_hue_values(
         frame, levels, hue, nodes, param_name="hue",
-        bucket_label=bucket_label)
+        bucket_label=bucket_label, owner=owner)
     hue_levels = list(dict.fromkeys(
         hue_values[n.path] for n in nodes if n.path in hue_values))
     hue_norm = None
@@ -384,7 +384,7 @@ def render_wedge_chart(
     if hatch is not None:
         hatch_values, _ = resolve_hue_values(
             frame, levels, hatch, nodes, param_name="hatch",
-            bucket_label=bucket_label)
+            bucket_label=bucket_label, owner=owner, allow_level=True)
         hatch_levels = list(dict.fromkeys(
             hatch_values[n.path] for n in nodes if n.path in hatch_values))
         if hatch_order is not None:
