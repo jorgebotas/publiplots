@@ -273,8 +273,9 @@ def sunburstplot(
         ``hatch_label`` override the title shown above each entry.
     annotate : bool or dict, optional
         Not supported yet: any truthy value raises
-        ``NotImplementedError``. Wedge labels for sunburst charts arrive
-        in the next release.
+        ``NotImplementedError``, as does
+        ``pp.annotate(ax, "wedge_values")`` on a sunburst axes. Wedge
+        labels for sunburst charts arrive in the next release.
     title : str or None, default=""
         Plot title. Pass ``None`` to leave the existing title unchanged.
 
@@ -306,7 +307,8 @@ def sunburstplot(
     colour, shaded by ring and by sibling position, and is not set by
     the wedge's own category.
 
-    Labelling wedges through ``annotate=`` is not supported yet.
+    Labelling wedges, through ``annotate=`` or :func:`publiplots.annotate`,
+    is not supported yet.
 
     Examples
     --------

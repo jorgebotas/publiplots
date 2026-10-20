@@ -95,6 +95,13 @@ def _meta(ax: Axes) -> WedgeMeta:
             "ax.pie(): recovering wedges from the axes is the step that "
             "produced the annotate pairing bugs this design avoids."
         )
+    if meta.chart == "sunburst":
+        raise NotImplementedError(
+            "annotate(kind='wedge_values') is not supported on a "
+            "pp.sunburstplot axes yet; wedge labels for sunburst charts "
+            "arrive in the next release. Draw the chart without them for "
+            "now."
+        )
     return meta
 
 

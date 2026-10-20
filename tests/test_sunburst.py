@@ -630,3 +630,18 @@ def test_numeric_hue_is_inherited_unshaded_by_every_descendant():
     assert len({r.hue_color for r in meta.wedges}) == 2
     for rec in meta.wedges:
         assert rec.hue_color == by[rec.path[:1]].hue_color
+
+
+def test_annotate_refuses_a_sunburst_axes_and_draws_no_label():
+    ax = pp.sunburstplot(data=TREE, x=["a", "b", "c"], y="n", legend=False)
+    n_texts = len(ax.texts)
+    with pytest.raises(NotImplementedError,
+                       match="sunburst charts arrive in the next release"):
+        pp.annotate(ax, "wedge_values")
+    assert len(ax.texts) == n_texts
+
+
+def test_annotate_still_labels_a_pie_axes():
+    ax = pp.pieplot(data=TREE, x="a", y="n", legend=False)
+    pp.annotate(ax, "wedge_values")
+    assert len(ax.texts) == 2
