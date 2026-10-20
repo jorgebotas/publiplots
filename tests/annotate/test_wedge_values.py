@@ -1709,3 +1709,41 @@ def test_text_kws_reach_the_artists(df):
     ax = _pie(df)
     pp.annotate(ax, "wedge_values", fontweight="bold")
     assert all(t.get_fontweight() == "bold" for t in ax.texts)
+
+
+@pytest.mark.parametrize("pull, inside", [
+    (0.05, True), (0.1, True), (0.12, True), (0.13, False), (0.15, False),
+])
+def test_reflex_label_fit_reads_the_wedge_as_drawn(pull, inside):
+    """A >180 degree wedge, no donut, scalar ``pull``, no gap: the radius
+    its label's fit test compares with the inset is the one the patch draws
+    with.
+
+    ``(1 + t) - 1`` is not always ``t``, and the reflex branch compares
+    the two, so a record built from the layout's ``0 + t`` could choose
+    the inner radius where the patch chose the apex, or the reverse. At
+    ``pull=0.1`` the drawn inner radius is 1 ulp above the inset, so the
+    95.0% label sits inside, as the wedge is drawn; ``0.13`` and ``0.15``
+    land just under it and go outside.
+    """
+    from publiplots.annotate._wedge import _drawn_inner_radius
+
+    frame = pd.DataFrame({"k": list("abc"), "n": [95, 3, 2]})
+    fig, ax = pp.subplots(axes_size=(40.0, 40.0))
+    pp.pieplot(frame, x="k", y="n", pull=pull, annotate=True,
+               legend=False, ax=ax)
+    record = ax._publiplots_wedge_meta.wedges[0]
+    patch = record.patch
+    assert patch.theta2 - patch.theta1 > 180.0
+
+    inset = patch.get_drawn_inset()
+    r_in = patch.r - patch.width
+    half_span = math.radians(patch.theta2 - patch.theta1) / 2.0
+    apex = inset / math.sin(half_span)
+
+    # The record and the patch decide inner-radius-vs-apex alike.
+    expected = r_in if r_in > inset else apex
+    assert _drawn_inner_radius(record, inset, half_span) == expected
+
+    label = next(t for t in ax.texts if t.get_text() == "95.0%")
+    assert (_radius(label) < patch.r) is inside
