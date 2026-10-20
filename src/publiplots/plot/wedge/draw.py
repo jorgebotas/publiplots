@@ -101,25 +101,37 @@ class GappedWedge(Wedge):
     neighbour, the two drawn insets summed between two capped ones.
     :meth:`get_drawn_inset` returns the inset actually applied.
 
-    With ``inset == 0`` the path is matplotlib's own, vertex for vertex.
-    Otherwise, with ``h`` the drawn inset:
+    The two edges can be inset by different amounts (:meth:`set_insets`):
+    ``h0`` for the edge at ``theta1`` and ``h1`` for the edge at
+    ``theta2``. Each is capped on its own, by the rule above, against the
+    outer radius ``r`` as it is when the path is drawn.
+    :meth:`get_drawn_insets` returns the pair actually applied.
 
-    - the outer arc runs from ``theta1 + asin(h / r)`` to
-      ``theta2 - asin(h / r)``;
-    - an inner radius ``r_in >= h`` (to within :func:`arc_survives_inset`'s
-      tolerance) whose inset arc keeps a positive extent
-      (``asin(h / r_in) < half``) is inset the same way;
-    - otherwise the two offset edges meet at an apex on the mid-ray, at
-      ``h / sin(half)`` from the centre. That holds for a reflex wedge
-      too (``90 < half < 180``), whose apex lies past the centre on its
-      own side. For a capped wedge the apex is at least
-      ``r / (2 * cos(half / 2))``, more than half the outer radius out;
+    With both insets ``0`` the path is matplotlib's own, vertex for
+    vertex. Otherwise, with ``h0`` and ``h1`` the drawn insets:
+
+    - the outer arc runs from ``theta1 + asin(h0 / r)`` to
+      ``theta2 - asin(h1 / r)``;
+    - an inner radius ``r_in >= max(h0, h1)`` (to within
+      :func:`arc_survives_inset`'s tolerance) whose inset arc keeps a
+      positive extent is inset the same way;
+    - otherwise the two offset edges meet at an apex: with equal insets
+      ``h``, on the mid-ray at ``h / sin(half)`` from the centre. That
+      holds for a reflex wedge too (``90 < half < 180``), whose apex lies
+      past the centre on its own side. For a capped wedge the apex is at
+      least ``r / (2 * cos(half / 2))``, more than half the outer radius
+      out. With unequal insets the apex is where the two offset edge
+      lines cross, ``h0`` from the one and ``h1`` from the other;
     - a full 360-degree wedge has no straight edges and is not inset.
 
     A reflex wedge is never capped. Its rim can only vanish when
     everything else in the ring together is too thin for the gap, and
     then there is nothing left for it to keep a gap from, so it is drawn
-    uninset, as a lone wedge would be.
+    uninset, as a lone wedge would be. With unequal insets that is
+    decided against the larger one.
+
+    :meth:`set_radial_insets` moves the outer radius in and the inner
+    radius out, for the gap between the rings of a sunburst.
 
     Parameters
     ----------
@@ -144,44 +156,70 @@ class GappedWedge(Wedge):
         **kwargs: Any,
     ) -> None:
         # Set before the base initialiser, which builds the path.
-        self.inset = float(inset)
+        self.insets: Tuple[float, float] = (float(inset), float(inset))
         super().__init__(center, r, theta1, theta2, width=width, **kwargs)
 
+    @property
+    def inset(self) -> float:
+        """The larger of the two requested edge insets, in data units."""
+        return max(self.insets)
+
     def set_inset(self, inset: float) -> None:
-        """Set the requested perpendicular edge inset, in data units."""
+        """Set the requested perpendicular inset of both straight edges,
+        in data units."""
+        self.set_insets(inset, inset)
+
+    def set_insets(self, h0: float, h1: float) -> None:
+        """Set the requested perpendicular insets of the edge at
+        ``theta1`` (``h0``) and the edge at ``theta2`` (``h1``), in data
+        units."""
         self._path = None
-        self.inset = float(inset)
+        self.insets = (float(h0), float(h1))
         self.stale = True
 
     def get_inset(self) -> float:
-        """Return the requested perpendicular edge inset, in data units."""
+        """Return the larger requested edge inset, in data units."""
         return self.inset
 
-    def get_drawn_inset(self) -> float:
-        """Return the inset the path is drawn with, in data units.
+    def set_radial_insets(self, inner: float, outer: float) -> None:
+        """Move the outer radius in by ``outer`` and the inner radius out
+        by ``inner``, in data units."""
+        self.set_radius(self.r - outer)
+        self.set_width(self.width - inner - outer)
 
-        The requested inset, capped for a wedge of at most 180 degrees so
-        its rim keeps half its span; ``0`` for a full circle, and for a
-        reflex wedge drawn uninset because its rim would vanish.
+    def get_drawn_insets(self) -> Tuple[float, float]:
+        """Return the insets the path is drawn with, in data units: the
+        edge at ``theta1``, then the edge at ``theta2``.
+
+        Each requested inset, capped for a wedge of at most 180 degrees
+        so its rim keeps half its span -- against the current outer
+        radius, so after any radial inset; ``(0, 0)`` for a full circle,
+        and for a reflex wedge drawn uninset because its rim would vanish.
         """
-        h = self.inset
+        h0, h1 = (max(h, 0.0) for h in self.insets)
         span = self.theta2 - self.theta1
-        if h <= 0.0 or abs(span - 360.0) <= 1e-12:
-            return 0.0
+        if max(h0, h1) <= 0.0 or abs(span - 360.0) <= 1e-12:
+            return (0.0, 0.0)
         half = math.radians(span) / 2.0
         if half <= math.pi / 2.0:
-            return min(h, self.r * math.sin(half / 2.0))
+            cap = self.r * math.sin(half / 2.0)
+            return (min(h0, cap), min(h1, cap))
+        h = max(h0, h1)
         r_in = (self.r - self.width) if self.width is not None else 0.0
         # Its rim vanishes: past the inset, or split by a slot running
         # past it where the inset edges meet beyond the rim.
         if self.r <= h or (not arc_survives_inset(r_in, h)
                            and h / math.sin(half) >= self.r):
-            return 0.0
-        return h
+            return (0.0, 0.0)
+        return (h0, h1)
+
+    def get_drawn_inset(self) -> float:
+        """Return the larger of :meth:`get_drawn_insets`, in data units."""
+        return max(self.get_drawn_insets())
 
     def _recompute_path(self) -> None:
-        h = self.get_drawn_inset()
-        if h <= 0.0:
+        h0, h1 = self.get_drawn_insets()
+        if h0 <= 0.0 and h1 <= 0.0:
             super()._recompute_path()
             return
 
@@ -191,20 +229,22 @@ class GappedWedge(Wedge):
         half = math.radians(span) / 2.0
         mid = math.radians(self.theta1) + half
         center = np.asarray(self.center, dtype=float)
+        h = max(h0, h1)
 
         def arc_angles(radius: float) -> Optional[Tuple[float, float]]:
             """The inset arc's end angles at ``radius``, or None if empty."""
             if not arc_survives_inset(radius, h):
                 return None
             # Within the tolerance h / radius can be a hair above 1.
-            shift = math.asin(min(h / radius, 1.0))
-            if shift >= half:
+            shift0 = math.asin(min(h0 / radius, 1.0))
+            shift1 = math.asin(min(h1 / radius, 1.0))
+            if shift0 + shift1 >= 2.0 * half:
                 return None
-            return (self.theta1 + math.degrees(shift),
-                    self.theta2 - math.degrees(shift))
+            return (self.theta1 + math.degrees(shift0),
+                    self.theta2 - math.degrees(shift1))
 
         # The cap keeps the outer arc at least half the span, and
-        # get_drawn_inset has already sent a vanishing reflex wedge to
+        # get_drawn_insets has already sent a vanishing reflex wedge to
         # the uninset path, so the outer arc always exists here.
         outer = arc_angles(r_out)
         inner = arc_angles(r_in) if r_in > 0.0 else None
@@ -219,9 +259,17 @@ class GappedWedge(Wedge):
             codes = [*arc.codes, Path.LINETO, *back.codes[1:],
                      Path.CLOSEPOLY]
         else:
-            # sin(half) > 0 for every span short of a full circle.
-            apex = (h / math.sin(half)) * np.array([math.cos(mid),
-                                                   math.sin(mid)])
+            if h0 == h1:
+                # sin(half) > 0 for every span short of a full circle.
+                apex = (h0 / math.sin(half)) * np.array([math.cos(mid),
+                                                        math.sin(mid)])
+            else:
+                a, b = math.radians(self.theta1), math.radians(self.theta2)
+                # Inward normals of the edge at theta1 and at theta2.
+                n0 = np.array([-math.sin(a), math.cos(a)])
+                n1 = np.array([math.sin(b), -math.cos(b)])
+                apex = np.linalg.solve(np.vstack([n0, n1]),
+                                       np.array([h0, h1]))
             vertices = np.concatenate([arc.vertices * r_out, [apex, apex]])
             codes = [*arc.codes, Path.LINETO, Path.CLOSEPOLY]
         self._path = Path(vertices + center, codes)

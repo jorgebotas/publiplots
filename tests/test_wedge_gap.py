@@ -756,3 +756,166 @@ def test_a_bad_rcparam_gap_is_refused_too(df):
             _pie(df)
     finally:
         pp.rcParams["pie.gap"] = previous
+
+
+# ------------------------------------------- per-edge and radial insets
+
+
+def _edge_distance(patch, angle_deg):
+    """Max perpendicular distance from the ray at angle_deg to the path's
+    straight-edge vertices nearest that ray."""
+    a = np.radians(angle_deg)
+    n = np.array([-np.sin(a), np.cos(a)])
+    v = patch.get_path().vertices - np.asarray(patch.center)
+    d = np.abs(v @ n)
+    return float(np.min(d[d > 1e-12]))
+
+
+def test_unequal_edge_insets_are_drawn_per_edge():
+    w = GappedWedge((0, 0), 1.0, 10.0, 80.0, width=1.0)
+    w.set_insets(0.02, 0.05)
+    assert w.get_drawn_insets() == (0.02, 0.05)
+    assert _edge_distance(w, 10.0) == pytest.approx(0.02, abs=1e-9)
+    assert _edge_distance(w, 80.0) == pytest.approx(0.05, abs=1e-9)
+
+
+def test_equal_insets_reproduce_set_inset_exactly():
+    a = GappedWedge((0, 0), 1.0, 10.0, 80.0, width=1.0)
+    a.set_inset(0.03)
+    b = GappedWedge((0, 0), 1.0, 10.0, 80.0, width=1.0)
+    b.set_insets(0.03, 0.03)
+    assert a.get_path().vertices.tolist() == b.get_path().vertices.tolist()
+
+
+def test_radial_insets_move_the_band():
+    w = GappedWedge((0, 0), 1.0, 0.0, 90.0, width=0.5)
+    w.set_radial_insets(0.01, 0.02)
+    assert w.r == pytest.approx(0.98)
+    assert w.r - w.width == pytest.approx(0.51)
+
+
+def test_radial_insets_redraw_the_path_on_the_new_radii():
+    w = GappedWedge((0.3, -0.2), 1.0, 0.0, 90.0, width=0.5)
+    w.set_insets(0.02, 0.05)
+    w.get_path()
+    w.set_radial_insets(0.01, 0.02)
+    path = w.get_path()
+    k = int(np.flatnonzero(path.codes == Path.LINETO)[0])
+    # Outer arc start and end, inner arc start and end: on the new radii.
+    corners = path.vertices[[0, k - 1, k, -2]] - np.asarray(w.center)
+    assert np.linalg.norm(corners, axis=1) == pytest.approx(
+        [0.98, 0.98, 0.51, 0.51], rel=1e-12)
+
+
+def test_each_edge_is_capped_on_its_own():
+    """An 8-degree wedge keeps a small inset on one edge and is capped
+    on the other, each by the rule of a lone wedge."""
+    w = GappedWedge((0, 0), 1.0, 10.0, 18.0, width=1.0)
+    w.set_insets(0.001, 0.5)
+    cap = math.sin(math.radians(8.0) / 4.0)
+    assert w.get_drawn_insets() == (0.001, pytest.approx(cap, abs=1e-15))
+    assert w.get_drawn_inset() == pytest.approx(cap, abs=1e-15)
+
+
+def test_the_cap_reads_the_current_outer_radius():
+    """A caller caps against r after its radial insets; the self-cap must
+    agree, so it reads the radius as it is now."""
+    w = GappedWedge((0, 0), 1.0, 10.0, 18.0, width=0.5)
+    w.set_radial_insets(0.0, 0.2)
+    w.set_insets(0.5, 0.5)
+    cap = 0.8 * math.sin(math.radians(8.0) / 4.0)
+    assert w.get_drawn_insets() == (pytest.approx(cap, abs=1e-15),) * 2
+
+
+def test_the_requested_inset_is_the_larger_edge():
+    w = GappedWedge((0, 0), 1.0, 10.0, 80.0, width=1.0)
+    w.set_insets(0.05, 0.02)
+    assert w.get_inset() == 0.05
+    assert w.inset == 0.05
+    assert w.get_drawn_inset() == 0.05
+
+
+def test_a_ring_insets_each_arc_end_by_its_own_edge():
+    """With room for the inner arc, both arcs end h0 from the theta1 ray
+    and h1 from the theta2 ray."""
+    centre = np.array([0.3, -0.2])
+    w = GappedWedge(tuple(centre), 1.0, 10.0, 80.0, width=0.5)
+    w.set_insets(0.02, 0.05)
+    path = w.get_path()
+    k = int(np.flatnonzero(path.codes == Path.LINETO)[0])
+    # Outer arc start and end, inner arc start (theta2 side) and end.
+    corners = [path.vertices[i] - centre for i in (0, k - 1, k, -2)]
+    radii = [1.0, 1.0, 0.5, 0.5]
+    edges = [10.0, 80.0, 80.0, 10.0]
+    insets = [0.02, 0.05, 0.05, 0.02]
+    for corner, radius, theta, h in zip(corners, radii, edges, insets):
+        ray = np.array([math.cos(math.radians(theta)),
+                        math.sin(math.radians(theta))])
+        assert np.linalg.norm(corner) == pytest.approx(radius, abs=1e-12)
+        assert abs(_cross(ray, corner)) == pytest.approx(h, abs=1e-12)
+    assert path.codes[-2] == Path.CURVE4
+
+
+def test_unequal_insets_meet_at_the_apex_of_both_offset_lines():
+    centre = np.array([0.3, -0.2])
+    w = GappedWedge(tuple(centre), 1.0, 10.0, 80.0, width=1.0)
+    w.set_insets(0.02, 0.05)
+    path = w.get_path()
+    k = int(np.flatnonzero(path.codes == Path.LINETO)[0])
+    apex = path.vertices[k] - centre
+    for theta, h in ((10.0, 0.02), (80.0, 0.05)):
+        ray = np.array([math.cos(math.radians(theta)),
+                        math.sin(math.radians(theta))])
+        assert abs(_cross(ray, apex)) == pytest.approx(h, abs=1e-12)
+
+
+@pytest.mark.parametrize("width", [1.0, 0.5])
+def test_a_full_circle_ignores_per_edge_insets(width):
+    plain = Wedge((0.0, 0.0), 1.0, 90.0, 450.0, width=width)
+    gapped = GappedWedge((0.0, 0.0), 1.0, 90.0, 450.0, width=width)
+    gapped.set_insets(0.1, 0.2)
+    assert gapped.get_drawn_insets() == (0.0, 0.0)
+    assert np.array_equal(gapped.get_path().vertices,
+                          plain.get_path().vertices)
+
+
+def test_a_reflex_wedge_whose_rim_vanishes_under_either_edge_is_uninset():
+    """The vanishing-rim rule reads the larger edge: an inset past the
+    outer radius on one edge alone leaves no rim to keep a gap from."""
+    plain = Wedge((0.0, 0.0), 1.0, 0.0, 350.0, width=1.0)
+    w = GappedWedge((0.0, 0.0), 1.0, 0.0, 350.0, width=1.0)
+    w.set_insets(0.0, 1.2)
+    assert w.get_drawn_insets() == (0.0, 0.0)
+    assert np.array_equal(w.get_path().vertices, plain.get_path().vertices)
+
+
+def test_a_ring_too_narrow_for_the_larger_inset_ends_in_the_apex():
+    """Whether the inner arc survives is decided against the larger
+    edge: an inner radius between the two insets ends in the apex, h0
+    from the one edge line and h1 from the other."""
+    centre = np.array([0.3, -0.2])
+    w = GappedWedge(tuple(centre), 1.0, 10.0, 350.0, width=0.97)
+    w.set_insets(0.02, 0.05)
+    path = w.get_path()
+    assert path.codes[-2] == Path.LINETO
+    apex = path.vertices[-2] - centre
+    for theta, h in ((10.0, 0.02), (350.0, 0.05)):
+        ray = np.array([math.cos(math.radians(theta)),
+                        math.sin(math.radians(theta))])
+        assert abs(_cross(ray, apex)) == pytest.approx(h, abs=1e-12)
+
+
+def test_an_inner_arc_both_insets_together_overrun_ends_in_the_apex():
+    """The inner arc keeps a positive extent only if both edges' shifts
+    together fit in the span, however small either is alone."""
+    centre = np.array([0.3, -0.2])
+    w = GappedWedge(tuple(centre), 1.0, 10.0, 50.0, width=0.8)
+    w.set_insets(0.01, 0.15)
+    assert w.get_drawn_insets() == (0.01, 0.15)
+    path = w.get_path()
+    assert path.codes[-2] == Path.LINETO
+    apex = path.vertices[-2] - centre
+    for theta, h in ((10.0, 0.01), (50.0, 0.15)):
+        ray = np.array([math.cos(math.radians(theta)),
+                        math.sin(math.radians(theta))])
+        assert abs(_cross(ray, apex)) == pytest.approx(h, abs=1e-12)
