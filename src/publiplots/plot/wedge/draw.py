@@ -81,53 +81,6 @@ def even_explode(pull: float, r_outer: float) -> float:
     return float(pull) * float(r_outer)
 
 
-def _unequal_corners(theta1: float, theta2: float, h0: float,
-                     h1: float) -> List[np.ndarray]:
-    """The corners, relative to the centre and in path order, where a
-    wedge's two straight edges, inset by ``h0 != h1``, close it.
-
-    Edge ``k`` lies on its offset line ``L_k``, ``h_k`` from its ray. Let
-    ``m`` be the edge with the larger inset and ``o`` the other. Where the
-    two lines cross at or in front of ``m``'s foot ``h_m * n_m`` (``n_m``
-    its inward normal) a convex wedge closes at that crossing, the corner
-    of the half-plane cone; a reflex wedge, the mirror case, closes there
-    where the crossing is at or behind that foot. Both conditions are
-    exactly ``h_o + h_m * cos(span) >= 0``, which is tested before the
-    crossing is computed, so the parallel edges of a 180-degree wedge
-    are never intersected.
-
-    Otherwise (the near-parallel regime, a 180-degree wedge included)
-    the wedge closes with a step: in along ``L_m`` to its foot, then
-    along ``n_m`` towards the centre to where it meets ``L_o``, at
-    ``t * n_m`` with ``t = h_o / -cos(span)``, then out along ``L_o``.
-    Each edge then keeps its own inset all the way in, and the step,
-    of length ``h_m - t``, vanishes where the crossing reaches the foot,
-    so the two closures meet continuously.
-    """
-    half = math.radians(theta2 - theta1) / 2.0
-    cos_span = math.cos(2.0 * half)
-    h_big, h_small = max(h0, h1), min(h0, h1)
-    mid = math.radians(theta1) + half
-    if h_small + h_big * cos_span >= 0.0:
-        # The crossing in the mid-ray frame: n0 = (sin, cos) and
-        # n1 = (sin, -cos) there. cos(half) is nonzero, as the test fails
-        # at 90 degrees for unequal insets.
-        x = (h0 + h1) / (2.0 * math.sin(half))
-        y = (h0 - h1) / (2.0 * math.cos(half))
-        return [x * np.array([math.cos(mid), math.sin(mid)])
-                + y * np.array([-math.sin(mid), math.cos(mid)])]
-    if h1 > h0:
-        b = math.radians(theta2)
-        n_big = np.array([math.sin(b), -math.cos(b)])
-    else:
-        a = math.radians(theta1)
-        n_big = np.array([-math.sin(a), math.cos(a)])
-    foot = h_big * n_big
-    step = (h_small / -cos_span) * n_big
-    # The path arrives along the theta2 edge and leaves along theta1's.
-    return [foot, step] if h1 > h0 else [step, foot]
-
-
 class GappedWedge(Wedge):
     """A :class:`~matplotlib.patches.Wedge` whose straight edges are inset.
 
@@ -159,18 +112,26 @@ class GappedWedge(Wedge):
 
     - the outer arc runs from ``theta1 + asin(h0 / r)`` to
       ``theta2 - asin(h1 / r)``;
-    - an inner radius ``r_in >= max(h0, h1)`` (to within
-      :func:`arc_survives_inset`'s tolerance) whose inset arc keeps a
-      positive extent is inset the same way;
-    - otherwise the two offset edges meet at an apex: with equal insets
-      ``h``, on the mid-ray at ``h / sin(half)`` from the centre. That
-      holds for a reflex wedge too (``90 < half < 180``), whose apex lies
-      past the centre on its own side. For a capped wedge the apex is at
-      least ``r / (2 * cos(half / 2))``, more than half the outer radius
-      out. With unequal insets the wedge closes where the two offset
-      edge lines cross or, where they run near parallel (a 180-degree
-      wedge included), with a short step at the centre, so each edge
-      keeps its own inset all the way in (see :func:`_unequal_corners`);
+    - each half of the wedge, from an edge to the mid-ray, ends inside
+      as a wedge inset by that edge's ``h`` on both sides would: an inner
+      radius ``r_in >= h`` (to within :func:`arc_survives_inset`'s
+      tolerance) whose inset arc keeps a positive extent
+      (``asin(h / r_in) < half``) is inset the same way, from the edge to
+      the mid-ray;
+    - otherwise that half ends where its offset edge meets the mid-ray, at
+      ``h / sin(half)`` from the centre. That holds for a reflex wedge too
+      (``90 < half < 180``), whose apex lies past the centre on its own
+      side. For a capped wedge the apex is at least
+      ``r / (2 * cos(half / 2))``, more than half the outer radius out.
+      With equal insets the two halves end alike, in one inner arc or in
+      one apex;
+    - with unequal insets the two halves are joined along the mid-ray, by
+      a radial step between their inner ends where those differ. Each
+      half lies inside the annular sector and outside the hole as the
+      equal-inset wedge does, and each edge keeps its own inset from the
+      rim to its half's inner end, so seams through the rings of a
+      sunburst stay collinear. Nothing is solved, so the parallel edges
+      of a 180-degree wedge need no special case;
     - a full 360-degree wedge has no straight edges and is not inset.
 
     A reflex wedge is never capped. Its rim can only vanish when
@@ -278,28 +239,29 @@ class GappedWedge(Wedge):
         half = math.radians(span) / 2.0
         mid = math.radians(self.theta1) + half
         center = np.asarray(self.center, dtype=float)
-        h = max(h0, h1)
 
-        def arc_angles(radius: float) -> Optional[Tuple[float, float]]:
-            """The inset arc's end angles at ``radius``, or None if empty."""
-            if not arc_survives_inset(radius, h):
-                return None
+        def shift_at(radius: float, h: float) -> float:
+            """The angle an edge inset by ``h`` moves in at ``radius``."""
             # Within the tolerance h / radius can be a hair above 1.
-            shift0 = math.asin(min(h0 / radius, 1.0))
-            shift1 = math.asin(min(h1 / radius, 1.0))
-            if shift0 + shift1 >= 2.0 * half:
+            return math.asin(min(h / radius, 1.0))
+
+        def inner_shift(h: float) -> Optional[float]:
+            """A half's inner arc shift at ``r_in``, or None where the half
+            ends in its corner on the mid-ray."""
+            if r_in <= 0.0 or not arc_survives_inset(r_in, h):
                 return None
-            return (self.theta1 + math.degrees(shift0),
-                    self.theta2 - math.degrees(shift1))
+            shift = shift_at(r_in, h)
+            return shift if shift < half else None
 
         # The cap keeps the outer arc at least half the span, and
         # get_drawn_insets has already sent a vanishing reflex wedge to
         # the uninset path, so the outer arc always exists here.
-        outer = arc_angles(r_out)
-        inner = arc_angles(r_in) if r_in > 0.0 else None
-        arc = Path.arc(*outer)
-        if inner is not None:
-            back = Path.arc(*inner)
+        arc = Path.arc(self.theta1 + math.degrees(shift_at(r_out, h0)),
+                       self.theta2 - math.degrees(shift_at(r_out, h1)))
+        shift0, shift1 = inner_shift(h0), inner_shift(h1)
+        if shift0 is not None and shift1 is not None:
+            back = Path.arc(self.theta1 + math.degrees(shift0),
+                            self.theta2 - math.degrees(shift1))
             vertices = np.concatenate([
                 arc.vertices * r_out,
                 back.vertices[::-1] * r_in,
@@ -308,17 +270,31 @@ class GappedWedge(Wedge):
             codes = [*arc.codes, Path.LINETO, *back.codes[1:],
                      Path.CLOSEPOLY]
         else:
-            if h0 == h1:
-                # sin(half) > 0 for every span short of a full circle.
-                apex = (h0 / math.sin(half)) * np.array([math.cos(mid),
-                                                        math.sin(mid)])
-                corners = [apex]
+            # The path runs in along the theta2 edge, through half 1's
+            # inner end, along the mid-ray to half 0's, and out along the
+            # theta1 edge.
+            mid_deg = self.theta1 + span / 2.0
+            # sin(half) > 0 for every span short of a full circle.
+            ray = np.array([math.cos(mid), math.sin(mid)])
+            pieces = [arc.vertices * r_out]
+            codes = [*arc.codes]
+            if shift1 is not None:
+                back = Path.arc(mid_deg, self.theta2 - math.degrees(shift1))
+                pieces.append(back.vertices[::-1] * r_in)
+                codes += [Path.LINETO, *back.codes[1:]]
             else:
-                corners = _unequal_corners(self.theta1, self.theta2, h0, h1)
-            vertices = np.concatenate([arc.vertices * r_out, corners,
-                                       [corners[-1]]])
-            codes = [*arc.codes, *[Path.LINETO] * len(corners),
-                     Path.CLOSEPOLY]
+                pieces.append([(h1 / math.sin(half)) * ray])
+                codes.append(Path.LINETO)
+            if shift0 is not None:
+                back = Path.arc(self.theta1 + math.degrees(shift0), mid_deg)
+                pieces.append(back.vertices[::-1] * r_in)
+                codes += [Path.LINETO, *back.codes[1:]]
+            elif shift1 is not None or h0 != h1:
+                pieces.append([(h0 / math.sin(half)) * ray])
+                codes.append(Path.LINETO)
+            pieces.append(pieces[-1][-1:])
+            codes.append(Path.CLOSEPOLY)
+            vertices = np.concatenate(pieces)
         self._path = Path(vertices + center, codes)
 
 
