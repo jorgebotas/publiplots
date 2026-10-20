@@ -1,0 +1,80 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR supersedes the run in progress.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The versions uv.lock pins, on the newest supported Python.
+          - name: Locked dependencies (Python 3.12)
+            python-version: "3.12"
+            floors: false
+          # Every direct dependency at the lowest version pyproject.toml
+          # declares, on the oldest supported Python, so the declared
+          # floors stay true rather than being assumed.
+          - name: Declared floors (Python 3.10)
+            python-version: "3.10"
+            floors: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # publiplots styles text in Arial and the layout tests measure
+      # rendered text in millimetres; without Arial, matplotlib falls back
+      # to another face with different metrics.
+      - name: Install Arial
+        run: |
+          echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" \
+            | sudo debconf-set-selections
+          sudo apt-get update -q
+          sudo apt-get install -y -q ttf-mscorefonts-installer
+          fc-list | grep -qi arial
+
+      - name: Install dependencies (locked)
+        if: ${{ !matrix.floors }}
+        run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
+
+      - name: Install dependencies (declared floors)
+        if: ${{ matrix.floors }}
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install --resolution lowest-direct -e ".[dev]"
+
+      - name: Show versions
+        run: >-
+          .venv/bin/python -c "import sys, matplotlib, seaborn, numpy, pandas,
+          scipy; print(sys.version); print('matplotlib', matplotlib.__version__,
+          '| seaborn', seaborn.__version__, '| numpy', numpy.__version__,
+          '| pandas', pandas.__version__, '| scipy', scipy.__version__)"
+
+      - name: Run the test suite
+        env:
+          MPLBACKEND: Agg
+        run: .venv/bin/python -m pytest -q -p no:cacheprovider --cov-report=term
