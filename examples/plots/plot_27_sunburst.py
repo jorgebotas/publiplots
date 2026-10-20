@@ -192,7 +192,7 @@ pp.show()
 # their patterns, and every wedge outside them inherits its parent's;
 # the rings inside stay plain. Here each kind of visit splits into
 # ``in_person`` and ``remote`` visits, and ``hatch="setting"`` marks the
-# remote ones -- in the setting ring and, below them, in every
+# remote ones -- in the setting ring and, outside them, in every
 # ``detail`` wedge too. The patterns get their own legend entry, beside
 # the colours.
 

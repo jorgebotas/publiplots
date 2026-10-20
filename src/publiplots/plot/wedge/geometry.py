@@ -107,7 +107,7 @@ def build_nodes(
         missing = frame[list(levels)].isna().to_numpy()
         skipped = (missing[:, :-1] & ~missing[:, 1:]).any(axis=1)
         if skipped.any():
-            row = frame.index[skipped][0]
+            row = frame.index[skipped].tolist()[0]
             raise ValueError(
                 f"{owner}: row {row!r} has a missing value at one ring and a "
                 f"value further out; a branch can end early but cannot skip "

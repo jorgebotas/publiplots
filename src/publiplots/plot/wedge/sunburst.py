@@ -172,10 +172,13 @@ def sunburstplot(
         lines, so the unpainted band is ``gap`` less one outline width.
         No wedge is dropped: an inset is capped so that a thin wedge
         keeps at least half its angular span, and a band is never inset
-        radially to less than half its width. A wedge beside a capped one
-        is narrower by what the cap spared. A ragged leaf's rim, the
-        outermost rim and the edge of the hole are never inset. Defaults
-        to ``rcParams["pie.gap"]`` (``0.0``, no gap).
+        radially to less than half its width. Where a very thin wedge
+        caps its side of a ray, the gap on that side narrows, and every
+        wedge on the same side of that ray, parent or child, takes the
+        same inset, so the seam stays straight through the rings. A
+        ragged leaf's rim, the outermost rim and the edge of the hole are
+        never inset. Defaults to ``rcParams["pie.gap"]`` (``0.0``, no
+        gap).
     depth_range : float, optional
         Total blend of the colour toward white at the outermost ring.
         Intermediate rings interpolate linearly and the root ring is the

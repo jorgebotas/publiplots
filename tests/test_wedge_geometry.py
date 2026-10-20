@@ -254,6 +254,13 @@ def test_a_skipped_ring_raises_naming_the_row():
         build_nodes(df, ["a", "b", "c"], "n", owner="sunburstplot")
 
 
+def test_a_skipped_ring_names_a_default_index_row_as_a_plain_number():
+    df = pd.DataFrame({"a": ["P", "P"], "b": ["s", None], "c": ["x", "y"],
+                       "n": [1.0, 1.0]})
+    with pytest.raises(ValueError, match=r"^sunburstplot: row 1 has"):
+        build_nodes(df, ["a", "b", "c"], "n", owner="sunburstplot")
+
+
 def test_categorical_columns_create_only_observed_nodes():
     cats = [f"k{i}" for i in range(200)]
     df = pd.DataFrame({
