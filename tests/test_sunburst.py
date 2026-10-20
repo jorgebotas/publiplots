@@ -620,3 +620,13 @@ def test_a_refused_call_draws_no_figure():
 def test_render_wedge_chart_refuses_an_unknown_chart_kind():
     with pytest.raises(ValueError, match="chart must be"):
         _draw(TREE, ["a", "b", "c"], chart="donut")
+
+
+def test_numeric_hue_is_inherited_unshaded_by_every_descendant():
+    df = TREE.assign(v=[1.0, 1.0, 1.0, 5.0, 5.0, 5.0])
+    ax, meta = _draw(df, ["a", "b", "c"], hue="v", palette="viridis",
+                     depth_range=0.45, sibling_range=0.14)
+    by = {r.path: r for r in meta.wedges}
+    assert len({r.hue_color for r in meta.wedges}) == 2
+    for rec in meta.wedges:
+        assert rec.hue_color == by[rec.path[:1]].hue_color

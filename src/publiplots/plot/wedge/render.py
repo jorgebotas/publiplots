@@ -429,9 +429,13 @@ def render_wedge_chart(
             seen = set(listed)
             hue_levels = listed + [v for v in hue_levels if v not in seen]
 
+    # A numeric hue is a measurement the colorbar reads back, so a
+    # descendant inherits its root's colour unshaded: the depth and
+    # sibling knobs would shift a wedge off the value it encodes.
     colors = derive_colors(nodes, hue_values, palette_map,
-                           depth_range=depth_range,
-                           sibling_range=sibling_range,
+                           depth_range=0.0 if hue_continuous else depth_range,
+                           sibling_range=(0.0 if hue_continuous
+                                          else sibling_range),
                            n_levels=len(levels), hue_column=hue_column)
 
     # Hatch is resolved from its own column, the same way hue is, rather
