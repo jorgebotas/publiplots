@@ -114,6 +114,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saturated palette entry could put white text on a body drawn at
   `alpha=0.1`. They now use the body's drawn face.
 
+- **`pieplot(pull={...})` now raises on a key that names no wedge, and on a
+  negative, non-numeric or boolean value.** It used to ignore unknown keys
+  and move a wedge inward on a negative value, with no framing room for it.
+  A key naming a category that `min_share` merged into `"Other"` says so,
+  and a one-element tuple such as `("admin",)` names the category `"admin"`.
+
 ### Docs
 
 - **The `annotate=` examples in `pp.boxplot` and `pp.violinplot` now run.**

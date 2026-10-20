@@ -277,3 +277,110 @@ def test_apply_gap_refuses_nodes_that_do_not_match_the_patches():
         apply_gap(ax, patches[:-1], 1.0, nodes=nodes, n_levels=3)
     with pytest.raises(AssertionError, match="deeper than the 2 rings"):
         apply_gap(ax, patches, 1.0, nodes=nodes, n_levels=2)
+
+
+def test_pulling_a_parent_moves_its_subtree_rigidly():
+    ax, meta = _draw(TREE, ["a", "b", "c"], pull={"P": 0.1})
+    by = {r.path: r for r in meta.wedges}
+    vec = np.asarray(by[("P",)].patch.center)
+    assert np.linalg.norm(vec) == pytest.approx(0.1)
+    for path, rec in by.items():
+        expected = vec if path[0] == "P" else np.zeros(2)
+        assert np.asarray(rec.patch.center) == pytest.approx(expected)
+
+
+def test_pull_vectors_add_down_the_tree():
+    ax, meta = _draw(TREE, ["a", "b", "c"],
+                     pull={"P": 0.1, ("P", "p1"): 0.05})
+    by = {r.path: r for r in meta.wedges}
+    p, p1 = by[("P",)], by[("P", "p1")]
+    mid = math.radians((p1.theta0 + p1.theta1) / 2)
+    expected = np.asarray(p.patch.center) + 0.05 * np.array([math.cos(mid), math.sin(mid)])
+    assert np.asarray(p1.patch.center) == pytest.approx(expected)
+    assert np.asarray(by[("P", "p1", "x")].patch.center) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("bad,exc", [
+    ({"Z": 0.1}, ValueError), ({"P": True}, TypeError),
+    ({"P": "x"}, TypeError), ({"P": -0.1}, ValueError),
+    ({"P": float("nan")}, ValueError),
+])
+def test_bad_pull_dicts_raise(bad, exc):
+    with pytest.raises(exc, match=r"^sunburstplot: pull="):
+        _draw(TREE, ["a", "b", "c"], pull=bad)
+
+
+# --- Beyond the brief: dict pull ---------------------------------------------
+
+@pytest.mark.parametrize("bad,exc", [
+    ({("P", "zz"): 0.1}, ValueError),            # a tuple naming no node
+    ({("P", "p1", "x", "deeper"): 0.1}, ValueError),
+    ({("P", "p1"): float("inf")}, ValueError),   # checked on tuple keys too
+    ({("P", "p1"): None}, TypeError),
+])
+def test_bad_path_keys_and_values_raise(bad, exc):
+    with pytest.raises(exc, match=r"^sunburstplot: pull="):
+        _draw(TREE, ["a", "b", "c"], pull=bad)
+
+
+def test_a_root_key_and_its_one_tuple_name_the_same_wedge():
+    _, short = _draw(TREE, ["a", "b", "c"], pull={"Q": 0.1})
+    _, long = _draw(TREE, ["a", "b", "c"], pull={("Q",): 0.1})
+    assert ([tuple(r.patch.center) for r in short.wedges]
+            == [tuple(r.patch.center) for r in long.wedges])
+    assert np.linalg.norm(short.wedges[-1].patch.center) == pytest.approx(0.1)
+
+
+def test_a_key_equal_to_a_tuple_root_category_is_that_category():
+    # The root categories are themselves tuples, so ("P", "p1") is one of
+    # them -- and also a path prefix it could be mistaken for.
+    from publiplots.plot.wedge.geometry import build_nodes, layout
+    from publiplots.plot.wedge.render import resolve_pull_vectors
+    df = pd.DataFrame({"a": [("P", "p1"), "P"], "b": ["s", "p1"],
+                       "n": [1.0, 3.0]})
+    nodes = build_nodes(df, ["a", "b"], "n")
+    places = layout(nodes, start_angle=90.0, direction="clockwise",
+                    donut=0.0, n_levels=2)
+    vectors = resolve_pull_vectors({("P", "p1"): 0.1}, nodes, places,
+                                   owner="sunburstplot")
+    assert np.hypot(*vectors[(("P", "p1"),)]) == pytest.approx(0.1)
+    assert vectors[("P", "p1")] == (0.0, 0.0)
+
+
+def test_records_keep_the_pull_asked_at_each_node():
+    _, meta = _draw(TREE, ["a", "b", "c"], pull={"P": 0.1, ("P", "p1"): 0.05})
+    asked = {r.path: r.pull for r in meta.wedges}
+    assert asked[("P",)] == 0.1
+    assert asked[("P", "p1")] == 0.05
+    assert all(v == 0.0 for k, v in asked.items()
+               if k not in {("P",), ("P", "p1")})
+
+
+def test_the_frame_leaves_room_for_the_summed_pull():
+    # Two pulls in nearly the same direction: the reach is their sum, not
+    # the largest of them.
+    ax, meta = _draw(TREE, ["a", "b", "c"], pull={"P": 0.1, ("P", "p1"): 0.05})
+    reach = max(np.hypot(*r.patch.center) for r in meta.wedges)
+    assert reach > 0.1 + 0.04
+    assert ax.get_ylim()[1] == pytest.approx(1.0 + reach + 0.05)
+
+
+def test_a_rigidly_pulled_subtree_keeps_its_capped_seam_under_gap():
+    # Per-ray caps stay grouped by angle and side under a dict pull: P and
+    # its sliver s move together, so their shared seam stays one line.
+    df = pd.DataFrame({"a": ["P", "P", "Q"], "b": ["s", "t", "u"],
+                       "n": [1.0, 49.0, 50.0]})
+    ax, meta = _draw(df, ["a", "b"], pull={"P": 0.1}, gap=2.0)
+    by = {r.path: r for r in meta.wedges}
+    child, parent = by[("P", "s")], by[("P",)]
+    assert child.theta1 == pytest.approx(parent.theta1)
+    assert np.asarray(child.patch.center) == pytest.approx(
+        np.asarray(parent.patch.center))
+    assert np.hypot(*parent.patch.center) == pytest.approx(0.1)
+    cap = child.patch.r * math.sin(math.radians(child.theta1
+                                                - child.theta0) / 4.0)
+    assert cap < 1.0 / _mm_per_unit(ax)                # really capped
+    assert child.patch.get_drawn_insets()[1] == pytest.approx(cap)
+    assert parent.patch.get_drawn_insets()[1] == pytest.approx(cap)
+    assert (_offset_from_ray(child.patch, child.theta1)
+            == pytest.approx(_offset_from_ray(parent.patch, parent.theta1)))

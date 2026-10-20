@@ -323,7 +323,7 @@ def draw_wedges(
     hatches: Dict[Tuple[Any, ...], Optional[str]],
     *,
     center: Tuple[float, float],
-    pull: Dict[Tuple[Any, ...], float],
+    vectors: Dict[Tuple[Any, ...], Tuple[float, float]],
     alpha: float,
     edgecolor: Optional[Any],
     linewidth: float,
@@ -336,7 +336,10 @@ def draw_wedges(
     there spikes past the centre into the neighbouring wedges -- visibly
     so at 600 dpi on the 6% wedge of a 52.2/41.8/6/4 pie.
 
-    ``pull`` translates the wedges it names along their own mid-rays.
+    ``vectors`` translates the wedges it names: each is centred on
+    ``center`` plus its vector, in data units (a dict ``pull`` resolved
+    by ``render.resolve_pull_vectors``); an unnamed wedge stays on
+    ``center``.
     ``explode`` is the even explode instead, in data units: every wedge
     stays centred on ``center``, its inner and outer radii both grow by
     ``explode``, and each straight edge is inset by ``explode``, so all
@@ -354,7 +357,7 @@ def draw_wedges(
     """
     patches: List[GappedWedge] = []
     for place in placements:
-        dx, dy = pull_offset(place, pull.get(place.node.path, 0.0))
+        dx, dy = vectors.get(place.node.path, (0.0, 0.0))
         patch = GappedWedge(
             (center[0] + dx, center[1] + dy),
             place.r_outer + (2 * place.node.depth + 1) * explode,

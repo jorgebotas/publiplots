@@ -19,10 +19,12 @@ from publiplots.plot.wedge.draw import (
     build_wedge_meta,
     draw_wedges,
     even_explode,
+    pull_offset,
     set_hatch_linewidth,
 )
 from publiplots.plot.wedge.geometry import (
     WedgeNode,
+    WedgePlacement,
     build_nodes,
     layout,
     total_value,
@@ -36,6 +38,9 @@ from publiplots.utils.legend_entries import (
     stash_entry,
 )
 from publiplots.utils.plot_legend import render_entries, stash_continuous_hue
+
+#: A node's keys from the root ring down, as on ``WedgeNode.path``.
+Path = Tuple[Any, ...]
 
 
 def check_scalar_pull(pull: Any, *, owner: str) -> float:
@@ -53,6 +58,129 @@ def check_scalar_pull(pull: Any, *, owner: str) -> float:
             f"the radius; got {pull!r}."
         )
     return pull
+
+
+def resolve_pull_keys(
+    pull: Dict[Any, Any],
+    nodes: Sequence[WedgeNode],
+    *,
+    owner: str,
+    merged: Optional[Dict[Any, Any]] = None,
+) -> Dict[Path, float]:
+    """Validate a dict ``pull`` and key it by the path of the node each
+    key names.
+
+    A key ``k`` names the root category ``k`` when ``(k,)`` is a path --
+    even when ``k`` is itself a tuple -- and otherwise the path ``k``
+    when it is a tuple that is one. A key that names no node raises
+    ``ValueError``; ``merged`` maps a category the caller merged into a
+    bucket to that bucket's label, so the message can say why the key
+    names no wedge. A value must be a finite, non-negative number:
+    ``TypeError`` for a bool or a non-number, ``ValueError`` for a
+    negative or non-finite one.
+    """
+    paths = {n.path for n in nodes}
+    asked: Dict[Path, float] = {}
+    for key, value in pull.items():
+        if (key,) in paths:
+            path: Path = (key,)
+        elif isinstance(key, tuple) and key in paths:
+            path = key
+        else:
+            why = ""
+            if merged is not None:
+                bucket = merged.get(key)
+                if bucket is None and isinstance(key, tuple) and len(key) == 1:
+                    bucket = merged.get(key[0])
+                if bucket is not None:
+                    why = (f": min_share merged that category into the "
+                           f"{bucket!r} wedge, which pull= can name instead")
+            raise ValueError(
+                f"{owner}: pull= key {key!r} matches no wedge{why}. A key "
+                f"is a root category or a tuple path from the root ring."
+            )
+        if isinstance(value, bool) or not isinstance(value, numbers.Real):
+            raise TypeError(
+                f"{owner}: pull= value for {key!r} must be a number (a "
+                f"fraction of the radius); got {type(value).__name__} "
+                f"{value!r}."
+            )
+        value = float(value)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(
+                f"{owner}: pull= value for {key!r} must be a finite, "
+                f"non-negative fraction of the radius; got {value!r}."
+            )
+        asked[path] = value
+    return asked
+
+
+def resolve_pull_vectors(
+    pull: Dict[Any, Any],
+    nodes: Sequence[WedgeNode],
+    places: Sequence[WedgePlacement],
+    *,
+    owner: str,
+    merged: Optional[Dict[Any, Any]] = None,
+) -> Dict[Path, Tuple[float, float]]:
+    """The translation of every node under a dict ``pull``, in data units.
+
+    Keys and values are validated by :func:`resolve_pull_keys`. Each named
+    node moves ``pull`` times the radius along its own mid-ray and takes
+    its whole subtree with it, so a node's vector is the sum of its own
+    and its ancestors'. Unnamed nodes without a named ancestor get
+    ``(0.0, 0.0)``.
+    """
+    return sum_pull_vectors(
+        resolve_pull_keys(pull, nodes, owner=owner, merged=merged),
+        nodes, places)
+
+
+def sum_pull_vectors(
+    asked: Dict[Path, float],
+    nodes: Sequence[WedgeNode],
+    places: Sequence[WedgePlacement],
+) -> Dict[Path, Tuple[float, float]]:
+    """Every node's summed translation for pulls already keyed by path
+    (see :func:`resolve_pull_vectors`)."""
+    place_of = {p.node.path: p for p in places}
+    vectors: Dict[Path, Tuple[float, float]] = {}
+
+    def vector(node: WedgeNode) -> Tuple[float, float]:
+        if node.path in vectors:
+            return vectors[node.path]
+        own = pull_offset(place_of[node.path], asked.get(node.path, 0.0))
+        if node.parent is None:
+            # Taken as is, not added to (0, 0): a pie's vectors are then
+            # bit for bit the offsets it has always been drawn with.
+            out = own
+        else:
+            px, py = vector(node_of[node.parent])
+            out = (px + own[0], py + own[1])
+        vectors[node.path] = out
+        return out
+
+    node_of = {n.path: n for n in nodes}
+    for node in nodes:
+        vector(node)
+    return vectors
+
+
+def merged_categories(
+    frame: pd.DataFrame,
+    source_frame: pd.DataFrame,
+    level: str,
+    bucket_label: Any,
+) -> Dict[Any, Any]:
+    """The categories of ``source_frame`` that ``frame`` relabels as
+    ``bucket_label``, each mapped to it. ``frame`` must be the bucketed
+    copy of ``source_frame``, row for row."""
+    if len(frame) != len(source_frame):
+        return {}
+    into = (frame[level] == bucket_label).to_numpy(dtype=bool)
+    originals = source_frame[level].to_numpy()[into]
+    return {k: bucket_label for k in pd.unique(originals)
+            if not (k == bucket_label)}
 
 
 def numeric_hue_cmap(
@@ -277,33 +405,48 @@ def render_wedge_chart(
     # is translated, every one grows outward by the same distance and is
     # inset by it, so all neighbours part by the same gap (`even_explode`).
     r_outer = max((p.r_outer for p in places), default=1.0)
+    # A pulled node takes its subtree with it, so a node's translation is
+    # the sum of its own vector and its ancestors' (`resolve_pull_vectors`).
     if pull is None:
-        pull_map = {}
+        vectors: Dict[Path, Tuple[float, float]] = {}
+        record_pull: Dict[Path, float] = {}
         explode = 0.0
     elif isinstance(pull, dict):
-        pull_map = {n.path: float(pull.get(n.path[0], 0.0)) for n in nodes}
+        merged = (merged_categories(frame, source_frame, levels[0],
+                                    bucket_label)
+                  if bucket_label is not None else None)
+        # The records carry the value asked for at each node, not the
+        # length of its summed vector.
+        record_pull = resolve_pull_keys(pull, nodes, owner=owner,
+                                        merged=merged)
+        vectors = sum_pull_vectors(record_pull, nodes, places)
         explode = 0.0
     else:
         pull = check_scalar_pull(pull, owner=owner)
-        # The translation map stays empty: records still carry the value
-        # asked for, while the geometry takes it from `explode`.
-        pull_map = {}
+        # No wedge is translated: records still carry the value asked
+        # for, while the geometry takes it from `explode`.
+        vectors = {}
         explode = even_explode(pull, r_outer)
+        record_pull = {n.path: pull for n in nodes}
 
     patches = draw_wedges(
-        ax, places, colors, hatches, center=(0.0, 0.0), pull=pull_map,
+        ax, places, colors, hatches, center=(0.0, 0.0), vectors=vectors,
         alpha=alpha, edgecolor=edgecolor, linewidth=linewidth,
         explode=explode,
     )
     split_face_and_edge_alpha(patches, alpha=alpha, edgecolor=edgecolor)
 
-    record_pull = (pull_map if not explode
-                   else {n.path: float(pull) for n in nodes})
-
-    # Room for the furthest rim: a translated wedge reaches `pull` past
-    # the radius, and an evenly exploded one has its rim at r + t on a
-    # pie, r + (2n - 1)t on n rings.
-    max_pull = max(pull_map.values(), default=0.0)
+    # Room for the furthest rim: a translated wedge reaches the length of
+    # its summed vector past the radius, and an evenly exploded one has
+    # its rim at r + t on a pie, r + (2n - 1)t on n rings.
+    # A root's vector is its own pull along its mid-ray, so its length is
+    # that pull: taken exactly, because hypot() is an ulp off it about one
+    # time in seven, which would move a pie's limits from where its
+    # `max(pull)` has always put them.
+    max_pull = max(
+        (record_pull.get(n.path, 0.0) if n.parent is None
+         else math.hypot(*vectors[n.path]) for n in nodes if vectors),
+        default=0.0)
     explode_reach = (2 * len(levels) - 1) * explode
     apply_cell_limits(ax,
                       radius=r_outer + max(max_pull, explode_reach) + 0.05,

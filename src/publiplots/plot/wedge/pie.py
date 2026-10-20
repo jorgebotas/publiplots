@@ -161,7 +161,11 @@ def pieplot(
 
         A **dict** keyed by category pops out just the wedges it names:
         each is translated along its own mid-ray by ``pull`` times the
-        radius, as in matplotlib's ``explode``, keeping its shape.
+        radius, as in matplotlib's ``explode``, keeping its shape. A key
+        that names no wedge raises ``ValueError`` (a category merged into
+        ``"Other"`` by ``min_share`` is no longer a wedge); a value must
+        be a finite number of at least 0, else ``TypeError`` for a bool or
+        a non-number and ``ValueError`` otherwise.
 
         A **float** explodes the whole chart evenly. With ``t`` that
         fraction of the radius, no wedge is translated: every wedge's
