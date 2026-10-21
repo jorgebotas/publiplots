@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`pp.sunburstplot` — multi-ring part-of-whole charts.** `x` lists one
+- **`pp.sunburstplot` — multi-ring part-of-whole charts** (#287). `x` lists one
   column per ring, root first; the root ring splits the whole as a pie
   would, and each ring outside it splits its parent. `y` is the value
   (omitted, rows are counted) and `hue` what determines colour, the root
