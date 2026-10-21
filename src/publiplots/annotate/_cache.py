@@ -401,13 +401,18 @@ class WedgeRecord:
             and its `anchor in ("inside", "center", "base")` branch already
             covers the wedge anchor vocabulary.
         hatch: the hatch pattern, or None.
-        pull: the ``pull`` the wedge was drawn with, as a fraction of
-            the radius. A dict ``pull`` translates the wedge, so
-            ``patch.center`` carries it; a scalar one is an even explode
-            that leaves ``patch.center`` on the chart's centre and is
-            already folded into ``r_inner`` and ``r_outer``. Either way,
-            geometry is read from ``patch.center`` and the radii, never
-            recomputed from this.
+        pull: the ``pull`` asked at this node, as a fraction of the
+            radius. A dict ``pull`` translates the wedge, so
+            ``patch.center`` carries it. It records only the node's own
+            value: a descendant of a pulled node records 0 (or the value
+            it is itself named with) while its ``patch.center`` carries
+            the move inherited from its ancestors as well. A scalar one
+            is an even explode, recorded on every node, that leaves
+            ``patch.center`` on the chart's centre: with ``t`` its
+            distance, ring ``k`` sits ``(2k + 1) * t`` further out, which
+            is already folded into ``r_inner`` and ``r_outer`` (the
+            radii as drawn). Either way, geometry is read from
+            ``patch.center`` and the radii, never recomputed from this.
     """
 
     patch: Any
@@ -437,3 +442,5 @@ class WedgeMeta:
     hue_continuous: bool
     levels: Tuple[str, ...]
     source_frame: Optional[Any] = None
+    #: Which public function drew the chart: ``"pie"`` or ``"sunburst"``.
+    chart: str = "pie"

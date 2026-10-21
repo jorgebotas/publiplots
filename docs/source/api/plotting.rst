@@ -59,6 +59,7 @@ Composition
    :nosignatures:
 
    publiplots.pieplot
+   publiplots.sunburstplot
 
 Set
 ---

@@ -103,7 +103,7 @@ def test_draw_wedges_adds_one_patch_per_placement():
     colors, hatches = _style(nodes)
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=1.0, edgecolor="black",
+                          vectors={}, alpha=1.0, edgecolor="black",
                           linewidth=0.75)
     assert len(patches) == 2
     assert all(isinstance(p, Wedge) for p in patches)
@@ -115,7 +115,7 @@ def test_build_meta_pairs_each_placement_with_its_own_patch():
     colors, hatches = _style(nodes)
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=1.0, edgecolor="black",
+                          vectors={}, alpha=1.0, edgecolor="black",
                           linewidth=0.75)
     meta = build_wedge_meta(places, patches, colors, hatches, {},
                             total=total, donut=0.0, center=(0.0, 0.0),
@@ -132,7 +132,7 @@ def test_build_meta_pairs_placements_in_order_when_values_are_not_sorted():
     colors, hatches = _style(nodes)
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=1.0, edgecolor="black",
+                          vectors={}, alpha=1.0, edgecolor="black",
                           linewidth=0.75)
     meta = build_wedge_meta(places, patches, colors, hatches, {},
                             total=total, donut=0.0, center=(0.0, 0.0),
@@ -147,18 +147,19 @@ def test_build_meta_pairs_placements_in_order_when_values_are_not_sorted():
         assert record.patch is patch
 
 
-def test_draw_wedges_applies_pull_offset_to_patch_center():
+def test_draw_wedges_translates_each_patch_by_its_vector():
     nodes, places, _ = _places()
     colors, hatches = _style(nodes)
     fig, ax = pp.subplots()
-    pull = {places[0].node.path: 0.4}
-    patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull=pull, alpha=1.0, edgecolor="black",
-                          linewidth=0.75)
     expected = pull_offset(places[0], 0.4)
-    assert patches[0].center == pytest.approx(expected)
-    # The other wedge has no pull entry, so it stays at the given center.
-    assert patches[1].center == pytest.approx((0.0, 0.0))
+    vectors = {places[0].node.path: expected}
+    patches = draw_wedges(ax, places, colors, hatches, center=(1.0, -2.0),
+                          vectors=vectors, alpha=1.0, edgecolor="black",
+                          linewidth=0.75)
+    assert patches[0].center == pytest.approx((1.0 + expected[0],
+                                               -2.0 + expected[1]))
+    # The other wedge has no vector, so it stays at the given center.
+    assert patches[1].center == pytest.approx((1.0, -2.0))
 
 
 def test_draw_wedges_applies_style_kwargs_and_honors_ring_width():
@@ -167,7 +168,7 @@ def test_draw_wedges_applies_style_kwargs_and_honors_ring_width():
     hatches = {places[0].node.path: "//", places[1].node.path: None}
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=0.42, edgecolor=(0.9, 0.1, 0.1, 1.0),
+                          vectors={}, alpha=0.42, edgecolor=(0.9, 0.1, 0.1, 1.0),
                           linewidth=2.5)
     for place, patch in zip(places, patches):
         assert patch.get_facecolor()[:3] == pytest.approx(
@@ -187,7 +188,7 @@ def test_build_meta_raises_when_an_ancestor_is_missing():
     colors, hatches = _style(nodes)
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=1.0, edgecolor="black",
+                          vectors={}, alpha=1.0, edgecolor="black",
                           linewidth=0.75)
     # Drop the depth-0 rings (A, B), keeping only their children -- each
     # remaining node's parent is now absent from the placements passed in.
@@ -206,7 +207,7 @@ def test_build_meta_reports_fractions():
     colors, hatches = _style(nodes)
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=1.0, edgecolor="black",
+                          vectors={}, alpha=1.0, edgecolor="black",
                           linewidth=0.75)
     meta = build_wedge_meta(places, patches, colors, hatches, {},
                             total=total, donut=0.0, center=(0.0, 0.0),
@@ -228,7 +229,7 @@ def test_build_meta_reports_fractions_of_the_parent_not_the_total():
     colors, hatches = _style(nodes)
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=1.0, edgecolor="black",
+                          vectors={}, alpha=1.0, edgecolor="black",
                           linewidth=0.75)
     meta = build_wedge_meta(places, patches, colors, hatches, {},
                             total=total, donut=0.0, center=(0.0, 0.0),
@@ -261,7 +262,7 @@ def test_build_meta_refuses_a_length_mismatch():
     colors, hatches = _style(nodes)
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=1.0, edgecolor="black",
+                          vectors={}, alpha=1.0, edgecolor="black",
                           linewidth=0.75)
     with pytest.raises(AssertionError, match="placements"):
         build_wedge_meta(places, patches[:1], colors, hatches, {},
@@ -350,7 +351,7 @@ def test_draw_wedges_draws_the_hatch_at_the_outline_width():
     hatches = {n.path: "//" for n in nodes}
     fig, ax = pp.subplots()
     patches = draw_wedges(ax, places, colors, hatches, center=(0.0, 0.0),
-                          pull={}, alpha=1.0, edgecolor=None, linewidth=2.5)
+                          vectors={}, alpha=1.0, edgecolor=None, linewidth=2.5)
     assert [p.get_hatch_linewidth() for p in patches] == pytest.approx(
         [2.5, 2.5])
 

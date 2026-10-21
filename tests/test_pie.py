@@ -1076,3 +1076,64 @@ def test_a_numeric_hue_refuses_an_unknown_colormap_name(scored):
     with pytest.raises(ValueError, match=r"'not_a_cmap' is not one"):
         pp.pieplot(data=scored, x="dept", y="n", hue="score",
                    palette="not_a_cmap", legend=False, ax=ax)
+
+
+@pytest.mark.parametrize("bad,exc", [
+    ({"nope": 0.1}, ValueError), ({"A": True}, TypeError),
+    ({"A": -0.1}, ValueError),
+])
+def test_pieplot_rejects_bad_pull_dicts(bad, exc):
+    df = pd.DataFrame({"k": list("AB"), "v": [1.0, 2.0]})
+    with pytest.raises(exc, match=r"^pieplot: pull="):
+        pp.pieplot(data=df, x="k", y="v", pull=bad, legend=False)
+
+
+@pytest.mark.parametrize("bad,exc", [
+    ({"A": "0.1"}, TypeError), ({"A": float("inf")}, ValueError),
+    ({("A", "x"): 0.1}, ValueError),
+])
+def test_pieplot_rejects_more_bad_pull_dicts(bad, exc):
+    df = pd.DataFrame({"k": list("AB"), "v": [1.0, 2.0]})
+    with pytest.raises(exc, match=r"^pieplot: pull="):
+        pp.pieplot(data=df, x="k", y="v", pull=bad, legend=False)
+
+
+def test_pieplot_accepts_a_one_tuple_pull_key(df):
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", pull={("admin",): 0.2},
+               legend=False, ax=ax)
+    by_path = {r.path[0]: r for r in ax._publiplots_wedge_meta.wedges}
+    assert by_path["admin"].pull == pytest.approx(0.2)
+    assert by_path["admin"].patch.center != (0.0, 0.0)
+
+
+def test_pulling_a_category_merged_into_other_says_so(df):
+    # lay_dx (6%) and none (4%) fall below min_share and merge: lay_dx is
+    # a category of the data but no longer a wedge.
+    with pytest.raises(ValueError,
+                       match=r"^pieplot: pull= key 'lay_dx' matches no "
+                             r"wedge.*merged.*'Other'"):
+        pp.pieplot(data=df, x="kind", y="n", min_share=0.1,
+                   pull={"lay_dx": 0.1}, legend=False)
+    # A key that is not a category at all gets no such explanation.
+    with pytest.raises(ValueError, match=r"matches no wedge") as info:
+        pp.pieplot(data=df, x="kind", y="n", min_share=0.1,
+                   pull={"nope": 0.1}, legend=False)
+    assert "merged" not in str(info.value)
+    # The bucket itself can be pulled.
+    fig, ax = pp.subplots()
+    pp.pieplot(data=df, x="kind", y="n", min_share=0.1, pull={"Other": 0.1},
+               legend=False, ax=ax)
+    by_path = {r.path[0]: r for r in ax._publiplots_wedge_meta.wedges}
+    assert by_path["Other"].pull == pytest.approx(0.1)
+
+
+def test_a_dict_pull_frames_at_exactly_the_largest_pull():
+    """The frame is 1 + max(pull) + 0.05, exactly as before pull vectors:
+    at start_angle=135 B's vector has hypot() 0.4000000000000001, and
+    framing on that would move the limits by an ulp."""
+    df = pd.DataFrame({"k": list("AB"), "v": [1.0, 2.0]})
+    fig, ax = pp.subplots(axes_size=(60, 60))
+    pp.pieplot(data=df, x="k", y="v", pull={"B": 0.4}, start_angle=135.0,
+               legend=False, ax=ax)
+    assert ax.get_ylim() == (-(1.0 + 0.4 + 0.05), 1.0 + 0.4 + 0.05)

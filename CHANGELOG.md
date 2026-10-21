@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`pp.sunburstplot` — multi-ring part-of-whole charts** (#287). `x` lists one
+  column per ring, root first; the root ring splits the whole as a pie
+  would, and each ring outside it splits its parent. `y` is the value
+  (omitted, rows are counted) and `hue` what determines colour, the root
+  column by default. A categorical `hue` must be the root column or
+  constant within each root wedge. A one-column `x` draws exactly the
+  wedges `pp.pieplot` draws, and a donut is the same with a hole.
+
+  Hierarchies may be ragged. A row whose deeper columns are `NaN` ends
+  at its last named level, and the rings outside it stay empty over its
+  share; a wedge with children and rows of its own lays its children
+  out from its leading edge and leaves its own share as an empty stretch
+  at its trailing end. `gap=` is a width in millimetres between every
+  pair of neighbours, siblings and rings alike, with each seam running
+  straight through every ring outside it. A float `pull=` explodes the
+  whole chart evenly, every seam and ring boundary opening to the same
+  `2 * pull`, and a dict `pull=` keyed by a root category or a path
+  tuple, such as `("admin", "billing")`, moves that wedge out with its
+  whole subtree, so the chart never tears between rings.
+
+  Outer rings are shaded from their root's colour by two total spans,
+  `depth_range` (toward white at the rim, or toward black when negative)
+  and `sibling_range` (spread across siblings under one parent), with
+  defaults in `pp.rcParams["sunburst.depth_range"]` and
+  `pp.rcParams["sunburst.sibling_range"]`, which until now were
+  reserved and inert. A numeric `hue` is averaged over each root
+  wedge's rows (an unweighted mean) and mapped through a colormap, with
+  a colorbar; the root's descendants take that colour unshaded.
+  `hatch=` naming a ring's column patterns that ring and every wedge
+  outside it. The legend lists only the root categories, so a
+  sunburst's key merges with a pie's of the same root in a shared
+  `pp.legend` band. Wedge labels, through `annotate=` or
+  `pp.annotate(ax, "wedge_values")`, are not supported yet and raise
+  `NotImplementedError`; they follow in the next release. New gallery
+  example `examples/plots/plot_27_sunburst.py`.
+
 - **`anchor="inside"` for `box_stats`, `box_custom` and `violin_custom`.**
   The label sits on the forward side of the median line — above it for
   vertical marks, right of it for horizontal ones — inside the body, and
@@ -78,6 +114,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compares them; at `pull=0.1` on a 95/3/2 pie the 95.0% label was sent
   outside although it fits inside. Both now read the drawn wedge.
 
+- **An evenly exploded pie no longer draws a wedge over 180° with a notch
+  or a hole depending on the exact `pull`.** Under a scalar `pull` with no
+  gap, such a wedge's inner radius equals its edge inset, and floating
+  point put one a hair either side of the other: on a 95/3/2 pie the 95%
+  wedge ended in a round hole at `pull=0.1` but in a deep notch reaching
+  most of the way to its rim at `pull=0.13`, and at `pull=0.19` and `0.2`
+  its straight edges were not inset at all, so it sat closer to its
+  neighbours than the explode parts every other pair. A radius within one
+  part in 10⁹ of the inset now counts as equal to it, so every such wedge
+  ends in the hole, and the label placement reads the wedge by the same
+  rule: the 95.0% label at `pull=0.13` and `0.15` now sits inside, like
+  the other pulls.
+
 - **Violin labels no longer shift onto the next violin after a group seaborn
   could not draw.** seaborn draws a group as a bare line rather than a body
   when it has fewer than two observations, or when its density estimate
@@ -100,6 +149,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `color="auto"` compared against the palette colour at full opacity, so a
   saturated palette entry could put white text on a body drawn at
   `alpha=0.1`. They now use the body's drawn face.
+
+- **`pieplot(pull={...})` now raises on a key that names no wedge, and on a
+  negative, non-finite (`inf`, `nan`), non-numeric or boolean value.** It
+  used to ignore unknown keys and move a wedge inward on a negative value,
+  with no framing room for it. A key naming a category that `min_share`
+  merged into `"Other"` says so, and a one-element tuple such as
+  `("admin",)` names the category `"admin"`.
 
 ### Docs
 

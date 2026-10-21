@@ -9,7 +9,7 @@ tree be tested as data rather than by measuring a rendered figure.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import pandas as pd
 
@@ -29,6 +29,11 @@ class WedgeNode:
         parent: the parent's path, or None at depth 0.
         sibling_index: position among the nodes sharing this parent.
         sibling_count: how many nodes share this parent.
+        own_value: summed value of the rows that end at this node. A
+            full-depth leaf, and a ragged leaf (no children, shallower than
+            the last ring), have ``own_value == value``; a parent-leaf, a
+            node with children that some rows also end at, has
+            ``0 < own_value < value``; a pure internal node has 0.
     """
 
     path: Tuple[Any, ...]
@@ -37,6 +42,7 @@ class WedgeNode:
     parent: Optional[Tuple[Any, ...]]
     sibling_index: int
     sibling_count: int
+    own_value: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -65,17 +71,24 @@ def build_nodes(
 ) -> List[WedgeNode]:
     """Aggregate ``data`` into a composition tree, in draw order.
 
-    A parent's value is always the sum of its children; internal nodes are
+    A parent's value is always the sum of its subtree; internal nodes are
     never read from the frame. Rows with a NaN value are dropped, as are
     groups summing to zero -- a zero wedge draws nothing, so a record for
     it would describe no artist.
+
+    Branches may be ragged. A NaN at a deeper level ends the row's branch
+    at the last non-NaN level, and its value still counts at every ancestor
+    and in the node it ends at (``own_value``). When other rows continue
+    past that node it is a parent-leaf: its ``value`` is the whole subtree
+    and ``own_value`` is the part that ends there. A row that has a value
+    at a ring after a missing one would skip a ring and raises.
 
     ``owner`` names the calling plot function as the prefix of error messages.
     """
     if sort and order:
         raise ValueError(
-            "sort=True cannot be combined with order=; pass one or the other."
-        )
+            f"{owner}: sort=True cannot be combined with order=; pass one or "
+            f"the other.")
     if not levels:
         raise ValueError("at least one level is required")
 
@@ -83,57 +96,96 @@ def build_nodes(
     if value is None:
         value = "_count"
         frame[value] = 1.0
-    frame = frame.dropna(subset=[value] + list(levels))
+    # A NaN value, or a NaN root, drops the row; a NaN deeper level ends the
+    # branch there.
+    frame = frame.dropna(subset=[value, levels[0]])
     if (frame[value] < 0).any():
         raise ValueError(
             f"{owner}: negative values are not supported -- a negative wedge "
-            "has no meaning in a part-of-whole chart."
-        )
-
+            f"has no meaning in a part-of-whole chart.")
+    if len(levels) > 1:
+        missing = frame[list(levels)].isna().to_numpy()
+        skipped = (missing[:, :-1] & ~missing[:, 1:]).any(axis=1)
+        if skipped.any():
+            row = frame.index[skipped].tolist()[0]
+            raise ValueError(
+                f"{owner}: row {row!r} has a missing value at one ring and a "
+                f"value further out; a branch can end early but cannot skip "
+                f"a ring.")
     order = dict(order or {})
-    leaf_sums = frame.groupby(list(levels), observed=True, dropna=True)[value].sum()
+
+    # Path -> summed value of the rows that END there, one pandas groupby
+    # sum per depth: with a single level that is exactly the sum the pie
+    # has always drawn, bit for bit, where a Python running total drifts
+    # by float rounding over many rows.
+    depth_of = frame[list(levels)].notna().sum(axis=1).to_numpy()
+    own: Dict[Tuple[Any, ...], float] = {}
+    for depth in range(1, len(levels) + 1):
+        ending = frame[depth_of == depth]
+        if ending.empty:
+            continue
+        sums = ending.groupby(list(levels[:depth]), observed=True,
+                              sort=False, dropna=True)[value].sum()
+        for key, v in sums.items():
+            # One grouping column gives scalar keys, which may themselves
+            # be tuples; several give one tuple per path.
+            own[(key,) if depth == 1 else tuple(key)] = float(v)
+
+    # Subtree totals, and each parent's present child keys, in one pass.
+    subtree: Dict[Tuple[Any, ...], float] = {}
+    for path, v in own.items():
+        for k in range(1, len(path) + 1):
+            subtree[path[:k]] = subtree.get(path[:k], 0.0) + v
+
+    # Rows grouped by every prefix, so _categorical_order sees exactly the
+    # rows under a parent -- the same input the previous walk gave it.
+    _rows_under: Dict[Tuple[Any, ...], pd.DataFrame] = {}
+    for depth in range(1, len(levels)):
+        grouped = frame.groupby(list(levels[:depth]), observed=True,
+                                dropna=True, sort=False)
+        for key, sub in grouped:
+            key = key if isinstance(key, tuple) else (key,)
+            _rows_under[key] = sub
+
+    def _children_in_order(prefix: Tuple[Any, ...]) -> List[Any]:
+        column = levels[len(prefix)]
+        if not prefix:
+            present = frame[column]
+        else:
+            present = _rows_under[prefix][column]
+        present = present.dropna()
+        if present.empty:
+            return []
+        ordered = list(_categorical_order(present, order.get(column)))
+        # A Categorical lists every declared category; keep the present ones.
+        return [k for k in ordered if subtree.get(prefix + (k,), 0.0) > 0]
 
     nodes: List[WedgeNode] = []
 
-    def _levels_at(prefix: Tuple[Any, ...]) -> List[Any]:
-        """Distinct keys of the next level below ``prefix``, in draw order."""
-        depth = len(prefix)
-        col = levels[depth]
-        mask = pd.Series(True, index=frame.index)
-        for i, key in enumerate(prefix):
-            mask &= frame[levels[i]] == key
-        present = frame.loc[mask, col]
-        if present.empty:
-            return []
-        return list(_categorical_order(present, order.get(col)))
-
-    def _subtree_sum(prefix: Tuple[Any, ...]) -> float:
-        if len(prefix) == len(levels):
-            return float(leaf_sums.get(prefix if len(prefix) > 1 else prefix[0], 0.0))
-        return sum(_subtree_sum(prefix + (k,)) for k in _levels_at(prefix))
-
     def _walk(prefix: Tuple[Any, ...]) -> None:
-        keys = _levels_at(prefix)
-        entries = [(k, _subtree_sum(prefix + (k,))) for k in keys]
-        entries = [(k, v) for k, v in entries if v > 0]
+        if len(prefix) == len(levels):
+            return
+        entries = [(k, subtree[prefix + (k,)])
+                   for k in _children_in_order(prefix)]
         if sort:
             entries.sort(key=lambda kv: kv[1], reverse=True)
-        count = len(entries)
         for index, (key, total) in enumerate(entries):
             path = prefix + (key,)
             nodes.append(WedgeNode(
-                path=path,
-                value=float(total),
-                depth=len(prefix),
+                path=path, value=float(total), depth=len(prefix),
                 parent=prefix if prefix else None,
-                sibling_index=index,
-                sibling_count=count,
+                sibling_index=index, sibling_count=len(entries),
+                own_value=float(own.get(path, 0.0)),
             ))
-            if len(path) < len(levels):
-                _walk(path)
+            _walk(path)
 
     _walk(())
     return nodes
+
+
+def has_children(nodes: List[WedgeNode]) -> Set[Tuple[Any, ...]]:
+    """Paths of the nodes that have at least one child."""
+    return {n.parent for n in nodes if n.parent is not None}
 
 
 def total_value(nodes: List[WedgeNode]) -> float:

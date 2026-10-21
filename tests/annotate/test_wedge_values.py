@@ -9,6 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
+from matplotlib.path import Path
 
 import publiplots as pp
 
@@ -1711,10 +1712,8 @@ def test_text_kws_reach_the_artists(df):
     assert all(t.get_fontweight() == "bold" for t in ax.texts)
 
 
-@pytest.mark.parametrize("pull, inside", [
-    (0.05, True), (0.1, True), (0.12, True), (0.13, False), (0.15, False),
-])
-def test_reflex_label_fit_reads_the_wedge_as_drawn(pull, inside):
+@pytest.mark.parametrize("pull", [0.05, 0.1, 0.12, 0.13, 0.15])
+def test_reflex_label_fit_reads_the_wedge_as_drawn(pull):
     """A >180 degree wedge, no donut, scalar ``pull``, no gap: the radius
     its label's fit test compares with the inset is the one the patch draws
     with.
@@ -1722,9 +1721,10 @@ def test_reflex_label_fit_reads_the_wedge_as_drawn(pull, inside):
     ``(1 + t) - 1`` is not always ``t``, and the reflex branch compares
     the two, so a record built from the layout's ``0 + t`` could choose
     the inner radius where the patch chose the apex, or the reverse. At
-    ``pull=0.1`` the drawn inner radius is 1 ulp above the inset, so the
-    95.0% label sits inside, as the wedge is drawn; ``0.13`` and ``0.15``
-    land just under it and go outside.
+    ``pull=0.1`` the drawn inner radius is 1 ulp above the inset, and at
+    ``0.13`` and ``0.15`` just under it; both sides count as equal, so
+    every one of these wedges is drawn ending in its inner arc and the
+    95.0% label sits inside.
     """
     from publiplots.annotate._wedge import _drawn_inner_radius
 
@@ -1739,11 +1739,12 @@ def test_reflex_label_fit_reads_the_wedge_as_drawn(pull, inside):
     inset = patch.get_drawn_inset()
     r_in = patch.r - patch.width
     half_span = math.radians(patch.theta2 - patch.theta1) / 2.0
-    apex = inset / math.sin(half_span)
 
-    # The record and the patch decide inner-radius-vs-apex alike.
-    expected = r_in if r_in > inset else apex
-    assert _drawn_inner_radius(record, inset, half_span) == expected
+    # The record and the patch decide inner-radius-vs-apex alike: the
+    # drawn outline closes from its inner arc, not from the apex, and the
+    # label reads the inner radius.
+    assert patch.get_path().codes[-2] == Path.CURVE4
+    assert _drawn_inner_radius(record, inset, half_span) == r_in
 
     label = next(t for t in ax.texts if t.get_text() == "95.0%")
-    assert (_radius(label) < patch.r) is inside
+    assert _radius(label) < patch.r

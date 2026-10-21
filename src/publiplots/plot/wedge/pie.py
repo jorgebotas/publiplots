@@ -1,7 +1,6 @@
 """Pie and donut charts."""
 from __future__ import annotations
 
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import pandas as pd
@@ -10,7 +9,7 @@ from matplotlib.colors import Colormap
 
 from publiplots.annotate import annotate as _annotate
 from publiplots.annotate._wedge import check_length
-from publiplots.plot.wedge.render import render_wedge_chart
+from publiplots.plot.wedge.render import render_wedge_chart, warn_order_omissions
 from publiplots.themes.rcparams import resolve_param
 
 OTHER_LABEL = "Other"
@@ -113,7 +112,8 @@ def pieplot(
         pre-aggregated.
     x : str
         Column naming each wedge. A sequence of length 1 is accepted;
-        anything longer raises, because only one ring is drawn. Rows
+        anything longer raises, because only one ring is drawn (use
+        :func:`publiplots.sunburstplot` for a nested composition). Rows
         whose ``x`` is ``NaN`` are dropped and the remaining wedges
         renormalise to fill the circle, silently -- a pie cannot show a
         missing category, so drop or fill them yourself if the share
@@ -161,7 +161,11 @@ def pieplot(
 
         A **dict** keyed by category pops out just the wedges it names:
         each is translated along its own mid-ray by ``pull`` times the
-        radius, as in matplotlib's ``explode``, keeping its shape.
+        radius, as in matplotlib's ``explode``, keeping its shape. A key
+        that names no wedge raises ``ValueError`` (a category merged into
+        ``"Other"`` by ``min_share`` is no longer a wedge); a value must
+        be a finite number of at least 0, else ``TypeError`` for a bool or
+        a non-number and ``ValueError`` otherwise.
 
         A **float** explodes the whole chart evenly. With ``t`` that
         fraction of the radius, no wedge is translated: every wedge's
@@ -337,8 +341,8 @@ def pieplot(
     levels = [x] if isinstance(x, str) else list(x)
     if len(levels) > 1:
         raise ValueError(
-            "pieplot: x= must name a single column; it draws one ring, "
-            "and a nested composition is not supported."
+            "pieplot: x= must name a single column; it draws one ring -- "
+            "use pp.sunburstplot for a nested composition."
         )
     if order is not None and min_share:
         # build_nodes filters against `order`, and the bucket label is not
@@ -368,30 +372,12 @@ def pieplot(
     order_map = None
     if order is not None:
         order_map = {levels[0]: list(order)}
-        listed = set(order_map[levels[0]])
-        dropped = [k for k in dict.fromkeys(frame[levels[0]].dropna().tolist())
-                   if k not in listed]
-        if dropped:
-            # The same hazard the min_share refusal above cites: the
-            # wedges that survive renormalise to a full circle, so the
-            # chart reads as 100% of a whole it is not showing. Dropping
-            # a category is a legitimate thing to want, so this warns
-            # rather than raising -- but it does not do it silently,
-            # because annotate= would print the renormalised share.
-            warnings.warn(
-                f"pieplot: order= omits {len(dropped)} categor"
-                f"{'y' if len(dropped) == 1 else 'ies'} present in the "
-                f"data: {dropped!r}. They are dropped and the remaining "
-                f"wedges renormalise to a full circle, so the chart -- "
-                f"and any annotate= percentage -- reads as 100% of a "
-                f"whole it is not showing all of.",
-                UserWarning,
-                stacklevel=2,
-            )
+        warn_order_omissions(frame, order_map, owner="pieplot",
+                             root=levels[0])
 
     render_wedge_chart(
         ax, frame, levels,
-        owner="pieplot", source_frame=data, y=y, hue=hue,
+        owner="pieplot", chart="pie", source_frame=data, y=y, hue=hue,
         order_map=order_map, sort=sort, hue_order=hue_order,
         start_angle=start_angle, direction=direction, donut=donut,
         pull=pull, gap=gap, palette=palette, hatch=hatch,

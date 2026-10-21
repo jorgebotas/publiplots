@@ -19,10 +19,12 @@ from publiplots.plot.wedge.draw import (
     build_wedge_meta,
     draw_wedges,
     even_explode,
+    pull_offset,
     set_hatch_linewidth,
 )
 from publiplots.plot.wedge.geometry import (
     WedgeNode,
+    WedgePlacement,
     build_nodes,
     layout,
     total_value,
@@ -36,6 +38,9 @@ from publiplots.utils.legend_entries import (
     stash_entry,
 )
 from publiplots.utils.plot_legend import render_entries, stash_continuous_hue
+
+#: A node's keys from the root ring down, as on ``WedgeNode.path``.
+Path = Tuple[Any, ...]
 
 
 def check_scalar_pull(pull: Any, *, owner: str) -> float:
@@ -53,6 +58,129 @@ def check_scalar_pull(pull: Any, *, owner: str) -> float:
             f"the radius; got {pull!r}."
         )
     return pull
+
+
+def resolve_pull_keys(
+    pull: Dict[Any, Any],
+    nodes: Sequence[WedgeNode],
+    *,
+    owner: str,
+    merged: Optional[Dict[Any, Any]] = None,
+) -> Dict[Path, float]:
+    """Validate a dict ``pull`` and key it by the path of the node each
+    key names.
+
+    A key ``k`` names the root category ``k`` when ``(k,)`` is a path --
+    even when ``k`` is itself a tuple -- and otherwise the path ``k``
+    when it is a tuple that is one. A key that names no node raises
+    ``ValueError``; ``merged`` maps a category the caller merged into a
+    bucket to that bucket's label, so the message can say why the key
+    names no wedge. A value must be a finite, non-negative number:
+    ``TypeError`` for a bool or a non-number, ``ValueError`` for a
+    negative or non-finite one.
+    """
+    paths = {n.path for n in nodes}
+    asked: Dict[Path, float] = {}
+    for key, value in pull.items():
+        if (key,) in paths:
+            path: Path = (key,)
+        elif isinstance(key, tuple) and key in paths:
+            path = key
+        else:
+            why = ""
+            if merged is not None:
+                bucket = merged.get(key)
+                if bucket is None and isinstance(key, tuple) and len(key) == 1:
+                    bucket = merged.get(key[0])
+                if bucket is not None:
+                    why = (f": min_share merged that category into the "
+                           f"{bucket!r} wedge, which pull= can name instead")
+            raise ValueError(
+                f"{owner}: pull= key {key!r} matches no wedge{why}. A key "
+                f"is a root category or a tuple path from the root ring."
+            )
+        if isinstance(value, bool) or not isinstance(value, numbers.Real):
+            raise TypeError(
+                f"{owner}: pull= value for {key!r} must be a number (a "
+                f"fraction of the radius); got {type(value).__name__} "
+                f"{value!r}."
+            )
+        value = float(value)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(
+                f"{owner}: pull= value for {key!r} must be a finite, "
+                f"non-negative fraction of the radius; got {value!r}."
+            )
+        asked[path] = value
+    return asked
+
+
+def resolve_pull_vectors(
+    pull: Dict[Any, Any],
+    nodes: Sequence[WedgeNode],
+    places: Sequence[WedgePlacement],
+    *,
+    owner: str,
+    merged: Optional[Dict[Any, Any]] = None,
+) -> Dict[Path, Tuple[float, float]]:
+    """The translation of every node under a dict ``pull``, in data units.
+
+    Keys and values are validated by :func:`resolve_pull_keys`. Each named
+    node moves ``pull`` times the radius along its own mid-ray and takes
+    its whole subtree with it, so a node's vector is the sum of its own
+    and its ancestors'. Unnamed nodes without a named ancestor get
+    ``(0.0, 0.0)``.
+    """
+    return sum_pull_vectors(
+        resolve_pull_keys(pull, nodes, owner=owner, merged=merged),
+        nodes, places)
+
+
+def sum_pull_vectors(
+    asked: Dict[Path, float],
+    nodes: Sequence[WedgeNode],
+    places: Sequence[WedgePlacement],
+) -> Dict[Path, Tuple[float, float]]:
+    """Every node's summed translation for pulls already keyed by path
+    (see :func:`resolve_pull_vectors`)."""
+    place_of = {p.node.path: p for p in places}
+    vectors: Dict[Path, Tuple[float, float]] = {}
+
+    def vector(node: WedgeNode) -> Tuple[float, float]:
+        if node.path in vectors:
+            return vectors[node.path]
+        own = pull_offset(place_of[node.path], asked.get(node.path, 0.0))
+        if node.parent is None:
+            # Taken as is, not added to (0, 0): a pie's vectors are then
+            # bit for bit the offsets it has always been drawn with.
+            out = own
+        else:
+            px, py = vector(node_of[node.parent])
+            out = (px + own[0], py + own[1])
+        vectors[node.path] = out
+        return out
+
+    node_of = {n.path: n for n in nodes}
+    for node in nodes:
+        vector(node)
+    return vectors
+
+
+def merged_categories(
+    frame: pd.DataFrame,
+    source_frame: pd.DataFrame,
+    level: str,
+    bucket_label: Any,
+) -> Dict[Any, Any]:
+    """The categories of ``source_frame`` that ``frame`` relabels as
+    ``bucket_label``, each mapped to it. ``frame`` must be the bucketed
+    copy of ``source_frame``, row for row."""
+    if len(frame) != len(source_frame):
+        return {}
+    into = (frame[level] == bucket_label).to_numpy(dtype=bool)
+    originals = source_frame[level].to_numpy()[into]
+    return {k: bucket_label for k in pd.unique(originals)
+            if not (k == bucket_label)}
 
 
 def numeric_hue_cmap(
@@ -106,6 +234,61 @@ def numeric_hue_cmap(
     )
 
 
+def warn_order_omissions(
+    frame: pd.DataFrame,
+    order_map: Dict[str, Sequence[Any]],
+    *,
+    owner: str,
+    root: str,
+) -> None:
+    """Warn when an ``order=`` leaves out categories present in the data.
+
+    Checked for every column in ``order_map``; ``root`` names the root
+    column. The two cases differ, so the messages do.
+
+    - **Root column.** The omitted categories are filtered out and the
+      wedges that remain renormalise to a full circle, so the chart reads
+      as 100% of a whole it is not showing all of -- and an ``annotate=``
+      share would print the renormalised figure.
+    - **Deeper column.** Nothing renormalises: a parent keeps the value of
+      everything beneath it, so an omitted category leaves its share as an
+      empty arc inside the parent wedge, and the ring sums to less than a
+      full circle.
+
+    Dropping a category is a legitimate thing to want, so this warns
+    rather than raising. A column the frame lacks is skipped; the tree
+    builder reports it.
+
+    Called directly from the public function, so ``stacklevel=3`` points
+    the warning at the user's call.
+    """
+    for column, listed_values in order_map.items():
+        if column not in frame.columns:
+            continue
+        listed = set(listed_values)
+        dropped = [k for k in dict.fromkeys(frame[column].dropna().tolist())
+                   if k not in listed]
+        if not dropped:
+            continue
+        plural = "y" if len(dropped) == 1 else "ies"
+        if column == root:
+            message = (
+                f"{owner}: order= omits {len(dropped)} categor{plural} "
+                f"present in the data: {dropped!r}. They are dropped and "
+                f"the remaining wedges renormalise to a full circle, so "
+                f"the chart -- and any annotate= percentage -- reads as "
+                f"100% of a whole it is not showing all of.")
+        else:
+            message = (
+                f"{owner}: order= omits {len(dropped)} categor{plural} of "
+                f"{column!r} present in the data: {dropped!r}. They are "
+                f"left out of that ring, and their share stays as an "
+                f"empty arc within their parent wedge, so each parent "
+                f"still spans its full value and the ring does not "
+                f"fill the circle.")
+        warnings.warn(message, UserWarning, stacklevel=3)
+
+
 def render_wedge_chart(
     ax: Axes,
     frame: pd.DataFrame,
@@ -140,6 +323,7 @@ def render_wedge_chart(
     sibling_range: float = 0.0,
     bucket_label: Optional[str] = None,
     bucket_color: Optional[str] = None,
+    chart: str = "pie",
 ) -> WedgeMeta:
     """Draw a wedge chart on ``ax`` and stash its legend entries.
 
@@ -149,10 +333,15 @@ def render_wedge_chart(
     style argument arrives resolved (``gap`` in millimetres, already
     validated). ``bucket_label`` names the caller's ``min_share`` bucket,
     which sorts last and is painted ``bucket_color`` unless ``palette``
-    names it; ``None`` means nothing was bucketed.
+    names it; ``None`` means nothing was bucketed. ``chart`` (``"pie"`` or
+    ``"sunburst"``) records on the meta which public function drew the
+    chart; it is stated by the caller and never derived from ``owner``.
 
     Sets ``ax._publiplots_wedge_meta`` and returns it. Does not annotate.
     """
+    if chart not in ("pie", "sunburst"):
+        raise ValueError(
+            f"chart must be 'pie' or 'sunburst'; got {chart!r}")
     if (bucket_label is None) != (bucket_color is None):
         raise ValueError(
             "bucket_label and bucket_color must be given together")
@@ -175,7 +364,7 @@ def render_wedge_chart(
         nodes = [
             WedgeNode(path=n.path, value=n.value, depth=n.depth,
                       parent=n.parent, sibling_index=i,
-                      sibling_count=len(ordered))
+                      sibling_count=len(ordered), own_value=n.own_value)
             for i, n in enumerate(ordered)
         ]
     total = total_value(nodes)
@@ -184,7 +373,7 @@ def render_wedge_chart(
 
     hue_values, hue_continuous = resolve_hue_values(
         frame, levels, hue, nodes, param_name="hue",
-        bucket_label=bucket_label)
+        bucket_label=bucket_label, owner=owner)
     hue_levels = list(dict.fromkeys(
         hue_values[n.path] for n in nodes if n.path in hue_values))
     hue_norm = None
@@ -240,9 +429,13 @@ def render_wedge_chart(
             seen = set(listed)
             hue_levels = listed + [v for v in hue_levels if v not in seen]
 
+    # A numeric hue is a measurement the colorbar reads back, so a
+    # descendant inherits its root's colour unshaded: the depth and
+    # sibling knobs would shift a wedge off the value it encodes.
     colors = derive_colors(nodes, hue_values, palette_map,
-                           depth_range=depth_range,
-                           sibling_range=sibling_range,
+                           depth_range=0.0 if hue_continuous else depth_range,
+                           sibling_range=(0.0 if hue_continuous
+                                          else sibling_range),
                            n_levels=len(levels), hue_column=hue_column)
 
     # Hatch is resolved from its own column, the same way hue is, rather
@@ -256,7 +449,7 @@ def render_wedge_chart(
     if hatch is not None:
         hatch_values, _ = resolve_hue_values(
             frame, levels, hatch, nodes, param_name="hatch",
-            bucket_label=bucket_label)
+            bucket_label=bucket_label, owner=owner, allow_level=True)
         hatch_levels = list(dict.fromkeys(
             hatch_values[n.path] for n in nodes if n.path in hatch_values))
         if hatch_order is not None:
@@ -277,37 +470,57 @@ def render_wedge_chart(
     # is translated, every one grows outward by the same distance and is
     # inset by it, so all neighbours part by the same gap (`even_explode`).
     r_outer = max((p.r_outer for p in places), default=1.0)
+    # A pulled node takes its subtree with it, so a node's translation is
+    # the sum of its own vector and its ancestors' (`resolve_pull_vectors`).
     if pull is None:
-        pull_map = {}
+        vectors: Dict[Path, Tuple[float, float]] = {}
+        record_pull: Dict[Path, float] = {}
         explode = 0.0
     elif isinstance(pull, dict):
-        pull_map = {n.path: float(pull.get(n.path[0], 0.0)) for n in nodes}
+        merged = (merged_categories(frame, source_frame, levels[0],
+                                    bucket_label)
+                  if bucket_label is not None else None)
+        # The records carry the value asked for at each node, not the
+        # length of its summed vector.
+        record_pull = resolve_pull_keys(pull, nodes, owner=owner,
+                                        merged=merged)
+        vectors = sum_pull_vectors(record_pull, nodes, places)
         explode = 0.0
     else:
         pull = check_scalar_pull(pull, owner=owner)
-        # The translation map stays empty: records still carry the value
-        # asked for, while the geometry takes it from `explode`.
-        pull_map = {}
+        # No wedge is translated: records still carry the value asked
+        # for, while the geometry takes it from `explode`.
+        vectors = {}
         explode = even_explode(pull, r_outer)
+        record_pull = {n.path: pull for n in nodes}
 
     patches = draw_wedges(
-        ax, places, colors, hatches, center=(0.0, 0.0), pull=pull_map,
+        ax, places, colors, hatches, center=(0.0, 0.0), vectors=vectors,
         alpha=alpha, edgecolor=edgecolor, linewidth=linewidth,
         explode=explode,
     )
     split_face_and_edge_alpha(patches, alpha=alpha, edgecolor=edgecolor)
 
-    record_pull = (pull_map if not explode
-                   else {n.path: float(pull) for n in nodes})
-
-    # Room for the furthest rim: a translated wedge reaches `pull` past
-    # the radius, and an evenly exploded one has its rim at r + t.
-    max_pull = max(pull_map.values(), default=0.0)
-    apply_cell_limits(ax, radius=r_outer + max(max_pull, explode) + 0.05,
+    # Room for the furthest rim: a translated wedge reaches the length of
+    # its summed vector past the radius, and an evenly exploded one has
+    # its rim at r + t on a pie, r + (2n - 1)t on n rings.
+    # A root's vector is its own pull along its mid-ray, so its length is
+    # that pull: taken exactly, because hypot() is an ulp off it about one
+    # time in seven, which would move a pie's limits from where its
+    # `max(pull)` has always put them.
+    max_pull = max(
+        (record_pull.get(n.path, 0.0) if n.parent is None
+         else math.hypot(*vectors[n.path]) for n in nodes if vectors),
+        default=0.0)
+    explode_reach = (2 * len(levels) - 1) * explode
+    apply_cell_limits(ax,
+                      radius=r_outer + max(max_pull, explode_reach) + 0.05,
                       aspect=aspect)
     # Only once the limits are framed does a data unit have a fixed size
     # in millimetres to convert the gap with.
-    apply_gap(ax, patches, gap, explode=explode)
+    apply_gap(ax, patches, gap, explode=explode,
+              nodes=nodes if len(levels) > 1 else None,
+              n_levels=len(levels))
 
     # Built last, so the records are read off the patches as they are
     # finally drawn: after the gap, and after any explode.
@@ -315,7 +528,7 @@ def render_wedge_chart(
         places, patches, colors, hatches, record_pull,
         total=total, donut=donut, center=(0.0, 0.0), levels=levels,
         hue_active=True, hue_continuous=hue_continuous,
-        source_frame=source_frame,
+        source_frame=source_frame, chart=chart,
     )
 
     if donut and center_label is not None:

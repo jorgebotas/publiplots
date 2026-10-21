@@ -59,7 +59,8 @@ def test_numeric_hue_is_continuous_and_aggregates_by_mean():
     values, continuous = resolve_hue_values(df, levels, "score", nodes)
     assert continuous is True
     assert values[("A",)] == pytest.approx(1.5)     # mean of 1.0 and 2.0
-    assert values[("A", "x")] == pytest.approx(1.0)
+    # A deeper node takes its root's value: the column is a root attribute.
+    assert values[("A", "x")] == pytest.approx(1.5)
 
 
 def test_one_level_colours_each_wedge_by_its_own_category():
@@ -164,7 +165,7 @@ def test_bool_hue_is_categorical():
 def test_hue_naming_a_non_root_level_raises():
     df, levels = _nested(), ["k", "s"]
     nodes = build_nodes(df, levels, "n")
-    with pytest.raises(ValueError, match=r"hue=.*outermost"):
+    with pytest.raises(ValueError, match=r"^pieplot: hue='s' names ring 1"):
         resolve_hue_values(df, levels, "s", nodes)
 
 
@@ -172,7 +173,7 @@ def test_missing_hue_value_warns_and_falls_back_to_grey():
     """A NaN in the hue column drops that node from resolve_hue_values;
     derive_colors must still colour it, but say so once per call."""
     df = pd.DataFrame({
-        "a": ["A", "A"], "b": ["x", "y"],
+        "a": ["A", "B"], "b": ["x", "y"],
         "region": [None, "north"], "n": [1.0, 1.0],
     })
     nodes = build_nodes(df, ["a", "b"], "n")
@@ -190,3 +191,71 @@ def test_missing_hue_value_warns_and_falls_back_to_grey():
 def test_sunburst_rcparams_defaults():
     assert pp.rcParams["sunburst.depth_range"] == 0.45
     assert pp.rcParams["sunburst.sibling_range"] == 0.14
+
+
+def test_check_shading_bounds_the_total_span():
+    import pytest
+    from publiplots.plot.wedge.colour import check_shading
+    check_shading(0.6, 0.4, owner="sunburstplot")
+    with pytest.raises(ValueError, match=r"^sunburstplot: depth_range"):
+        check_shading(0.7, -0.4, owner="sunburstplot")
+
+
+def test_continuous_hue_is_the_per_root_row_mean_to_the_last_bit():
+    """One level must reproduce the old per-node mean exactly: the pie
+    gallery's output bytes hang on it, and GroupBy.mean sums in a different
+    order than Series.mean (it differs in the last bits on this data)."""
+    import numpy as np
+    rng = np.random.default_rng(0)
+    for _ in range(50):
+        df = pd.DataFrame({
+            "k": rng.choice(list("ABCDE"), 40),
+            "score": rng.normal(size=40) * 10.0 ** rng.integers(-3, 4, 40),
+            "n": 1.0,
+        })
+        nodes = build_nodes(df, ["k"], "n")
+        values, continuous = resolve_hue_values(df, ["k"], "score", nodes)
+        assert continuous is True
+        for node in nodes:
+            expected = float(df.loc[df["k"] == node.path[0], "score"].mean())
+            assert values[node.path] == expected
+
+
+def test_not_constant_within_names_the_root_and_the_values_found():
+    df = _nested().assign(region=["north", "south", "south", "south"])
+    nodes = build_nodes(df, ["k", "s"], "n")
+    with pytest.raises(ValueError) as err:
+        resolve_hue_values(df, ["k", "s"], "region", nodes, owner="sunburstplot")
+    msg = str(err.value)
+    assert msg.startswith("sunburstplot: hue='region' is not constant within "
+                          "the wedge ('A',)")
+    assert "'north'" in msg and "'south'" in msg
+
+
+def test_every_message_begins_with_the_owner():
+    df, levels = _nested(), ["k", "s"]
+    nodes = build_nodes(df, levels, "n")
+    with pytest.raises(ValueError, match=r"^sunburstplot: hatch='zzz'"):
+        resolve_hue_values(df, levels, "zzz", nodes, param_name="hatch",
+                           owner="sunburstplot")
+    with pytest.raises(ValueError, match=r"^sunburstplot: hue='s' names ring 1"):
+        resolve_hue_values(df, levels, "s", nodes, owner="sunburstplot")
+
+
+def test_allow_level_hands_ring_k_values_to_ring_k_and_deeper_only():
+    df, levels = _nested(), ["k", "s"]
+    nodes = build_nodes(df, levels, "n")
+    values, continuous = resolve_hue_values(df, levels, "s", nodes,
+                                            allow_level=True)
+    assert continuous is False
+    assert values == {("A", "x"): "x", ("A", "y"): "y",
+                      ("B", "z"): "z", ("B", "w"): "w"}
+
+
+def test_a_root_attribute_is_inherited_by_every_node_of_the_root():
+    df, levels = _nested(), ["k", "s"]
+    nodes = build_nodes(df, levels, "n")
+    values, _ = resolve_hue_values(df, levels, "region", nodes)
+    assert values == {("A",): "north", ("A", "x"): "north",
+                      ("A", "y"): "north", ("B",): "south",
+                      ("B", "z"): "south", ("B", "w"): "south"}

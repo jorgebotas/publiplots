@@ -1,11 +1,13 @@
 """Tree building and angular layout for the wedge renderer."""
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from publiplots.plot.wedge.geometry import (
     build_nodes,
+    has_children,
     layout,
     total_value,
 )
@@ -221,3 +223,115 @@ def test_build_nodes_names_its_owner_in_errors():
         build_nodes(frame, ["k"], "v", owner="sunburstplot")
     with pytest.raises(ValueError, match=r"^pieplot: negative values"):
         build_nodes(frame, ["k"], "v")
+
+
+def _by_path(nodes):
+    return {n.path: n for n in nodes}
+
+
+def test_ragged_rows_end_their_branch_and_still_count():
+    df = pd.DataFrame({
+        "a": ["P", "P", "P", "Q", "Q"],
+        "b": ["p1", "p1", None, "q1", "q2"],
+        "c": ["x", "y", None, "u", None],
+        "n": [10.0, 5.0, 15.0, 20.0, 40.0],
+    })
+    nodes = build_nodes(df, ["a", "b", "c"], "n")
+    by = _by_path(nodes)
+    assert by[("P",)].value == 30.0 and by[("P",)].own_value == 15.0
+    assert by[("Q",)].value == 60.0 and by[("Q",)].own_value == 0.0
+    assert by[("Q", "q2")].value == 40.0 and by[("Q", "q2")].own_value == 40.0
+    assert ("Q", "q2") not in has_children(nodes)
+    assert ("P",) in has_children(nodes)
+    # Children are listed first in draw order; P's own share is not a node.
+    assert [n.path for n in nodes if n.parent == ("P",)] == [("P", "p1")]
+
+
+def test_a_skipped_ring_raises_naming_the_row():
+    df = pd.DataFrame({"a": ["P"], "b": [None], "c": ["x"], "n": [1.0]},
+                      index=["r7"])
+    with pytest.raises(ValueError, match=r"^sunburstplot: .*'r7'"):
+        build_nodes(df, ["a", "b", "c"], "n", owner="sunburstplot")
+
+
+def test_a_skipped_ring_names_a_default_index_row_as_a_plain_number():
+    df = pd.DataFrame({"a": ["P", "P"], "b": ["s", None], "c": ["x", "y"],
+                       "n": [1.0, 1.0]})
+    with pytest.raises(ValueError, match=r"^sunburstplot: row 1 has"):
+        build_nodes(df, ["a", "b", "c"], "n", owner="sunburstplot")
+
+
+def test_categorical_columns_create_only_observed_nodes():
+    cats = [f"k{i}" for i in range(200)]
+    df = pd.DataFrame({
+        "a": pd.Categorical(["A", "B"], categories=["A", "B", "C"]),
+        "b": pd.Categorical(["k1", "k2"], categories=cats),
+        "n": [1.0, 2.0],
+    })
+    nodes = build_nodes(df, ["a", "b"], "n")
+    assert [n.path for n in nodes] == [("A",), ("A", "k1"), ("B",), ("B", "k2")]
+
+
+def _previous_walk(frame, level, value, order=None, sort=False):
+    """The one-level pie walk build_nodes replaced: a pandas groupby sum
+    per category, in ``_categorical_order``, as (path, value, depth,
+    parent, sibling_index, sibling_count) tuples."""
+    from publiplots.annotate._builders import _categorical_order
+    frame = frame.dropna(subset=[value, level])
+    sums = frame.groupby([level], observed=True, dropna=True)[value].sum()
+    keys = list(_categorical_order(frame[level], (order or {}).get(level)))
+    entries = [(k, float(sums.get(k, 0.0))) for k in keys]
+    entries = [(k, v) for k, v in entries if v > 0]
+    if sort:
+        entries.sort(key=lambda kv: kv[1], reverse=True)
+    return [((k,), v, 0, None, i, len(entries))
+            for i, (k, v) in enumerate(entries)]
+
+
+def _as_tuples(nodes):
+    return [(n.path, n.value, n.depth, n.parent, n.sibling_index,
+             n.sibling_count) for n in nodes]
+
+
+def test_one_level_matches_the_previous_walk_exactly():
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame({
+        "k": pd.Categorical(rng.choice(list("dcab"), 5_000),
+                            categories=list("abcde")),
+        "v": rng.random(5_000) * 1e3,
+    })
+    for kw in [{}, {"sort": True}, {"order": {"k": list("bdac")}}]:
+        nodes = build_nodes(df, ["k"], "v", **kw)
+        assert _as_tuples(nodes) == _previous_walk(df, "k", "v", **kw)
+        assert all(n.own_value == n.value for n in nodes)
+    assert [n.path[0] for n in build_nodes(df, ["k"], "v")] == list("abcd")
+
+
+def test_one_level_values_are_the_pandas_groupby_sum_bit_for_bit():
+    # Many rows per category: a running Python total drifts from pandas'
+    # compensated sum by several ulps here.
+    rng = np.random.default_rng(2)
+    cats = [f"c{i:02d}" for i in range(20)]
+    df = pd.DataFrame({"k": rng.choice(cats, 200_000),
+                       "v": rng.random(200_000) * 1e3})
+    expected = df.groupby("k", observed=True)["v"].sum()
+    nodes = build_nodes(df, ["k"], "v")
+    assert len(nodes) == 20
+    for n in nodes:
+        assert n.value == float(expected[n.path[0]])
+        assert n.own_value == n.value
+
+
+def test_build_nodes_is_fast_on_large_categorical_trees():
+    import time
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "a": pd.Categorical(rng.choice([f"a{i}" for i in range(10)], 100_000)),
+        "b": pd.Categorical(rng.choice([f"b{i}" for i in range(100)], 100_000)),
+        "c": pd.Categorical(rng.choice([f"c{i}" for i in range(1000)], 100_000)),
+        "n": rng.random(100_000),
+    })
+    t0 = time.perf_counter()
+    build_nodes(df, ["a", "b", "c"], "n")
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 10.0
