@@ -176,9 +176,11 @@ def sunburstplot(
         caps its side of a ray, the gap on that side narrows, and every
         wedge on the same side of that ray, parent or child, takes the
         same inset, so the seam stays straight through the rings. A
-        ragged leaf's rim, the outermost rim and the edge of the hole are
-        never inset. Defaults to ``rcParams["pie.gap"]`` (``0.0``, no
-        gap).
+        wedge wider than half the circle keeps a small hole of radius
+        ``gap / 2`` (plus any explode) at the centre, so its edges keep
+        the gap there too. A ragged leaf's rim, the outermost rim and the
+        edge of the hole are otherwise never inset. Defaults to
+        ``rcParams["pie.gap"]`` (``0.0``, no gap).
     depth_range : float, optional
         Total blend of the colour toward white at the outermost ring.
         Intermediate rings interpolate linearly and the root ring is the

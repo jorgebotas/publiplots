@@ -645,3 +645,77 @@ def test_annotate_still_labels_a_pie_axes():
     ax = pp.pieplot(data=TREE, x="a", y="n", legend=False)
     pp.annotate(ax, "wedge_values")
     assert len(ax.texts) == 2
+
+
+# --- A root wedge wider than half the circle keeps its gap -----------------
+
+def _dominant_root(span, rings):
+    """Root P spans ``span`` degrees, split in two below; Q is the rest."""
+    big = span / 360.0 * 100.0
+    df = pd.DataFrame({"a": ["P", "P", "Q"], "b": ["p1", "p2", "q1"],
+                       "c": ["x", "y", "z"],
+                       "n": [big / 2, big / 2, 100.0 - big]})
+    return df, ["a", "b", "c"][:rings]
+
+
+def test_a_dominant_root_keeps_its_full_gap_and_a_straight_seam():
+    df = pd.DataFrame({"a": ["P", "Q"], "b": ["p", "q"], "c": ["x", "y"],
+                       "n": [97.0, 3.0]})
+    ax, meta = _draw(df, ["a", "b", "c"], gap=1.0)
+    by = {r.path: r for r in meta.wedges}
+    root, ring1 = by[("P",)], by[("P", "p")]
+    h = 0.5 / _mm_per_unit(ax)
+    assert root.patch.get_drawn_insets() == pytest.approx((h, h))
+    assert root.r_inner == pytest.approx(h)        # the hole the gap needs
+    for angle in (root.theta0, root.theta1):
+        assert _offset_from_ray(root.patch, angle) == pytest.approx(h)
+        assert _offset_from_ray(ring1.patch, angle) == pytest.approx(h)
+
+
+@pytest.mark.parametrize("pull", [None, 0.05])
+@pytest.mark.parametrize("rings", [2, 3])
+@pytest.mark.parametrize("span", [300.0, 350.0, 355.0, 359.0])
+def test_a_dominant_root_never_vanishes(span, rings, pull):
+    df, levels = _dominant_root(span, rings)
+    ax, meta = _draw(df, levels, gap=1.0, pull=pull)
+    root = next(r for r in meta.wedges if r.path == ("P",))
+    assert root.theta1 - root.theta0 == pytest.approx(span)
+    inset = 0.5 / _mm_per_unit(ax) + (0.05 if pull else 0.0)
+    assert root.patch.insets == pytest.approx((inset, inset))
+    assert root.patch.get_drawn_insets() == pytest.approx((inset, inset))
+    assert root.r_inner == pytest.approx(inset)
+    for angle in (root.theta0, root.theta1):
+        assert _offset_from_ray(root.patch, angle) == pytest.approx(inset)
+
+
+def test_a_gap_wider_than_the_root_ring_leaves_the_root_as_it_was():
+    # The rim of Q lies inside its inset: raising the inner radius to the
+    # inset would give a negative width. Q stays the plain uninset wedge.
+    from matplotlib.patches import Wedge
+    fig, ax = pp.subplots(axes_size=(20, 20))
+    meta = render_wedge_chart(
+        ax, TREE, ["a", "b", "c"], owner="sunburstplot", source_frame=TREE,
+        y="n", hue=None, order_map=None, sort=False, hue_order=None,
+        start_angle=90.0, direction="clockwise", donut=0.0, pull=None,
+        gap=10.0, palette=None, hatch=None, hatch_map=None, hatch_order=None,
+        color="#5d83c3", edgecolor=None, linewidth=0.75, alpha=0.1,
+        center_label=None, aspect="cell", legend=False, legend_kws=None,
+        title="", depth_range=0.45, sibling_range=0.14)
+    q = next(r for r in meta.wedges if r.path == ("Q",))
+    assert q.theta1 - q.theta0 > 180.0
+    assert q.patch.r <= q.patch.inset                # the guarded case
+    assert q.patch.width == pytest.approx(q.patch.r)  # no negative width
+    assert (q.r_inner, q.r_outer) == pytest.approx((0.0, 1.0 / 6))
+    assert q.patch.get_drawn_insets() == (0.0, 0.0)
+    # The outline as drawn, sampled along every Bezier segment.
+    ts = np.linspace(0.0, 1.0, 9)
+    drawn = np.concatenate([curve.point_at_t(ts) if curve.degree else
+                            curve.control_points
+                            for curve, _ in q.patch.get_path().iter_bezier()])
+    radii = np.hypot(*(drawn - np.asarray(q.patch.center)).T)
+    assert radii.max() <= q.r_outer + 1e-3 * q.r_outer
+    assert radii.min() >= q.r_inner - 1e-12
+    plain = Wedge(q.patch.center, q.patch.r, q.patch.theta1, q.patch.theta2,
+                  width=q.patch.width)
+    np.testing.assert_array_equal(q.patch.get_path().vertices,
+                                  plain.get_path().vertices)

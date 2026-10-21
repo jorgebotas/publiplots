@@ -596,6 +596,12 @@ def apply_gap(ax: Axes, patches: Sequence[GappedWedge], gap: float,
       degrees on that side of that ray, in every ring. A parent and its
       first or last child share a side, so the seam runs straight
       through the rings even where a thin wedge narrows it.
+    - **A wedge wider than half the circle** whose inner radius lies
+      inside its larger edge inset has that inner radius moved out to
+      the inset, so it ends in an inner arc and keeps both edge gaps
+      instead of being drawn uninset: a root wedge with no hole keeps
+      a hole of radius ``gap / 2`` plus any explode. A wedge whose rim
+      lies inside the inset is left as it is, drawn uninset.
 
     An explode without a gap still runs this, so exploded slivers share
     their caps too; the radial insets are then 0.
@@ -638,3 +644,15 @@ def apply_gap(ax: Axes, patches: Sequence[GappedWedge], gap: float,
     for patch in patches:
         patch.set_insets(min(full, caps[(ray_key(patch.theta1), 1)]),
                          min(full, caps[(ray_key(patch.theta2), -1)]))
+        # A reflex wedge reaching inside its inset would end in an apex
+        # past its own rim and be drawn uninset; give it a hole of the
+        # inset's radius so its edges keep the gap. Not where the rim
+        # itself lies inside the inset: that wedge is drawn uninset.
+        span = patch.theta2 - patch.theta1
+        if span <= 180.0 or abs(span - 360.0) <= 1e-12:
+            continue
+        h_max = patch.inset
+        r_in = patch.r - patch.width
+        if (r_in < h_max and patch.r > h_max
+                and arc_survives_inset(patch.r, h_max)):
+            patch.set_radial_insets(h_max - r_in, 0.0)
