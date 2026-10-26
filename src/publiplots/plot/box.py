@@ -256,32 +256,37 @@ def boxplot(
     new_patches = tracker.get_new_patches()
     new_lines = tracker.get_new_lines()
 
-    # Build a map of position -> color from patches
-    # Position is on the categorical axis (x or y)
-    patch_colors = {}
-    for patch in new_patches:
-        verts = patch.get_path().vertices
-        if categorical_axis == "x":
-            pos = round(np.mean(verts[:, 0]), 2)
-        else:
-            pos = round(np.mean(verts[:, 1]), 2)
-        patch_colors[pos] = patch.get_facecolor()
+    # Map each line to its own box's color. matplotlib's bxp draws every
+    # box patch immediately before that box's whiskers, caps, median and
+    # fliers, so in the axes' draw order each line belongs to the nearest
+    # box patch before it. Position cannot do this: boxes that share one
+    # (dodge=False with hue != categorical axis) would collapse to a single
+    # color.
+    patch_ids = {id(p) for p in new_patches}
+    line_ids = {id(l) for l in new_lines}
+    line_box_colors = {}
+    box_color = None
+    for artist in ax.get_children():
+        if id(artist) in patch_ids:
+            box_color = artist.get_facecolor()
+        elif id(artist) in line_ids and box_color is not None:
+            line_box_colors[id(artist)] = box_color
 
     # Resolve markeredgewidth for outliers
     flierprops = kwargs.get("flierprops", {})
     markeredgewidth = flierprops.get("markeredgewidth", None)
     markeredgewidth = resolve_param("edgewidth", markeredgewidth)
 
-    # Recolor lines based on position and edgecolor
+    # Recolor lines based on their box and edgecolor
     for line in new_lines:
         line_data = line.get_xdata() if categorical_axis == "x" else line.get_ydata()
         if len(line_data) == 0:
             continue
         is_flier = line.get_marker() and line.get_marker() != 'None'
-        if patch_colors:
-            pos = np.mean(line_data)
-            closest_pos = min(patch_colors.keys(), key=lambda p: abs(p - pos))
-            base_color = patch_colors[closest_pos]
+        if new_patches:
+            if id(line) not in line_box_colors:
+                continue
+            base_color = line_box_colors[id(line)]
         else:
             # fill=False: seaborn draws no patches (the box outline is a
             # closed Line2D) and strokes each line in its own box's palette

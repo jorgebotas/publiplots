@@ -101,6 +101,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saturated palette entry could put white text on a body drawn at
   `alpha=0.1`. They now use the body's drawn face.
 
+- **Filled `pp.boxplot` boxes that share a position keep their own colour
+  on their whiskers, caps, median and fliers.** With `dodge=False` and a
+  hue other than the categorical axis, every line looked up its box colour
+  by position, and boxes at the same position collided in that map, so
+  each one's lines took the last box's colour. Lines now take the colour of
+  their own box by draw order — matplotlib's `bxp` draws each box patch
+  immediately before that box's lines — which position cannot distinguish.
+  Every other configuration renders identically. The unfilled case was
+  fixed in #278.
+
 ### Docs
 
 - **The `annotate=` examples in `pp.boxplot` and `pp.violinplot` now run.**
