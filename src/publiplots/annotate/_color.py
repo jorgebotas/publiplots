@@ -8,6 +8,7 @@ from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 
 from publiplots.annotate._cache import BarRecord
+from publiplots.themes.rcparams import INK
 
 
 RGBA = Tuple[float, float, float, float]
@@ -39,13 +40,19 @@ def white_wins(face_rgba: RGBA, bg_rgba: RGBA) -> bool:
 
 def contrast_ink(face_rgba: RGBA, bg_rgba: RGBA) -> RGBA:
     """Ink with the higher WCAG contrast ratio against ``face_rgba``
-    composited over ``bg_rgba``: white, or ``rcParams["text.color"]``.
+    composited over ``bg_rgba``: white on a dark fill; on a light one,
+    ``rcParams["text.color"]`` when it is itself dark, else INK.
 
-    See `white_wins` for the rule.
+    See `white_wins` for the rule, applied to the fill and then to
+    ``text.color``: a light ``text.color`` (``dark_background`` sets white)
+    on a light fill would repeat the choice white just lost.
     """
     if white_wins(face_rgba, bg_rgba):
         return _WHITE
-    return to_rgba(plt.rcParams["text.color"])
+    text = to_rgba(plt.rcParams["text.color"])
+    if white_wins((*text[:3], 1.0), _WHITE):
+        return text
+    return to_rgba(INK)
 
 
 def _effective_rgb(face_rgba: RGBA, bg_rgba: RGBA) -> Tuple[float, float, float]:
