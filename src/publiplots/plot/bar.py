@@ -594,6 +594,7 @@ def barplot(
         hue=hue,
         hatch=hatch,
         categorical_axis=categorical_axis,
+        value_axis=y if categorical_axis == x else x,
         linewidth=linewidth,
         color=color,
         edgecolor=edgecolor,
@@ -733,6 +734,7 @@ def _paint_bars(
         hue: Optional[str],
         hatch: Optional[str],
         categorical_axis: str,
+        value_axis: Optional[str],
         linewidth: float,
         color: Optional[str],
         edgecolor: Optional[str],
@@ -761,6 +763,12 @@ def _paint_bars(
     (issue #105).
     """
     bar_patches = [p for p in patches if hasattr(p, "get_height")]
+    # Seaborn drops rows with a NaN value before drawing, so a group whose
+    # values are all NaN gets no patch. Drop them here too, as
+    # `build_from_barplot_call` does, or that group takes a triple with no
+    # patch and every later bar is painted one group behind (issue #291).
+    if value_axis is not None and value_axis in data.columns:
+        data = data[data[value_axis].notna()]
     triples = list(split.iter_draw_order(data))
 
     for idx, patch in enumerate(bar_patches):

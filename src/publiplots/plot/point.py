@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from typing import Optional, Tuple, Union, Dict, List
 
+from publiplots.annotate._builders import _categorical_order
 from publiplots.themes.rcparams import resolve_param
 from publiplots.themes.colors import resolve_palette_map
 from publiplots.utils import create_legend_handles
@@ -269,18 +270,24 @@ def pointplot(
         # request defaults when no explicit list/dict is provided; pass False
         # to skip marker resolution entirely.
         marker_arg = False if markers is False else (markers if markers is not None else True)
+        # seaborn applies `markers` / `linestyles` lists in its own level
+        # order: `hue_order`, else Categorical categories, else uniques
+        # (sorted when numeric). Key the maps and rebuild the lists in that
+        # order; data order handed every series another level's style
+        # whenever the two differed (#292).
+        seaborn_levels = _categorical_order(data[hue], hue_order)
         marker_map, linestyle_map = resolve_style_maps(
             style=hue,
             data=data,
-            style_order=list(hue_values),
+            style_order=seaborn_levels,
             markers=marker_arg,
             dashes=linestyles,
         )
 
-        # Convert back to lists for seaborn (one entry per unique hue value).
+        # Convert back to lists for seaborn, one entry per level in its order.
         if markers is not False:
-            markers = [marker_map[val] for val in data[hue].unique()]
-        linestyles = [linestyle_map[val] for val in data[hue].unique()]
+            markers = [marker_map[val] for val in seaborn_levels]
+        linestyles = [linestyle_map[val] for val in seaborn_levels]
 
     # Prepare err_kws with linewidth
     if err_kws is None:
