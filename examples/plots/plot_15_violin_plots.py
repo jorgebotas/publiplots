@@ -196,7 +196,9 @@ pp.show()
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ``annotate=True`` prints each median on the forward side of its line —
 # above it for vertical violins, right of it for horizontal ones. Split
-# halves put their labels against the seam, each on its own side.
+# halves put their labels against the seam, each on its own side. A
+# vertical violin narrower than its slot — dodged, split by hue, or halved
+# by ``side=`` — turns its labels 90° so they fit.
 
 fig, axes = pp.subplots(1, 2, axes_size=(70, 55))
 pp.violinplot(

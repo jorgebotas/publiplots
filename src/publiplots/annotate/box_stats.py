@@ -31,6 +31,10 @@ from publiplots.annotate._shared import (
 _VALID_ANCHORS = {"top", "bottom", "left", "right", "center", "inside"}
 _DEFAULT_ANCHOR = "right"
 _DEFAULT_STATS: Tuple[str, ...] = ("median",)
+# A half-body's label clears its seam by this much, whatever `offset` is:
+# just past half the 0.75 pt edge stroke, so a ~2.5 mm label still fits
+# beside a narrow half without reaching its neighbour's.
+_SEAM_GAP_MM = 0.25
 
 
 def _toward_display(ax: Axes, axis: str, half: str) -> float:
@@ -51,7 +55,7 @@ def _resolve_inside(
     """``anchor="inside"``: offset_mm on the forward side of the stat line
     (above it for orient="v", right of it for "h"), never flipping. A full
     body centres the label; a half-body puts it against its seam, on its
-    own side, offset_mm from the seam.
+    own side, ``_SEAM_GAP_MM`` from the seam.
 
     The seam is derived from the body's own extents, never from the
     category's integer position: a split violin without hue, for one, has
@@ -69,10 +73,13 @@ def _resolve_inside(
             else box.center_pos + box.cat_half_width)
     if orient == "v":
         s = _toward_display(ax, "x", box.half)
-        return (seam, stat_value, s * offset_mm, +offset_mm,
-                "left" if s > 0 else "right", "baseline")
+        # Turned 90 deg, ha/va align the rotated box: its near edge on the
+        # seam side, its foot on the stat line.
+        return (seam, stat_value, s * _SEAM_GAP_MM, +offset_mm,
+                "left" if s > 0 else "right",
+                "bottom" if rotated else "baseline")
     s = _toward_display(ax, "y", box.half)
-    return (stat_value, seam, +offset_mm, s * offset_mm,
+    return (stat_value, seam, +offset_mm, s * _SEAM_GAP_MM,
             "left", "bottom" if s > 0 else "top")
 
 
@@ -210,11 +217,12 @@ def _stats_strategy(
         return []
 
     if rotation is None:
-        # A dodged vertical violin is narrower than a 7 pt label (~3.8 mm
-        # body against ~5.4 mm of "0.92"), so its labels stand upright. The
-        # rule is structural — whether the plot dodged — never data-driven.
+        # A vertical body narrower than an undivided slot is narrower than a
+        # 7 pt label (a dodged body or a side= half is ~3.8 mm against
+        # ~5.4 mm of "0.92"), so its labels stand upright. The rule is
+        # structural — how the plotter divided the slot — never data-driven.
         rotation = (90.0 if anchor == "inside" and meta.orient == "v"
-                    and meta.dodged else 0.0)
+                    and meta.narrow else 0.0)
     rotated = abs(rotation) % 180 == 90
     # "inside" sits on the fill, so it alone takes the contrast path; every
     # other anchor keeps "outside" and boxplot output stays byte-identical.

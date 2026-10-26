@@ -4,8 +4,8 @@ The same statistics and records as box_stats — violins and boxes both
 produce BoxStatsMeta. The default anchor differs: "inside", on the forward
 side of the median line inside the body, where box_stats keeps "right"
 because a label fits inside a violin but not inside a ~3 mm box. On a
-dodged vertical violin the label turns 90 degrees unless the caller passes
-rotation=.
+vertical violin narrower than its slot — dodged, split by hue, or halved by
+side= — the label turns 90 degrees unless the caller passes rotation=.
 """
 from __future__ import annotations
 

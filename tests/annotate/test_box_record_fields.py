@@ -1,5 +1,5 @@
 """BoxStatsRecord carries its drawn face, its artist and its seam side;
-BoxStatsMeta knows whether the plot dodged."""
+BoxStatsMeta knows whether its bodies are narrower than a slot."""
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -124,17 +124,20 @@ def test_side_sets_the_half(side, half):
     assert {r.half for r in ax._publiplots_box_meta.boxes} == {half}
 
 
-@pytest.mark.parametrize("kwargs, dodged", [
+@pytest.mark.parametrize("kwargs, narrow", [
     (dict(hue="h"), True),
     (dict(hue="cat"), False),
     (dict(), False),
-    (dict(hue="h", split=True), False),
+    (dict(hue="h", split=True), True),
+    (dict(hue="h", side="right"), True),
+    (dict(side="left"), True),
+    (dict(split=True), False),
 ])
-def test_meta_knows_when_bodies_were_dodged(kwargs, dodged):
+def test_meta_knows_when_bodies_are_narrower_than_a_slot(kwargs, narrow):
     fig, ax = pp.subplots()
     pp.violinplot(data=_df(), x="cat", y="v", inner=None, legend=False,
                   ax=ax, **kwargs)
-    assert ax._publiplots_box_meta.dodged is dodged
+    assert ax._publiplots_box_meta.narrow is narrow
 
 
 def test_custom_center_label_contrasts_with_the_drawn_face():

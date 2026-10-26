@@ -61,10 +61,10 @@ def test_box_stats_still_defaults_to_right():
 @pytest.mark.parametrize("kwargs, rotation", [
     (dict(hue="h"), 90.0),                          # dodged vertical
     (dict(y="cat", x="v", hue="h"), 0.0),           # dodged horizontal
-    (dict(hue="h", split=True), 0.0),               # halves
+    (dict(hue="h", split=True), 90.0),              # halves of a slot
     (dict(), 0.0),                                  # one body per category
 ])
-def test_only_dodged_vertical_labels_rotate(kwargs, rotation):
+def test_only_narrow_vertical_labels_rotate(kwargs, rotation):
     ax = _violins(**kwargs)
     texts = pp.annotate(ax, kind="violin_stats")
     assert {t.get_rotation() for t in texts} == {rotation}

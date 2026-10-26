@@ -155,8 +155,10 @@ class BoxStatsMeta:
     source_frame: Optional[Any] = None
     group_keys: Optional[Tuple[str, ...]] = None
     group_dims: Optional[Tuple[str, ...]] = None
-    # True when some category has two or more full bodies side by side.
-    dodged: bool = False
+    # True when each body is narrower than an undivided slot: some category
+    # holds two or more bodies (dodged, or split by hue), or side= halved
+    # every body.
+    narrow: bool = False
 
 
 def _is_bar_rect(p) -> bool:

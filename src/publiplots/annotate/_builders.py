@@ -981,6 +981,7 @@ def _build_box_stats_meta(
     order: Optional[List] = None,
     hue_order: Optional[List] = None,
     half_of: Optional[Callable[[Dict], Optional[str]]] = None,
+    halved: bool = False,
     skip_singular: bool = False,
 ) -> BoxStatsMeta:
     """Shared builder for pp.boxplot / pp.violinplot.
@@ -995,6 +996,9 @@ def _build_box_stats_meta(
     ``source_frame`` is required keyword-only: the caller's pre-copy
     DataFrame. The returned meta carries it so downstream annotate
     strategies can look up per-box source rows.
+
+    ``halved`` says the plotter cut every body to half its slot (violin
+    ``side=``); it marks the meta ``narrow`` with or without a hue.
     """
     orient = "v" if categorical_axis == x else "h"
     agg = _aggregate_box_stats(
@@ -1033,10 +1037,11 @@ def _build_box_stats_meta(
             half=half_of(row) if half_of is not None else None,
         ))
 
-    # Two or more full bodies in one category means the plotter dodged them
-    # side by side; split and side= halves share their slot by design.
-    full_cats = [b.category for b in boxes if b.half is None]
-    dodged = len(full_cats) != len(set(full_cats))
+    # Two or more bodies in one category divide its slot between them —
+    # dodged full bodies, split halves of a hue, dodged side= halves. A
+    # split violin without a hue spans the whole slot from its seam.
+    cats = [b.category for b in boxes]
+    narrow = halved or len(cats) != len(set(cats))
 
     spec = BarSplitSpec.resolve(
         x=x, y=y, hue=hue, hatch=None, categorical_axis=categorical_axis,
@@ -1055,7 +1060,7 @@ def _build_box_stats_meta(
         source_frame=source_frame,
         group_keys=tuple(keys),
         group_dims=tuple(dims),
-        dodged=dodged,
+        narrow=narrow,
     )
 
 
@@ -1156,7 +1161,7 @@ def build_from_violinplot_call(
     Defaults to scanning ``ax.collections``.
 
     ``split`` / ``side`` are the violinplot call's own; they decide each
-    record's ``half``.
+    record's ``half`` and whether the meta is ``narrow``.
     """
     from matplotlib.collections import PolyCollection
     candidates = ax.collections if drawn_artists is None else drawn_artists
@@ -1191,6 +1196,7 @@ def build_from_violinplot_call(
         hue_outer=False,
         order=order, hue_order=hue_order,
         half_of=half_of,
+        halved=side != "both",
         # seaborn draws a singular group as a bare line, not a body, so a
         # record for it would take the next group's body.
         skip_singular=True,

@@ -13,12 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The label sits on the forward side of the median line — above it for
   vertical marks, right of it for horizontal ones — inside the body, and
   never flips side near the axis end. Split violins and `side=` halves put
-  each label against the seam on its own half's side. `color="auto"`
+  each label against the seam on its own half's side, a fixed 0.25 mm clear
+  of it — `offset` sets only the gap from the median line, so a label fits
+  beside a narrow half without reaching the next one. `color="auto"`
   contrasts with the drawn fill.
 
 - **`kind="violin_stats"`** — box_stats' statistics with `"inside"` as the
-  default anchor. On a dodged vertical violin, whose body is narrower than a
-  7 pt label, labels turn 90°; an explicit `rotation=` wins.
+  default anchor. A vertical violin narrower than its slot — dodged, split
+  by hue, or halved by `side=` — is narrower than a 7 pt label, so its
+  labels turn 90°; an explicit `rotation=` wins. The rule is
+  structural, never data-driven: a `split=True` violin without a hue spans
+  its whole slot and keeps its labels level.
 
 - **`inner="median"` for `pp.violinplot`** — one line across each violin
   at its median, spanning the body's thickness at that point rather than
@@ -31,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`pp.violinplot(annotate=True)` labels medians from inside the body**, via
   `violin_stats`. Vertical labels sat beside the violin, often closer to the
-  neighbouring violin than to their own. Labels on dodged vertical violins
+  neighbouring violin than to their own. Labels on vertical violins
+  narrower than their slot — dodged, split by hue, or halved by `side=` —
   turn 90°, and split and `side=` halves put their labels against the seam.
   `violin_custom`'s default anchor moves from `"top"` to `"inside"`:
   unchanged for full vertical violins on a light fill, while horizontal
