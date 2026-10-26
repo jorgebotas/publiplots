@@ -22,6 +22,13 @@ def relative_luminance(rgb: Sequence[float]) -> float:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
+def contrast_ratio(rgb_a: Sequence[float], rgb_b: Sequence[float]) -> float:
+    """WCAG 2.x contrast ratio between two opaque sRGB colours, 1 to 21."""
+    hi, lo = sorted((relative_luminance(rgb_a), relative_luminance(rgb_b)),
+                    reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
 def white_wins(face_rgba: RGBA, bg_rgba: RGBA) -> bool:
     """True when white has a higher WCAG contrast ratio than black against
     ``face_rgba`` composited over ``bg_rgba``.
