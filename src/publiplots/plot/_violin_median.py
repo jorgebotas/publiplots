@@ -20,13 +20,17 @@ from matplotlib.colors import to_rgba
 from matplotlib.lines import Line2D
 
 from publiplots.annotate._cache import BoxStatsMeta
-from publiplots.annotate._color import _background_rgba, white_wins
+from publiplots.annotate._color import (
+    _background_rgba, _effective_rgb, contrast_ink, contrast_ratio,
+)
 from publiplots.annotate._positioning import mm_to_data
 
 _PT_TO_MM = 25.4 / 72.0
 # A large inset on a narrow body degrades to a short tick, never to nothing.
 _MIN_SPAN_FRACTION = 0.2
-_WHITE = (1.0, 1.0, 1.0, 1.0)
+# WCAG 2.x SC 1.4.11 (non-text contrast): the minimum for a graphical object
+# against what is next to it. The line sits on the body's composited fill.
+_MIN_EDGE_CONTRAST = 3.0
 
 
 def local_span(body, value: float, val_axis: int) -> Optional[Tuple[float, float]]:
@@ -76,13 +80,19 @@ def _pad(inset: Union[str, float], half: float, linewidth: float,
 
 
 def _auto_color(body, ax: Axes):
-    """The body's edge colour, or white where its fill is too dark for it."""
+    """The body's edge colour while it reaches 3:1 against the fill;
+    otherwise the ink a label on that fill would get."""
     edges = np.asarray(body.get_edgecolor()).reshape(-1, 4)
     edge = tuple(edges[0]) if len(edges) else to_rgba(plt.rcParams["text.color"])
     faces = np.asarray(body.get_facecolor()).reshape(-1, 4)
-    if len(faces) and white_wins(tuple(faces[0]), _background_rgba(ax)):
-        return _WHITE
-    return edge
+    if not len(faces):
+        return edge
+    face, bg = tuple(faces[0]), _background_rgba(ax)
+    under = _effective_rgb(face, bg)
+    seen = _effective_rgb(edge, (*under, 1.0))
+    if contrast_ratio(seen, under) >= _MIN_EDGE_CONTRAST:
+        return edge
+    return contrast_ink(face, bg)
 
 
 def draw_median_inner(

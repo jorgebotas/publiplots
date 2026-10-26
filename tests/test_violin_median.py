@@ -141,7 +141,8 @@ def test_split_lines_meet_the_seam_from_their_own_side():
 
 
 def test_colour_follows_the_body_edge():
-    ax, meta = _plot(hue="cat")
+    # Both reach 4.2:1 against their alpha=0.1 tint, above the 3:1 floor.
+    ax, meta = _plot(hue="cat", palette={"bimodal": "#1f77b4", "sym": "#d62728"})
     for line, rec in zip(draw_median_inner(ax, meta, {}, linewidth=0.75), meta.boxes):
         assert to_rgba(line.get_color()) == pytest.approx(
             tuple(rec.artist.get_edgecolor()[0]))

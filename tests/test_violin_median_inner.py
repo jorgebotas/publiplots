@@ -116,6 +116,54 @@ def test_white_text_colour_keeps_the_median_on_its_edge_colour(df):
         assert to_rgba(line.get_color()) != to_rgba("white")
 
 
+def _median_colors(ax):
+    return [to_rgba(l.get_color()) for l in ax.lines]
+
+
+def _edge_colors(ax):
+    return [tuple(b.artist.get_edgecolor()[0]) for b in ax._publiplots_box_meta.boxes]
+
+
+def test_light_theme_default_keeps_the_edge_colour(df):
+    # #5d83c3 against its own alpha=0.1 tint on white: contrast 3.42.
+    ax = pp.violinplot(data=df, x="cat", y="v")
+    assert _median_colors(ax) == [to_rgba("#5d83c3")] * 3
+
+
+def test_dark_background_keeps_the_edge_colour(df):
+    # Every body composites near-black, which used to send the line white
+    # although the edge colour itself reads at 5:1 or better.
+    with plt.style.context("dark_background"):
+        ax = pp.violinplot(data=df, x="cat", y="v", hue="cat")
+        assert _median_colors(ax) == _edge_colors(ax)
+        assert to_rgba("white") not in _median_colors(ax)
+
+
+def test_opaque_dark_fill_turns_the_median_white(df):
+    ax = pp.violinplot(data=df, x="cat", y="v", color="#1f2a44", alpha=1)
+    assert _median_colors(ax) == [to_rgba("white")] * 3
+
+
+def test_opaque_light_fill_turns_the_median_to_ink(df):
+    # The edge colour equals the fill (contrast 1:1): kept, the line vanished.
+    ax = pp.violinplot(data=df, x="cat", y="v", alpha=1)
+    assert _median_colors(ax) == [to_rgba(plt.rcParams["text.color"])] * 3
+
+
+def test_pastel_hue_below_three_to_one_turns_the_median_to_ink(df):
+    # The default palette's entries reach 1.7-2.8:1 against their own tint.
+    ax = pp.violinplot(data=df, x="cat", y="v", hue="cat")
+    assert _median_colors(ax) == [to_rgba(plt.rcParams["text.color"])] * 3
+
+
+@pytest.mark.parametrize("alpha, keeps_edge", [(0.2, True), (0.25, False)])
+def test_the_edge_colour_needs_three_to_one(df, alpha, keeps_edge):
+    # #5d83c3 composited over white: 3.05:1 at alpha 0.2, 2.87:1 at 0.25.
+    ax = pp.violinplot(data=df, x="cat", y="v", alpha=alpha)
+    expected = to_rgba("#5d83c3") if keeps_edge else to_rgba(plt.rcParams["text.color"])
+    assert _median_colors(ax) == [expected] * 3
+
+
 def test_median_line_and_label_agree(df):
     ax = pp.violinplot(data=df, x="cat", y="v", annotate={"fmt": ".3f"})
     assert [t.get_text() for t in ax.texts] == [

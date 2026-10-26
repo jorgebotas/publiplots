@@ -107,8 +107,9 @@ def violinplot(
         the body's edge colour at ``linewidth``. Tune it with ``inner_kws``:
         ``inset`` (``"auto"``; ``0`` for a flush border-to-border chord; or
         the fraction of the local half-thickness trimmed from each end, e.g.
-        ``0.12``), ``color`` (``"auto"`` follows the edge and turns white on
-        a fill too dark for it), ``linewidth``, ``solid_capstyle``. The
+        ``0.12``), ``color`` (``"auto"`` follows the edge while it reaches
+        WCAG 3:1 against the composited fill, and otherwise takes the ink a
+        label there would get), ``linewidth``, ``solid_capstyle``. The
         other options are seaborn's; use ``"box"`` when the quartiles are
         the point.
     split : bool, default=False

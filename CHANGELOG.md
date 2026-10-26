@@ -24,8 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at its median, spanning the body's thickness at that point rather than
   its widest, in the outline's colour and `linewidth`. `inner_kws` tunes it:
   `inset` (`"auto"`; `0` for a border-to-border chord; or a fraction such as
-  `0.12` for a detached tick), `color`, `linewidth`, `solid_capstyle`. On a
-  fill too dark for the outline colour it turns white. (#275)
+  `0.12` for a detached tick), `color`, `linewidth`, `solid_capstyle`. The
+  outline colour is kept while its WCAG contrast against the composited fill
+  is at least 3:1, the minimum for graphical objects (WCAG 1.4.11). Below
+  that, the line takes the ink a label on that fill would get: white or
+  `text.color`. On publiplots' default theme a single-colour violin keeps
+  its outline colour (3.4:1 at `alpha=0.1`), as do violins under
+  `dark_background`. `hue=` violins on the light theme get `text.color`
+  lines, because the default palette reaches only 1.7–2.8:1 against its own
+  tint. An opaque fill in its own outline colour (1:1) always gets ink.
+  (#275)
 
 ### Changed
 

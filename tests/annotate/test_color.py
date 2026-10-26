@@ -9,7 +9,8 @@ from matplotlib.colors import to_rgba
 
 from publiplots.annotate._cache import BarRecord
 from publiplots.annotate._color import (
-    contrast_ink, relative_luminance, resolve_color, white_wins,
+    contrast_ink, contrast_ratio, relative_luminance, resolve_color,
+    white_wins,
 )
 
 
@@ -124,6 +125,14 @@ def test_contrast_ink_picks_the_higher_wcag_contrast_ratio():
         white_wins = 1.05 / (y + 0.05) > (y + 0.05) / 0.05
         got = contrast_ink(to_rgba(rgb), to_rgba("white"))
         assert got == (_WHITE if white_wins else _ink()), rgb
+
+
+def test_contrast_ratio_is_wcag_and_symmetric():
+    assert contrast_ratio((0, 0, 0), (1, 1, 1)) == pytest.approx(21.0)
+    assert contrast_ratio((0.4, 0.5, 0.6), (0.4, 0.5, 0.6)) == pytest.approx(1.0)
+    blue, white = to_rgba("#0000ff")[:3], (1, 1, 1)
+    assert contrast_ratio(blue, white) == pytest.approx(8.59, abs=0.01)
+    assert contrast_ratio(blue, white) == contrast_ratio(white, blue)
 
 
 def test_white_wins_ignores_text_color():
