@@ -133,6 +133,29 @@ def test_white_wins_ignores_text_color():
         assert white_wins(to_rgba("#0000ff"), white_bg)
 
 
+@pytest.mark.parametrize("text_color", ["white", "#dddddd", "#808080"])
+@pytest.mark.parametrize("fill", ["#ffff00", "#ffffff"])
+def test_contrast_ink_never_returns_a_light_text_color_on_a_light_fill(
+        text_color, fill):
+    # dark_background sets text.color white; returning it on a light fill
+    # put white on white (1.0:1) where black reads at 21:1. #808080 sits on
+    # the light side of the 0.179 crossover (luminance 0.216).
+    with plt.rc_context({"text.color": text_color}):
+        got = contrast_ink(to_rgba(fill), to_rgba("black"))
+    assert got == to_rgba("black")
+
+
+def test_contrast_ink_keeps_white_on_a_dark_fill_under_light_text():
+    with plt.rc_context({"text.color": "white"}):
+        assert contrast_ink(to_rgba("#000080"), to_rgba("black")) == _WHITE
+
+
+@pytest.mark.parametrize("text_color", ["black", "#333333", "#666666", "#1f2a44"])
+def test_contrast_ink_keeps_a_dark_text_color(text_color):
+    with plt.rc_context({"text.color": text_color}):
+        assert contrast_ink(to_rgba("#ffff00"), to_rgba("white")) == to_rgba(text_color)
+
+
 @pytest.mark.parametrize("fill, want_white", [
     ("#0000ff", True),    # HLS lightness 0.500 picked ink: contrast 2.4 vs 8.6
     ("#2ca02c", False),   # HLS lightness 0.400 picked white: 3.4 vs 6.2

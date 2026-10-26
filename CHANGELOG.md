@@ -110,6 +110,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   immediately before that box's lines — which position cannot distinguish.
   Every other configuration renders identically. The unfilled case was
   fixed in #278.
+- **`color="auto"` labels on a light fill no longer take a light
+  `text.color`.** Once white lost against the fill, the label took
+  `rcParams["text.color"]` unchecked, so under
+  `plt.style.context("dark_background")` (or any white `text.color`) a label
+  on an opaque yellow bar or a pale pie wedge was drawn white on yellow,
+  1.07:1. A light fill now takes `text.color` only when that colour is
+  itself dark, by the same WCAG crossover (luminance ≈0.179) that splits
+  fills, and otherwise publiplots' INK (black). Dark `text.color` settings,
+  including the default, are unchanged, as are labels outside the mark.
 
 ### Docs
 

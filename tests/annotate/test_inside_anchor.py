@@ -131,6 +131,18 @@ def test_inside_contrasts_with_the_drawn_fill():
     assert [to_rgba(t.get_color()) for t in texts] == [white, ink, white]
 
 
+def test_inside_ink_under_dark_background_reads_on_a_light_fill():
+    with plt.style.context("dark_background"):
+        fig, ax = pp.subplots()
+        pp.violinplot(data=_df(), x="cat", y="v", hue="cat", fill=True,
+                      alpha=1.0, palette={"A": "#0000ff", "B": "#ffff00",
+                                          "C": "#0000ff"},
+                      inner=None, legend=False, ax=ax)
+        texts = pp.annotate(ax, kind="box_stats", anchor="inside")
+    white, black = to_rgba("white"), to_rgba("black")
+    assert [to_rgba(t.get_color()) for t in texts] == [white, black, white]
+
+
 @pytest.mark.parametrize("plot, kind", [(pp.boxplot, "box_stats"),
                                          (pp.violinplot, "violin_stats")])
 def test_inside_contrasts_with_the_translucent_face_not_the_palette(plot, kind):
